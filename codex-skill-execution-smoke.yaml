@@ -1,0 +1,307 @@
+id: codex-skill-execution-smoke
+version: 0.1.0
+desc: Live c2ops Codex + skill execution smoke that verifies repo edits and status-contract artifacts
+sequence:
+  - id: seed_context
+    op: command_execution
+    inputs:
+      timeout: 5m
+      env:
+        WT: "{{ context.environment.op.worktree_path }}"
+        CELL: >-
+          ${{
+            (has(context.workflow.cell_path) && context.workflow.cell_path != "")
+              ? context.workflow.cell_path
+              : "."
+          }}
+      run: |
+        set -euo pipefail
+
+        OUT="{{ context.environment.op.outbox }}"
+        mkdir -p "$OUT/requirements" "$OUT/implementation" "$OUT/outcome"
+
+        cat > "$OUT/requirements/plan.json" <<'JSON'
+        {
+          "summary": "Create a live Codex skill execution marker.",
+          "needs_cross_cell_support": false,
+          "dependency_order": ["REQ-1"],
+          "requirements": [
+            {
+              "id": "REQ-1",
+              "title": "Create live skill marker",
+              "target_cell": "recipe-tests",
+              "depends_on": [],
+              "scope": "Create a deterministic marker file proving Codex executed the implementation skill.",
+              "api_changes": [],
+              "acceptance_criteria": [
+                "The marker JSON exists in the current cell.",
+                "The implementation status artifact reports ready_for_validation."
+              ],
+              "risks": [],
+              "open_questions": []
+            }
+          ],
+          "notes_for_user_review": "Live smoke fixture."
+        }
+        JSON
+        cat > "$OUT/requirements/index.md" <<'EOF_REQ'
+        # Requirements
+
+        - REQ-1: Create a live Codex skill execution marker.
+        EOF_REQ
+
+        cat > "$OUT/implementation/plan.json" <<'JSON'
+        {
+          "summary": "Use c2-implementation-loop to create a marker file and status artifacts.",
+          "requires_dependency_jobs": false,
+          "dependency_order": ["REQ-1"],
+          "dependency_job_specs": [],
+          "local_steps": [
+            "Create .c2/live-codex-skill-execution/result.json.",
+            "Write implementation/latest-status.json with ready_for_validation.",
+            "Write implementation/progress.ndjson and implementation/summary.md."
+          ],
+          "notes_for_user_review": "Live Codex execution should complete without user input."
+        }
+        JSON
+        cat > "$OUT/implementation/index.md" <<'EOF_IMPL'
+        # Implementation Plan
+
+        Create the live Codex skill execution marker and status artifacts.
+        EOF_IMPL
+
+        cat > "$OUT/outcome/plan.json" <<'JSON'
+        {
+          "summary": "Validate the live marker and status-contract artifact.",
+          "current_test_statements_summary": "A smoke statement is seeded for this workflow.",
+          "test_statement_updates_required": false,
+          "test_statement_repo_glob": ".c2/tests/*.md",
+          "validation_commands": "test -f .c2/live-codex-skill-execution/result.json",
+          "notes_for_user_review": "Probe command validates the exact marker shape."
+        }
+        JSON
+        cat > "$OUT/outcome/index.md" <<'EOF_OUT'
+        # Outcome
+
+        Validate the live marker file and implementation status artifact.
+        EOF_OUT
+        cat > "$OUT/outcome/tests-index.md" <<'EOF_TESTS'
+        # Test Statements
+
+        - `.c2/tests/codex-skill-execution-smoke.md`
+        EOF_TESTS
+        cat > "$OUT/outcome/validation-commands.txt" <<'EOF_CMDS'
+        test -f .c2/live-codex-skill-execution/result.json
+        EOF_CMDS
+
+        CELL_DIR="$WT/$CELL"
+        mkdir -p "$CELL_DIR/.c2/tests"
+        cat > "$CELL_DIR/.c2/tests/codex-skill-execution-smoke.md" <<'EOF_STATEMENT'
+        # Codex Skill Execution Smoke
+
+        - File(s): `.c2/live-codex-skill-execution/result.json`; Importance: High; Type: integration, deps: live c2ops codex; Polarity: positive; Expect live Codex creates the marker JSON.
+        - File(s): `implementation/latest-status.json`; Importance: High; Type: integration, deps: live c2ops codex; Polarity: positive; Expect status is ready_for_validation.
+        EOF_STATEMENT
+
+  - id: implement_marker
+    op: git+https://github.com/colony-2/c2ops.git//codex@main
+    artifacts:
+      requirements/plan.json: '${{ sequence.seed_context.artifacts["requirements/plan.json"] }}'
+      requirements/index.md: '${{ sequence.seed_context.artifacts["requirements/index.md"] }}'
+      implementation/plan.json: '${{ sequence.seed_context.artifacts["implementation/plan.json"] }}'
+      implementation/index.md: '${{ sequence.seed_context.artifacts["implementation/index.md"] }}'
+      outcome/plan.json: '${{ sequence.seed_context.artifacts["outcome/plan.json"] }}'
+      outcome/tests-index.md: '${{ sequence.seed_context.artifacts["outcome/tests-index.md"] }}'
+      outcome/validation-commands.txt: '${{ sequence.seed_context.artifacts["outcome/validation-commands.txt"] }}'
+    inputs:
+      sandbox:
+        type: none
+      worktree_path: "{{ context.environment.op.worktree_path }}"
+      cell_relative_path: >-
+        ${{
+          (has(context.workflow.cell_path) && context.workflow.cell_path != "")
+            ? context.workflow.cell_path
+            : "."
+        }}
+      skill: "c2-implementation-loop"
+      skill_mode: "enforce"
+      skills:
+        - "gitl.colony2.com/jnadeau/skills/.agents/skills@1362438426e25c733174ea85f248db11af99a8a7"
+      return_on:
+        - ready_for_validation
+        - needs_user_input
+        - needs_dependency_tickets
+        - needs_test_statement_update
+        - blocked
+      status_contract:
+        path: implementation/latest-status.json
+      prompt: |
+        Follow the `c2-implementation-loop` skill contract.
+
+        This is a live integration smoke. Complete exactly one small current-cell implementation.
+
+        Input artifacts:
+        - `{{ context.environment.op.inbox }}/requirements/plan.json`
+        - `{{ context.environment.op.inbox }}/requirements/index.md`
+        - `{{ context.environment.op.inbox }}/implementation/plan.json`
+        - `{{ context.environment.op.inbox }}/implementation/index.md`
+        - `{{ context.environment.op.inbox }}/outcome/plan.json`
+        - `{{ context.environment.op.inbox }}/outcome/tests-index.md`
+        - `{{ context.environment.op.inbox }}/outcome/validation-commands.txt`
+
+        Required repo change:
+        - Create `.c2/live-codex-skill-execution/result.json` in the current cell.
+        - The file must be valid JSON with these exact keys and values:
+          {
+            "smoke": "codex-skill-execution",
+            "skill": "c2-implementation-loop",
+            "status": "ready_for_validation",
+            "marker": "codex-skill-live"
+          }
+
+        Required outbox artifacts:
+        - `{{ context.environment.op.outbox }}/implementation/latest-status.json`
+        - `{{ context.environment.op.outbox }}/implementation/progress.ndjson`
+        - `{{ context.environment.op.outbox }}/implementation/summary.md`
+
+        `latest-status.json` must be valid JSON:
+        {
+          "status": "ready_for_validation",
+          "summary": "Created live Codex skill execution marker.",
+          "details": {
+            "marker_file": ".c2/live-codex-skill-execution/result.json"
+          }
+        }
+
+        Guardrails:
+        - Do not edit `.c2/tests/*.md`.
+        - Do not touch files outside the current cell.
+        - Do not request user input or dependency tickets.
+        - Final response should be a concise JSON object summarizing the marker file and status.
+
+  - id: probe
+    op: command_execution
+    artifacts:
+      latest-status.json: '${{ sequence.implement_marker.artifacts["implementation/latest-status.json"] }}'
+      summary.md: '${{ sequence.implement_marker.artifacts["implementation/summary.md"] }}'
+      progress.ndjson: '${{ sequence.implement_marker.artifacts["implementation/progress.ndjson"] }}'
+    inputs:
+      timeout: 5m
+      env:
+        WT: "{{ context.environment.op.worktree_path }}"
+        CELL: >-
+          ${{
+            (has(context.workflow.cell_path) && context.workflow.cell_path != "")
+              ? context.workflow.cell_path
+              : "."
+          }}
+        INBOX: "{{ context.environment.op.inbox }}"
+      run: |
+        set -euo pipefail
+        python3 - <<'PY'
+        import json
+        import os
+        from pathlib import Path
+
+        wt = Path(os.environ["WT"])
+        cell = os.environ.get("CELL") or "."
+        inbox = Path(os.environ["INBOX"])
+        marker_path = wt / cell / ".c2/live-codex-skill-execution/result.json"
+        status_path = inbox / "latest-status.json"
+        summary_path = inbox / "summary.md"
+        progress_path = inbox / "progress.ndjson"
+
+        expected_marker = {
+            "smoke": "codex-skill-execution",
+            "skill": "c2-implementation-loop",
+            "status": "ready_for_validation",
+            "marker": "codex-skill-live",
+        }
+
+        result = {
+            "marker_file_exists": marker_path.exists(),
+            "marker_file_valid": False,
+            "status_artifact_exists": status_path.exists(),
+            "status_artifact_ready": False,
+            "summary_artifact_exists": summary_path.exists(),
+            "progress_artifact_nonempty": progress_path.exists() and progress_path.stat().st_size > 0,
+        }
+
+        if marker_path.exists():
+            try:
+                result["marker_file_valid"] = json.loads(marker_path.read_text()) == expected_marker
+            except Exception:
+                result["marker_file_valid"] = False
+
+        if status_path.exists():
+            try:
+                status = json.loads(status_path.read_text())
+                result["status_artifact_ready"] = status.get("status") == "ready_for_validation"
+                result["status_summary_nonempty"] = bool(status.get("summary"))
+            except Exception:
+                result["status_artifact_ready"] = False
+                result["status_summary_nonempty"] = False
+
+        print(json.dumps(result, sort_keys=True))
+        PY
+
+  - id: assert_contract
+    op: command_execution
+    inputs:
+      timeout: 5m
+      env:
+        EXPECTED_REF: "gitl.colony2.com/jnadeau/skills/.agents/skills@1362438426e25c733174ea85f248db11af99a8a7"
+        CODEX_SKILL_SESSION_NONEMPTY: "${{ has(sequence.implement_marker.outputs.sessionId) && sequence.implement_marker.outputs.sessionId != \"\" }}"
+        CODEX_SKILL_REF_RESOLVED: "${{ has(sequence.implement_marker.outputs.skills_installed) && size(sequence.implement_marker.outputs.skills_installed) > 0 ? sequence.implement_marker.outputs.skills_installed[0] : \"\" }}"
+        CODEX_SKILL_MARKER_FILE_EXISTS: "${{ json_parse(sequence.probe.outputs.stdout).marker_file_exists }}"
+        CODEX_SKILL_MARKER_FILE_VALID: "${{ json_parse(sequence.probe.outputs.stdout).marker_file_valid }}"
+        CODEX_SKILL_STATUS_ARTIFACT_EXISTS: "${{ json_parse(sequence.probe.outputs.stdout).status_artifact_exists }}"
+        CODEX_SKILL_STATUS_ARTIFACT_READY: "${{ json_parse(sequence.probe.outputs.stdout).status_artifact_ready }}"
+        CODEX_SKILL_SUMMARY_ARTIFACT_EXISTS: "${{ json_parse(sequence.probe.outputs.stdout).summary_artifact_exists }}"
+        CODEX_SKILL_PROGRESS_ARTIFACT_NONEMPTY: "${{ json_parse(sequence.probe.outputs.stdout).progress_artifact_nonempty }}"
+      run: |
+        set -euo pipefail
+        python3 - <<'PY'
+        import os
+        import sys
+
+        expected_true = [
+            "CODEX_SKILL_SESSION_NONEMPTY",
+            "CODEX_SKILL_MARKER_FILE_EXISTS",
+            "CODEX_SKILL_MARKER_FILE_VALID",
+            "CODEX_SKILL_STATUS_ARTIFACT_EXISTS",
+            "CODEX_SKILL_STATUS_ARTIFACT_READY",
+            "CODEX_SKILL_SUMMARY_ARTIFACT_EXISTS",
+            "CODEX_SKILL_PROGRESS_ARTIFACT_NONEMPTY",
+        ]
+
+        failures = []
+        for key in expected_true:
+            if os.environ.get(key, "").strip().lower() != "true":
+                failures.append(f"{key}=true expected, got {os.environ.get(key, '')!r}")
+
+        resolved = os.environ.get("CODEX_SKILL_REF_RESOLVED", "")
+        expected_ref = os.environ["EXPECTED_REF"]
+        if resolved != expected_ref:
+            failures.append(f"CODEX_SKILL_REF_RESOLVED={expected_ref!r} expected, got {resolved!r}")
+
+        if failures:
+            print("codex-skill-execution assertion failures:", file=sys.stderr)
+            for failure in failures:
+                print(f"- {failure}", file=sys.stderr)
+            sys.exit(1)
+
+        print("codex-skill-execution assertions passed")
+        PY
+
+outputs:
+  codex_skill_status: "${{ sequence.implement_marker.outputs.status }}"
+  codex_skill_session_nonempty: "${{ has(sequence.implement_marker.outputs.sessionId) && sequence.implement_marker.outputs.sessionId != \"\" }}"
+  codex_skill_return_category: "${{ has(sequence.implement_marker.outputs.incompleteCategory) ? sequence.implement_marker.outputs.incompleteCategory : \"\" }}"
+  codex_skill_ref_resolved: "${{ has(sequence.implement_marker.outputs.skills_installed) && size(sequence.implement_marker.outputs.skills_installed) > 0 ? sequence.implement_marker.outputs.skills_installed[0] : \"\" }}"
+  codex_skill_marker_file_exists: "${{ json_parse(sequence.probe.outputs.stdout).marker_file_exists }}"
+  codex_skill_marker_file_valid: "${{ json_parse(sequence.probe.outputs.stdout).marker_file_valid }}"
+  codex_skill_status_artifact_exists: "${{ json_parse(sequence.probe.outputs.stdout).status_artifact_exists }}"
+  codex_skill_status_artifact_ready: "${{ json_parse(sequence.probe.outputs.stdout).status_artifact_ready }}"
+  codex_skill_summary_artifact_exists: "${{ json_parse(sequence.probe.outputs.stdout).summary_artifact_exists }}"
+  codex_skill_progress_artifact_nonempty: "${{ json_parse(sequence.probe.outputs.stdout).progress_artifact_nonempty }}"
