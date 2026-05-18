@@ -17,7 +17,6 @@ Use the `context` object in templates to access task execution metadata (what/wh
 
 ### Workflow (which job/cell is executing)
 - `context.workflow.cell` - Cell name.
-- `context.workflow.cell_path` - Cell path relative to repo root.
 - `context.workflow.job_id` - Job identifier.
 - `context.workflow.project_id` - Project identifier.
 
@@ -47,11 +46,8 @@ working_directory: "{{ context.environment.op.outbox }}"
 # Use the repo worktree in an op default
 default_working_dir: "{{ context.environment.op.worktree_path }}"
 
-# Pass the cell path to a command
-run: "echo {{ context.workflow.cell_path }}"
-
-# Resolve the cell path for op defaults
-cell_relative_path: "{{ context.workflow.cell_path }}"
+# Run against the current cell checkout
+working_directory: "{{ context.environment.op.worktree_path }}"
 
 # Use task invocation info for namespacing
 artifact_key: "{{ context.invocation.hash }}"

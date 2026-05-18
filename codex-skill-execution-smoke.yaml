@@ -6,19 +6,15 @@ sequence:
     op: command_execution
     inputs:
       timeout: 5m
+      working_directory: /tmp
       env:
         WT: "{{ context.environment.op.worktree_path }}"
-        CELL: >-
-          ${{
-            (has(context.workflow.cell_path) && context.workflow.cell_path != "")
-              ? context.workflow.cell_path
-              : "."
-          }}
       run: |
         set -euo pipefail
 
         OUT="{{ context.environment.op.outbox }}"
         mkdir -p "$OUT/requirements" "$OUT/implementation" "$OUT/outcome"
+        mkdir -p "$WT"
 
         cat > "$OUT/requirements/plan.json" <<'JSON'
         {
@@ -94,9 +90,8 @@ sequence:
         test -f .c2/live-codex-skill-execution/result.json
         EOF_CMDS
 
-        CELL_DIR="$WT/$CELL"
-        mkdir -p "$CELL_DIR/.c2/tests"
-        cat > "$CELL_DIR/.c2/tests/codex-skill-execution-smoke.md" <<'EOF_STATEMENT'
+        mkdir -p "$WT/.c2/tests"
+        cat > "$WT/.c2/tests/codex-skill-execution-smoke.md" <<'EOF_STATEMENT'
         # Codex Skill Execution Smoke
 
         - File(s): `.c2/live-codex-skill-execution/result.json`; Importance: High; Type: integration, deps: live c2ops codex; Polarity: positive; Expect live Codex creates the marker JSON.
@@ -117,12 +112,9 @@ sequence:
       sandbox:
         type: none
       worktree_path: "{{ context.environment.op.worktree_path }}"
-      cell_relative_path: >-
-        ${{
-          (has(context.workflow.cell_path) && context.workflow.cell_path != "")
-            ? context.workflow.cell_path
-            : "."
-        }}
+      workdir_path: "{{ context.environment.op.workdir }}"
+      artifact_inbox_path: "{{ context.environment.op.inbox }}"
+      artifact_outbox_path: "{{ context.environment.op.outbox }}"
       skill: "c2-implementation-loop"
       skill_mode: "enforce"
       skills:
@@ -189,12 +181,6 @@ sequence:
       timeout: 5m
       env:
         WT: "{{ context.environment.op.worktree_path }}"
-        CELL: >-
-          ${{
-            (has(context.workflow.cell_path) && context.workflow.cell_path != "")
-              ? context.workflow.cell_path
-              : "."
-          }}
         INBOX: "{{ context.environment.op.inbox }}"
       run: |
         set -euo pipefail
@@ -204,9 +190,8 @@ sequence:
         from pathlib import Path
 
         wt = Path(os.environ["WT"])
-        cell = os.environ.get("CELL") or "."
         inbox = Path(os.environ["INBOX"])
-        marker_path = wt / cell / ".c2/live-codex-skill-execution/result.json"
+        marker_path = wt / ".c2/live-codex-skill-execution/result.json"
         status_path = inbox / "latest-status.json"
         summary_path = inbox / "summary.md"
         progress_path = inbox / "progress.ndjson"
@@ -251,14 +236,14 @@ sequence:
       timeout: 5m
       env:
         EXPECTED_REF: "gitl.colony2.com/jnadeau/skills/.agents/skills@1362438426e25c733174ea85f248db11af99a8a7"
-        CODEX_SKILL_SESSION_NONEMPTY: "${{ has(sequence.implement_marker.outputs.sessionId) && sequence.implement_marker.outputs.sessionId != \"\" }}"
+        CODEX_SKILL_SESSION_NONEMPTY: "${{ has(sequence.implement_marker.outputs.sessionId) && sequence.implement_marker.outputs.sessionId != \"\" ? \"true\" : \"false\" }}"
         CODEX_SKILL_REF_RESOLVED: "${{ has(sequence.implement_marker.outputs.skills_installed) && size(sequence.implement_marker.outputs.skills_installed) > 0 ? sequence.implement_marker.outputs.skills_installed[0] : \"\" }}"
-        CODEX_SKILL_MARKER_FILE_EXISTS: "${{ json_parse(sequence.probe.outputs.stdout).marker_file_exists }}"
-        CODEX_SKILL_MARKER_FILE_VALID: "${{ json_parse(sequence.probe.outputs.stdout).marker_file_valid }}"
-        CODEX_SKILL_STATUS_ARTIFACT_EXISTS: "${{ json_parse(sequence.probe.outputs.stdout).status_artifact_exists }}"
-        CODEX_SKILL_STATUS_ARTIFACT_READY: "${{ json_parse(sequence.probe.outputs.stdout).status_artifact_ready }}"
-        CODEX_SKILL_SUMMARY_ARTIFACT_EXISTS: "${{ json_parse(sequence.probe.outputs.stdout).summary_artifact_exists }}"
-        CODEX_SKILL_PROGRESS_ARTIFACT_NONEMPTY: "${{ json_parse(sequence.probe.outputs.stdout).progress_artifact_nonempty }}"
+        CODEX_SKILL_MARKER_FILE_EXISTS: "${{ json_parse(sequence.probe.outputs.stdout).marker_file_exists ? \"true\" : \"false\" }}"
+        CODEX_SKILL_MARKER_FILE_VALID: "${{ json_parse(sequence.probe.outputs.stdout).marker_file_valid ? \"true\" : \"false\" }}"
+        CODEX_SKILL_STATUS_ARTIFACT_EXISTS: "${{ json_parse(sequence.probe.outputs.stdout).status_artifact_exists ? \"true\" : \"false\" }}"
+        CODEX_SKILL_STATUS_ARTIFACT_READY: "${{ json_parse(sequence.probe.outputs.stdout).status_artifact_ready ? \"true\" : \"false\" }}"
+        CODEX_SKILL_SUMMARY_ARTIFACT_EXISTS: "${{ json_parse(sequence.probe.outputs.stdout).summary_artifact_exists ? \"true\" : \"false\" }}"
+        CODEX_SKILL_PROGRESS_ARTIFACT_NONEMPTY: "${{ json_parse(sequence.probe.outputs.stdout).progress_artifact_nonempty ? \"true\" : \"false\" }}"
       run: |
         set -euo pipefail
         python3 - <<'PY'

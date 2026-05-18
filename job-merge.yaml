@@ -15,14 +15,16 @@ input_schema:
     type: string
     required: false
 inputs:
-  local_hash: '${{ has(inputs.local_hash) && inputs.local_hash != "" ? inputs.local_hash : (has(context.git.hash) ? context.git.hash : "") }}'
-  upstream_repo: '${{ has(inputs.upstream_repo) && inputs.upstream_repo != "" ? inputs.upstream_repo : (has(context.git.repo) ? context.git.repo : "") }}'
-  upstream_branch: '${{ has(inputs.upstream_branch) && inputs.upstream_branch != "" ? inputs.upstream_branch : (has(context.git.ref) ? context.git.ref : "") }}'
-  commit_message: '${{ has(inputs.commit_message) ? inputs.commit_message : "" }}'
+  local_hash: '${{ first_nonempty(inputs.?local_hash, context.git.?hash.orValue(""), "") }}'
+  upstream_repo: '${{ first_nonempty(inputs.?upstream_repo, context.git.?repo.orValue(""), "") }}'
+  upstream_branch: '${{ first_nonempty(inputs.?upstream_branch, context.git.?ref.orValue(""), "") }}'
+  commit_message: '${{ first_nonempty(inputs.?commit_message, "") }}'
+vars:
+  local_hash: '${{ first_nonempty(context.git.?hash.orValue(""), inputs.?local_hash.orValue(""), "") }}'
 state:
   initial:
     - to: prompt
-      when: 'inputs.upstream_repo == "" || inputs.upstream_branch == "" || inputs.commit_message == ""'
+      when: '!nonempty(first_nonempty(inputs.?upstream_repo.orValue(""), context.git.?repo.orValue(""), "")) || !nonempty(first_nonempty(inputs.?upstream_branch.orValue(""), context.git.?ref.orValue(""), "")) || !nonempty(inputs.?commit_message.orValue(""))'
     - to: approve
       when: "true"
   states:
@@ -52,20 +54,24 @@ state:
       op: input
       transitions:
         - to: skipped_no_changes
-          when: 'has(outputs.response) && outputs.response == "merge" && inputs.local_hash == ""'
+          when: 'outputs.response == "merge" && !nonempty(vars.local_hash)'
         - to: merge
-          when: 'has(outputs.response) && outputs.response == "merge" && inputs.local_hash != ""'
+          when: 'outputs.response == "merge" && nonempty(vars.local_hash)'
+          payload:
+            upstream_repo: '${{ state_field("prompt", "upstream_repo", "") }}'
+            upstream_branch: '${{ state_field("prompt", "upstream_branch", "") }}'
+            commit_message: '${{ state_field("prompt", "commit_message", "") }}'
       inputs:
         form:
           title: "Approve merge"
           question: |
             This will run `squashrebasemerge` and fast-forward merge back to the upstream branch.
 
-            Local hash: {{ inputs.local_hash }}
-            Upstream repo: ${{ "prompt" in states ? states.prompt.outputs.fields.upstream_repo : inputs.upstream_repo }}
-            Upstream branch: ${{ "prompt" in states ? states.prompt.outputs.fields.upstream_branch : inputs.upstream_branch }}
+            Local hash: ${{ vars.local_hash }}
+            Upstream repo: ${{ first_nonempty(state_field("prompt", "upstream_repo", ""), inputs.?upstream_repo.orValue(""), context.git.?repo.orValue(""), "") }}
+            Upstream branch: ${{ first_nonempty(state_field("prompt", "upstream_branch", ""), inputs.?upstream_branch.orValue(""), context.git.?ref.orValue(""), "") }}
             Commit message:
-            ${{ "prompt" in states ? states.prompt.outputs.fields.commit_message : inputs.commit_message }}
+            ${{ first_nonempty(state_field("prompt", "commit_message", ""), inputs.?commit_message.orValue(""), "") }}
           type: multiple_choice
           options:
             - value: merge
@@ -81,31 +87,20 @@ state:
 
     merge:
       op: squashrebasemerge
+      vars:
+        upstream_repo: '${{ first_nonempty(transition.?payload.upstream_repo, inputs.?upstream_repo.orValue(""), context.git.?repo.orValue(""), "") }}'
+        upstream_branch: '${{ first_nonempty(transition.?payload.upstream_branch, inputs.?upstream_branch.orValue(""), context.git.?ref.orValue(""), "") }}'
+        commit_message: '${{ first_nonempty(transition.?payload.commit_message, inputs.?commit_message.orValue(""), "Update") }}'
       inputs:
         repo_path: "{{ context.environment.op.worktree_path }}"
-        local_hash: "{{ inputs.local_hash }}"
-        upstream_repo: >-
-          ${{
-            "prompt" in states
-              ? states.prompt.outputs.fields.upstream_repo
-              : inputs.upstream_repo
-          }}
-        upstream_branch: >-
-          ${{
-            "prompt" in states
-              ? states.prompt.outputs.fields.upstream_branch
-              : inputs.upstream_branch
-          }}
+        local_hash: "${{ vars.local_hash }}"
+        upstream_repo: "${{ vars.upstream_repo }}"
+        upstream_branch: "${{ vars.upstream_branch }}"
         rebase: true
-        author: "${{ has(context.git.author) ? context.git.author : \"\" }}"
-        commit_message: >-
-          ${{
-            "prompt" in states
-              ? states.prompt.outputs.fields.commit_message
-              : inputs.commit_message
-          }}
+        author: '${{ context.git.?author.orValue("") }}'
+        commit_message: "${{ vars.commit_message }}"
 
 outputs:
-  merged: "${{ 'merge' in states && has(states.merge.outputs.merged_hash) && states.merge.outputs.merged_hash != \"\" }}"
-  merged_hash: "${{ 'merge' in states && has(states.merge.outputs.merged_hash) ? states.merge.outputs.merged_hash : \"\" }}"
-  target_branch: "${{ 'merge' in states && has(states.merge.outputs.target_branch) ? states.merge.outputs.target_branch : \"\" }}"
+  merged: "${{ nonempty(state_output('merge', 'merged_hash', '')) }}"
+  merged_hash: "${{ state_output('merge', 'merged_hash', '') }}"
+  target_branch: "${{ state_output('merge', 'target_branch', '') }}"

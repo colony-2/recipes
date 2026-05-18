@@ -4,6 +4,34 @@
 cases:
   - id: ts-044-live-codex-skill-executes-and-writes-marker
     type: recipe_case
+    mocks:
+      ops:
+        - match:
+            op: recipe_within_resolution
+          behavior:
+            mode: return
+            outputs:
+              resolved_selectors: {}
+        - match:
+            op: command_execution
+          behavior:
+            mode: passthrough
+        - match:
+            op: command_execution
+          behavior:
+            mode: passthrough
+        - match:
+            op: command_execution
+          behavior:
+            mode: passthrough
+        - match:
+            op: git+https://github.com/colony-2/c2ops.git//codex@main
+          behavior:
+            mode: passthrough
+        - match:
+            op: extension_execution
+          behavior:
+            mode: passthrough
     assertions:
       - type: output_equals
         path: codex_skill_marker_file_exists
@@ -20,6 +48,34 @@ cases:
 
   - id: ts-045-live-codex-skill-contract-artifacts-and-ref
     type: recipe_case
+    mocks:
+      ops:
+        - match:
+            op: recipe_within_resolution
+          behavior:
+            mode: return
+            outputs:
+              resolved_selectors: {}
+        - match:
+            op: command_execution
+          behavior:
+            mode: passthrough
+        - match:
+            op: command_execution
+          behavior:
+            mode: passthrough
+        - match:
+            op: command_execution
+          behavior:
+            mode: passthrough
+        - match:
+            op: git+https://github.com/colony-2/c2ops.git//codex@main
+          behavior:
+            mode: passthrough
+        - match:
+            op: extension_execution
+          behavior:
+            mode: passthrough
     assertions:
       - type: output_equals
         path: codex_skill_session_nonempty

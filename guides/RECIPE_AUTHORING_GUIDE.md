@@ -114,10 +114,14 @@ Write recipes with these rules:
 - use `json_parse(...)` when consuming `llm2` responses produced under `response_schema`
 - guard optional values with `has(...)` before indexing or dereferencing
 
-For c2ops `codex`, use `git+https://github.com/colony-2/c2ops.git//codex@main` so the op tracks the latest c2ops changes, and pass both:
+For c2ops `codex`, use `git+https://github.com/colony-2/c2ops.git//codex@main` so the op tracks the latest c2ops changes, and pass the op-visible paths explicitly:
 
 - `worktree_path: "{{ context.environment.op.worktree_path }}"`
-- `cell_relative_path`: usually `{{ context.workflow.cell_path }}` with a fallback to `"."` when the cell path may be empty
+- `workdir_path: "{{ context.environment.op.workdir }}"`
+- `artifact_inbox_path: "{{ context.environment.op.inbox }}"`
+- `artifact_outbox_path: "{{ context.environment.op.outbox }}"`
+
+c2j no longer has a separate cell path. The current cell is rooted at `context.environment.op.worktree_path`, so repo-relative prompts and validation commands should resolve from that root.
 
 For live local smoke recipes that should avoid the c2j extension wrapper sandbox, add:
 

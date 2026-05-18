@@ -22,8 +22,7 @@ Common fields:
 - `model`: Codex model override.
 - `env`: extra environment variables.
 - `sandbox`: reserved c2j extension sandbox config. Use `sandbox.type: none` to run the extension process without the c2j wrapper sandbox.
-- `worktree_path` (required): git worktree root as seen by the running op process. Prefer `{{ context.environment.op.worktree_path }}`.
-- `cell_relative_path` (required): writable cell path relative to worktree.
+- `worktree_path` (required): current cell worktree root as seen by the running op process. Prefer `{{ context.environment.op.worktree_path }}`.
 - `workdir_path`: operation workdir root as seen by the running op process.
 - `artifact_inbox_path`: operation inbox path as seen by the running op process.
 - `artifact_outbox_path`: operation outbox path as seen by the running op process.
@@ -42,6 +41,7 @@ Notes:
 - `skill_artifacts` and `skill_blobs` are not supported.
 - `sandbox.type: none` controls the c2j extension wrapper. Current c2ops `codex@main` invokes the Codex CLI directly and does not create an additional Shai/Docker sandbox.
 - Use `context.environment.op.*` for paths passed to Codex prompts or path inputs. c2j maps these to host paths for direct execution and sandbox-visible paths for `sandbox.type: shai`.
+- c2j no longer exposes a separate cell path. The current cell is rooted at `context.environment.op.worktree_path`; repo-relative paths in prompts should be relative to that root.
 - For the sandbox-agnostic path contract, see `../../OP_VISIBLE_PATHS_USER_GUIDE.md`.
 
 ## Skill Source Resolution
@@ -64,7 +64,6 @@ Merged precedence during execution:
   inputs:
     prompt: "Summarize the changes in this repo."
     worktree_path: "{{ context.environment.op.worktree_path }}"
-    cell_relative_path: "{{ context.workflow.cell_path }}"
 ```
 
 ## Example: Skill Sources via Git Refs
@@ -82,7 +81,6 @@ Merged precedence during execution:
       - "github.com/acme/codex-platform-skills/.agents/skills@platform-v12"
       - "github.com/acme/payments-cell-skills/.agents/skills@main"
     worktree_path: "{{ context.environment.op.worktree_path }}"
-    cell_relative_path: "{{ context.workflow.cell_path }}"
 ```
 
 ## Test Mocks

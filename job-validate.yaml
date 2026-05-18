@@ -5,12 +5,8 @@ input_schema:
   commands:
     type: string
     required: false
-  cell_relative_path:
-    type: string
-    required: false
 inputs:
-  commands: '${{ has(inputs.commands) ? inputs.commands : "" }}'
-  cell_relative_path: '${{ has(inputs.cell_relative_path) ? inputs.cell_relative_path : "" }}'
+  commands: '${{ first_nonempty(inputs.?commands, "") }}'
 state:
   initial: detect
   states:
@@ -18,7 +14,7 @@ state:
       op: command_execution
       transitions:
         - to: run_provided
-          when: 'has(inputs.commands) && inputs.commands != ""'
+          when: 'nonempty(inputs.?commands.orValue(""))'
         - to: choose_mode
           when: "true"
       inputs:
@@ -26,16 +22,13 @@ state:
         run: |
           set -euo pipefail
 
-          DIR="$WT/$CELL"
-
           python3 - <<'PY'
           import json
           import os
           from pathlib import Path
 
           wt = Path(os.environ.get("WT") or ".").resolve()
-          cell = os.environ.get("CELL") or "."
-          d = (wt / cell).resolve()
+          d = wt
 
           cmds = []
           if (d / "package.json").exists():
@@ -56,20 +49,16 @@ state:
           PY
         env:
           WT: "{{ context.environment.op.worktree_path }}"
-          CELL: >-
-            ${{
-              (has(inputs.cell_relative_path) && inputs.cell_relative_path != "")
-                ? inputs.cell_relative_path
-                : ((has(context.workflow.cell_path) && context.workflow.cell_path != "") ? context.workflow.cell_path : ".")
-            }}
 
     choose_mode:
       op: input
       transitions:
-        - to: run_suggested
-          when: 'has(outputs.response) && outputs.response == "use_suggested"'
-        - to: prompt_custom
-          when: "true"
+        switch: outputs.response
+        cases:
+          - value: use_suggested
+            to: run_suggested
+        default:
+          to: prompt_custom
       inputs:
         form:
           title: "Validation commands"
@@ -106,19 +95,13 @@ state:
         continue_on_error: true
         env:
           WT: "{{ context.environment.op.worktree_path }}"
-          CELL: >-
-            ${{
-              (has(inputs.cell_relative_path) && inputs.cell_relative_path != "")
-                ? inputs.cell_relative_path
-                : ((has(context.workflow.cell_path) && context.workflow.cell_path != "") ? context.workflow.cell_path : ".")
-            }}
         run: |
           set -uo pipefail
 
           OUT="{{ context.environment.op.outbox }}"
           mkdir -p "$OUT/validation"
 
-          DIR="$WT/$CELL"
+          DIR="$WT"
           cd "$DIR"
 
           cat > "$OUT/validation/commands.sh" <<'EOF'
@@ -140,19 +123,13 @@ state:
         continue_on_error: true
         env:
           WT: "{{ context.environment.op.worktree_path }}"
-          CELL: >-
-            ${{
-              (has(inputs.cell_relative_path) && inputs.cell_relative_path != "")
-                ? inputs.cell_relative_path
-                : ((has(context.workflow.cell_path) && context.workflow.cell_path != "") ? context.workflow.cell_path : ".")
-            }}
         run: |
           set -uo pipefail
 
           OUT="{{ context.environment.op.outbox }}"
           mkdir -p "$OUT/validation"
 
-          DIR="$WT/$CELL"
+          DIR="$WT"
           cd "$DIR"
 
           cat > "$OUT/validation/commands.sh" <<EOF
@@ -174,19 +151,13 @@ state:
         continue_on_error: true
         env:
           WT: "{{ context.environment.op.worktree_path }}"
-          CELL: >-
-            ${{
-              (has(inputs.cell_relative_path) && inputs.cell_relative_path != "")
-                ? inputs.cell_relative_path
-                : ((has(context.workflow.cell_path) && context.workflow.cell_path != "") ? context.workflow.cell_path : ".")
-            }}
         run: |
           set -uo pipefail
 
           OUT="{{ context.environment.op.outbox }}"
           mkdir -p "$OUT/validation"
 
-          DIR="$WT/$CELL"
+          DIR="$WT"
           cd "$DIR"
 
           cat > "$OUT/validation/commands.sh" <<'EOF'
@@ -201,8 +172,8 @@ state:
           exit $RC
 
 outputs:
-  exit_code: "${{ 'run_provided' in states ? states.run_provided.outputs.exit_code : (('run_suggested' in states) ? states.run_suggested.outputs.exit_code : (('run_custom' in states) ? states.run_custom.outputs.exit_code : 1)) }}"
-  passed: "${{ 'run_provided' in states ? states.run_provided.outputs.exit_code == 0 : (('run_suggested' in states) ? states.run_suggested.outputs.exit_code == 0 : (('run_custom' in states) ? states.run_custom.outputs.exit_code == 0 : false)) }}"
-  suggested_commands: "${{ json_parse(states.detect.outputs.stdout).suggested_commands }}"
+  exit_code: "${{ state_exists('run_provided') ? state_output('run_provided', 'exit_code', 1) : (state_exists('run_suggested') ? state_output('run_suggested', 'exit_code', 1) : state_output('run_custom', 'exit_code', 1)) }}"
+  passed: "${{ state_exists('run_provided') ? state_output('run_provided', 'exit_code', 1) == 0 : (state_exists('run_suggested') ? state_output('run_suggested', 'exit_code', 1) == 0 : state_output('run_custom', 'exit_code', 1) == 0) }}"
+  suggested_commands: "${{ json_parse(state_output('detect', 'stdout', '{\"suggested_commands\":\"\"}')).suggested_commands }}"
   output_tail_artifact: "validation/output-tail.txt"
   output_artifact: "validation/output.txt"

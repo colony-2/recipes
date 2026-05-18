@@ -22,8 +22,6 @@ inputs:                            # inputs passed to the child recipe
   key: value
 artifacts: []                       # optional list of artifact keys to pass to the child job
 cell_name: ""                       # optional, defaults from context
-cell_path: ""                       # optional, defaults from context
-cell: ""                            # optional legacy field (not used when starting jobs)
 git:
   base_repo: ""                     # optional, defaults from context
   base_ref: ""                      # optional, defaults from context
@@ -39,9 +37,9 @@ artifacts:
 ```
 
 Notes:
-- `cell_name` and `cell_path` must be present after defaults are applied; otherwise the op errors.
+- `cell_name` must be present after defaults are applied; otherwise the op errors.
 - `git.base_repo`, `git.base_ref`, and `git.base_hash` must be present after defaults are applied; otherwise the op errors.
-- `cell` is accepted but is not used when starting the child job; use `cell_name`/`cell_path`.
+- c2j no longer accepts a separate cell path. Child jobs run with a worktree rooted at the selected cell.
 
 ### Defaults (used by `recipe.run_and_get_result` and `recipes.run*`)
 
@@ -50,7 +48,6 @@ Notes:
 ```
 defaults:
   cell_name: "{{ context.workflow.cell }}"
-  cell_path: "{{ context.workflow.cell_path }}"
   git:
     base_repo: "{{ context.git.repo }}"
     base_ref: "{{ context.git.ref }}"
