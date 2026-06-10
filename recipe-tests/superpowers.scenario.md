@@ -712,4 +712,331 @@ cases:
         node_path: "superpowers/run_task_boundary/state_machine/task_gate_after_revision/git+https://github.com/colony-2/c2ops.git//rule_gate@main"
       - type: node_not_executed
         node_path: "superpowers/run_task_boundary/state_machine/quality_review/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
+
+  - id: ts-086-superpowers-primary-enforces-tdd-red-green-refactor
+    type: recipe_case
+    inputs:
+      prompt: Continue this plan using TDD.
+      mode: execute_plan
+      completion_action: recommend
+      plan_json: |
+        {
+          "plan_id": "PLAN-PRIMARY-TDD",
+          "summary": "Primary TDD task.",
+          "tasks": [
+            {
+              "id": "TASK-PRIMARY-TDD",
+              "title": "Add primary behavior with TDD",
+              "status": "pending",
+              "dependencies": [],
+              "target_ref": "main",
+              "requires_child_job": false,
+              "requires_tdd": true,
+              "child_job_reason": "",
+              "instructions": "Add behavior with a failing test first.",
+              "validation_commands": ["printf green"],
+              "review_requirements": ["spec", "quality"],
+              "tdd": {
+                "red_command": "printf 'expected failure' && exit 7",
+                "red_expected_failure": "expected failure",
+                "green_command": "printf green",
+                "refactor_verification_command": "printf refactor"
+              }
+            }
+          ],
+          "ready_task_ids": ["TASK-PRIMARY-TDD"],
+          "validation_strategy": {"commands": ["printf green"]},
+          "child_job_boundaries": []
+        }
+    mocks:
+      ops:
+        - match:
+            op: command_execution
+          behavior:
+            mode: passthrough
+        - match:
+            op: command_execution
+          behavior:
+            mode: passthrough
+        - match:
+            op: command_execution
+          behavior:
+            mode: passthrough
+        - match:
+            op: command_execution
+          behavior:
+            mode: passthrough
+        - match:
+            op: command_execution
+          behavior:
+            mode: passthrough
+        - match:
+            op: command_execution
+          behavior:
+            mode: passthrough
+        - match:
+            op: command_execution
+          behavior:
+            mode: passthrough
+        - match:
+            op: command_execution
+          behavior:
+            mode: passthrough
+        - match:
+            op: command_execution
+          behavior:
+            mode: passthrough
+        - match:
+            op: command_execution
+          behavior:
+            mode: passthrough
+        - match:
+            op: command_execution
+          behavior:
+            mode: passthrough
+        - match:
+            op: command_execution
+          behavior:
+            mode: passthrough
+        - match:
+            op: command_execution
+          behavior:
+            mode: passthrough
+        - match:
+            op: command_execution
+          behavior:
+            mode: passthrough
+        - match:
+            op: command_execution
+          behavior:
+            mode: passthrough
+        - match:
+            op: command_execution
+          behavior:
+            mode: passthrough
+        - match:
+            op: recipe_within_resolution
+          behavior:
+            mode: return
+            outputs:
+              resolved_selectors: {}
+        - match:
+            node_path: superpowers/brainstorm_design/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main
+          behavior:
+            mode: return
+            outputs: *brainstorm_ok
+        - match:
+            node_path: superpowers/write_plan/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main
+          behavior:
+            mode: return
+            outputs: *plan_ready
+        - match:
+            node_path: superpowers/review_plan/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main
+          behavior:
+            mode: return
+            outputs: *plan_review_ok
+        - match:
+            node_path: "superpowers/run_tdd_task_boundary/state_machine/write_red_test/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
+          behavior:
+            mode: return
+            outputs: &primary_tdd_red
+              <<: *implement_done
+              sessionId: sid-primary-tdd-red
+              raw_output: '{"task_id":"TASK-PRIMARY-TDD","status":"red_written","summary":"RED test written.","red_command":"printf expected failure && exit 7"}'
+              parsed_output:
+                task_id: TASK-PRIMARY-TDD
+                status: red_written
+                summary: RED test written.
+                red_command: printf expected failure && exit 7
+        - match:
+            node_path: "superpowers/run_tdd_task_boundary/state_machine/assert_red/git+https://github.com/colony-2/c2ops.git//rule_gate@main"
+          behavior:
+            mode: return
+            outputs: *gate_ok
+        - match:
+            node_path: "superpowers/run_tdd_task_boundary/state_machine/write_green_code/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
+          behavior:
+            mode: return
+            outputs: &primary_tdd_green
+              <<: *implement_done
+              sessionId: sid-primary-tdd-green
+              raw_output: '{"task_id":"TASK-PRIMARY-TDD","status":"done","summary":"GREEN implementation completed.","validation_commands_run":["printf green"]}'
+              parsed_output:
+                task_id: TASK-PRIMARY-TDD
+                status: done
+                summary: GREEN implementation completed.
+                validation_commands_run:
+                  - printf green
+        - match:
+            node_path: "superpowers/run_tdd_task_boundary/state_machine/assert_green/git+https://github.com/colony-2/c2ops.git//rule_gate@main"
+          behavior:
+            mode: return
+            outputs: *gate_ok
+        - match:
+            node_path: "superpowers/run_tdd_task_boundary/state_machine/refactor_task/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
+          behavior:
+            mode: return
+            outputs:
+              <<: *primary_tdd_green
+              sessionId: sid-primary-tdd-refactor
+              raw_output: '{"task_id":"TASK-PRIMARY-TDD","status":"done","summary":"Refactor kept behavior green.","validation_commands_run":["printf refactor"]}'
+              parsed_output:
+                task_id: TASK-PRIMARY-TDD
+                status: done
+                summary: Refactor kept behavior green.
+                validation_commands_run:
+                  - printf refactor
+        - match:
+            node_path: "superpowers/run_tdd_task_boundary/state_machine/assert_refactor/git+https://github.com/colony-2/c2ops.git//rule_gate@main"
+          behavior:
+            mode: return
+            outputs: *gate_ok
+        - match:
+            node_path: "superpowers/run_tdd_task_boundary/state_machine/spec_review/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
+          behavior:
+            mode: return
+            outputs:
+              <<: *spec_ok
+              sessionId: sid-primary-tdd-spec
+        - match:
+            node_path: "superpowers/run_tdd_task_boundary/state_machine/quality_review/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
+          behavior:
+            mode: return
+            outputs:
+              <<: *spec_ok
+              sessionId: sid-primary-tdd-quality
+              skill: c2-superpowers-quality-reviewer
+        - match:
+            node_path: "superpowers/run_tdd_task_boundary/state_machine/task_gate/git+https://github.com/colony-2/c2ops.git//rule_gate@main"
+          behavior:
+            mode: return
+            outputs: *gate_ok
+        - match:
+            node_path: "superpowers/run_task_boundary/state_machine/implement_task/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
+          behavior:
+            mode: return
+            outputs: *implement_done
+        - match:
+            node_path: "superpowers/run_task_boundary/state_machine/spec_review/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
+          behavior:
+            mode: return
+            outputs: *spec_ok
+        - match:
+            node_path: "superpowers/run_task_boundary/state_machine/quality_review/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
+          behavior:
+            mode: return
+            outputs: *spec_ok
+        - match:
+            node_path: "superpowers/run_task_boundary/state_machine/task_gate/git+https://github.com/colony-2/c2ops.git//rule_gate@main"
+          behavior:
+            mode: return
+            outputs: *gate_ok
+        - match:
+            node_path: "superpowers/run_task_boundary/state_machine/revise_after_spec/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
+          behavior:
+            mode: return
+            outputs: *revision_done
+        - match:
+            node_path: "superpowers/run_task_boundary/state_machine/revise_after_quality/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
+          behavior:
+            mode: return
+            outputs: *revision_done
+        - match:
+            node_path: "superpowers/run_task_boundary/state_machine/spec_review_after_revision/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
+          behavior:
+            mode: return
+            outputs: *spec_ok
+        - match:
+            node_path: "superpowers/run_task_boundary/state_machine/quality_review_after_revision/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
+          behavior:
+            mode: return
+            outputs: *spec_ok
+        - match:
+            node_path: "superpowers/run_task_boundary/state_machine/task_gate_after_revision/git+https://github.com/colony-2/c2ops.git//rule_gate@main"
+          behavior:
+            mode: return
+            outputs: *gate_ok
+        - match:
+            node_path: superpowers/verify_work/sequence/summarize_verification
+          behavior:
+            mode: return
+            outputs: *verify_ok
+        - match:
+            node_path: superpowers/verify_work/sequence/verification_gate
+          behavior:
+            mode: return
+            outputs: *gate_ok
+        - match:
+            node_path: superpowers/finish_work/sequence/write_finish_summary
+          behavior:
+            mode: return
+            outputs:
+              <<: *brainstorm_ok
+              sessionId: sid-primary-tdd-finish
+              skill: c2-superpowers-finish
+              raw_output: '{"decision":"merge_ready","summary":"Verified TDD work is ready to merge.","completed_tasks":["TASK-PRIMARY-TDD"],"verification_summary":"Required verification command passed.","remaining_risks":[],"merge_ready":true}'
+              parsed_output:
+                decision: merge_ready
+                summary: Verified TDD work is ready to merge.
+                completed_tasks:
+                  - TASK-PRIMARY-TDD
+                verification_summary: Required verification command passed.
+                remaining_risks: []
+                merge_ready: true
+        - match:
+            node_path: superpowers/finish_work/sequence/finish_gate
+          behavior:
+            mode: return
+            outputs: *gate_ok
+    assertions:
+      - type: output_equals
+        path: route
+        value: execute_plan
+      - type: output_equals
+        path: workflow_status
+        value: merge_ready
+      - type: output_equals
+        path: selected_task_id
+        value: TASK-PRIMARY-TDD
+      - type: output_equals
+        path: child_job_required
+        value: false
+      - type: output_equals
+        path: task_done
+        value: true
+      - type: output_equals
+        path: tdd_evidence_ok
+        value: true
+      - type: output_equals
+        path: tdd_red_exit_code
+        value: 7
+      - type: output_equals
+        path: tdd_green_exit_code
+        value: 0
+      - type: output_equals
+        path: tdd_refactor_exit_code
+        value: 0
+      - type: output_equals
+        path: implementer_session_id
+        value: sid-primary-tdd-refactor
+      - type: output_equals
+        path: spec_reviewer_session_id
+        value: sid-primary-tdd-spec
+      - type: output_equals
+        path: quality_reviewer_session_id
+        value: sid-primary-tdd-quality
+      - type: output_equals
+        path: verification_ok
+        value: true
+      - type: output_equals
+        path: finish_decision
+        value: merge_ready
+      - type: node_executed
+        node_path: "superpowers/run_tdd_task_boundary/state_machine/write_red_test/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
+      - type: node_executed
+        node_path: "superpowers/run_tdd_task_boundary/state_machine/assert_refactor/git+https://github.com/colony-2/c2ops.git//rule_gate@main"
+      - type: node_executed
+        node_path: "superpowers/run_tdd_task_boundary/state_machine/task_gate/git+https://github.com/colony-2/c2ops.git//rule_gate@main"
+      - type: node_not_executed
+        node_path: "superpowers/run_task_boundary/state_machine/implement_task/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
 ```

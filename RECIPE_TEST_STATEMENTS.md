@@ -91,6 +91,7 @@ These statements are intended to drive `c2j test` cases.
 | TS-083 | Superpowers execute-plan routes spec review failure through revision and re-review. | `superpowers-execute-plan.yaml` | High | Integration (`recipe_case`); deps: recipe state machine + c2ops `codex/run_skill`/`rule_gate` selector mocks | Positive |
 | TS-084 | Superpowers execute-plan routes quality review failure through revision and re-review. | `superpowers-execute-plan.yaml` | High | Integration (`recipe_case`); deps: recipe state machine + c2ops `codex/run_skill`/`rule_gate` selector mocks | Positive |
 | TS-085 | Superpowers primary orchestrator routes spec review failure through revision and re-review. | `superpowers.yaml` | High | Integration (`recipe_case`); deps: primary state machine + c2ops `codex/run_skill`/`rule_gate` selector mocks | Positive |
+| TS-086 | Superpowers primary orchestrator enforces RED/GREEN/refactor TDD before task review. | `superpowers.yaml` | High | Integration (`recipe_case`); deps: primary TDD state machine + command gates + c2ops `codex/run_skill`/`rule_gate` selector mocks | Positive |
 
 ## Notes for Test Authoring
 
