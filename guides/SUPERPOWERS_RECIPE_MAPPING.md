@@ -97,7 +97,7 @@ Validated on 2026-06-08/09 UTC:
 - focused plan-review recipe suite TS-078/TS-079 passed. `superpowers-plan-review.yaml`
   approves aligned task plans and returns replanning feedback for incomplete
   plans without rewriting the plan.
-- `recipe-tests/run-all.sh` passed end to end on 2026-06-10 with TS-058..TS-084
+- `recipe-tests/run-all.sh` passed end to end on 2026-06-10 with TS-058..TS-085
   included in the default compile/validate/run path and TS-042/TS-043 focused
   live skill-quality validation invoked by the default runner as a required
   hard-failing live check.
@@ -483,6 +483,9 @@ Implementation status:
   in one job.
 - TS-081 validates that a task marked `requires_child_job=true` stops before
   the implementer session.
+- TS-085 validates that a failed spec review in the primary same-job task
+  boundary routes through revision and then re-runs spec and quality review
+  before verification and finish.
 
 ### Bootstrap And Routing
 
@@ -1347,9 +1350,9 @@ Prototype these focused recipes before building the full system:
    focused compile/validate/run for aligned-plan approval and incomplete-plan
    replanning feedback. It is included in the default compile/validate/run
    suite.
-17. `superpowers.yaml`: implemented as TS-080/TS-081 and passing focused
-   compile/validate/run for the same-job primary workflow and required
-   child-boundary stop behavior.
+17. `superpowers.yaml`: implemented as TS-080/TS-085 and passing focused
+   compile/validate/run for the same-job primary workflow, required
+   child-boundary stop behavior, and primary spec-review revision routing.
 
 Those tests prove the core recipe contracts: structured skill invocation,
 adaptive task-session chaining, session isolation/resume, and per-task review

@@ -32,7 +32,7 @@ with a focused live smoke.
 | Verify recipe path | `superpowers-verify.yaml` command gates plus verify role skill | Covered for initial implementation. TS-069/TS-070 pass focused compile/validate/run for fresh command evidence and failed-command blocking data. |
 | Finish recipe path | `superpowers-finish.yaml` finish gates plus optional `squashrebasemerge` | Covered for initial implementation. TS-071/TS-073 pass focused compile/validate/run for merge-ready recommendation, blocked merge evidence, and explicit merge after passing gates. |
 | Debug recipe path | `superpowers-debug.yaml` reproduction state plus debug role skill and `rule_gate` | Covered for initial implementation. TS-074/TS-077 pass focused compile/validate/run for reproduced failure routing, missing-repro stop behavior, plan-update routing, and third-attempt architecture review. |
-| Primary orchestrator | `superpowers.yaml` same-job state machine | Covered for initial implementation. TS-080/TS-081 pass focused compile/validate/run for normal design-to-finish orchestration and required child-boundary stop behavior. |
+| Primary orchestrator | `superpowers.yaml` same-job state machine | Covered for initial implementation. TS-080/TS-081 pass focused compile/validate/run for normal design-to-finish orchestration and required child-boundary stop behavior. TS-085 passes focused compile/validate/run for primary spec-review failure routing through revision and re-review. |
 | Necessary child-job boundaries | target refs and child job result contracts | Covered for orchestration primitives. Create a child job only when the task requires a C2 job boundary such as independent target-ref advancement, cross-cell work, reuse, true parallelism, or lifecycle isolation. |
 | Task handoff | normal recipe inputs, outputs, artifacts, and job stories | Covered. No required `task_request.json`, `task_result.json`, `base_after`, thinpack, or commit-handoff protocol is needed. |
 
@@ -342,11 +342,12 @@ Commands and results:
 - Focused plan-review suite passed TS-078/TS-079 with compile/validate/run.
   TS-078 validates aligned-plan approval before execution. TS-079 validates
   incomplete-plan blocking feedback for replanning.
-- Focused primary orchestrator suite passed TS-080/TS-081 with
+- Focused primary orchestrator suite passed TS-080/TS-085 with
   compile/validate/run. TS-080 validates the normal same-job design-to-finish
   path. TS-081 validates the required child-job boundary stop without invoking
-  the implementer session.
-- `recipe-tests/run-all.sh` passed end to end on 2026-06-10 with TS-058..TS-084
+  the implementer session. TS-085 validates primary spec-review failure routing
+  through revision and re-review.
+- `recipe-tests/run-all.sh` passed end to end on 2026-06-10 with TS-058..TS-085
   included in the default compile/validate/run suite and TS-042/TS-043 focused
   live skill-quality validation invoked by the default runner as a required
   hard-failing live check.

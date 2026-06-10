@@ -475,163 +475,290 @@ state:
       inputs:
         selected_task_json: "{{ states.select_task.outputs.stdout }}"
         skill_bundle_ref: "{{ inputs.skill_bundle_ref }}"
-      sequence:
-        - id: implement_task
-          op: git+https://github.com/colony-2/c2ops.git//codex/run_skill@main
-          inputs:
-            skill: c2-superpowers-task-implementer
-            input:
-              selected_task_json: "{{ inputs.selected_task_json }}"
-              skill_bundle_ref: "{{ inputs.skill_bundle_ref }}"
-            prompt: |
-              Implement exactly the selected task inside the current C2 job.
+      state:
+        initial: implement_task
+        states:
+          implement_task:
+            op: git+https://github.com/colony-2/c2ops.git//codex/run_skill@main
+            transitions:
+              - to: spec_review
+                when: true
+            inputs:
+              skill: c2-superpowers-task-implementer
+              input:
+                selected_task_json: "{{ inputs.selected_task_json }}"
+                skill_bundle_ref: "{{ inputs.skill_bundle_ref }}"
+              prompt: |
+                Implement exactly the selected task inside the current C2 job.
 
-              Do not create child jobs, create git worktrees, or make manual git
-              commits. C2 owns git persistence and gates.
+                The selected task JSON is provided in the invocation input.
+                Do not create child jobs, create git worktrees, or make manual
+                git commits. C2 owns git persistence and gates.
 
-              Write:
-              - `superpowers/tasks/<task-id>/implementation-summary.md`
-              - `superpowers/tasks/latest-status.json`
-              - `superpowers/tasks/result.json`
-          status_contract:
-            path: superpowers/tasks/latest-status.json
-          output:
-            from: artifact
-            path: superpowers/tasks/result.json
-            format: json
-            schema:
-              type: object
-              required:
-                - task_id
-                - status
-                - summary
-                - validation_commands_run
-              properties:
-                task_id:
-                  type: string
-                status:
-                  type: string
-                  enum:
-                    - done
-                    - done_with_concerns
-                    - needs_context
-                    - blocked
-                    - needs_revision
-                summary:
-                  type: string
-                validation_commands_run:
-                  type: array
-                  items:
+                Write:
+                - `superpowers/tasks/<task-id>/implementation-summary.md`
+                - `superpowers/tasks/latest-status.json`
+                - `superpowers/tasks/result.json`
+            status_contract:
+              path: superpowers/tasks/latest-status.json
+            output:
+              from: artifact
+              path: superpowers/tasks/result.json
+              format: json
+              schema: &task_result_schema
+                type: object
+                required:
+                  - task_id
+                  - status
+                  - summary
+                  - validation_commands_run
+                properties:
+                  task_id:
                     type: string
-              additionalProperties: true
-
-        - id: spec_review
-          op: git+https://github.com/colony-2/c2ops.git//codex/run_skill@main
-          inputs:
-            skill: c2-superpowers-spec-reviewer
-            input:
-              selected_task_json: "{{ inputs.selected_task_json }}"
-              implementer_summary: "{{ sequence.implement_task.outputs.raw_output }}"
-              skill_bundle_ref: "{{ inputs.skill_bundle_ref }}"
-            prompt: |
-              Review the selected task for spec compliance only. Do not
-              implement fixes, create child jobs, create worktrees, or make
-              manual commits.
-          status_contract:
-            path: superpowers/tasks/spec-review-status.json
-          output:
-            from: artifact
-            path: superpowers/tasks/spec-review.json
-            format: json
-            schema:
-              type: object
-              required:
-                - ok
-                - blocking_issues
-                - feedback
-                - requires_revision
-              properties:
-                ok:
-                  type: boolean
-                blocking_issues:
-                  type: array
-                  items:
+                  status:
                     type: string
-                feedback:
-                  type: string
-                requires_revision:
-                  type: boolean
-              additionalProperties: true
-
-        - id: quality_review
-          op: git+https://github.com/colony-2/c2ops.git//codex/run_skill@main
-          inputs:
-            skill: c2-superpowers-quality-reviewer
-            input:
-              selected_task_json: "{{ inputs.selected_task_json }}"
-              implementer_summary: "{{ sequence.implement_task.outputs.raw_output }}"
-              spec_review: "{{ sequence.spec_review.outputs.raw_output }}"
-              skill_bundle_ref: "{{ inputs.skill_bundle_ref }}"
-            prompt: |
-              Review the selected task for quality, maintainability, test
-              quality, compatibility, and C2 safety. Do not implement fixes,
-              create child jobs, create worktrees, or make manual commits.
-          status_contract:
-            path: superpowers/tasks/quality-review-status.json
-          output:
-            from: artifact
-            path: superpowers/tasks/quality-review.json
-            format: json
-            schema:
-              type: object
-              required:
-                - ok
-                - blocking_issues
-                - feedback
-                - requires_revision
-              properties:
-                ok:
-                  type: boolean
-                blocking_issues:
-                  type: array
-                  items:
+                    enum:
+                      - done
+                      - done_with_concerns
+                      - needs_context
+                      - blocked
+                      - needs_revision
+                  summary:
                     type: string
-                feedback:
-                  type: string
-                requires_revision:
-                  type: boolean
-              additionalProperties: true
+                  validation_commands_run:
+                    type: array
+                    items:
+                      type: string
+                additionalProperties: true
 
-        - id: task_gate
-          op: git+https://github.com/colony-2/c2ops.git//rule_gate@main
-          inputs:
-            rules:
-              - id: implementation_done
-                type: assert
-                value: ${{ sequence.implement_task.outputs.parsed_output.status == "done" }}
-                message: Implementer must report task status done.
-              - id: spec_review_ok
-                type: assert
-                value: ${{ sequence.spec_review.outputs.parsed_output.ok }}
-                message: Spec review must pass.
-              - id: quality_review_ok
-                type: assert
-                value: ${{ sequence.quality_review.outputs.parsed_output.ok }}
-                message: Quality review must pass.
+          spec_review:
+            op: git+https://github.com/colony-2/c2ops.git//codex/run_skill@main
+            transitions:
+              - to: quality_review
+                when: outputs.parsed_output.?ok.orValue(false)
+              - to: revise_after_spec
+                when: outputs.parsed_output.?requires_revision.orValue(false) || !outputs.parsed_output.?ok.orValue(false)
+            inputs:
+              skill: c2-superpowers-spec-reviewer
+              input:
+                selected_task_json: "{{ inputs.selected_task_json }}"
+                implementer_summary: "{{ states.implement_task.outputs.raw_output }}"
+                skill_bundle_ref: "{{ inputs.skill_bundle_ref }}"
+              prompt: |
+                Review the selected task for spec compliance only.
+
+                Do not implement fixes. Do not create child jobs, worktrees, or
+                manual commits. Write the spec review result artifact.
+            status_contract:
+              path: superpowers/tasks/spec-review-status.json
+            output:
+              from: artifact
+              path: superpowers/tasks/spec-review.json
+              format: json
+              schema: &review_result_schema
+                type: object
+                required:
+                  - ok
+                  - blocking_issues
+                  - feedback
+                  - requires_revision
+                properties:
+                  ok:
+                    type: boolean
+                  blocking_issues:
+                    type: array
+                    items:
+                      type: string
+                  feedback:
+                    type: string
+                  requires_revision:
+                    type: boolean
+                additionalProperties: true
+
+          quality_review:
+            op: git+https://github.com/colony-2/c2ops.git//codex/run_skill@main
+            transitions:
+              - to: task_gate
+                when: outputs.parsed_output.?ok.orValue(false)
+              - to: revise_after_quality
+                when: outputs.parsed_output.?requires_revision.orValue(false) || !outputs.parsed_output.?ok.orValue(false)
+            inputs:
+              skill: c2-superpowers-quality-reviewer
+              input:
+                selected_task_json: "{{ inputs.selected_task_json }}"
+                implementer_summary: "{{ states.implement_task.outputs.raw_output }}"
+                spec_review: "{{ states.spec_review.outputs.raw_output }}"
+                skill_bundle_ref: "{{ inputs.skill_bundle_ref }}"
+              prompt: |
+                Review the selected task for quality, maintainability, test
+                quality, compatibility, and C2 safety.
+
+                Do not implement fixes. Do not create child jobs, worktrees, or
+                manual commits. Write the quality review result artifact.
+            status_contract:
+              path: superpowers/tasks/quality-review-status.json
+            output:
+              from: artifact
+              path: superpowers/tasks/quality-review.json
+              format: json
+              schema: *review_result_schema
+
+          revise_after_spec:
+            op: git+https://github.com/colony-2/c2ops.git//codex/run_skill@main
+            transitions:
+              - to: spec_review_after_revision
+                when: true
+            inputs:
+              skill: c2-superpowers-task-implementer
+              input:
+                selected_task_json: "{{ inputs.selected_task_json }}"
+                implementer_summary: "{{ states.implement_task.outputs.raw_output }}"
+                spec_review: "{{ states.spec_review.outputs.raw_output }}"
+                revision_reason: spec_review
+                skill_bundle_ref: "{{ inputs.skill_bundle_ref }}"
+              prompt: |
+                Revise the selected task to resolve the blocking spec review
+                feedback. Do not create child jobs, create worktrees, or make
+                manual commits. Write the normal task result artifact after the
+                revision.
+            status_contract:
+              path: superpowers/tasks/latest-status.json
+            output:
+              from: artifact
+              path: superpowers/tasks/result.json
+              format: json
+              schema: *task_result_schema
+
+          revise_after_quality:
+            op: git+https://github.com/colony-2/c2ops.git//codex/run_skill@main
+            transitions:
+              - to: spec_review_after_revision
+                when: true
+            inputs:
+              skill: c2-superpowers-task-implementer
+              input:
+                selected_task_json: "{{ inputs.selected_task_json }}"
+                implementer_summary: "{{ states.implement_task.outputs.raw_output }}"
+                spec_review: "{{ states.spec_review.outputs.raw_output }}"
+                quality_review: "{{ states.quality_review.outputs.raw_output }}"
+                revision_reason: quality_review
+                skill_bundle_ref: "{{ inputs.skill_bundle_ref }}"
+              prompt: |
+                Revise the selected task to resolve the blocking quality review
+                feedback while preserving spec compliance. Do not create child
+                jobs, create worktrees, or make manual commits. Write the normal
+                task result artifact after the revision.
+            status_contract:
+              path: superpowers/tasks/latest-status.json
+            output:
+              from: artifact
+              path: superpowers/tasks/result.json
+              format: json
+              schema: *task_result_schema
+
+          spec_review_after_revision:
+            op: git+https://github.com/colony-2/c2ops.git//codex/run_skill@main
+            transitions:
+              - to: quality_review_after_revision
+                when: outputs.parsed_output.?ok.orValue(false)
+              - to: task_needs_revision
+                when: true
+            inputs:
+              skill: c2-superpowers-spec-reviewer
+              input:
+                selected_task_json: "{{ inputs.selected_task_json }}"
+                implementer_summary: "${{ first_nonempty(state_output('revise_after_spec', 'raw_output', ''), state_output('revise_after_quality', 'raw_output', ''), state_output('implement_task', 'raw_output', '')) }}"
+                skill_bundle_ref: "{{ inputs.skill_bundle_ref }}"
+              prompt: |
+                Re-review the revised task for spec compliance only.
+
+                Do not implement fixes. Do not create child jobs, worktrees, or
+                manual commits. Write the spec review result artifact.
+            status_contract:
+              path: superpowers/tasks/spec-review-status.json
+            output:
+              from: artifact
+              path: superpowers/tasks/spec-review.json
+              format: json
+              schema: *review_result_schema
+
+          quality_review_after_revision:
+            op: git+https://github.com/colony-2/c2ops.git//codex/run_skill@main
+            transitions:
+              - to: task_gate_after_revision
+                when: outputs.parsed_output.?ok.orValue(false)
+              - to: task_needs_revision
+                when: true
+            inputs:
+              skill: c2-superpowers-quality-reviewer
+              input:
+                selected_task_json: "{{ inputs.selected_task_json }}"
+                implementer_summary: "${{ first_nonempty(state_output('revise_after_spec', 'raw_output', ''), state_output('revise_after_quality', 'raw_output', ''), state_output('implement_task', 'raw_output', '')) }}"
+                spec_review: "{{ states.spec_review_after_revision.outputs.raw_output }}"
+                skill_bundle_ref: "{{ inputs.skill_bundle_ref }}"
+              prompt: |
+                Re-review the revised task for quality, maintainability, test
+                quality, compatibility, and C2 safety. Do not implement fixes,
+                create child jobs, create worktrees, or make manual commits.
+            status_contract:
+              path: superpowers/tasks/quality-review-status.json
+            output:
+              from: artifact
+              path: superpowers/tasks/quality-review.json
+              format: json
+              schema: *review_result_schema
+
+          task_gate:
+            op: git+https://github.com/colony-2/c2ops.git//rule_gate@main
+            transitions: []
+            inputs:
+              rules:
+                - id: implementation_done
+                  type: assert
+                  value: '${{ states.implement_task.outputs.parsed_output.?status.orValue("") == "done" }}'
+                  message: Implementer must report task status done.
+                - id: spec_review_ok
+                  type: assert
+                  value: '${{ states.spec_review.outputs.parsed_output.?ok.orValue(false) }}'
+                  message: Spec review must pass.
+                - id: quality_review_ok
+                  type: assert
+                  value: '${{ states.quality_review.outputs.parsed_output.?ok.orValue(false) }}'
+                  message: Quality review must pass.
+
+          task_gate_after_revision:
+            op: git+https://github.com/colony-2/c2ops.git//rule_gate@main
+            transitions: []
+            inputs:
+              rules:
+                - id: implementation_done_after_revision
+                  type: assert
+                  value: '${{ first_nonempty(state_output("revise_after_spec", "parsed_output.status", ""), state_output("revise_after_quality", "parsed_output.status", "")) == "done" }}'
+                  message: Revision must report task status done.
+                - id: spec_review_ok_after_revision
+                  type: assert
+                  value: '${{ states.spec_review_after_revision.outputs.parsed_output.?ok.orValue(false) }}'
+                  message: Spec review must pass after revision.
+                - id: quality_review_ok_after_revision
+                  type: assert
+                  value: '${{ states.quality_review_after_revision.outputs.parsed_output.?ok.orValue(false) }}'
+                  message: Quality review must pass after revision.
       transitions:
         - to: mark_plan_after_task
           when: outputs.task_gate_ok
         - to: task_needs_revision
           when: true
       outputs:
-        implementer_session_id: "{{ sequence.implement_task.outputs.sessionId }}"
-        spec_reviewer_session_id: "{{ sequence.spec_review.outputs.sessionId }}"
-        quality_reviewer_session_id: "{{ sequence.quality_review.outputs.sessionId }}"
-        implementation_raw_output: "{{ sequence.implement_task.outputs.raw_output }}"
-        implementation_status: "${{ sequence.implement_task.outputs.parsed_output.status }}"
-        spec_review_ok: "${{ sequence.spec_review.outputs.parsed_output.ok }}"
-        quality_review_ok: "${{ sequence.quality_review.outputs.parsed_output.ok }}"
-        task_gate_ok: "${{ sequence.task_gate.outputs.ok }}"
+        implementer_session_id: "${{ first_nonempty(state_output('revise_after_spec', 'sessionId', ''), state_output('revise_after_quality', 'sessionId', ''), state_output('implement_task', 'sessionId', '')) }}"
+        revision_session_id: "${{ first_nonempty(state_output('revise_after_spec', 'sessionId', ''), state_output('revise_after_quality', 'sessionId', '')) }}"
+        spec_reviewer_session_id: "${{ first_nonempty(state_output('spec_review_after_revision', 'sessionId', ''), state_output('spec_review', 'sessionId', '')) }}"
+        quality_reviewer_session_id: "${{ first_nonempty(state_output('quality_review_after_revision', 'sessionId', ''), state_output('quality_review', 'sessionId', '')) }}"
+        implementation_raw_output: "${{ first_nonempty(state_output('revise_after_spec', 'raw_output', ''), state_output('revise_after_quality', 'raw_output', ''), state_output('implement_task', 'raw_output', '')) }}"
+        implementation_status: "${{ first_nonempty(state_output('revise_after_spec', 'parsed_output.status', ''), state_output('revise_after_quality', 'parsed_output.status', ''), state_output('implement_task', 'parsed_output.status', '')) }}"
+        spec_review_ok: "${{ state_output('spec_review_after_revision', 'parsed_output.ok', false) || state_output('spec_review', 'parsed_output.ok', false) }}"
+        quality_review_ok: "${{ state_output('quality_review_after_revision', 'parsed_output.ok', false) || state_output('quality_review', 'parsed_output.ok', false) }}"
+        task_gate_ok: "${{ state_output('task_gate_after_revision', 'ok', false) || state_output('task_gate', 'ok', false) }}"
+        revision_attempted: "${{ state_output('revise_after_spec', 'sessionId', '') != '' || state_output('revise_after_quality', 'sessionId', '') != '' }}"
 
     task_needs_revision:
       op: command_execution
@@ -1160,6 +1287,8 @@ outputs:
   write_plan_session_id: "${{ state_output('write_plan', 'sessionId', '') }}"
   plan_review_session_id: "${{ state_output('review_plan', 'sessionId', '') }}"
   implementer_session_id: "${{ state_output('run_task_boundary', 'implementer_session_id', '') }}"
+  revision_session_id: "${{ state_output('run_task_boundary', 'revision_session_id', '') }}"
+  revision_attempted: "${{ state_output('run_task_boundary', 'revision_attempted', false) }}"
   spec_reviewer_session_id: "${{ state_output('run_task_boundary', 'spec_reviewer_session_id', '') }}"
   quality_reviewer_session_id: "${{ state_output('run_task_boundary', 'quality_reviewer_session_id', '') }}"
   verify_session_id: "${{ state_output('verify_work', 'verify_session_id', '') }}"
