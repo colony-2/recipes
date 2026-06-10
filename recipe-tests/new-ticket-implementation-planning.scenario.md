@@ -5,8 +5,10 @@ cases:
   - id: ts-028-implementation-plan-artifacts
     type: recipe_case
     inputs:
-      title: Add auditing
-      description: Plan implementation sequencing
+      prompt: |
+        Add auditing
+
+        Plan implementation sequencing
     mocks:
       ops:
         - match:
@@ -22,6 +24,19 @@ cases:
             outputs:
               stdout: '[{"short_name":"core","repo":"https://github.com/colony-2/core.git"},{"short_name":"frontend","repo":"https://github.com/colony-2/frontend.git"},{"short_name":"api","repo":"https://github.com/colony-2/api.git"},{"short_name":"recipe-tests","repo":"https://github.com/colony-2/recipe-tests.git"}]'
               exit_code: 0
+            artifacts:
+              feedback/user-feedback.md: ""
+              feedback/api-review-feedback.md: ""
+              requirements/prior-plan.json: ""
+              requirements/plan.json: ""
+              requirements/api-review.json: ""
+              requirements/index.md: ""
+              implementation/plan.json: ""
+              implementation/index.md: ""
+              outcome/plan.json: ""
+              outcome/review.json: ""
+              outcome/tests-index.md: ""
+              outcome/validation-commands.txt: ""
         - match:
             node_path: new-ticket-implementation-planning/build_plan
           behavior:
@@ -54,8 +69,10 @@ cases:
   - id: ts-029-implementation-plan-output-structure
     type: recipe_case
     inputs:
-      title: Cross-cell sequencing
-      description: Requires dependency jobs first
+      prompt: |
+        Cross-cell sequencing
+
+        Requires dependency jobs first
     mocks:
       ops:
         - match:
@@ -71,6 +88,19 @@ cases:
             outputs:
               stdout: '[{"short_name":"core","repo":"https://github.com/colony-2/core.git"},{"short_name":"frontend","repo":"https://github.com/colony-2/frontend.git"},{"short_name":"api","repo":"https://github.com/colony-2/api.git"},{"short_name":"recipe-tests","repo":"https://github.com/colony-2/recipe-tests.git"}]'
               exit_code: 0
+            artifacts:
+              feedback/user-feedback.md: ""
+              feedback/api-review-feedback.md: ""
+              requirements/prior-plan.json: ""
+              requirements/plan.json: ""
+              requirements/api-review.json: ""
+              requirements/index.md: ""
+              implementation/plan.json: ""
+              implementation/index.md: ""
+              outcome/plan.json: ""
+              outcome/review.json: ""
+              outcome/tests-index.md: ""
+              outcome/validation-commands.txt: ""
         - match:
             node_path: new-ticket-implementation-planning/build_plan
           behavior:
@@ -103,8 +133,10 @@ cases:
   - id: ts-030-compat-review-blocking
     type: recipe_case
     inputs:
-      title: Incompatible plan
-      description: Compat review should block
+      prompt: |
+        Incompatible plan
+
+        Compat review should block
     mocks:
       ops:
         - match:
@@ -120,6 +152,19 @@ cases:
             outputs:
               stdout: '[{"short_name":"core","repo":"https://github.com/colony-2/core.git"},{"short_name":"frontend","repo":"https://github.com/colony-2/frontend.git"},{"short_name":"api","repo":"https://github.com/colony-2/api.git"},{"short_name":"recipe-tests","repo":"https://github.com/colony-2/recipe-tests.git"}]'
               exit_code: 0
+            artifacts:
+              feedback/user-feedback.md: ""
+              feedback/api-review-feedback.md: ""
+              requirements/prior-plan.json: ""
+              requirements/plan.json: ""
+              requirements/api-review.json: ""
+              requirements/index.md: ""
+              implementation/plan.json: ""
+              implementation/index.md: ""
+              outcome/plan.json: ""
+              outcome/review.json: ""
+              outcome/tests-index.md: ""
+              outcome/validation-commands.txt: ""
         - match:
             node_path: new-ticket-implementation-planning/build_plan
           behavior:

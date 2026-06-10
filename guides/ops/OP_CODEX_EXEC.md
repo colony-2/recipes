@@ -18,7 +18,9 @@ This op also emits output artifacts:
 
 Common fields:
 - `prompt` (required): prompt sent to Codex.
-- `sessionId`: resume an existing Codex session.
+- `sessionId`: resume an existing Codex session. When omitted, the op starts a
+  fully isolated new Codex session. When present, the op continues that session
+  and carries conversational context forward for that session ID.
 - `model`: Codex model override.
 - `env`: extra environment variables.
 - `sandbox`: reserved c2j extension sandbox config. Use `sandbox.type: none` to run the extension process without the c2j wrapper sandbox.

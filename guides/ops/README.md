@@ -31,7 +31,7 @@ Do not rely on ambient shell state, ad hoc temp files, or the assumption that on
   Use when the repository already has a workflow you should reuse. These runs are disposable and do not write back into recipe git state.
   Reference: `OP_GITHUB_ACTIONS.md`
 
-- `recipe.run_and_get_result`, `recipes.run`, `recipes.run_and_wait`, `recipe.await_result`, `recipe.get_result`
+- `recipe.run_and_get_result`, `recipes.run`, `recipes.run_and_wait`, `recipe.await_result`, `recipe.await_result_soft`, `recipe.get_result`
   Use to fan work out into child recipes and consume their outputs/artifacts explicitly.
   Reference: `RUN_RECIPE.md`
 

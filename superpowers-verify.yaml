@@ -1,0 +1,201 @@
+id: superpowers-verify
+version: 0.1.0
+desc: Run fresh verification commands and summarize Superpowers completion evidence
+input_schema:
+  plan_json:
+    type: string
+    required: true
+  execution_result_json:
+    type: string
+    required: false
+  verification_commands:
+    type: string
+    required: false
+  skill_bundle_ref:
+    type: string
+    required: false
+inputs:
+  plan_json: "{{ inputs.plan_json }}"
+  execution_result_json: '${{ first_nonempty(inputs.?execution_result_json, "{}") }}'
+  verification_commands: '${{ first_nonempty(inputs.?verification_commands, "") }}'
+  skill_bundle_ref: '${{ first_nonempty(inputs.?skill_bundle_ref, "") }}'
+sequence:
+  - id: collect_verification_inputs
+    op: command_execution
+    inputs:
+      timeout: 30s
+      env:
+        PLAN_JSON: "{{ inputs.plan_json }}"
+        EXECUTION_RESULT_JSON: "{{ inputs.execution_result_json }}"
+        VERIFICATION_COMMANDS: "{{ inputs.verification_commands }}"
+      run: |
+        set -euo pipefail
+        mkdir -p "{{ context.environment.op.outbox }}/superpowers/verify"
+        python3 - <<'PY'
+        import json
+        import os
+
+        plan = json.loads(os.environ["PLAN_JSON"])
+        execution = json.loads(os.environ.get("EXECUTION_RESULT_JSON") or "{}")
+        override = os.environ.get("VERIFICATION_COMMANDS", "")
+
+        commands = [line.strip() for line in override.splitlines() if line.strip()]
+        if not commands:
+            strategy = plan.get("validation_strategy") or {}
+            commands = [str(cmd).strip() for cmd in strategy.get("commands", []) if str(cmd).strip()]
+        if not commands:
+            seen = set()
+            for task in plan.get("tasks", []):
+                for cmd in task.get("validation_commands", []):
+                    cmd = str(cmd).strip()
+                    if cmd and cmd not in seen:
+                        seen.add(cmd)
+                        commands.append(cmd)
+
+        result = {
+            "plan_id": plan.get("plan_id", ""),
+            "task_ids": [task.get("id", "") for task in plan.get("tasks", []) if task.get("id")],
+            "commands_required": commands,
+            "execution_status": execution.get("status", ""),
+            "execution_task_id": execution.get("task_id", ""),
+        }
+        out = "{{ context.environment.op.outbox }}/superpowers/verify/verification-inputs.json"
+        with open(out, "w", encoding="utf-8") as fh:
+            json.dump(result, fh, sort_keys=True)
+            fh.write("\n")
+        print(json.dumps(result, sort_keys=True))
+        PY
+
+  - id: run_verification_commands
+    op: command_execution
+    inputs:
+      timeout: 60m
+      continue_on_error: true
+      env:
+        WT: "{{ context.environment.op.worktree_path }}"
+        VERIFICATION_INPUTS_JSON: "{{ sequence.collect_verification_inputs.outputs.stdout }}"
+      run: |
+        set -uo pipefail
+
+        OUT="{{ context.environment.op.outbox }}"
+        mkdir -p "$OUT/superpowers/verify"
+        cd "$WT"
+
+        python3 - <<'PY' > "$OUT/superpowers/verify/commands.sh"
+        import json
+        import os
+
+        data = json.loads(os.environ["VERIFICATION_INPUTS_JSON"])
+        commands = data.get("commands_required", [])
+        print("set -euo pipefail")
+        if not commands:
+            print("echo 'No verification commands were provided.'")
+            print("exit 2")
+        for command in commands:
+            print(command)
+        PY
+
+        set +e
+        bash "$OUT/superpowers/verify/commands.sh" 2>&1 | tee "$OUT/superpowers/verify/output.txt"
+        RC=${PIPESTATUS[0]}
+        set -e
+        tail -n 120 "$OUT/superpowers/verify/output.txt" > "$OUT/superpowers/verify/output-tail.txt" || true
+        exit "$RC"
+
+  - id: summarize_verification
+    op: git+https://github.com/colony-2/c2ops.git//codex/run_skill@main
+    inputs:
+      skill: c2-superpowers-verify
+      input:
+        plan_json: "{{ inputs.plan_json }}"
+        execution_result_json: "{{ inputs.execution_result_json }}"
+        verification_inputs_json: "{{ sequence.collect_verification_inputs.outputs.stdout }}"
+        validation_exit_code: "${{ sequence.run_verification_commands.outputs.exit_code }}"
+        validation_stdout: "{{ sequence.run_verification_commands.outputs.stdout }}"
+        validation_stderr: "{{ sequence.run_verification_commands.outputs.stderr }}"
+        skill_bundle_ref: "{{ inputs.skill_bundle_ref }}"
+      prompt: |
+        Interpret the fresh verification command evidence for this C2
+        Superpowers workflow.
+
+        Recipes already ran the verification commands. Do not rerun commands,
+        create child jobs, create worktrees, or make manual commits.
+
+        Write:
+        - `superpowers/verify/evidence.md`
+        - `superpowers/verify/result.json`
+        - `superpowers/verify/latest-status.json`
+
+        Set `ok=true` only when required commands exist and the observed command
+        exit code is zero.
+      status_contract:
+        path: superpowers/verify/latest-status.json
+      output:
+        from: artifact
+        path: superpowers/verify/result.json
+        format: json
+        schema:
+          type: object
+          required:
+            - ok
+            - commands_required
+            - commands_observed
+            - evidence_summary
+            - blocking_issues
+          properties:
+            ok:
+              type: boolean
+            commands_required:
+              type: array
+              items:
+                type: string
+            commands_observed:
+              type: array
+              items: {}
+            evidence_summary:
+              type: string
+            blocking_issues:
+              type: array
+              items:
+                type: string
+          additionalProperties: true
+
+  - id: verification_gate
+    op: git+https://github.com/colony-2/c2ops.git//rule_gate@main
+    inputs:
+      rules:
+        - id: commands_required
+          type: assert
+          value: ${{ size(json_parse(sequence.collect_verification_inputs.outputs.stdout).commands_required) > 0 }}
+          message: Verification must have at least one required command.
+        - id: command_exit_zero
+          type: assert
+          value: ${{ sequence.run_verification_commands.outputs.exit_code == 0 }}
+          message: Verification commands must exit zero.
+        - id: verify_output_schema_valid
+          type: assert
+          value: ${{ sequence.summarize_verification.outputs.output_schema_valid }}
+          message: Verify result artifact must match schema.
+        - id: verify_status_contract_valid
+          type: assert
+          value: ${{ sequence.summarize_verification.outputs.status_contract_present && sequence.summarize_verification.outputs.status_contract_valid }}
+          message: Verify status contract must be present and valid.
+        - id: verify_ok
+          type: assert
+          value: ${{ sequence.summarize_verification.outputs.parsed_output.ok }}
+          message: Verify skill must report ok=true only for proven completion.
+
+outputs:
+  plan_id: "${{ json_parse(sequence.collect_verification_inputs.outputs.stdout).plan_id }}"
+  commands_required: "${{ json_parse(sequence.collect_verification_inputs.outputs.stdout).commands_required }}"
+  commands_required_count: "${{ size(json_parse(sequence.collect_verification_inputs.outputs.stdout).commands_required) }}"
+  validation_exit_code: "${{ sequence.run_verification_commands.outputs.exit_code }}"
+  validation_passed: "${{ sequence.run_verification_commands.outputs.exit_code == 0 }}"
+  verification_ok: "${{ sequence.summarize_verification.outputs.parsed_output.ok }}"
+  verification_blocking_issues: "${{ sequence.summarize_verification.outputs.parsed_output.blocking_issues }}"
+  verification_blocking_issue_count: "${{ size(sequence.summarize_verification.outputs.parsed_output.blocking_issues) }}"
+  verification_gate_ok: "${{ sequence.verification_gate.outputs.ok }}"
+  verification_failed_rule_ids: "${{ sequence.verification_gate.outputs.failed_rule_ids }}"
+  verify_session_id: "{{ sequence.summarize_verification.outputs.sessionId }}"
+  output_schema_valid: "${{ sequence.summarize_verification.outputs.output_schema_valid }}"
+  status_contract_valid: "${{ sequence.summarize_verification.outputs.status_contract_valid }}"

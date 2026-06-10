@@ -2,10 +2,7 @@ id: new-ticket
 version: 0.8.0
 desc: "Checkpoint-centric job recipe with skill-based implementation supervision"
 input_schema:
-  title:
-    type: string
-    required: false
-  description:
+  prompt:
     type: string
     required: false
   validate_commands:
@@ -21,15 +18,13 @@ input_schema:
     type: string
     required: false
 inputs:
-  title: '${{ first_nonempty(inputs.?title, "") }}'
-  description: '${{ first_nonempty(inputs.?description, "") }}'
+  prompt: '${{ first_nonempty(inputs.?prompt, "") }}'
   validate_commands: '${{ first_nonempty(inputs.?validate_commands, "") }}'
   local_hash: '${{ first_nonempty(inputs.?local_hash, context.git.?hash.orValue(""), "") }}'
   upstream_repo: '${{ first_nonempty(inputs.?upstream_repo, context.git.?repo.orValue(""), "") }}'
   upstream_branch: '${{ first_nonempty(inputs.?upstream_branch, context.git.?ref.orValue(""), "") }}'
 vars:
-  title: '${{ first_nonempty(inputs.?title.orValue(""), "") }}'
-  description: '${{ first_nonempty(inputs.?description.orValue(""), "") }}'
+  prompt: '${{ first_nonempty(inputs.?prompt.orValue(""), "") }}'
   local_hash: '${{ first_nonempty(context.git.?hash.orValue(""), inputs.?local_hash.orValue(""), "") }}'
 state:
   initial: triage
@@ -43,9 +38,9 @@ state:
           when: "true"
       inputs:
         name: new-ticket-triage
+        artifacts: '${{ context.artifacts.map(k, context.artifacts[k]) }}'
         inputs:
-          title: "${{ vars.title }}"
-          description: "${{ vars.description }}"
+          prompt: "${{ vars.prompt }}"
 
     reassign_create:
       op: recipes.run
@@ -58,9 +53,8 @@ state:
           - name: new-ticket
             cell_name: '${{ state_output("triage", "outputs.recommended_cell_final", context.workflow.cell) }}'
             inputs:
-              title: "${{ vars.title }}"
-              description: "${{ vars.description }}"
-            artifacts: []
+              prompt: "${{ vars.prompt }}"
+            artifacts: '${{ context.artifacts.map(k, context.artifacts[k]) }}'
 
     reassign_done:
       op: sleep
@@ -81,18 +75,17 @@ state:
         name: new-ticket-requirements-planning
         artifacts: >-
           ${{
-            state_exists("requirements_planning")
+            context.artifacts.map(k, context.artifacts[k]) +
+            (state_exists("requirements_planning")
               ? [
-                  "requirements/plan.json",
-                  "requirements/api-review.json"
+                  states.requirements_planning.artifacts["requirements/plan.json"],
+                  states.requirements_planning.artifacts["requirements/api-review.json"]
                 ]
-              : []
+              : [])
           }}
         inputs:
-          title: >-
-            ${{ vars.title }}
-          description: >-
-            ${{ vars.description }}
+          prompt: >-
+            ${{ vars.prompt }}
           user_feedback: "${{ vars.user_feedback }}"
 
     implementation_planning:
@@ -108,14 +101,17 @@ state:
           when: "true"
       inputs:
         name: new-ticket-implementation-planning
-        artifacts:
-          - '${{ states.requirements_planning.artifacts["requirements/plan.json"] }}'
-          - '${{ states.requirements_planning.artifacts["requirements/index.md"] }}'
+        artifacts: >-
+          ${{
+            context.artifacts.map(k, context.artifacts[k]) +
+            [
+              states.requirements_planning.artifacts["requirements/plan.json"],
+              states.requirements_planning.artifacts["requirements/index.md"]
+            ]
+          }}
         inputs:
-          title: >-
-            ${{ vars.title }}
-          description: >-
-            ${{ vars.description }}
+          prompt: >-
+            ${{ vars.prompt }}
           user_feedback: "${{ vars.user_feedback }}"
 
     outcome_determination:
@@ -127,16 +123,19 @@ state:
           when: "true"
       inputs:
         name: new-ticket-outcome-determination
-        artifacts:
-          - '${{ states.requirements_planning.artifacts["requirements/plan.json"] }}'
-          - '${{ states.requirements_planning.artifacts["requirements/index.md"] }}'
-          - '${{ states.implementation_planning.artifacts["implementation/plan.json"] }}'
-          - '${{ states.implementation_planning.artifacts["implementation/index.md"] }}'
+        artifacts: >-
+          ${{
+            context.artifacts.map(k, context.artifacts[k]) +
+            [
+              states.requirements_planning.artifacts["requirements/plan.json"],
+              states.requirements_planning.artifacts["requirements/index.md"],
+              states.implementation_planning.artifacts["implementation/plan.json"],
+              states.implementation_planning.artifacts["implementation/index.md"]
+            ]
+          }}
         inputs:
-          title: >-
-            ${{ vars.title }}
-          description: >-
-            ${{ vars.description }}
+          prompt: >-
+            ${{ vars.prompt }}
           user_feedback: "${{ vars.user_feedback }}"
 
     spawn_dependency_jobs:
@@ -160,7 +159,7 @@ state:
                 states.implementation_planning.outputs.outputs.plan_json +
                 '}'
               ),
-              '. as $root | ($root.current_cell // "") as $current_cell | ($root.job_id // "") as $job_id | ($root.plan.dependency_job_specs // []) | map(select((.target_cell // "") != "" and .target_cell != $current_cell) | {name:"new-ticket", cell_name:.target_cell, inputs:{title:(((.id // "") | if . != "" then "[" + . + "] " else "" end) + ((.title // "") | if . != "" then . else "Dependency work" end)), description:("Parent job: " + $job_id + "\n\nRequirement ID: " + (.id // "(none)") + "\n\nDepends on requirement IDs:\n" + ((.depends_on_markdown // "- (none)")) + "\n\n## Scope\n" + ((.scope // "(tbd)")) + "\n\n## Acceptance criteria\n" + ((.acceptance_criteria_markdown // "- (none)")) + "\n\n## Risks\n" + ((.risks_markdown // "- (none)")) + "\n\n## Notes\n" + ((.notes // "(none)")))}, artifacts:[]})'
+              '. as $root | ($root.current_cell // "") as $current_cell | ($root.job_id // "") as $job_id | ($root.plan.dependency_job_specs // []) | map(select((.target_cell // "") != "" and .target_cell != $current_cell) | {name:"new-ticket", cell_name:.target_cell, inputs:{prompt:("Parent job: " + $job_id + "\n\nDependency work: " + (((.id // "") | if . != "" then "[" + . + "] " else "" end) + ((.title // "") | if . != "" then . else "Dependency work" end)) + "\n\nRequirement ID: " + (.id // "(none)") + "\n\nDepends on requirement IDs:\n" + ((.depends_on_markdown // "- (none)")) + "\n\n## Scope\n" + ((.scope // "(tbd)")) + "\n\n## Acceptance criteria\n" + ((.acceptance_criteria_markdown // "- (none)")) + "\n\n## Risks\n" + ((.risks_markdown // "- (none)")) + "\n\n## Notes\n" + ((.notes // "(none)")))}, artifacts:[]})'
             )
           }}
 
@@ -352,6 +351,7 @@ state:
         - to: validate
           when: "true"
       artifacts:
+        submitted/: '${{ context.artifacts }}'
         requirements/plan.json: '${{ states.requirements_planning.artifacts["requirements/plan.json"] }}'
         requirements/index.md: '${{ states.requirements_planning.artifacts["requirements/index.md"] }}'
         implementation/plan.json: '${{ states.implementation_planning.artifacts["implementation/plan.json"] }}'
@@ -386,10 +386,15 @@ state:
           Follow the `c2-implementation-loop` skill contract.
           You are implementing a software job in the c2 system.
 
-          Job:
-          - Title: ${{ vars.title }}
-          - Description:
-          ${{ vars.description }}
+          Ticket prompt:
+          ${{ vars.prompt }}
+
+          Submitted artifacts directory:
+          `{{ context.environment.op.inbox }}/submitted`
+
+          Do not expect submitted file contents to be embedded in this prompt. If
+          submitted artifacts are present, read them from the submitted artifacts
+          directory.
 
           Requirements plan artifact path:
           `{{ context.environment.op.inbox }}/requirements/plan.json`
@@ -471,7 +476,7 @@ state:
                 json_stringify(states.implement.outputs.pendingDependencies) +
                 '}'
               ),
-              '. as $root | ($root.current_cell // "") as $current_cell | ($root.pending // []) | map(select((.component // "") != "" and .component != $current_cell) | {name:"new-ticket", cell_name:.component, inputs:{title:("[BUG][" + .component + "] follow-up"), description:(.requestedChanges // "Bug details were not provided.")}, artifacts:[]})'
+              '. as $root | ($root.current_cell // "") as $current_cell | ($root.pending // []) | map(select((.component // "") != "" and .component != $current_cell) | {name:"new-ticket", cell_name:.component, inputs:{prompt:("[BUG][" + .component + "] follow-up\n\n" + (.requestedChanges // "Bug details were not provided."))}, artifacts:[]})'
             )
           }}
 
@@ -491,6 +496,7 @@ state:
         - to: validate
           when: "true"
       artifacts:
+        submitted/: '${{ context.artifacts }}'
         requirements/plan.json: '${{ states.requirements_planning.artifacts["requirements/plan.json"] }}'
         requirements/index.md: '${{ states.requirements_planning.artifacts["requirements/index.md"] }}'
         implementation/plan.json: '${{ states.implementation_planning.artifacts["implementation/plan.json"] }}'
@@ -524,10 +530,15 @@ state:
         prompt: |
           Continue implementation using the same c2 skill contract and previous session context.
 
-          Job:
-          - Title: ${{ vars.title }}
-          - Description:
-          ${{ vars.description }}
+          Ticket prompt:
+          ${{ vars.prompt }}
+
+          Submitted artifacts directory:
+          `{{ context.environment.op.inbox }}/submitted`
+
+          Do not expect submitted file contents to be embedded in this prompt. If
+          submitted artifacts are present, read them from the submitted artifacts
+          directory.
 
           User clarification answers:
           ${{
@@ -564,7 +575,7 @@ state:
                 json_stringify(states.implement_resume.outputs.pendingDependencies) +
                 '}'
               ),
-              '. as $root | ($root.current_cell // "") as $current_cell | ($root.pending // []) | map(select((.component // "") != "" and .component != $current_cell) | {name:"new-ticket", cell_name:.component, inputs:{title:("[BUG][" + .component + "] follow-up"), description:(.requestedChanges // "Bug details were not provided.")}, artifacts:[]})'
+              '. as $root | ($root.current_cell // "") as $current_cell | ($root.pending // []) | map(select((.component // "") != "" and .component != $current_cell) | {name:"new-ticket", cell_name:.component, inputs:{prompt:("[BUG][" + .component + "] follow-up\n\n" + (.requestedChanges // "Bug details were not provided."))}, artifacts:[]})'
             )
           }}
 
@@ -679,7 +690,7 @@ state:
       vars:
         upstream_repo: '${{ first_nonempty(transition.?payload.upstream_repo, inputs.?upstream_repo.orValue(""), "") }}'
         upstream_branch: '${{ first_nonempty(transition.?payload.upstream_branch, inputs.?upstream_branch.orValue(""), "") }}'
-        commit_message: '${{ first_nonempty(transition.?payload.commit_message, inputs.?title.orValue(""), "Update") }}'
+        commit_message: '${{ first_nonempty(transition.?payload.commit_message, "Update") }}'
       transitions:
         - to: complete_done_route
           when: "true"

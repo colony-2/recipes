@@ -24,6 +24,13 @@ EOF_README
   printf '%s\n' "$cell_repo"
 }
 
+dump_diagnostics() {
+  if [[ -s "$WORK_DIR/assertions.json" ]]; then
+    echo "skill-quality assertion diagnostics:"
+    cat "$WORK_DIR/assertions.json"
+  fi
+}
+
 # Keep the local scenario compile-valid before running the live c2j submission.
 "$C2J_BIN" test compile \
   --recipe-file "$PWD/skill-quality-smoke.yaml" \
@@ -39,11 +46,40 @@ fi
 CELL_REPO="$(prepare_cell_repo)"
 
 run_live() {
-  "$C2J_BIN" submit --cell "$CELL_REPO" --recipe-file "$PWD/skill-quality-smoke.yaml" --run --embed
+  local job_json tenant_id job_id
+  job_json="$("$C2J_BIN" submit --cell "$CELL_REPO" --recipe-file "$PWD/skill-quality-smoke.yaml" --embed --json)"
+  tenant_id="$(printf '%s' "$job_json" | jq -r .tenant_id)"
+  job_id="$(printf '%s' "$job_json" | jq -r .job_id)"
+  "$C2J_BIN" run one --embed --tenant-id "$tenant_id" --job-id "$job_id" --lease-duration 45m --wait-timeout 45m
 }
 
 if ! run_live >"$WORK_DIR/live.log" 2>&1; then
   echo "TS-042/TS-043 failed: c2j live skill-quality smoke did not complete"
+  dump_diagnostics
+  cat "$WORK_DIR/live.log"
+  exit 1
+fi
+
+if [[ ! -s "$WORK_DIR/assertions.json" ]]; then
+  echo "TS-042/TS-043 failed: skill-quality smoke did not produce assertion diagnostics"
+  cat "$WORK_DIR/live.log"
+  exit 1
+fi
+
+if ! jq -e '
+  (.failures | length == 0)
+  and (.expected_true | to_entries | all(.value == "true"))
+  and (.expected_values | to_entries | all(.value.actual == .value.expected))
+' "$WORK_DIR/assertions.json" >/dev/null; then
+  echo "TS-042/TS-043 failed: skill-quality assertions did not pass"
+  dump_diagnostics
+  cat "$WORK_DIR/live.log"
+  exit 1
+fi
+
+if rg -n 'workflow state conflict|chapter ordinal|Repository lacks|lease is required|replay cache miss|job total timed out|thin pack|missing prerequisite commit' "$WORK_DIR/live.log"; then
+  echo "TS-042/TS-043 failed: c2j live skill-quality smoke log contained infrastructure failure signatures"
+  dump_diagnostics
   cat "$WORK_DIR/live.log"
   exit 1
 fi

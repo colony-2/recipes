@@ -1,0 +1,269 @@
+id: superpowers-execute-plan
+version: 0.1.0
+desc: Execute one selected C2 Superpowers task boundary in the current job
+input_schema:
+  plan_json:
+    type: string
+    required: true
+  task_id:
+    type: string
+    required: false
+  skill_bundle_ref:
+    type: string
+    required: false
+inputs:
+  plan_json: "{{ inputs.plan_json }}"
+  task_id: '${{ first_nonempty(inputs.?task_id, "") }}'
+  skill_bundle_ref: '${{ first_nonempty(inputs.?skill_bundle_ref, "") }}'
+state:
+  initial: select_task
+  states:
+    select_task:
+      op: command_execution
+      transitions:
+        - to: child_boundary_required
+          when: json_parse(outputs.stdout).requires_child_job == true
+        - to: run_task_boundary
+          when: json_parse(outputs.stdout).requires_child_job != true
+      inputs:
+        timeout: 30s
+        env:
+          C2_PLAN_JSON: "{{ inputs.plan_json }}"
+          C2_TASK_ID: "{{ inputs.task_id }}"
+        run: |
+          set -euo pipefail
+          mkdir -p "{{ context.environment.op.outbox }}/superpowers/execution"
+          python3 - <<'PY'
+          import json
+          import os
+          import sys
+
+          plan = json.loads(os.environ["C2_PLAN_JSON"])
+          requested = os.environ.get("C2_TASK_ID", "")
+          tasks = plan.get("tasks", [])
+          by_id = {task.get("id", ""): task for task in tasks}
+
+          selected = None
+          if requested:
+              selected = by_id.get(requested)
+          if selected is None:
+              for task_id in plan.get("ready_task_ids", []):
+                  selected = by_id.get(task_id)
+                  if selected is not None:
+                      break
+          if selected is None:
+              for task in tasks:
+                  if task.get("status", "pending") == "pending" and not task.get("dependencies", []):
+                      selected = task
+                      break
+          if selected is None:
+              print(json.dumps({
+                  "selected": False,
+                  "task_id": "",
+                  "requires_child_job": False,
+                  "child_job_reason": "",
+                  "selected_task": {},
+              }, sort_keys=True))
+              sys.exit(0)
+
+          result = {
+              "selected": True,
+              "task_id": selected.get("id", ""),
+              "requires_child_job": bool(selected.get("requires_child_job", False)),
+              "child_job_reason": selected.get("child_job_reason", ""),
+              "selected_task": selected,
+          }
+          out = "{{ context.environment.op.outbox }}/superpowers/execution/selected-task.json"
+          with open(out, "w", encoding="utf-8") as fh:
+              json.dump(result, fh, sort_keys=True)
+              fh.write("\n")
+          print(json.dumps(result, sort_keys=True))
+          PY
+
+    child_boundary_required:
+      op: command_execution
+      transitions: []
+      inputs:
+        timeout: 30s
+        env:
+          SELECTED_TASK_JSON: "{{ states.select_task.outputs.stdout }}"
+        run: |
+          set -euo pipefail
+          mkdir -p "{{ context.environment.op.outbox }}/superpowers/execution"
+          printf '%s\n' "$SELECTED_TASK_JSON" > "{{ context.environment.op.outbox }}/superpowers/execution/child-boundary-required.json"
+          printf '%s\n' "$SELECTED_TASK_JSON"
+
+    run_task_boundary:
+      inputs:
+        selected_task_json: "{{ states.select_task.outputs.stdout }}"
+        skill_bundle_ref: "{{ inputs.skill_bundle_ref }}"
+      sequence:
+        - id: implement_task
+          op: git+https://github.com/colony-2/c2ops.git//codex/run_skill@main
+          inputs:
+            skill: c2-superpowers-task-implementer
+            input:
+              selected_task_json: "{{ inputs.selected_task_json }}"
+              skill_bundle_ref: "{{ inputs.skill_bundle_ref }}"
+            prompt: |
+              Implement exactly the selected task inside the current C2 job.
+
+              The selected task JSON is provided in the invocation input.
+              Do not create child jobs, create git worktrees, or make manual git
+              commits. C2 owns git persistence and gates.
+
+              Write:
+              - `superpowers/tasks/<task-id>/implementation-summary.md`
+              - `superpowers/tasks/<task-id>/latest-status.json`
+              - `superpowers/tasks/<task-id>/evidence.json`
+          status_contract:
+            path: superpowers/tasks/latest-status.json
+          output:
+            from: artifact
+            path: superpowers/tasks/result.json
+            format: json
+            schema:
+              type: object
+              required:
+                - task_id
+                - status
+                - summary
+                - validation_commands_run
+              properties:
+                task_id:
+                  type: string
+                status:
+                  type: string
+                  enum:
+                    - done
+                    - done_with_concerns
+                    - needs_context
+                    - blocked
+                    - needs_revision
+                summary:
+                  type: string
+                validation_commands_run:
+                  type: array
+                  items:
+                    type: string
+              additionalProperties: true
+
+        - id: spec_review
+          op: git+https://github.com/colony-2/c2ops.git//codex/run_skill@main
+          inputs:
+            skill: c2-superpowers-spec-reviewer
+            input:
+              selected_task_json: "{{ inputs.selected_task_json }}"
+              implementer_summary: "{{ sequence.implement_task.outputs.raw_output }}"
+              skill_bundle_ref: "{{ inputs.skill_bundle_ref }}"
+            prompt: |
+              Review the selected task for spec compliance only.
+
+              Do not implement fixes. Do not create child jobs, worktrees, or
+              manual commits. Write the spec review result artifact.
+          status_contract:
+            path: superpowers/tasks/spec-review-status.json
+          output:
+            from: artifact
+            path: superpowers/tasks/spec-review.json
+            format: json
+            schema:
+              type: object
+              required:
+                - ok
+                - blocking_issues
+                - feedback
+                - requires_revision
+              properties:
+                ok:
+                  type: boolean
+                blocking_issues:
+                  type: array
+                  items:
+                    type: string
+                feedback:
+                  type: string
+                requires_revision:
+                  type: boolean
+              additionalProperties: true
+
+        - id: quality_review
+          op: git+https://github.com/colony-2/c2ops.git//codex/run_skill@main
+          inputs:
+            skill: c2-superpowers-quality-reviewer
+            input:
+              selected_task_json: "{{ inputs.selected_task_json }}"
+              implementer_summary: "{{ sequence.implement_task.outputs.raw_output }}"
+              spec_review: "{{ sequence.spec_review.outputs.raw_output }}"
+              skill_bundle_ref: "{{ inputs.skill_bundle_ref }}"
+            prompt: |
+              Review the selected task for quality, maintainability, test
+              quality, compatibility, and C2 safety.
+
+              Do not implement fixes. Do not create child jobs, worktrees, or
+              manual commits. Write the quality review result artifact.
+          status_contract:
+            path: superpowers/tasks/quality-review-status.json
+          output:
+            from: artifact
+            path: superpowers/tasks/quality-review.json
+            format: json
+            schema:
+              type: object
+              required:
+                - ok
+                - blocking_issues
+                - feedback
+                - requires_revision
+              properties:
+                ok:
+                  type: boolean
+                blocking_issues:
+                  type: array
+                  items:
+                    type: string
+                feedback:
+                  type: string
+                requires_revision:
+                  type: boolean
+              additionalProperties: true
+
+        - id: task_gate
+          op: git+https://github.com/colony-2/c2ops.git//rule_gate@main
+          inputs:
+            rules:
+              - id: implementation_done
+                type: assert
+                value: ${{ sequence.implement_task.outputs.parsed_output.status == "done" }}
+                message: Implementer must report task status done.
+              - id: spec_review_ok
+                type: assert
+                value: ${{ sequence.spec_review.outputs.parsed_output.ok }}
+                message: Spec review must pass.
+              - id: quality_review_ok
+                type: assert
+                value: ${{ sequence.quality_review.outputs.parsed_output.ok }}
+                message: Quality review must pass.
+      transitions: []
+      outputs:
+        implementer_session_id: "{{ sequence.implement_task.outputs.sessionId }}"
+        spec_reviewer_session_id: "{{ sequence.spec_review.outputs.sessionId }}"
+        quality_reviewer_session_id: "{{ sequence.quality_review.outputs.sessionId }}"
+        implementation_status: "${{ sequence.implement_task.outputs.parsed_output.status }}"
+        spec_review_ok: "${{ sequence.spec_review.outputs.parsed_output.ok }}"
+        quality_review_ok: "${{ sequence.quality_review.outputs.parsed_output.ok }}"
+        task_gate_ok: "${{ sequence.task_gate.outputs.ok }}"
+
+outputs:
+  selected_task_id: "${{ json_parse(state_output('select_task', 'stdout', '{}')).task_id }}"
+  selected_task_json: "${{ state_output('select_task', 'stdout', '{}') }}"
+  child_job_required: "${{ json_parse(state_output('select_task', 'stdout', '{}')).requires_child_job }}"
+  child_job_reason: "${{ json_parse(state_output('select_task', 'stdout', '{}')).child_job_reason }}"
+  implementer_session_id: "${{ json_parse(state_output('select_task', 'stdout', '{}')).requires_child_job ? '' : state_output('run_task_boundary', 'implementer_session_id', '') }}"
+  spec_reviewer_session_id: "${{ json_parse(state_output('select_task', 'stdout', '{}')).requires_child_job ? '' : state_output('run_task_boundary', 'spec_reviewer_session_id', '') }}"
+  quality_reviewer_session_id: "${{ json_parse(state_output('select_task', 'stdout', '{}')).requires_child_job ? '' : state_output('run_task_boundary', 'quality_reviewer_session_id', '') }}"
+  implementation_status: "${{ json_parse(state_output('select_task', 'stdout', '{}')).requires_child_job ? '' : state_output('run_task_boundary', 'implementation_status', '') }}"
+  spec_review_ok: "${{ json_parse(state_output('select_task', 'stdout', '{}')).requires_child_job ? false : state_output('run_task_boundary', 'spec_review_ok', false) }}"
+  quality_review_ok: "${{ json_parse(state_output('select_task', 'stdout', '{}')).requires_child_job ? false : state_output('run_task_boundary', 'quality_review_ok', false) }}"
+  task_gate_ok: "${{ json_parse(state_output('select_task', 'stdout', '{}')).requires_child_job ? false : state_output('run_task_boundary', 'task_gate_ok', false) }}"
+  task_done: "${{ !json_parse(state_output('select_task', 'stdout', '{}')).requires_child_job && state_output('run_task_boundary', 'task_gate_ok', false) }}"

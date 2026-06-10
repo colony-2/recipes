@@ -34,7 +34,7 @@ c2j submit \
 Useful follow-ups:
 
 - `c2j list --self --embed`
-- `c2j exec --embed --job-id <job-id>`
+- `c2j run one --embed --job-id <job-id>`
 
 Practical notes:
 

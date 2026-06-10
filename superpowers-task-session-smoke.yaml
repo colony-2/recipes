@@ -1,0 +1,133 @@
+id: superpowers-task-session-smoke
+version: 0.1.0
+desc: Proves one Superpowers implementation task can run as same-job Codex role sessions
+input_schema:
+  task_json:
+    type: string
+    required: false
+inputs:
+  task_json: '${{ first_nonempty(inputs.?task_json, "") }}'
+sequence:
+  - id: seed_task
+    op: command_execution
+    inputs:
+      timeout: 30s
+      env:
+        C2_TASK_JSON: "{{ inputs.task_json }}"
+      run: |
+        set -euo pipefail
+        mkdir -p "{{ context.environment.op.outbox }}/superpowers/task" "{{ context.environment.op.outbox }}/superpowers/route"
+        if [ -n "$C2_TASK_JSON" ]; then
+          printf '%s\n' "$C2_TASK_JSON" > "{{ context.environment.op.outbox }}/superpowers/task/task.json"
+        else
+          cat > "{{ context.environment.op.outbox }}/superpowers/task/task.json" <<'JSON'
+        {
+          "id": "TASK-1",
+          "title": "Add deterministic parser coverage",
+          "status": "selected",
+          "target_ref": "main",
+          "requires_child_job": false,
+          "instructions": "Implement one scoped task, validate it, and report status.",
+          "validation_commands": ["npm test -- parser"]
+        }
+        JSON
+        fi
+        cat > "{{ context.environment.op.outbox }}/superpowers/route/skill-contract.json" <<'JSON'
+        {
+          "skill": "subagent-driven-development",
+          "mode": "task-boundary",
+          "guarantee": "role prompts receive the selected skill contract before task-facing Codex ops run"
+        }
+        JSON
+        cat "{{ context.environment.op.outbox }}/superpowers/task/task.json"
+
+  - id: implementer_session
+    op: git+https://github.com/colony-2/c2ops.git//codex@main
+    artifacts:
+      task/task.json: '${{ sequence.seed_task.artifacts["superpowers/task/task.json"] }}'
+      route/skill-contract.json: '${{ sequence.seed_task.artifacts["superpowers/route/skill-contract.json"] }}'
+    inputs:
+      worktree_path: "{{ context.environment.op.worktree_path }}"
+      workdir_path: "{{ context.environment.op.workdir }}"
+      artifact_inbox_path: "{{ context.environment.op.inbox }}"
+      artifact_outbox_path: "{{ context.environment.op.outbox }}"
+      skill: "subagent-driven-development"
+      skill_mode: "enforce"
+      status_contract:
+        path: superpowers/task/implementer-status.json
+      prompt: |
+        Fresh implementer session for the selected Superpowers task.
+
+        Read:
+        - `{{ context.environment.op.inbox }}/task/task.json`
+        - `{{ context.environment.op.inbox }}/route/skill-contract.json`
+
+        Implement exactly this task in the current cell. Do not create a child
+        job, do not create a git worktree, and do not make manual git commits.
+        Write implementation status artifacts under
+        `{{ context.environment.op.outbox }}/superpowers/task/`.
+
+  - id: spec_reviewer_session
+    op: git+https://github.com/colony-2/c2ops.git//codex@main
+    artifacts:
+      task/task.json: '${{ sequence.seed_task.artifacts["superpowers/task/task.json"] }}'
+      route/skill-contract.json: '${{ sequence.seed_task.artifacts["superpowers/route/skill-contract.json"] }}'
+    inputs:
+      worktree_path: "{{ context.environment.op.worktree_path }}"
+      workdir_path: "{{ context.environment.op.workdir }}"
+      artifact_inbox_path: "{{ context.environment.op.inbox }}"
+      artifact_outbox_path: "{{ context.environment.op.outbox }}"
+      skill: "subagent-driven-development"
+      skill_mode: "enforce"
+      status_contract:
+        path: superpowers/task/spec-review-status.json
+      prompt: |
+        Fresh spec-reviewer session for the selected Superpowers task.
+
+        Implementer summary:
+        {{ sequence.implementer_session.outputs.assistantSummary }}
+
+        Review the current cell changes against the selected task and skill
+        contract. Do not create a child job and do not mutate the task plan.
+        Write review artifacts under
+        `{{ context.environment.op.outbox }}/superpowers/task/`.
+
+  - id: quality_reviewer_session
+    op: git+https://github.com/colony-2/c2ops.git//codex@main
+    artifacts:
+      task/task.json: '${{ sequence.seed_task.artifacts["superpowers/task/task.json"] }}'
+      route/skill-contract.json: '${{ sequence.seed_task.artifacts["superpowers/route/skill-contract.json"] }}'
+    inputs:
+      worktree_path: "{{ context.environment.op.worktree_path }}"
+      workdir_path: "{{ context.environment.op.workdir }}"
+      artifact_inbox_path: "{{ context.environment.op.inbox }}"
+      artifact_outbox_path: "{{ context.environment.op.outbox }}"
+      skill: "subagent-driven-development"
+      skill_mode: "enforce"
+      status_contract:
+        path: superpowers/task/quality-review-status.json
+      prompt: |
+        Fresh quality-reviewer session for the selected Superpowers task.
+
+        Implementer summary:
+        {{ sequence.implementer_session.outputs.assistantSummary }}
+
+        Spec-reviewer summary:
+        {{ sequence.spec_reviewer_session.outputs.assistantSummary }}
+
+        Review implementation quality in the current cell. Do not create a child
+        job and do not mutate the task plan. Write review artifacts under
+        `{{ context.environment.op.outbox }}/superpowers/task/`.
+
+outputs:
+  task_id: "${{ json_parse(sequence.seed_task.outputs.stdout).id }}"
+  task_requires_child_job: "${{ json_parse(sequence.seed_task.outputs.stdout).requires_child_job }}"
+  child_job_used: false
+  implementer_session_id: "{{ sequence.implementer_session.outputs.sessionId }}"
+  spec_reviewer_session_id: "{{ sequence.spec_reviewer_session.outputs.sessionId }}"
+  quality_reviewer_session_id: "{{ sequence.quality_reviewer_session.outputs.sessionId }}"
+  role_sessions_are_distinct: "${{ sequence.implementer_session.outputs.sessionId != '' && sequence.spec_reviewer_session.outputs.sessionId != '' && sequence.quality_reviewer_session.outputs.sessionId != '' && sequence.implementer_session.outputs.sessionId != sequence.spec_reviewer_session.outputs.sessionId && sequence.implementer_session.outputs.sessionId != sequence.quality_reviewer_session.outputs.sessionId && sequence.spec_reviewer_session.outputs.sessionId != sequence.quality_reviewer_session.outputs.sessionId }}"
+  implementer_status: "{{ sequence.implementer_session.outputs.status }}"
+  spec_reviewer_status: "{{ sequence.spec_reviewer_session.outputs.status }}"
+  quality_reviewer_status: "{{ sequence.quality_reviewer_session.outputs.status }}"
+  task_boundary_passed: "${{ sequence.implementer_session.outputs.status == 'completed' && sequence.spec_reviewer_session.outputs.status == 'completed' && sequence.quality_reviewer_session.outputs.status == 'completed' }}"

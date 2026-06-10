@@ -5,8 +5,10 @@ cases:
   - id: ts-031-dependency-jobs-gate-local-implementation
     type: recipe_case
     inputs:
-      title: Cross-cell change
-      description: Requires dependency jobs first
+      prompt: |
+        Cross-cell change
+
+        Requires dependency jobs first
     mocks:
       ops:
         - match:
@@ -130,8 +132,10 @@ cases:
   - id: ts-032-cancel-from-merge-review
     type: recipe_case
     inputs:
-      title: Local implementation
-      description: Cancel path
+      prompt: |
+        Local implementation
+
+        Cancel path
     mocks:
       ops:
         - match:
@@ -303,8 +307,10 @@ cases:
   - id: ts-033-merge-without-hash-forces-resolution
     type: recipe_case
     inputs:
-      title: Merge without hash
-      description: Merge decision should return to implementation when no hash exists
+      prompt: |
+        Merge without hash
+
+        Merge decision should return to implementation when no hash exists
     mocks:
       ops:
         - match:
@@ -497,8 +503,10 @@ cases:
   - id: ts-034-merge-success-completes-job
     type: recipe_case
     inputs:
-      title: Merge success
-      description: Complete job after merge
+      prompt: |
+        Merge success
+
+        Complete job after merge
       local_hash: deadbeefdeadbeefdeadbeefdeadbeefdeadbeef
       upstream_repo: git@example.com:org/repo.git
       upstream_branch: main
@@ -684,8 +692,10 @@ cases:
   - id: ts-035-implementation-opens-cross-cell-bug-jobs
     type: recipe_case
     inputs:
-      title: Implementation finds external bug
-      description: Bug job should be created
+      prompt: |
+        Implementation finds external bug
+
+        Bug job should be created
     mocks:
       ops:
         - match:
@@ -866,8 +876,10 @@ cases:
   - id: ts-036-implementation-questions-pause-and-resume
     type: recipe_case
     inputs:
-      title: Implementation needs clarification
-      description: Prompt user and resume codex
+      prompt: |
+        Implementation needs clarification
+
+        Prompt user and resume codex
     mocks:
       ops:
         - match:
@@ -1061,8 +1073,10 @@ cases:
   - id: ts-040-outcome-commands-feed-validation-default
     type: recipe_case
     inputs:
-      title: Use outcome validation commands
-      description: Validation should default to outcome command plan
+      prompt: |
+        Use outcome validation commands
+
+        Validation should default to outcome command plan
     mocks:
       ops:
         - match:
@@ -1234,8 +1248,10 @@ cases:
   - id: ts-041-implementation-requests-test-statement-update
     type: recipe_case
     inputs:
-      title: Implementation requests statement revision
-      description: Request should route to follow-up review gate
+      prompt: |
+        Implementation requests statement revision
+
+        Request should route to follow-up review gate
     mocks:
       ops:
         - match:

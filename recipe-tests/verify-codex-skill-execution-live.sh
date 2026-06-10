@@ -38,7 +38,11 @@ fi
 CELL_REPO="$(prepare_cell_repo)"
 
 run_live() {
-  "$C2J_BIN" submit --cell "$CELL_REPO" --recipe-file "$PWD/codex-skill-execution-smoke.yaml" --run --embed
+  local job_json tenant_id job_id
+  job_json="$("$C2J_BIN" submit --cell "$CELL_REPO" --recipe-file "$PWD/codex-skill-execution-smoke.yaml" --embed --json)"
+  tenant_id="$(printf '%s' "$job_json" | jq -r .tenant_id)"
+  job_id="$(printf '%s' "$job_json" | jq -r .job_id)"
+  "$C2J_BIN" run one --embed --tenant-id "$tenant_id" --job-id "$job_id" --lease-duration 45m --wait-timeout 45m
 }
 
 if ! run_live >"$WORK_DIR/live.log" 2>&1; then

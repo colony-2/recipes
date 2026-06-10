@@ -1,0 +1,166 @@
+id: superpowers-adaptive-task-loop-smoke
+version: 0.1.0
+desc: Proves the parent can run one task, update plan state, then select the next task in one job
+state:
+  initial: seed_plan
+  states:
+    seed_plan:
+      op: command_execution
+      transitions:
+        - to: task_a_implementer
+          when: "true"
+      inputs:
+        timeout: 30s
+        run: |
+          set -euo pipefail
+          mkdir -p "{{ context.environment.op.outbox }}/superpowers/plan"
+          cat > "{{ context.environment.op.outbox }}/superpowers/plan/plan.json" <<'JSON'
+          {
+            "plan_id": "superpowers-adaptive-loop-smoke",
+            "tasks": [
+              {
+                "id": "TASK-1",
+                "title": "Add parser coverage",
+                "status": "pending",
+                "dependencies": [],
+                "requires_child_job": false,
+                "target_ref": "main",
+                "prompt_delta": ""
+              },
+              {
+                "id": "TASK-2",
+                "title": "Wire parser caller",
+                "status": "pending",
+                "dependencies": ["TASK-1"],
+                "requires_child_job": false,
+                "target_ref": "main",
+                "prompt_delta": ""
+              }
+            ]
+          }
+          JSON
+          cat "{{ context.environment.op.outbox }}/superpowers/plan/plan.json"
+
+    task_a_implementer:
+      op: git+https://github.com/colony-2/c2ops.git//codex@main
+      artifacts:
+        plan/plan.json: '${{ states.seed_plan.artifacts["superpowers/plan/plan.json"] }}'
+      transitions:
+        - to: task_a_spec_review
+          when: "outputs.status == 'completed'"
+        - to: stop_for_revision
+          when: "true"
+      inputs:
+        worktree_path: "{{ context.environment.op.worktree_path }}"
+        workdir_path: "{{ context.environment.op.workdir }}"
+        artifact_inbox_path: "{{ context.environment.op.inbox }}"
+        artifact_outbox_path: "{{ context.environment.op.outbox }}"
+        skill: "subagent-driven-development"
+        skill_mode: "enforce"
+        status_contract:
+          path: superpowers/task-a/implementer-status.json
+        prompt: |
+          Fresh implementer session for TASK-1. Read
+          `{{ context.environment.op.inbox }}/plan/plan.json`, implement only
+          TASK-1, and report task-local feedback. Do not create a child job.
+
+    task_a_spec_review:
+      op: git+https://github.com/colony-2/c2ops.git//codex@main
+      artifacts:
+        plan/plan.json: '${{ states.seed_plan.artifacts["superpowers/plan/plan.json"] }}'
+      transitions:
+        - to: planner_update
+          when: "outputs.status == 'completed'"
+        - to: stop_for_revision
+          when: "true"
+      inputs:
+        worktree_path: "{{ context.environment.op.worktree_path }}"
+        workdir_path: "{{ context.environment.op.workdir }}"
+        artifact_inbox_path: "{{ context.environment.op.inbox }}"
+        artifact_outbox_path: "{{ context.environment.op.outbox }}"
+        skill: "subagent-driven-development"
+        skill_mode: "enforce"
+        status_contract:
+          path: superpowers/task-a/spec-review-status.json
+        prompt: |
+          Fresh reviewer session for TASK-1.
+
+          Implementer feedback:
+          {{ states.task_a_implementer.outputs.assistantSummary }}
+
+          Review TASK-1 for spec compliance. Do not create a child job.
+
+    planner_update:
+      op: git+https://github.com/colony-2/c2ops.git//codex@main
+      transitions:
+        - to: task_b_boundary
+          when: "true"
+      artifacts:
+        plan/plan.json: '${{ states.seed_plan.artifacts["superpowers/plan/plan.json"] }}'
+      inputs:
+        worktree_path: "{{ context.environment.op.worktree_path }}"
+        workdir_path: "{{ context.environment.op.workdir }}"
+        artifact_inbox_path: "{{ context.environment.op.inbox }}"
+        artifact_outbox_path: "{{ context.environment.op.outbox }}"
+        skill: "subagent-driven-development"
+        skill_mode: "enforce"
+        status_contract:
+          path: superpowers/planner/update-status.json
+        prompt: |
+          Parent planner session. Given the new base after TASK-1 and the task
+          feedback below, update plan state and decide what should run next.
+
+          Previous plan:
+          `{{ context.environment.op.inbox }}/plan/plan.json`
+
+          TASK-1 feedback:
+          {{ states.task_a_implementer.outputs.assistantSummary }}
+
+          Return only updated plan JSON. Do not implement code and do not create
+          a child job.
+
+    task_b_boundary:
+      op: git+https://github.com/colony-2/c2ops.git//codex@main
+      transitions: []
+      inputs:
+        worktree_path: "{{ context.environment.op.worktree_path }}"
+        workdir_path: "{{ context.environment.op.workdir }}"
+        artifact_inbox_path: "{{ context.environment.op.inbox }}"
+        artifact_outbox_path: "{{ context.environment.op.outbox }}"
+        skill: "subagent-driven-development"
+        skill_mode: "enforce"
+        status_contract:
+          path: superpowers/task-b/implementer-status.json
+        prompt: |
+          Fresh implementer session for the next selected task:
+          ${{
+            jq(
+              json_parse(states.planner_update.outputs.assistantSummary),
+              '.tasks | map(select((.status // "pending") == "pending" and ((.dependencies // []) | length) == 0)) | .[0].id'
+            )
+          }}
+
+          Updated plan JSON:
+          {{ states.planner_update.outputs.assistantSummary }}
+
+          Implement only the selected task in the current job. Do not create a
+          child job.
+
+    stop_for_revision:
+      op: sleep
+      transitions: []
+      inputs:
+        duration: 1ms
+
+outputs:
+  first_task_id: TASK-1
+  first_task_passed: "${{ state_output('task_a_implementer', 'status', '') == 'completed' && state_output('task_a_spec_review', 'status', '') == 'completed' }}"
+  first_task_implementer_session_id: "${{ state_output('task_a_implementer', 'sessionId', '') }}"
+  first_task_spec_reviewer_session_id: "${{ state_output('task_a_spec_review', 'sessionId', '') }}"
+  planner_session_id: "${{ state_output('planner_update', 'sessionId', '') }}"
+  updated_plan_json: "${{ state_output('planner_update', 'assistantSummary', '') }}"
+  second_task_id: "${{ jq(json_parse(state_output('planner_update', 'assistantSummary', '{}')), '.tasks | map(select((.status // \"pending\") == \"pending\" and ((.dependencies // []) | length) == 0)) | .[0].id') }}"
+  second_task_session_id: "${{ state_output('task_b_boundary', 'sessionId', '') }}"
+  adaptive_second_task_selected: "${{ jq(json_parse(state_output('planner_update', 'assistantSummary', '{}')), '.tasks | map(select((.status // \"pending\") == \"pending\" and ((.dependencies // []) | length) == 0)) | .[0].id') == 'TASK-2' }}"
+  planner_feedback_carried_forward: "${{ jq(json_parse(state_output('planner_update', 'assistantSummary', '{}')), '.tasks | map(select(.id == \"TASK-2\")) | .[0].prompt_delta') == 'Account for TASK-1 parser behavior.' }}"
+  child_job_used: false

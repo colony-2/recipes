@@ -2,30 +2,37 @@ id: new-ticket-implementation-planning
 version: 0.1.0
 desc: Generate an implementation plan bundle with dependency gating and compatibility review
 input_schema:
-  title:
-    type: string
-    required: true
-  description:
+  prompt:
     type: string
     required: true
   user_feedback:
     type: string
     required: false
 inputs:
-  title: "{{ inputs.title }}"
-  description: "{{ inputs.description }}"
+  prompt: "{{ inputs.prompt }}"
   user_feedback: '${{ first_nonempty(inputs.?user_feedback, "") }}'
 sequence:
   - id: load_cells
     op: command_execution
     inputs:
       timeout: 30s
+      env:
+        C2_USER_FEEDBACK: "{{ inputs.user_feedback }}"
       run: |
         set -euo pipefail
+        mkdir -p "{{ context.environment.op.outbox }}/feedback" "{{ context.environment.op.outbox }}/requirements"
+        printf '%s' "$C2_USER_FEEDBACK" > "{{ context.environment.op.outbox }}/feedback/user-feedback.md"
+        : > "{{ context.environment.op.outbox }}/requirements/plan.json"
+        : > "{{ context.environment.op.outbox }}/requirements/index.md"
         c2j cells --json
 
   - id: build_plan
     op: git+https://github.com/colony-2/c2ops.git//codex@main
+    artifacts:
+      submitted/: '${{ context.artifacts }}'
+      feedback/user-feedback.md: '${{ sequence.load_cells.artifacts["feedback/user-feedback.md"] }}'
+      requirements/plan.json: '${{ "requirements/plan.json" in context.artifacts ? context.artifacts["requirements/plan.json"] : sequence.load_cells.artifacts["requirements/plan.json"] }}'
+      requirements/index.md: '${{ "requirements/index.md" in context.artifacts ? context.artifacts["requirements/index.md"] : sequence.load_cells.artifacts["requirements/index.md"] }}'
     inputs:
       worktree_path: "{{ context.environment.op.worktree_path }}"
       workdir_path: "{{ context.environment.op.workdir }}"
@@ -39,9 +46,15 @@ sequence:
         Follow the `c2-implementation-plan-author` skill contract.
         Build an implementation plan for this job and write artifacts directly.
 
-        Job Title: {{ inputs.title }}
-        Job Description:
-        {{ inputs.description }}
+        Ticket prompt:
+        {{ inputs.prompt }}
+
+        Submitted artifacts directory:
+        `{{ context.environment.op.inbox }}/submitted`
+
+        Do not expect submitted file contents to be embedded in this prompt. If
+        submitted artifacts are present, read them from the submitted artifacts
+        directory.
 
         Current Cell: {{ context.workflow.cell }}
         Available Cells JSON: ${{ sequence.load_cells.outputs.stdout }}
@@ -55,8 +68,8 @@ sequence:
         - `{{ context.environment.op.inbox }}/implementation/plan.json`
         - `{{ context.environment.op.inbox }}/implementation/compat-review.json`
 
-        User feedback to incorporate (if any):
-        {{ inputs.user_feedback }}
+        User feedback artifact path:
+        `{{ context.environment.op.inbox }}/feedback/user-feedback.md`
 
         Rules:
         - Never plan a backwards-incompatible change.

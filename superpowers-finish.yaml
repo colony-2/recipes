@@ -1,0 +1,381 @@
+id: superpowers-finish
+version: 0.1.0
+desc: Summarize verified Superpowers work and optionally merge through C2 git ops
+input_schema:
+  plan_json:
+    type: string
+    required: true
+  verification_result_json:
+    type: string
+    required: true
+  execution_result_json:
+    type: string
+    required: false
+  completion_action:
+    type: string
+    required: false
+  local_hash:
+    type: string
+    required: false
+  upstream_repo:
+    type: string
+    required: false
+  upstream_branch:
+    type: string
+    required: false
+  commit_message:
+    type: string
+    required: false
+  skill_bundle_ref:
+    type: string
+    required: false
+inputs:
+  plan_json: "{{ inputs.plan_json }}"
+  verification_result_json: "{{ inputs.verification_result_json }}"
+  execution_result_json: '${{ first_nonempty(inputs.?execution_result_json, "{}") }}'
+  completion_action: '${{ first_nonempty(inputs.?completion_action, "recommend") }}'
+  local_hash: '${{ first_nonempty(inputs.?local_hash, context.git.?hash.orValue(""), "") }}'
+  upstream_repo: '${{ first_nonempty(inputs.?upstream_repo, context.git.?repo.orValue(""), "") }}'
+  upstream_branch: '${{ first_nonempty(inputs.?upstream_branch, context.git.?ref.orValue(""), "") }}'
+  commit_message: '${{ first_nonempty(inputs.?commit_message, "Complete Superpowers workflow") }}'
+  skill_bundle_ref: '${{ first_nonempty(inputs.?skill_bundle_ref, "") }}'
+state:
+  initial: summarize_finish
+  states:
+    summarize_finish:
+      inputs:
+        plan_json: "{{ inputs.plan_json }}"
+        verification_result_json: "{{ inputs.verification_result_json }}"
+        execution_result_json: '${{ first_nonempty(inputs.?execution_result_json.orValue(""), "{}") }}'
+        completion_action: '${{ first_nonempty(inputs.?completion_action.orValue(""), "recommend") }}'
+        local_hash: '${{ first_nonempty(inputs.?local_hash.orValue(""), context.git.?hash.orValue(""), "") }}'
+        upstream_repo: '${{ first_nonempty(inputs.?upstream_repo.orValue(""), context.git.?repo.orValue(""), "") }}'
+        upstream_branch: '${{ first_nonempty(inputs.?upstream_branch.orValue(""), context.git.?ref.orValue(""), "") }}'
+        commit_message: '${{ first_nonempty(inputs.?commit_message.orValue(""), "Complete Superpowers workflow") }}'
+        skill_bundle_ref: '${{ first_nonempty(inputs.?skill_bundle_ref.orValue(""), "") }}'
+      sequence:
+        - id: collect_finish_inputs
+          op: command_execution
+          inputs:
+            timeout: 30s
+            env:
+              PLAN_JSON: "{{ inputs.plan_json }}"
+              VERIFICATION_RESULT_JSON: "{{ inputs.verification_result_json }}"
+              EXECUTION_RESULT_JSON: '${{ first_nonempty(inputs.?execution_result_json.orValue(""), "{}") }}'
+              COMPLETION_ACTION: '${{ first_nonempty(inputs.?completion_action.orValue(""), "recommend") }}'
+              LOCAL_HASH: '${{ first_nonempty(inputs.?local_hash.orValue(""), context.git.?hash.orValue(""), "") }}'
+              UPSTREAM_REPO: '${{ first_nonempty(inputs.?upstream_repo.orValue(""), context.git.?repo.orValue(""), "") }}'
+              UPSTREAM_BRANCH: '${{ first_nonempty(inputs.?upstream_branch.orValue(""), context.git.?ref.orValue(""), "") }}'
+              COMMIT_MESSAGE: '${{ first_nonempty(inputs.?commit_message.orValue(""), "Complete Superpowers workflow") }}'
+            run: |
+              set -euo pipefail
+              mkdir -p "{{ context.environment.op.outbox }}/superpowers/finish"
+              python3 - <<'PY'
+              import json
+              import os
+
+              plan = json.loads(os.environ["PLAN_JSON"])
+              verification = json.loads(os.environ["VERIFICATION_RESULT_JSON"])
+              execution = json.loads(os.environ.get("EXECUTION_RESULT_JSON") or "{}")
+              action = os.environ.get("COMPLETION_ACTION") or "recommend"
+
+              tasks = plan.get("tasks", [])
+              complete_statuses = {"done", "complete", "completed", "skipped"}
+              incomplete = [
+                  task.get("id", "")
+                  for task in tasks
+                  if task.get("status", "pending") not in complete_statuses
+              ]
+              completed = [
+                  task.get("id", "")
+                  for task in tasks
+                  if task.get("status", "pending") in complete_statuses
+              ]
+              blocking = list(verification.get("blocking_issues", []) or [])
+
+              result = {
+                  "plan_id": plan.get("plan_id", ""),
+                  "task_count": len(tasks),
+                  "completed_tasks": [task for task in completed if task],
+                  "incomplete_tasks": [task for task in incomplete if task],
+                  "all_tasks_complete": bool(tasks) and not incomplete,
+                  "verification_present": "ok" in verification,
+                  "verification_ok": bool(verification.get("ok", False)),
+                  "verification_blocking_issues": blocking,
+                  "verification_summary": verification.get("evidence_summary", ""),
+                  "execution_status": execution.get("status", ""),
+                  "completion_action": action,
+                  "local_hash_present": bool(os.environ.get("LOCAL_HASH", "")),
+                  "upstream_repo_present": bool(os.environ.get("UPSTREAM_REPO", "")),
+                  "upstream_branch_present": bool(os.environ.get("UPSTREAM_BRANCH", "")),
+                  "commit_message_present": bool(os.environ.get("COMMIT_MESSAGE", "")),
+              }
+              out = "{{ context.environment.op.outbox }}/superpowers/finish/finish-inputs.json"
+              with open(out, "w", encoding="utf-8") as fh:
+                  json.dump(result, fh, sort_keys=True)
+                  fh.write("\n")
+              print(json.dumps(result, sort_keys=True))
+              PY
+
+        - id: write_finish_summary
+          op: git+https://github.com/colony-2/c2ops.git//codex/run_skill@main
+          inputs:
+            skill: c2-superpowers-finish
+            input:
+              plan_json: "{{ inputs.plan_json }}"
+              verification_result_json: "{{ inputs.verification_result_json }}"
+              execution_result_json: '${{ first_nonempty(inputs.?execution_result_json.orValue(""), "{}") }}'
+              finish_inputs_json: "{{ sequence.collect_finish_inputs.outputs.stdout }}"
+              requested_action: '${{ first_nonempty(inputs.?completion_action.orValue(""), "recommend") }}'
+              skill_bundle_ref: '${{ first_nonempty(inputs.?skill_bundle_ref.orValue(""), "") }}'
+            prompt: |
+              Summarize this verified C2 Superpowers workflow and recommend the
+              finish decision.
+
+              Recipes already own verification gates, merge choices, and git
+              operations. Do not rerun tests, create child jobs, create
+              worktrees, merge, or make manual commits.
+
+              Write:
+              - `superpowers/finish/summary.md`
+              - `superpowers/finish/result.json`
+              - `superpowers/finish/latest-status.json`
+
+              Set `merge_ready=true` only when the verification result is ok,
+              the required tasks are complete, and no blocking issues remain.
+            status_contract:
+              path: superpowers/finish/latest-status.json
+            output:
+              from: artifact
+              path: superpowers/finish/result.json
+              format: json
+              schema:
+                type: object
+                required:
+                  - decision
+                  - summary
+                  - completed_tasks
+                  - verification_summary
+                  - remaining_risks
+                  - merge_ready
+                properties:
+                  decision:
+                    type: string
+                    enum:
+                      - merge_ready
+                      - hold_for_user
+                      - needs_revision
+                      - cancel
+                  summary:
+                    type: string
+                    minLength: 1
+                  completed_tasks:
+                    type: array
+                    items:
+                      type: string
+                  verification_summary:
+                    type: string
+                  remaining_risks:
+                    type: array
+                    items:
+                      type: string
+                  merge_ready:
+                    type: boolean
+                additionalProperties: true
+
+        - id: finish_gate
+          op: git+https://github.com/colony-2/c2ops.git//rule_gate@main
+          inputs:
+            rules:
+              - id: finish_output_schema_valid
+                type: assert
+                value: ${{ sequence.write_finish_summary.outputs.output_schema_valid == true }}
+                message: Finish result artifact must match schema.
+              - id: finish_status_contract_valid
+                type: assert
+                value: ${{ sequence.write_finish_summary.outputs.status_contract_present == true && sequence.write_finish_summary.outputs.status_contract_valid == true }}
+                message: Finish status contract must be present and valid.
+              - id: verification_present
+                type: assert
+                value: ${{ json_parse(sequence.collect_finish_inputs.outputs.stdout).verification_present == true }}
+                message: Finish requires verification evidence.
+              - id: merge_ready_requires_verification_ok
+                type: assert
+                value: ${{ sequence.write_finish_summary.outputs.parsed_output.merge_ready != true || json_parse(sequence.collect_finish_inputs.outputs.stdout).verification_ok == true }}
+                message: Finish cannot be merge-ready unless verification passed.
+              - id: merge_ready_requires_no_blockers
+                type: assert
+                value: ${{ sequence.write_finish_summary.outputs.parsed_output.merge_ready != true || size(json_parse(sequence.collect_finish_inputs.outputs.stdout).verification_blocking_issues) == 0 }}
+                message: Finish cannot be merge-ready while verification has blocking issues.
+              - id: merge_ready_requires_completed_tasks
+                type: assert
+                value: ${{ sequence.write_finish_summary.outputs.parsed_output.merge_ready != true || json_parse(sequence.collect_finish_inputs.outputs.stdout).all_tasks_complete == true }}
+                message: Finish cannot be merge-ready until all planned tasks are complete.
+      transitions:
+        - to: prompt_action
+          when: outputs.completion_action == "prompt"
+        - to: merge
+          when: outputs.completion_action == "merge" && outputs.finish_gate_ok && outputs.merge_ready && outputs.local_hash_present && outputs.upstream_repo_present && outputs.upstream_branch_present
+        - to: merge_blocked
+          when: outputs.completion_action == "merge"
+        - to: cancel
+          when: outputs.completion_action == "cancel"
+        - to: hold
+          when: outputs.completion_action == "hold_for_user"
+        - to: recommend
+          when: true
+      outputs:
+        completion_action: "${{ json_parse(sequence.collect_finish_inputs.outputs.stdout).completion_action }}"
+        finish_decision: "${{ sequence.write_finish_summary.outputs.parsed_output.decision }}"
+        finish_summary: "${{ sequence.write_finish_summary.outputs.parsed_output.summary }}"
+        completed_tasks: "${{ sequence.write_finish_summary.outputs.parsed_output.completed_tasks }}"
+        remaining_risks: "${{ sequence.write_finish_summary.outputs.parsed_output.remaining_risks }}"
+        remaining_risk_count: "${{ size(sequence.write_finish_summary.outputs.parsed_output.remaining_risks) }}"
+        merge_ready: "${{ sequence.write_finish_summary.outputs.parsed_output.merge_ready }}"
+        finish_gate_ok: "${{ sequence.finish_gate.outputs.ok }}"
+        finish_failed_rule_ids: "${{ sequence.finish_gate.outputs.failed_rule_ids }}"
+        local_hash_present: "${{ json_parse(sequence.collect_finish_inputs.outputs.stdout).local_hash_present }}"
+        upstream_repo_present: "${{ json_parse(sequence.collect_finish_inputs.outputs.stdout).upstream_repo_present }}"
+        upstream_branch_present: "${{ json_parse(sequence.collect_finish_inputs.outputs.stdout).upstream_branch_present }}"
+        verification_ok: "${{ json_parse(sequence.collect_finish_inputs.outputs.stdout).verification_ok }}"
+        verification_blocking_issues: "${{ json_parse(sequence.collect_finish_inputs.outputs.stdout).verification_blocking_issues }}"
+        finish_session_id: "{{ sequence.write_finish_summary.outputs.sessionId }}"
+        output_schema_valid: "${{ sequence.write_finish_summary.outputs.output_schema_valid }}"
+        status_contract_valid: "${{ sequence.write_finish_summary.outputs.status_contract_valid }}"
+
+    prompt_action:
+      op: input
+      transitions:
+        - to: merge
+          when: outputs.fields.action == "merge" && states.summarize_finish.outputs.finish_gate_ok && states.summarize_finish.outputs.merge_ready && states.summarize_finish.outputs.local_hash_present && states.summarize_finish.outputs.upstream_repo_present && states.summarize_finish.outputs.upstream_branch_present
+        - to: merge_blocked
+          when: outputs.fields.action == "merge"
+        - to: cancel
+          when: outputs.fields.action == "cancel"
+        - to: hold
+          when: outputs.fields.action == "hold_for_user"
+        - to: recommend
+          when: true
+      inputs:
+        form:
+          title: "Finish Superpowers workflow"
+          fields:
+            - id: action
+              type: multiple_choice
+              question: "How should C2 finish this verified workflow?"
+              required: true
+              options:
+                - value: recommend
+                  label: "Keep as recommendation"
+                - value: merge
+                  label: "Merge"
+                - value: hold_for_user
+                  label: "Hold for user"
+                - value: cancel
+                  label: "Cancel"
+
+    recommend:
+      op: command_execution
+      transitions: []
+      inputs:
+        timeout: 30s
+        run: |
+          set -euo pipefail
+          mkdir -p "{{ context.environment.op.outbox }}/superpowers/finish"
+          printf '{"action_taken":"recommend","merged":false}\n' > "{{ context.environment.op.outbox }}/superpowers/finish/action.json"
+          cat "{{ context.environment.op.outbox }}/superpowers/finish/action.json"
+
+    hold:
+      op: command_execution
+      transitions: []
+      inputs:
+        timeout: 30s
+        run: |
+          set -euo pipefail
+          mkdir -p "{{ context.environment.op.outbox }}/superpowers/finish"
+          printf '{"action_taken":"hold_for_user","merged":false}\n' > "{{ context.environment.op.outbox }}/superpowers/finish/action.json"
+          cat "{{ context.environment.op.outbox }}/superpowers/finish/action.json"
+
+    cancel:
+      op: command_execution
+      transitions: []
+      inputs:
+        timeout: 30s
+        run: |
+          set -euo pipefail
+          mkdir -p "{{ context.environment.op.outbox }}/superpowers/finish"
+          printf '{"action_taken":"cancel","merged":false}\n' > "{{ context.environment.op.outbox }}/superpowers/finish/action.json"
+          cat "{{ context.environment.op.outbox }}/superpowers/finish/action.json"
+
+    merge_blocked:
+      op: command_execution
+      transitions: []
+      inputs:
+        timeout: 30s
+        env:
+          FINISH_GATE_OK: '${{ states.summarize_finish.outputs.finish_gate_ok == true ? "true" : "false" }}'
+          MERGE_READY: '${{ states.summarize_finish.outputs.merge_ready == true ? "true" : "false" }}'
+          LOCAL_HASH_PRESENT: '${{ states.summarize_finish.outputs.local_hash_present == true ? "true" : "false" }}'
+          UPSTREAM_REPO_PRESENT: '${{ states.summarize_finish.outputs.upstream_repo_present == true ? "true" : "false" }}'
+          UPSTREAM_BRANCH_PRESENT: '${{ states.summarize_finish.outputs.upstream_branch_present == true ? "true" : "false" }}'
+          VERIFICATION_OK: '${{ states.summarize_finish.outputs.verification_ok == true ? "true" : "false" }}'
+        run: |
+          set -euo pipefail
+          mkdir -p "{{ context.environment.op.outbox }}/superpowers/finish"
+          python3 - <<'PY'
+          import json
+          import os
+
+          checks = {
+              "finish_gate_ok": os.environ["FINISH_GATE_OK"] == "true",
+              "merge_ready": os.environ["MERGE_READY"] == "true",
+              "local_hash_present": os.environ["LOCAL_HASH_PRESENT"] == "true",
+              "upstream_repo_present": os.environ["UPSTREAM_REPO_PRESENT"] == "true",
+              "upstream_branch_present": os.environ["UPSTREAM_BRANCH_PRESENT"] == "true",
+              "verification_ok": os.environ["VERIFICATION_OK"] == "true",
+          }
+          reasons = [name for name, ok in checks.items() if not ok]
+          result = {
+              "action_taken": "merge_blocked",
+              "merged": False,
+              "blocked_reasons": reasons,
+          }
+          out = "{{ context.environment.op.outbox }}/superpowers/finish/action.json"
+          with open(out, "w", encoding="utf-8") as fh:
+              json.dump(result, fh, sort_keys=True)
+              fh.write("\n")
+          print(json.dumps(result, sort_keys=True))
+          PY
+
+    merge:
+      op: squashrebasemerge
+      transitions: []
+      inputs:
+        repo_path: "{{ context.environment.op.worktree_path }}"
+        local_hash: '${{ first_nonempty(inputs.?local_hash.orValue(""), context.git.?hash.orValue(""), "0000000000000000000000000000000000000000") }}'
+        upstream_repo: '${{ first_nonempty(inputs.?upstream_repo.orValue(""), context.git.?repo.orValue(""), "missing-upstream-repo") }}'
+        upstream_branch: '${{ first_nonempty(inputs.?upstream_branch.orValue(""), context.git.?ref.orValue(""), "missing-upstream-branch") }}'
+        rebase: true
+        author: '${{ context.git.?author.orValue("") }}'
+        commit_message: '${{ first_nonempty(inputs.?commit_message.orValue(""), "Complete Superpowers workflow") }}'
+
+outputs:
+  finish_decision: "${{ state_output('summarize_finish', 'finish_decision', '') }}"
+  finish_summary: "${{ state_output('summarize_finish', 'finish_summary', '') }}"
+  completed_tasks: "${{ state_output('summarize_finish', 'completed_tasks', []) }}"
+  remaining_risks: "${{ state_output('summarize_finish', 'remaining_risks', []) }}"
+  remaining_risk_count: "${{ state_output('summarize_finish', 'remaining_risk_count', 0) }}"
+  merge_ready: "${{ state_output('summarize_finish', 'merge_ready', false) }}"
+  finish_gate_ok: "${{ state_output('summarize_finish', 'finish_gate_ok', false) }}"
+  finish_failed_rule_ids: "${{ state_output('summarize_finish', 'finish_failed_rule_ids', []) }}"
+  verification_ok: "${{ state_output('summarize_finish', 'verification_ok', false) }}"
+  verification_blocking_issues: "${{ state_output('summarize_finish', 'verification_blocking_issues', []) }}"
+  action_taken: '${{ state_exists("merge") ? "merge" : (state_exists("merge_blocked") ? "merge_blocked" : (state_exists("cancel") ? "cancel" : (state_exists("hold") ? "hold_for_user" : "recommend"))) }}'
+  merged: "${{ nonempty(state_output('merge', 'merged_hash', '')) }}"
+  merged_hash: "${{ state_output('merge', 'merged_hash', '') }}"
+  target_branch: "${{ state_output('merge', 'target_branch', '') }}"
+  merge_blocked_reasons: "${{ state_exists('merge_blocked') ? json_parse(state_output('merge_blocked', 'stdout', '{\"blocked_reasons\":[]}')).blocked_reasons : [] }}"
+  merge_blocked_reason_count: "${{ state_exists('merge_blocked') ? size(json_parse(state_output('merge_blocked', 'stdout', '{\"blocked_reasons\":[]}')).blocked_reasons) : 0 }}"
+  finish_session_id: "${{ state_output('summarize_finish', 'finish_session_id', '') }}"
+  output_schema_valid: "${{ state_output('summarize_finish', 'output_schema_valid', false) }}"
+  status_contract_valid: "${{ state_output('summarize_finish', 'status_contract_valid', false) }}"

@@ -1,0 +1,69 @@
+id: superpowers-native-task-selection-smoke
+version: 0.1.0
+desc: Proves Superpowers task head selection can be expressed with recipe state and templates
+input_schema:
+  plan_json:
+    type: string
+    required: false
+inputs:
+  plan_json: '${{ first_nonempty(inputs.?plan_json, "") }}'
+sequence:
+  - id: seed_plan
+    op: command_execution
+    inputs:
+      timeout: 30s
+      env:
+        C2_PLAN_JSON: "{{ inputs.plan_json }}"
+      run: |
+        set -euo pipefail
+        mkdir -p "{{ context.environment.op.outbox }}/superpowers/plan"
+        if [ -n "$C2_PLAN_JSON" ]; then
+          printf '%s\n' "$C2_PLAN_JSON" > "{{ context.environment.op.outbox }}/superpowers/plan/plan.json"
+          printf '%s\n' "$C2_PLAN_JSON"
+        else
+          cat > "{{ context.environment.op.outbox }}/superpowers/plan/plan.json" <<'JSON'
+        {
+          "plan_id": "superpowers-native-selection-smoke",
+          "tasks": [
+            {
+              "id": "TASK-1",
+              "title": "Add deterministic parser coverage",
+              "status": "pending",
+              "dependencies": [],
+              "target_ref": "main",
+              "requires_child_job": false,
+              "validation_commands": ["npm test -- parser"]
+            },
+            {
+              "id": "TASK-2",
+              "title": "Wire parser into the caller",
+              "status": "pending",
+              "dependencies": ["TASK-1"],
+              "target_ref": "main",
+              "requires_child_job": false,
+              "validation_commands": ["npm test -- caller"]
+            },
+            {
+              "id": "TASK-0",
+              "title": "Completed setup",
+              "status": "done",
+              "dependencies": [],
+              "target_ref": "main",
+              "requires_child_job": false,
+              "validation_commands": []
+            }
+          ]
+        }
+        JSON
+          cat "{{ context.environment.op.outbox }}/superpowers/plan/plan.json"
+        fi
+
+outputs:
+  plan_json: "{{ sequence.seed_plan.outputs.stdout }}"
+  ready_task_count: "${{ jq(json_parse(sequence.seed_plan.outputs.stdout), '.tasks | map(select((.status // \"pending\") == \"pending\" and ((.dependencies // []) | length) == 0)) | length') }}"
+  selected_task_json: "${{ json_stringify(jq(json_parse(sequence.seed_plan.outputs.stdout), '.tasks | map(select((.status // \"pending\") == \"pending\" and ((.dependencies // []) | length) == 0)) | .[0]')) }}"
+  selected_task_id: "${{ jq(json_parse(sequence.seed_plan.outputs.stdout), '.tasks | map(select((.status // \"pending\") == \"pending\" and ((.dependencies // []) | length) == 0)) | .[0].id') }}"
+  selected_task_title: "${{ jq(json_parse(sequence.seed_plan.outputs.stdout), '.tasks | map(select((.status // \"pending\") == \"pending\" and ((.dependencies // []) | length) == 0)) | .[0].title') }}"
+  selected_task_target_ref: "${{ jq(json_parse(sequence.seed_plan.outputs.stdout), '.tasks | map(select((.status // \"pending\") == \"pending\" and ((.dependencies // []) | length) == 0)) | .[0].target_ref') }}"
+  selected_task_requires_child_job: "${{ jq(json_parse(sequence.seed_plan.outputs.stdout), '.tasks | map(select((.status // \"pending\") == \"pending\" and ((.dependencies // []) | length) == 0)) | .[0].requires_child_job // false') }}"
+  no_child_job_required: "${{ !jq(json_parse(sequence.seed_plan.outputs.stdout), '.tasks | map(select((.status // \"pending\") == \"pending\" and ((.dependencies // []) | length) == 0)) | .[0].requires_child_job // false') }}"

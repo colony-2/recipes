@@ -1,0 +1,126 @@
+id: superpowers-brainstorm
+version: 0.1.0
+desc: Produce a C2 Superpowers design artifact before planning or implementation
+input_schema:
+  prompt:
+    type: string
+    required: true
+  route_json:
+    type: string
+    required: false
+  user_feedback:
+    type: string
+    required: false
+  skill_bundle_ref:
+    type: string
+    required: false
+inputs:
+  prompt: "{{ inputs.prompt }}"
+  route_json: '${{ first_nonempty(inputs.?route_json, "{}") }}'
+  user_feedback: '${{ first_nonempty(inputs.?user_feedback, "") }}'
+  skill_bundle_ref: '${{ first_nonempty(inputs.?skill_bundle_ref, "") }}'
+sequence:
+  - id: brainstorm
+    op: git+https://github.com/colony-2/c2ops.git//codex/run_skill@main
+    inputs:
+      skill: c2-superpowers-brainstorm
+      input:
+        ticket_prompt: "{{ inputs.prompt }}"
+        route_json: "{{ inputs.route_json }}"
+        user_feedback: "{{ inputs.user_feedback }}"
+        skill_bundle_ref: "{{ inputs.skill_bundle_ref }}"
+      prompt: |
+        Produce a C2 Superpowers design artifact before any implementation or
+        task planning starts.
+
+        Use the `c2-superpowers-brainstorm` contract. If a skill bundle ref is
+        provided, it identifies the expected C2 Superpowers skills bundle:
+        `{{ inputs.skill_bundle_ref }}`.
+
+        Write:
+        - `superpowers/brainstorm/design.md`
+        - `superpowers/brainstorm/result.json`
+        - `superpowers/brainstorm/latest-status.json`
+
+        Do not implement code, create child jobs, create git worktrees, or make
+        manual git commits. C2 recipes own orchestration and gates.
+      status_contract:
+        path: superpowers/brainstorm/latest-status.json
+      output:
+        from: artifact
+        path: superpowers/brainstorm/result.json
+        format: json
+        schema:
+          type: object
+          required:
+            - summary
+            - recommended_approach
+            - alternatives
+            - open_questions
+            - approved_for_planning
+            - plan_inputs
+          properties:
+            summary:
+              type: string
+              minLength: 1
+            recommended_approach:
+              type: string
+            alternatives:
+              type: array
+              items:
+                type: object
+                required:
+                  - name
+                  - tradeoffs
+                properties:
+                  name:
+                    type: string
+                  tradeoffs:
+                    type: string
+            open_questions:
+              type: array
+              items:
+                type: string
+            approved_for_planning:
+              type: boolean
+            plan_inputs:
+              type: object
+          additionalProperties: true
+
+  - id: brainstorm_gate
+    op: git+https://github.com/colony-2/c2ops.git//rule_gate@main
+    inputs:
+      rules:
+        - id: brainstorm_completed
+          type: assert
+          value: ${{ sequence.brainstorm.outputs.status == "completed" || sequence.brainstorm.outputs.status == "incomplete" }}
+          message: Brainstorm skill must return a normalized Codex status.
+        - id: brainstorm_output_schema_valid
+          type: assert
+          value: ${{ sequence.brainstorm.outputs.output_schema_valid }}
+          message: Brainstorm result artifact must match the design schema.
+        - id: brainstorm_status_contract_valid
+          type: assert
+          value: ${{ sequence.brainstorm.outputs.status_contract_present && sequence.brainstorm.outputs.status_contract_valid }}
+          message: Brainstorm status contract must be present and valid.
+        - id: approved_design_has_plan_inputs
+          type: assert
+          value: ${{ !sequence.brainstorm.outputs.parsed_output.approved_for_planning || size(sequence.brainstorm.outputs.parsed_output.plan_inputs) > 0 }}
+          message: A plan-ready design must include concrete plan inputs.
+        - id: blocked_design_has_open_question
+          type: assert
+          value: ${{ sequence.brainstorm.outputs.parsed_output.approved_for_planning || size(sequence.brainstorm.outputs.parsed_output.open_questions) > 0 }}
+          message: A design that is not plan-ready must include an open question.
+
+outputs:
+  brainstorm_ok: "${{ sequence.brainstorm_gate.outputs.ok }}"
+  brainstorm_failed_rule_ids: "${{ sequence.brainstorm_gate.outputs.failed_rule_ids }}"
+  summary: "${{ sequence.brainstorm.outputs.parsed_output.summary }}"
+  recommended_approach: "${{ sequence.brainstorm.outputs.parsed_output.recommended_approach }}"
+  alternatives: "${{ sequence.brainstorm.outputs.parsed_output.alternatives }}"
+  open_questions: "${{ sequence.brainstorm.outputs.parsed_output.open_questions }}"
+  approved_for_planning: "${{ sequence.brainstorm.outputs.parsed_output.approved_for_planning }}"
+  plan_inputs: "${{ sequence.brainstorm.outputs.parsed_output.plan_inputs }}"
+  brainstorm_session_id: "{{ sequence.brainstorm.outputs.sessionId }}"
+  output_schema_valid: "${{ sequence.brainstorm.outputs.output_schema_valid }}"
+  status_contract_valid: "${{ sequence.brainstorm.outputs.status_contract_valid }}"

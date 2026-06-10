@@ -1,0 +1,121 @@
+id: superpowers-c2-skill-bundle-smoke
+version: 0.1.0
+desc: Validates the C2-adapted Superpowers skill bundle contract
+input_schema:
+  repo_root:
+    type: string
+    required: false
+inputs:
+  repo_root: '${{ first_nonempty(inputs.?repo_root, "/src") }}'
+sequence:
+  - id: validate_bundle
+    op: command_execution
+    inputs:
+      timeout: 30s
+      working_directory: /tmp
+      env:
+        REPO_ROOT: "{{ inputs.repo_root }}"
+      run: |
+        set -euo pipefail
+
+        root="${REPO_ROOT:-/src}"
+        skill_root="$root/skills-bundle/.agents/skills"
+        required_skills=(
+          c2-superpowers-route
+          c2-superpowers-brainstorm
+          c2-superpowers-write-plan
+          c2-superpowers-task-implementer
+          c2-superpowers-spec-reviewer
+          c2-superpowers-quality-reviewer
+          c2-superpowers-debug
+          c2-superpowers-verify
+          c2-superpowers-finish
+        )
+        required_phrases=(
+          "same-job Codex session"
+          "C2 recipes own orchestration"
+          "Do not dispatch subagents or child jobs"
+          "Do not create git worktrees"
+          "Do not make manual git commits"
+          "status contract"
+        )
+
+        json_escape() {
+          printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
+        }
+
+        skill_count=0
+        missing_count=0
+        violation_count=0
+        missing=""
+        violations=""
+
+        for skill in "${required_skills[@]}"; do
+          skill_count=$((skill_count + 1))
+          dir="$skill_root/$skill"
+          skill_md="$dir/SKILL.md"
+          openai_yaml="$dir/agents/openai.yaml"
+
+          if [ ! -f "$skill_md" ]; then
+            missing_count=$((missing_count + 1))
+            missing="$missing $skill/SKILL.md"
+            continue
+          fi
+          if [ ! -f "$openai_yaml" ]; then
+            missing_count=$((missing_count + 1))
+            missing="$missing $skill/agents/openai.yaml"
+          fi
+
+          name="$(awk -F': *' '/^name: / { print $2; exit }' "$skill_md")"
+          if [ "$name" != "$skill" ]; then
+            violation_count=$((violation_count + 1))
+            violations="$violations ${skill}:frontmatter-name"
+          fi
+          if ! grep -q '^description: ' "$skill_md"; then
+            violation_count=$((violation_count + 1))
+            violations="$violations ${skill}:missing-description"
+          fi
+          for phrase in "${required_phrases[@]}"; do
+            if ! grep -Fq "$phrase" "$skill_md"; then
+              violation_count=$((violation_count + 1))
+              violations="$violations ${skill}:missing-${phrase// /_}"
+            fi
+          done
+          if [ -f "$openai_yaml" ]; then
+            if ! grep -q '^interface:' "$openai_yaml"; then
+              violation_count=$((violation_count + 1))
+              violations="$violations ${skill}:missing-openai-interface"
+            fi
+            if ! grep -q '^  default_prompt: ' "$openai_yaml"; then
+              violation_count=$((violation_count + 1))
+              violations="$violations ${skill}:missing-default-prompt"
+            fi
+          fi
+        done
+
+        ok=false
+        if [ "$missing_count" -eq 0 ] && [ "$violation_count" -eq 0 ]; then
+          ok=true
+        fi
+
+        out="{{ context.environment.op.outbox }}/superpowers/skills"
+        mkdir -p "$out"
+        cat > "$out/bundle-contract.json" <<JSON
+        {
+          "ok": $ok,
+          "skill_count": $skill_count,
+          "missing_count": $missing_count,
+          "violation_count": $violation_count,
+          "missing": "$(json_escape "$missing")",
+          "violations": "$(json_escape "$violations")"
+        }
+        JSON
+        cat "$out/bundle-contract.json"
+
+outputs:
+  ok: "${{ json_parse(sequence.validate_bundle.outputs.stdout).ok }}"
+  skill_count: "${{ json_parse(sequence.validate_bundle.outputs.stdout).skill_count }}"
+  missing_count: "${{ json_parse(sequence.validate_bundle.outputs.stdout).missing_count }}"
+  violation_count: "${{ json_parse(sequence.validate_bundle.outputs.stdout).violation_count }}"
+  missing: "${{ json_parse(sequence.validate_bundle.outputs.stdout).missing }}"
+  violations: "${{ json_parse(sequence.validate_bundle.outputs.stdout).violations }}"

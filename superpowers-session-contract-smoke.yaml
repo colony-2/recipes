@@ -1,0 +1,39 @@
+id: superpowers-session-contract-smoke
+version: 0.1.0
+desc: Proves missing sessionId starts isolated Codex context and explicit sessionId resumes it
+sequence:
+  - id: start_isolated_session
+    op: git+https://github.com/colony-2/c2ops.git//codex@main
+    inputs:
+      worktree_path: "{{ context.environment.op.worktree_path }}"
+      workdir_path: "{{ context.environment.op.workdir }}"
+      artifact_inbox_path: "{{ context.environment.op.inbox }}"
+      artifact_outbox_path: "{{ context.environment.op.outbox }}"
+      status_contract:
+        path: superpowers/session/start-status.json
+      prompt: |
+        Start a fresh isolated Codex session for a Superpowers role. No prior
+        sessionId is supplied to this op, so it must not carry conversational
+        context from another role.
+
+  - id: resume_same_session
+    op: git+https://github.com/colony-2/c2ops.git//codex@main
+    inputs:
+      sessionId: "{{ sequence.start_isolated_session.outputs.sessionId }}"
+      worktree_path: "{{ context.environment.op.worktree_path }}"
+      workdir_path: "{{ context.environment.op.workdir }}"
+      artifact_inbox_path: "{{ context.environment.op.inbox }}"
+      artifact_outbox_path: "{{ context.environment.op.outbox }}"
+      status_contract:
+        path: superpowers/session/resume-status.json
+      prompt: |
+        Continue the same Codex session. The supplied sessionId should preserve
+        the role's conversational context for a deliberate resume.
+
+outputs:
+  isolated_session_requested_without_session_id: true
+  isolated_session_id: "{{ sequence.start_isolated_session.outputs.sessionId }}"
+  resume_requested_session_id: "{{ sequence.start_isolated_session.outputs.sessionId }}"
+  resumed_session_id: "{{ sequence.resume_same_session.outputs.sessionId }}"
+  resume_reused_session_id: "${{ sequence.start_isolated_session.outputs.sessionId == sequence.resume_same_session.outputs.sessionId }}"
+  both_steps_completed: "${{ sequence.start_isolated_session.outputs.status == 'completed' && sequence.resume_same_session.outputs.status == 'completed' }}"

@@ -143,7 +143,16 @@ Artifacts are stored on the node that produced them. If an outer scope needs an 
 
 Use `recipe.run_and_get_result`, `recipe.await_result`, or `recipe.get_result`:
 - Child value outputs are under `sequence.<step-id>.outputs.outputs.*`.
-- Child artifacts are attached to the parent step artifacts (`sequence.<step-id>.artifacts`).
+- Child job result artifacts are attached to the parent step artifacts
+  (`sequence.<step-id>.artifacts`).
+- Parent recipes cannot reference arbitrary intermediate artifacts from inside
+  the child recipe. Child node internals stay encapsulated by the child job.
+
+If a parent needs a diagnostic artifact from child work, the child recipe should
+make that artifact part of its job result contract. For example, the child can
+finish through a status/report step that writes the diagnostic artifact to its
+final outbox, or export the artifact key through a declared output when the
+downstream consumer accepts artifact references.
 
 ```yaml
 - id: run_child

@@ -49,7 +49,7 @@ Once a workflow is satisfied with a commit (through human and/or machine decisis
 In addition to git state, each op can work with artifacts. Artifacts are arbitrary additional files that are available in the system. Some ops declare specific input or output artifacts. Other ops use the built in inbox/outbox pattern. When an op recives a general artifact input, those files are automatically made available in the inbox directory for that op. When an op writes a file or files to an outbox, those files are automatically persisted as part of the output of that op.
 
 ## C2J / C2 CLI
-Use `c2j` for local recipe authoring in this repo. The default validation loop is `c2j submit --recipe-file ... --run --embed`, which submits the local yaml directly and runs it in the embedded runtime. Use `c2j self` to confirm the current cell, `c2j list --self --embed` to find recent jobs, and `c2j exec --embed --job-id <id>` to continue a submitted job.
+Use `c2j` for local recipe authoring in this repo. The default validation loop is `c2j submit --recipe-file ... --run --embed`, which submits the local yaml directly and runs it in the embedded runtime. Use `c2j self` to confirm the current cell, `c2j list --self --embed` to find recent jobs, and `c2j run one --embed --job-id <id>` to continue a submitted job.
 
 Use `c2` only when you need server-managed tickets or remote workflow inspection. Do not use a separate recipe registry/update step for local recipe authoring; submit the recipe file with `c2j`.
 

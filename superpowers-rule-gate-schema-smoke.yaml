@@ -1,0 +1,260 @@
+id: superpowers-rule-gate-schema-smoke
+version: 0.1.0
+desc: Deterministic Superpowers/C2 rule_gate smoke for JSON Schema, policy failure, child status, and invalid-rule failure handling
+sequence:
+  - id: seed_artifacts
+    op: command_execution
+    inputs:
+      timeout: 30s
+      run: |
+        set -euo pipefail
+        OUT="{{ context.environment.op.outbox }}"
+        mkdir -p "$OUT/plan"
+
+        cat > "$OUT/plan/valid-plan.json" <<'JSON'
+        {
+          "summary": "Two dependent implementation tasks.",
+          "tasks": [
+            {
+              "id": "TASK-1",
+              "title": "Add failing test",
+              "status": "pending",
+              "depends_on": [],
+              "requires_tdd": true,
+              "files": ["pkg/example_test.go"]
+            },
+            {
+              "id": "TASK-2",
+              "title": "Make behavior pass",
+              "status": "pending",
+              "depends_on": ["TASK-1"],
+              "requires_tdd": true,
+              "files": ["pkg/example.go"]
+            }
+          ],
+          "dependency_order": ["TASK-1", "TASK-2"]
+        }
+        JSON
+
+        cat > "$OUT/plan/invalid-plan.json" <<'JSON'
+        {
+          "summary": "Invalid plan missing task ids.",
+          "tasks": [
+            {
+              "title": "Missing id",
+              "status": "pending"
+            }
+          ],
+          "dependency_order": []
+        }
+        JSON
+
+  - id: valid_plan_gate
+    op: git+https://github.com/colony-2/c2ops.git//rule_gate@main
+    artifacts:
+      plan.json: '${{ sequence.seed_artifacts.artifacts["plan/valid-plan.json"] }}'
+    inputs:
+      rules:
+        - id: valid_plan_json
+          type: json_parse
+          inbox_path: plan.json
+          message: Plan artifact must be parseable JSON.
+        - id: valid_plan_schema
+          type: json_schema
+          inbox_path: plan.json
+          schema:
+            type: object
+            required:
+              - summary
+              - tasks
+              - dependency_order
+            properties:
+              summary:
+                type: string
+                minLength: 1
+              tasks:
+                type: array
+                minItems: 1
+                items:
+                  type: object
+                  required:
+                    - id
+                    - title
+                    - status
+                    - depends_on
+                    - requires_tdd
+                    - files
+                  properties:
+                    id:
+                      type: string
+                      pattern: '^TASK-[0-9]+$'
+                    title:
+                      type: string
+                      minLength: 1
+                    status:
+                      type: string
+                      enum:
+                        - pending
+                        - running
+                        - done
+                        - blocked
+                    depends_on:
+                      type: array
+                      items:
+                        type: string
+                    requires_tdd:
+                      type: boolean
+                    files:
+                      type: array
+                      minItems: 1
+                      items:
+                        type: string
+              dependency_order:
+                type: array
+                minItems: 1
+                items:
+                  type: string
+          message: Plan artifact must match the Superpowers/C2 task-plan schema.
+
+  - id: schema_policy_fail_gate
+    op: git+https://github.com/colony-2/c2ops.git//rule_gate@main
+    artifacts:
+      plan.json: '${{ sequence.seed_artifacts.artifacts["plan/invalid-plan.json"] }}'
+    inputs:
+      rules:
+        - id: invalid_plan_json
+          type: json_parse
+          inbox_path: plan.json
+          message: Invalid fixture should still be parseable JSON.
+        - id: bad_plan_schema
+          type: json_schema
+          inbox_path: plan.json
+          schema:
+            type: object
+            required:
+              - tasks
+            properties:
+              tasks:
+                type: array
+                minItems: 1
+                items:
+                  type: object
+                  required:
+                    - id
+                    - title
+                  properties:
+                    id:
+                      type: string
+                      pattern: '^TASK-[0-9]+$'
+                    title:
+                      type: string
+                      minLength: 1
+          message: Schema policy failure should return ok=false, not fail the node.
+
+  - id: assertion_policy_fail_gate
+    op: git+https://github.com/colony-2/c2ops.git//rule_gate@main
+    inputs:
+      rules:
+        - id: tdd_red_gate_failed
+          type: assert
+          value: false
+          message: TDD RED evidence must exist before GREEN implementation.
+
+  - id: child_status_completed_gate
+    op: git+https://github.com/colony-2/c2ops.git//rule_gate@main
+    inputs:
+      rules:
+        - id: child_completed
+          type: child_status
+          status:
+            job_id: task-job-1
+            terminal: true
+            status: completed
+            failure_kind: none
+            failure_message: ""
+            outputs:
+              outputs:
+                task_id: TASK-1
+                result: ready_for_next_task
+          allow_statuses:
+            - completed
+          message: Completed child status should pass the child-status policy.
+
+  - id: child_status_failed_gate
+    op: git+https://github.com/colony-2/c2ops.git//rule_gate@main
+    inputs:
+      rules:
+        - id: child_must_complete
+          type: child_status
+          status:
+            job_id: task-job-2
+            terminal: true
+            status: failed
+            failure_kind: task_error
+            failure_message: Review found a blocking issue.
+            outputs:
+              outputs:
+                task_id: TASK-2
+                result: needs_plan_update
+          allow_statuses:
+            - completed
+          message: Failed child status should be routeable as policy data.
+
+  - id: assert_contract
+    op: command_execution
+    inputs:
+      timeout: 30s
+      env:
+        VALID_PLAN_OK: '${{ sequence.valid_plan_gate.outputs.ok ? "true" : "false" }}'
+        VALID_PLAN_FAILED_COUNT_ZERO: '${{ size(sequence.valid_plan_gate.outputs.failed_rule_ids) == 0 ? "true" : "false" }}'
+        SCHEMA_POLICY_FAILED_WITH_OK_FALSE: '${{ !sequence.schema_policy_fail_gate.outputs.ok ? "true" : "false" }}'
+        SCHEMA_POLICY_FAILED_ID_PRESENT: '${{ "bad_plan_schema" in sequence.schema_policy_fail_gate.outputs.failed_rule_ids ? "true" : "false" }}'
+        ASSERT_POLICY_FAILED_WITH_OK_FALSE: '${{ !sequence.assertion_policy_fail_gate.outputs.ok ? "true" : "false" }}'
+        ASSERT_POLICY_FAILED_ID_PRESENT: '${{ "tdd_red_gate_failed" in sequence.assertion_policy_fail_gate.outputs.failed_rule_ids ? "true" : "false" }}'
+        CHILD_COMPLETED_OK: '${{ sequence.child_status_completed_gate.outputs.ok ? "true" : "false" }}'
+        CHILD_FAILED_ROUTEABLE: '${{ !sequence.child_status_failed_gate.outputs.ok ? "true" : "false" }}'
+        CHILD_FAILED_ID_PRESENT: '${{ "child_must_complete" in sequence.child_status_failed_gate.outputs.failed_rule_ids ? "true" : "false" }}'
+      run: |
+        set -euo pipefail
+        python3 - <<'PY'
+        import json
+        import os
+        import sys
+
+        required_true = [
+            "VALID_PLAN_OK",
+            "VALID_PLAN_FAILED_COUNT_ZERO",
+            "SCHEMA_POLICY_FAILED_WITH_OK_FALSE",
+            "SCHEMA_POLICY_FAILED_ID_PRESENT",
+            "ASSERT_POLICY_FAILED_WITH_OK_FALSE",
+            "ASSERT_POLICY_FAILED_ID_PRESENT",
+            "CHILD_COMPLETED_OK",
+            "CHILD_FAILED_ROUTEABLE",
+            "CHILD_FAILED_ID_PRESENT",
+        ]
+
+        failures = [
+            f"{key}=true expected, got {os.environ.get(key, '')!r}"
+            for key in required_true
+            if os.environ.get(key, "").lower() != "true"
+        ]
+        result = {key: os.environ.get(key, "").lower() == "true" for key in required_true}
+        print(json.dumps(result, sort_keys=True))
+
+        if failures:
+            print("rule_gate smoke assertion failures:", file=sys.stderr)
+            for failure in failures:
+                print(f"- {failure}", file=sys.stderr)
+            sys.exit(1)
+        PY
+
+outputs:
+  valid_plan_ok: "${{ sequence.valid_plan_gate.outputs.ok }}"
+  valid_plan_failed_count: "${{ size(sequence.valid_plan_gate.outputs.failed_rule_ids) }}"
+  schema_policy_ok_false: "${{ !sequence.schema_policy_fail_gate.outputs.ok }}"
+  schema_policy_failed_ids: "${{ sequence.schema_policy_fail_gate.outputs.failed_rule_ids }}"
+  assert_policy_ok_false: "${{ !sequence.assertion_policy_fail_gate.outputs.ok }}"
+  assert_policy_failed_ids: "${{ sequence.assertion_policy_fail_gate.outputs.failed_rule_ids }}"
+  child_completed_ok: "${{ sequence.child_status_completed_gate.outputs.ok }}"
+  child_failed_routeable: "${{ !sequence.child_status_failed_gate.outputs.ok }}"
+  child_failed_ids: "${{ sequence.child_status_failed_gate.outputs.failed_rule_ids }}"

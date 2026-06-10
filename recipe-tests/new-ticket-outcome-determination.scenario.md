@@ -5,8 +5,10 @@ cases:
   - id: ts-037-outcome-bundle-artifacts
     type: recipe_case
     inputs:
-      title: Outcome planning
-      description: Build test statements before implementation
+      prompt: |
+        Outcome planning
+
+        Build test statements before implementation
     mocks:
       ops:
         - match:
@@ -22,6 +24,19 @@ cases:
             outputs:
               stdout: '[{"short_name":"core","repo":"https://github.com/colony-2/core.git"},{"short_name":"frontend","repo":"https://github.com/colony-2/frontend.git"},{"short_name":"api","repo":"https://github.com/colony-2/api.git"},{"short_name":"recipe-tests","repo":"https://github.com/colony-2/recipe-tests.git"}]'
               exit_code: 0
+            artifacts:
+              feedback/user-feedback.md: ""
+              feedback/api-review-feedback.md: ""
+              requirements/prior-plan.json: ""
+              requirements/plan.json: ""
+              requirements/api-review.json: ""
+              requirements/index.md: ""
+              implementation/plan.json: ""
+              implementation/index.md: ""
+              outcome/plan.json: ""
+              outcome/review.json: ""
+              outcome/tests-index.md: ""
+              outcome/validation-commands.txt: ""
         - match:
             node_path: new-ticket-outcome-determination/build_outcome_bundle
           behavior:
@@ -58,8 +73,10 @@ cases:
   - id: ts-038-outcome-outputs-include-validation-commands
     type: recipe_case
     inputs:
-      title: Validate mapping
-      description: Ensure outputs expose command plan
+      prompt: |
+        Validate mapping
+
+        Ensure outputs expose command plan
     mocks:
       ops:
         - match:
@@ -75,6 +92,19 @@ cases:
             outputs:
               stdout: '[{"short_name":"core","repo":"https://github.com/colony-2/core.git"},{"short_name":"frontend","repo":"https://github.com/colony-2/frontend.git"},{"short_name":"api","repo":"https://github.com/colony-2/api.git"},{"short_name":"recipe-tests","repo":"https://github.com/colony-2/recipe-tests.git"}]'
               exit_code: 0
+            artifacts:
+              feedback/user-feedback.md: ""
+              feedback/api-review-feedback.md: ""
+              requirements/prior-plan.json: ""
+              requirements/plan.json: ""
+              requirements/api-review.json: ""
+              requirements/index.md: ""
+              implementation/plan.json: ""
+              implementation/index.md: ""
+              outcome/plan.json: ""
+              outcome/review.json: ""
+              outcome/tests-index.md: ""
+              outcome/validation-commands.txt: ""
         - match:
             node_path: new-ticket-outcome-determination/build_outcome_bundle
           behavior:
@@ -108,8 +138,10 @@ cases:
   - id: ts-039-outcome-review-blocks-invalid-statements
     type: recipe_case
     inputs:
-      title: Bad outcome quality
-      description: Contrarian review blocks weak statements
+      prompt: |
+        Bad outcome quality
+
+        Contrarian review blocks weak statements
     mocks:
       ops:
         - match:
@@ -125,6 +157,19 @@ cases:
             outputs:
               stdout: '[{"short_name":"core","repo":"https://github.com/colony-2/core.git"},{"short_name":"frontend","repo":"https://github.com/colony-2/frontend.git"},{"short_name":"api","repo":"https://github.com/colony-2/api.git"},{"short_name":"recipe-tests","repo":"https://github.com/colony-2/recipe-tests.git"}]'
               exit_code: 0
+            artifacts:
+              feedback/user-feedback.md: ""
+              feedback/api-review-feedback.md: ""
+              requirements/prior-plan.json: ""
+              requirements/plan.json: ""
+              requirements/api-review.json: ""
+              requirements/index.md: ""
+              implementation/plan.json: ""
+              implementation/index.md: ""
+              outcome/plan.json: ""
+              outcome/review.json: ""
+              outcome/tests-index.md: ""
+              outcome/validation-commands.txt: ""
         - match:
             node_path: new-ticket-outcome-determination/build_outcome_bundle
           behavior:

@@ -91,7 +91,7 @@ What this gives you:
 If the job pauses and you want to continue the same submission later:
 
 ```bash
-c2j exec --embed --job-id <job-id>
+c2j run one --embed --job-id <job-id>
 ```
 
 To find recent job IDs for the current cell:
@@ -110,6 +110,9 @@ Write recipes with these rules:
 - use `context.environment.op.inbox` and `context.environment.op.outbox` for paths read or written by an op process
 - use `context.environment.host.*` only when you intentionally need the c2j worker host path
 - use an `artifacts:` block only on ops that support inbox bindings
+- pass the submitted `prompt` input directly in LLM prompts when needed; do not write it to a file just to re-read it
+- do not paste file contents into LLM prompts; bind files into the op inbox and tell the LLM the inbox path to read
+- use artifact set bindings such as `submitted/: '${{ context.artifacts }}'` when an op needs a whole submitted or node-produced artifact set
 - use `${{ ... }}` for raw CEL values when a field expects a list, map, boolean, or number
 - use `json_parse(...)` when consuming `llm2` responses produced under `response_schema`
 - guard optional values with `has(...)` before indexing or dereferencing
@@ -145,7 +148,7 @@ Use the fastest tool that answers the question you have:
 
 1. `c2j submit --recipe-file ... --run --embed`
    Use this first. It is the default manual validation path for recipe authoring.
-2. `c2j exec --embed --job-id ...`
+2. `c2j run one --embed --job-id ...`
    Use this when continuing an existing blocked or partially completed run.
 3. `c2j test ...`
    Use this only when you need curated suites, mocks, repeated cases, or artifact assertions. See `RECIPE_TESTING_CLI_USER_GUIDE.md`.

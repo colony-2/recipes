@@ -2,30 +2,49 @@ id: new-ticket-outcome-determination
 version: 0.2.0
 desc: Determine and maintain cell test statements and validation plan before implementation
 input_schema:
-  title:
-    type: string
-    required: true
-  description:
+  prompt:
     type: string
     required: true
   user_feedback:
     type: string
     required: false
 inputs:
-  title: "{{ inputs.title }}"
-  description: "{{ inputs.description }}"
+  prompt: "{{ inputs.prompt }}"
   user_feedback: '${{ first_nonempty(inputs.?user_feedback, "") }}'
 sequence:
   - id: load_cells
     op: command_execution
     inputs:
       timeout: 30s
+      env:
+        C2_USER_FEEDBACK: "{{ inputs.user_feedback }}"
       run: |
         set -euo pipefail
+        mkdir -p "{{ context.environment.op.outbox }}/feedback" "{{ context.environment.op.outbox }}/requirements" "{{ context.environment.op.outbox }}/implementation" "{{ context.environment.op.outbox }}/outcome"
+        printf '%s' "$C2_USER_FEEDBACK" > "{{ context.environment.op.outbox }}/feedback/user-feedback.md"
+        : > "{{ context.environment.op.outbox }}/requirements/plan.json"
+        : > "{{ context.environment.op.outbox }}/requirements/index.md"
+        : > "{{ context.environment.op.outbox }}/implementation/plan.json"
+        : > "{{ context.environment.op.outbox }}/implementation/index.md"
+        : > "{{ context.environment.op.outbox }}/outcome/plan.json"
+        : > "{{ context.environment.op.outbox }}/outcome/review.json"
+        : > "{{ context.environment.op.outbox }}/outcome/tests-index.md"
+        : > "{{ context.environment.op.outbox }}/outcome/validation-commands.txt"
         c2j cells --json
 
   - id: build_outcome_bundle
     op: git+https://github.com/colony-2/c2ops.git//codex@main
+    artifacts:
+      submitted/: '${{ context.artifacts }}'
+      feedback/user-feedback.md: '${{ sequence.load_cells.artifacts["feedback/user-feedback.md"] }}'
+      requirements/plan.json: '${{ "requirements/plan.json" in context.artifacts ? context.artifacts["requirements/plan.json"] : sequence.load_cells.artifacts["requirements/plan.json"] }}'
+      requirements/index.md: '${{ "requirements/index.md" in context.artifacts ? context.artifacts["requirements/index.md"] : sequence.load_cells.artifacts["requirements/index.md"] }}'
+      implementation/plan.json: '${{ "implementation/plan.json" in context.artifacts ? context.artifacts["implementation/plan.json"] : sequence.load_cells.artifacts["implementation/plan.json"] }}'
+      implementation/index.md: '${{ "implementation/index.md" in context.artifacts ? context.artifacts["implementation/index.md"] : sequence.load_cells.artifacts["implementation/index.md"] }}'
+      outcome/plan.json: '${{ "outcome/plan.json" in context.artifacts ? context.artifacts["outcome/plan.json"] : sequence.load_cells.artifacts["outcome/plan.json"] }}'
+      outcome/review.json: '${{ "outcome/review.json" in context.artifacts ? context.artifacts["outcome/review.json"] : sequence.load_cells.artifacts["outcome/review.json"] }}'
+      outcome/tests-index.md: '${{ "outcome/tests-index.md" in context.artifacts ? context.artifacts["outcome/tests-index.md"] : sequence.load_cells.artifacts["outcome/tests-index.md"] }}'
+      outcome/validation-commands.txt: '${{ "outcome/validation-commands.txt" in context.artifacts ? context.artifacts["outcome/validation-commands.txt"] : sequence.load_cells.artifacts["outcome/validation-commands.txt"] }}'
     inputs:
       worktree_path: "{{ context.environment.op.worktree_path }}"
       workdir_path: "{{ context.environment.op.workdir }}"
@@ -39,9 +58,15 @@ sequence:
         Follow the `c2-test-statement-curator` skill contract.
         Build an outcome-determination bundle for this job before implementation starts.
 
-        Job Title: {{ inputs.title }}
-        Job Description:
-        {{ inputs.description }}
+        Ticket prompt:
+        {{ inputs.prompt }}
+
+        Submitted artifacts directory:
+        `{{ context.environment.op.inbox }}/submitted`
+
+        Do not expect submitted file contents to be embedded in this prompt. If
+        submitted artifacts are present, read them from the submitted artifacts
+        directory.
 
         Current Cell: {{ context.workflow.cell }}
         Available Cells JSON: ${{ sequence.load_cells.outputs.stdout }}
@@ -62,8 +87,8 @@ sequence:
         Authoritative test statement location in the cell repo:
         - `.c2/tests/*.md` (relative to the current cell root)
 
-        User feedback to incorporate (if any):
-        {{ inputs.user_feedback }}
+        User feedback artifact path:
+        `{{ context.environment.op.inbox }}/feedback/user-feedback.md`
 
         Requirements:
         - Identify current test statements relevant to this job and this cell.

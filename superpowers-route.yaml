@@ -1,0 +1,286 @@
+id: superpowers-route
+version: 0.2.0
+desc: Route a ticket into the C2-adapted Superpowers workflow
+input_schema:
+  prompt:
+    type: string
+    required: true
+  mode:
+    type: string
+    required: false
+  plan_json:
+    type: string
+    required: false
+  design_json:
+    type: string
+    required: false
+  verification_json:
+    type: string
+    required: false
+  skill_bundle_ref:
+    type: string
+    required: false
+inputs:
+  prompt: "{{ inputs.prompt }}"
+  mode: '${{ first_nonempty(inputs.?mode, "auto") }}'
+  plan_json: '${{ first_nonempty(inputs.?plan_json, "") }}'
+  design_json: '${{ first_nonempty(inputs.?design_json, "") }}'
+  verification_json: '${{ first_nonempty(inputs.?verification_json, "") }}'
+  skill_bundle_ref: '${{ first_nonempty(inputs.?skill_bundle_ref, "") }}'
+state:
+  initial:
+    - to: route_explicit_mode
+      when: inputs.?mode.orValue("auto") != "auto"
+    - to: route_submitted_plan
+      when: nonempty(inputs.?plan_json.orValue(""))
+    - to: route_submitted_design
+      when: nonempty(inputs.?design_json.orValue(""))
+    - to: route_verification
+      when: nonempty(inputs.?verification_json.orValue(""))
+    - to: heuristic_route
+      when: true
+  states:
+    route_explicit_mode:
+      op: command_execution
+      inputs:
+        timeout: 30s
+        env:
+          C2_MODE: "{{ inputs.mode }}"
+        run: |
+          set -euo pipefail
+          mode="$C2_MODE"
+          skill="c2-superpowers-route"
+          review=false
+          artifacts=()
+          case "$mode" in
+            brainstorm)
+              skill="c2-superpowers-brainstorm"
+              review=true
+              ;;
+            write_plan)
+              skill="c2-superpowers-write-plan"
+              artifacts=("superpowers/brainstorm/result.json")
+              ;;
+            execute_plan)
+              skill="c2-superpowers-task-implementer"
+              artifacts=("superpowers/plan/plan.json")
+              ;;
+            debug)
+              skill="c2-superpowers-debug"
+              ;;
+            verify)
+              skill="c2-superpowers-verify"
+              artifacts=("superpowers/plan/plan.json")
+              ;;
+            finish)
+              skill="c2-superpowers-finish"
+              artifacts=("superpowers/verify/result.json")
+              ;;
+            needs_user_input)
+              skill="c2-superpowers-route"
+              ;;
+            *)
+              mode="needs_user_input"
+              skill="c2-superpowers-route"
+              ;;
+          esac
+          python3 - "$mode" "$skill" "$review" "${artifacts[@]}" <<'PY'
+          import json
+          import sys
+
+          mode, skill, review, *artifacts = sys.argv[1:]
+          result = {
+              "recommended_mode": mode,
+              "selected_skill": skill,
+              "required_skills": [skill],
+              "rationale": "Deterministic route from explicit mode input.",
+              "needs_user_input": mode == "needs_user_input",
+              "user_question": "Which Superpowers phase should run next?" if mode == "needs_user_input" else "",
+              "required_artifacts": artifacts,
+              "human_review_required": review == "true",
+          }
+          print(json.dumps(result, sort_keys=True))
+          PY
+
+    route_submitted_plan:
+      op: command_execution
+      inputs:
+        timeout: 30s
+        run: |
+          set -euo pipefail
+          cat <<'JSON'
+          {
+            "human_review_required": false,
+            "needs_user_input": false,
+            "rationale": "Deterministic route because a task plan artifact is already present.",
+            "recommended_mode": "execute_plan",
+            "required_artifacts": ["superpowers/plan/plan.json"],
+            "required_skills": ["c2-superpowers-task-implementer"],
+            "selected_skill": "c2-superpowers-task-implementer",
+            "user_question": ""
+          }
+          JSON
+
+    route_submitted_design:
+      op: command_execution
+      inputs:
+        timeout: 30s
+        run: |
+          set -euo pipefail
+          cat <<'JSON'
+          {
+            "human_review_required": false,
+            "needs_user_input": false,
+            "rationale": "Deterministic route because a design artifact is already present.",
+            "recommended_mode": "write_plan",
+            "required_artifacts": ["superpowers/brainstorm/result.json"],
+            "required_skills": ["c2-superpowers-write-plan"],
+            "selected_skill": "c2-superpowers-write-plan",
+            "user_question": ""
+          }
+          JSON
+
+    route_verification:
+      op: command_execution
+      inputs:
+        timeout: 30s
+        run: |
+          set -euo pipefail
+          cat <<'JSON'
+          {
+            "human_review_required": false,
+            "needs_user_input": false,
+            "rationale": "Deterministic route because verification evidence is already present.",
+            "recommended_mode": "finish",
+            "required_artifacts": ["superpowers/verify/result.json"],
+            "required_skills": ["c2-superpowers-finish"],
+            "selected_skill": "c2-superpowers-finish",
+            "user_question": ""
+          }
+          JSON
+
+    heuristic_route:
+      op: git+https://github.com/colony-2/c2ops.git//codex/run_skill@main
+      transitions:
+        - to: heuristic_route_gate
+          when: true
+      inputs:
+        skill: c2-superpowers-route
+        input:
+          ticket_prompt: "{{ inputs.prompt }}"
+          requested_mode: "{{ inputs.mode }}"
+          skill_bundle_ref: "{{ inputs.skill_bundle_ref }}"
+          route_contract:
+            allowed_modes:
+              - brainstorm
+              - write_plan
+              - execute_plan
+              - debug
+              - verify
+              - finish
+              - needs_user_input
+        prompt: |
+          Route this ticket before any task-facing Codex prompt is constructed.
+
+          Use the `c2-superpowers-route` contract. If a skill bundle ref is
+          provided, it identifies the expected C2 Superpowers skills bundle:
+          `{{ inputs.skill_bundle_ref }}`.
+
+          Return the primary route artifact at
+          `superpowers/route/result.json` and the status contract at
+          `superpowers/route/latest-status.json`.
+
+          Do not implement code, create child jobs, create git worktrees, or
+          make manual git commits. C2 recipes own orchestration and gates.
+        status_contract:
+          path: superpowers/route/latest-status.json
+        output:
+          from: artifact
+          path: superpowers/route/result.json
+          format: json
+          schema:
+            type: object
+            required:
+              - recommended_mode
+              - selected_skill
+              - required_skills
+              - rationale
+              - needs_user_input
+              - user_question
+              - required_artifacts
+              - human_review_required
+            properties:
+              recommended_mode:
+                type: string
+                enum:
+                  - brainstorm
+                  - write_plan
+                  - execute_plan
+                  - debug
+                  - verify
+                  - finish
+                  - needs_user_input
+              selected_skill:
+                type: string
+                minLength: 1
+              required_skills:
+                type: array
+                minItems: 1
+                items:
+                  type: string
+              rationale:
+                type: string
+                minLength: 1
+              needs_user_input:
+                type: boolean
+              user_question:
+                type: string
+              required_artifacts:
+                type: array
+                items:
+                  type: string
+              human_review_required:
+                type: boolean
+            additionalProperties: true
+
+    heuristic_route_gate:
+      op: git+https://github.com/colony-2/c2ops.git//rule_gate@main
+      inputs:
+        rules:
+          - id: route_completed
+            type: assert
+            value: ${{ states.heuristic_route.outputs.status == "completed" || states.heuristic_route.outputs.status == "incomplete" }}
+            message: Route skill must return a normalized Codex status.
+          - id: route_output_schema_valid
+            type: assert
+            value: ${{ states.heuristic_route.outputs.output_schema_valid }}
+            message: Route result artifact must match the route schema.
+          - id: route_status_contract_valid
+            type: assert
+            value: ${{ states.heuristic_route.outputs.status_contract_present && states.heuristic_route.outputs.status_contract_valid }}
+            message: Route status contract must be present and valid.
+          - id: selected_skill_present
+            type: assert
+            value: ${{ states.heuristic_route.outputs.parsed_output.selected_skill != "" }}
+            message: Route must select a downstream Superpowers skill.
+          - id: user_question_when_needed
+            type: assert
+            value: ${{ !states.heuristic_route.outputs.parsed_output.needs_user_input || states.heuristic_route.outputs.parsed_output.user_question != "" }}
+            message: Routes that need user input must include a concrete question.
+
+outputs:
+  route_source: "${{ state_exists('heuristic_route') ? 'heuristic_skill' : 'recipe_state' }}"
+  route_ok: "${{ state_exists('heuristic_route_gate') ? state_output('heuristic_route_gate', 'ok', false) : true }}"
+  route_failed_rule_ids: "${{ state_exists('heuristic_route_gate') ? state_output('heuristic_route_gate', 'failed_rule_ids', []) : [] }}"
+  route_json: "${{ first_nonempty(state_output('route_explicit_mode', 'stdout', ''), state_output('route_submitted_plan', 'stdout', ''), state_output('route_submitted_design', 'stdout', ''), state_output('route_verification', 'stdout', ''), state_output('heuristic_route', 'raw_output', '')) }}"
+  recommended_mode: "${{ json_parse(first_nonempty(state_output('route_explicit_mode', 'stdout', ''), state_output('route_submitted_plan', 'stdout', ''), state_output('route_submitted_design', 'stdout', ''), state_output('route_verification', 'stdout', ''), state_output('heuristic_route', 'raw_output', ''))).recommended_mode }}"
+  selected_skill: "${{ json_parse(first_nonempty(state_output('route_explicit_mode', 'stdout', ''), state_output('route_submitted_plan', 'stdout', ''), state_output('route_submitted_design', 'stdout', ''), state_output('route_verification', 'stdout', ''), state_output('heuristic_route', 'raw_output', ''))).selected_skill }}"
+  required_skills: "${{ json_parse(first_nonempty(state_output('route_explicit_mode', 'stdout', ''), state_output('route_submitted_plan', 'stdout', ''), state_output('route_submitted_design', 'stdout', ''), state_output('route_verification', 'stdout', ''), state_output('heuristic_route', 'raw_output', ''))).required_skills }}"
+  rationale: "${{ json_parse(first_nonempty(state_output('route_explicit_mode', 'stdout', ''), state_output('route_submitted_plan', 'stdout', ''), state_output('route_submitted_design', 'stdout', ''), state_output('route_verification', 'stdout', ''), state_output('heuristic_route', 'raw_output', ''))).rationale }}"
+  needs_user_input: "${{ json_parse(first_nonempty(state_output('route_explicit_mode', 'stdout', ''), state_output('route_submitted_plan', 'stdout', ''), state_output('route_submitted_design', 'stdout', ''), state_output('route_verification', 'stdout', ''), state_output('heuristic_route', 'raw_output', ''))).needs_user_input }}"
+  user_question: "${{ json_parse(first_nonempty(state_output('route_explicit_mode', 'stdout', ''), state_output('route_submitted_plan', 'stdout', ''), state_output('route_submitted_design', 'stdout', ''), state_output('route_verification', 'stdout', ''), state_output('heuristic_route', 'raw_output', ''))).user_question }}"
+  required_artifacts: "${{ json_parse(first_nonempty(state_output('route_explicit_mode', 'stdout', ''), state_output('route_submitted_plan', 'stdout', ''), state_output('route_submitted_design', 'stdout', ''), state_output('route_verification', 'stdout', ''), state_output('heuristic_route', 'raw_output', ''))).required_artifacts }}"
+  human_review_required: "${{ json_parse(first_nonempty(state_output('route_explicit_mode', 'stdout', ''), state_output('route_submitted_plan', 'stdout', ''), state_output('route_submitted_design', 'stdout', ''), state_output('route_verification', 'stdout', ''), state_output('heuristic_route', 'raw_output', ''))).human_review_required }}"
+  route_session_id: "${{ state_output('heuristic_route', 'sessionId', '') }}"
+  output_schema_valid: "${{ state_exists('heuristic_route') ? state_output('heuristic_route', 'output_schema_valid', false) : true }}"
+  status_contract_valid: "${{ state_exists('heuristic_route') ? state_output('heuristic_route', 'status_contract_valid', false) : true }}"

@@ -6,7 +6,7 @@ This repo uses Colony2 recipes as workflows. When editing recipes, prefer small,
 - Prefer `c2j submit --recipe-file ... --run --embed` while authoring. It validates the local yaml and runs it through the embedded runtime without requiring a separate registry step.
 - Use `c2j self` to confirm current-cell resolution before assuming the recipe is targeting the right repo.
 - Use `c2j list --self --embed` to find recent jobs for the current cell.
-- Use `c2j exec --embed --job-id <id>` to continue a submitted job.
+- Use `c2j run one --embed --job-id <id>` to continue a submitted job.
 - If the repo has no usable `.c2j/config.yaml`, pass `--cell <repo-or-path>` explicitly on submit.
 
 ## Remote-Op Rules

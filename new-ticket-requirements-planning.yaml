@@ -2,10 +2,7 @@ id: new-ticket-requirements-planning
 version: 0.1.0
 desc: Generate requirement documents (+ contrarian API review) with iterative refinement inputs
 input_schema:
-  title:
-    type: string
-    required: true
-  description:
+  prompt:
     type: string
     required: true
   prior_plan_json:
@@ -18,8 +15,7 @@ input_schema:
     type: string
     required: false
 inputs:
-  title: "{{ inputs.title }}"
-  description: "{{ inputs.description }}"
+  prompt: "{{ inputs.prompt }}"
   prior_plan_json: '${{ first_nonempty(inputs.?prior_plan_json, "") }}'
   user_feedback: '${{ first_nonempty(inputs.?user_feedback, "") }}'
   api_review_feedback: '${{ first_nonempty(inputs.?api_review_feedback, "") }}'
@@ -28,12 +24,29 @@ sequence:
     op: command_execution
     inputs:
       timeout: 30s
+      env:
+        C2_PRIOR_PLAN_JSON: "{{ inputs.prior_plan_json }}"
+        C2_USER_FEEDBACK: "{{ inputs.user_feedback }}"
+        C2_API_REVIEW_FEEDBACK: "{{ inputs.api_review_feedback }}"
       run: |
         set -euo pipefail
+        mkdir -p "{{ context.environment.op.outbox }}/feedback" "{{ context.environment.op.outbox }}/requirements"
+        printf '%s' "$C2_USER_FEEDBACK" > "{{ context.environment.op.outbox }}/feedback/user-feedback.md"
+        printf '%s' "$C2_API_REVIEW_FEEDBACK" > "{{ context.environment.op.outbox }}/feedback/api-review-feedback.md"
+        printf '%s' "$C2_PRIOR_PLAN_JSON" > "{{ context.environment.op.outbox }}/requirements/prior-plan.json"
+        : > "{{ context.environment.op.outbox }}/requirements/plan.json"
+        : > "{{ context.environment.op.outbox }}/requirements/api-review.json"
         c2j cells --json
 
   - id: persist_plan_and_docs
     op: git+https://github.com/colony-2/c2ops.git//codex@main
+    artifacts:
+      submitted/: '${{ context.artifacts }}'
+      feedback/user-feedback.md: '${{ sequence.load_cells.artifacts["feedback/user-feedback.md"] }}'
+      feedback/api-review-feedback.md: '${{ sequence.load_cells.artifacts["feedback/api-review-feedback.md"] }}'
+      requirements/prior-plan.json: '${{ sequence.load_cells.artifacts["requirements/prior-plan.json"] }}'
+      requirements/plan.json: '${{ "requirements/plan.json" in context.artifacts ? context.artifacts["requirements/plan.json"] : sequence.load_cells.artifacts["requirements/plan.json"] }}'
+      requirements/api-review.json: '${{ "requirements/api-review.json" in context.artifacts ? context.artifacts["requirements/api-review.json"] : sequence.load_cells.artifacts["requirements/api-review.json"] }}'
     inputs:
       worktree_path: "{{ context.environment.op.worktree_path }}"
       workdir_path: "{{ context.environment.op.workdir }}"
@@ -47,9 +60,15 @@ sequence:
         Follow the `c2-requirements-author` skill contract.
         Create a requirements bundle for this job and write artifacts directly.
 
-        Job Title: {{ inputs.title }}
-        Job Description:
-        {{ inputs.description }}
+        Ticket prompt:
+        {{ inputs.prompt }}
+
+        Submitted artifacts directory:
+        `{{ context.environment.op.inbox }}/submitted`
+
+        Do not expect submitted file contents to be embedded in this prompt. If
+        submitted artifacts are present, read them from the submitted artifacts
+        directory.
 
         Current Cell: {{ context.workflow.cell }}
         Available Cells JSON: ${{ sequence.load_cells.outputs.stdout }}
@@ -60,11 +79,14 @@ sequence:
         - `{{ context.environment.op.inbox }}/requirements/api-review.json`
         If present, read them and incorporate the prior plan/review findings.
 
-        Prior plan JSON fallback (only when inbox artifact is missing):
-        {{ inputs.prior_plan_json }}
+        Prior plan JSON fallback artifact path:
+        `{{ context.environment.op.inbox }}/requirements/prior-plan.json`
 
-        User feedback to incorporate (if any):
-        {{ inputs.user_feedback }}
+        User feedback artifact path:
+        `{{ context.environment.op.inbox }}/feedback/user-feedback.md`
+
+        API review feedback artifact path:
+        `{{ context.environment.op.inbox }}/feedback/api-review-feedback.md`
 
         Requirements:
         - Produce one or more requirements.

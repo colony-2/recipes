@@ -5,8 +5,10 @@ cases:
   - id: ts-011-continue-session-path
     type: recipe_case
     inputs:
-      title: Continue work
-      description: Resume prior coding session
+      prompt: |
+        Continue work
+
+        Resume prior coding session
       session_id: sid-existing
       include_prior_summary: false
     mocks:
@@ -17,6 +19,20 @@ cases:
             mode: return
             outputs:
               resolved_selectors: {}
+        - match:
+            node_path: job-implement/prepare_context/command_execution
+          behavior:
+            mode: return
+            outputs:
+              stdout: ""
+              stderr: ""
+              exit_code: 0
+              success: true
+            artifacts:
+              requirements/plan.json: "{}"
+              feedback/validation-feedback.md: ""
+              feedback/prior-session-summary.md: ""
+              feedback/extra-instructions.md: ""
         - match:
             node_path: "job-implement/continue_session/git+https://github.com/colony-2/c2ops.git//codex@main"
           behavior:
@@ -39,8 +55,10 @@ cases:
   - id: ts-012-new-session-path
     type: recipe_case
     inputs:
-      title: Start fresh
-      description: New implementation session
+      prompt: |
+        Start fresh
+
+        New implementation session
       include_prior_summary: true
       prior_session_summary: Previous run summary
     mocks:
@@ -51,6 +69,20 @@ cases:
             mode: return
             outputs:
               resolved_selectors: {}
+        - match:
+            node_path: job-implement/prepare_context/command_execution
+          behavior:
+            mode: return
+            outputs:
+              stdout: ""
+              stderr: ""
+              exit_code: 0
+              success: true
+            artifacts:
+              requirements/plan.json: "{}"
+              feedback/validation-feedback.md: ""
+              feedback/prior-session-summary.md: ""
+              feedback/extra-instructions.md: ""
         - match:
             node_path: "job-implement/new_session/git+https://github.com/colony-2/c2ops.git//codex@main"
           behavior:
@@ -73,8 +105,10 @@ cases:
   - id: ts-013-assistant-summary-output
     type: recipe_case
     inputs:
-      title: Summary output
-      description: Ensure summary output exists
+      prompt: |
+        Summary output
+
+        Ensure summary output exists
     mocks:
       ops:
         - match:
@@ -83,6 +117,20 @@ cases:
             mode: return
             outputs:
               resolved_selectors: {}
+        - match:
+            node_path: job-implement/prepare_context/command_execution
+          behavior:
+            mode: return
+            outputs:
+              stdout: ""
+              stderr: ""
+              exit_code: 0
+              success: true
+            artifacts:
+              requirements/plan.json: "{}"
+              feedback/validation-feedback.md: ""
+              feedback/prior-session-summary.md: ""
+              feedback/extra-instructions.md: ""
         - match:
             node_path: "job-implement/new_session/git+https://github.com/colony-2/c2ops.git//codex@main"
           behavior:

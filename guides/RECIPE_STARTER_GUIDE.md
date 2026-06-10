@@ -44,7 +44,7 @@ c2j submit \
   --embed
 ```
 
-Add `--inputs-file` when needed. Use `c2j exec --embed --job-id <job-id>` to continue an existing run, and `c2j list --self --embed` to find recent jobs.
+Add `--inputs-file` when needed. Use `c2j run one --embed --job-id <job-id>` to continue an existing run, and `c2j list --self --embed` to find recent jobs.
 
 ## 5. When to use the test harness
 

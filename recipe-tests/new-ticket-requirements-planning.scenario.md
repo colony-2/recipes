@@ -5,8 +5,10 @@ cases:
   - id: ts-005-plan-bundle-artifacts
     type: recipe_case
     inputs:
-      title: Add auth
-      description: Add auth requirements
+      prompt: |
+        Add auth
+
+        Add auth requirements
     mocks:
       ops:
         - match:
@@ -22,6 +24,19 @@ cases:
             outputs:
               stdout: '[{"short_name":"core","repo":"https://github.com/colony-2/core.git"},{"short_name":"frontend","repo":"https://github.com/colony-2/frontend.git"},{"short_name":"api","repo":"https://github.com/colony-2/api.git"},{"short_name":"recipe-tests","repo":"https://github.com/colony-2/recipe-tests.git"}]'
               exit_code: 0
+            artifacts:
+              feedback/user-feedback.md: ""
+              feedback/api-review-feedback.md: ""
+              requirements/prior-plan.json: ""
+              requirements/plan.json: ""
+              requirements/api-review.json: ""
+              requirements/index.md: ""
+              implementation/plan.json: ""
+              implementation/index.md: ""
+              outcome/plan.json: ""
+              outcome/review.json: ""
+              outcome/tests-index.md: ""
+              outcome/validation-commands.txt: ""
         - match:
             node_path: new-ticket-requirements-planning/persist_plan_and_docs
           behavior:
@@ -54,8 +69,10 @@ cases:
   - id: ts-006-requirement-structure-output
     type: recipe_case
     inputs:
-      title: Multi-step feature
-      description: Requires dependency ordering
+      prompt: |
+        Multi-step feature
+
+        Requires dependency ordering
     mocks:
       ops:
         - match:
@@ -71,6 +88,19 @@ cases:
             outputs:
               stdout: '[{"short_name":"core","repo":"https://github.com/colony-2/core.git"},{"short_name":"frontend","repo":"https://github.com/colony-2/frontend.git"},{"short_name":"api","repo":"https://github.com/colony-2/api.git"},{"short_name":"recipe-tests","repo":"https://github.com/colony-2/recipe-tests.git"}]'
               exit_code: 0
+            artifacts:
+              feedback/user-feedback.md: ""
+              feedback/api-review-feedback.md: ""
+              requirements/prior-plan.json: ""
+              requirements/plan.json: ""
+              requirements/api-review.json: ""
+              requirements/index.md: ""
+              implementation/plan.json: ""
+              implementation/index.md: ""
+              outcome/plan.json: ""
+              outcome/review.json: ""
+              outcome/tests-index.md: ""
+              outcome/validation-commands.txt: ""
         - match:
             node_path: new-ticket-requirements-planning/persist_plan_and_docs
           behavior:
@@ -104,8 +134,10 @@ cases:
   - id: ts-007-user-feedback-roundtrip
     type: recipe_case
     inputs:
-      title: Add caching
-      description: Improve performance
+      prompt: |
+        Add caching
+
+        Improve performance
       user_feedback: Include cache invalidation strategy
     mocks:
       ops:
@@ -122,6 +154,19 @@ cases:
             outputs:
               stdout: '[{"short_name":"core","repo":"https://github.com/colony-2/core.git"},{"short_name":"frontend","repo":"https://github.com/colony-2/frontend.git"},{"short_name":"api","repo":"https://github.com/colony-2/api.git"},{"short_name":"recipe-tests","repo":"https://github.com/colony-2/recipe-tests.git"}]'
               exit_code: 0
+            artifacts:
+              feedback/user-feedback.md: ""
+              feedback/api-review-feedback.md: ""
+              requirements/prior-plan.json: ""
+              requirements/plan.json: ""
+              requirements/api-review.json: ""
+              requirements/index.md: ""
+              implementation/plan.json: ""
+              implementation/index.md: ""
+              outcome/plan.json: ""
+              outcome/review.json: ""
+              outcome/tests-index.md: ""
+              outcome/validation-commands.txt: ""
         - match:
             node_path: new-ticket-requirements-planning/persist_plan_and_docs
           behavior:
@@ -154,8 +199,10 @@ cases:
   - id: ts-008-blocking-api-review-signal
     type: recipe_case
     inputs:
-      title: Breaking API proposal
-      description: Introduce breaking change
+      prompt: |
+        Breaking API proposal
+
+        Introduce breaking change
     mocks:
       ops:
         - match:
@@ -171,6 +218,19 @@ cases:
             outputs:
               stdout: '[{"short_name":"core","repo":"https://github.com/colony-2/core.git"},{"short_name":"frontend","repo":"https://github.com/colony-2/frontend.git"},{"short_name":"api","repo":"https://github.com/colony-2/api.git"},{"short_name":"recipe-tests","repo":"https://github.com/colony-2/recipe-tests.git"}]'
               exit_code: 0
+            artifacts:
+              feedback/user-feedback.md: ""
+              feedback/api-review-feedback.md: ""
+              requirements/prior-plan.json: ""
+              requirements/plan.json: ""
+              requirements/api-review.json: ""
+              requirements/index.md: ""
+              implementation/plan.json: ""
+              implementation/index.md: ""
+              outcome/plan.json: ""
+              outcome/review.json: ""
+              outcome/tests-index.md: ""
+              outcome/validation-commands.txt: ""
         - match:
             node_path: new-ticket-requirements-planning/persist_plan_and_docs
           behavior:
@@ -203,8 +263,10 @@ cases:
   - id: ts-009-api-review-artifacts
     type: recipe_case
     inputs:
-      title: API review artifact check
-      description: Ensure contrarian artifacts emitted
+      prompt: |
+        API review artifact check
+
+        Ensure contrarian artifacts emitted
     mocks:
       ops:
         - match:
@@ -220,6 +282,19 @@ cases:
             outputs:
               stdout: '[{"short_name":"core","repo":"https://github.com/colony-2/core.git"},{"short_name":"frontend","repo":"https://github.com/colony-2/frontend.git"},{"short_name":"api","repo":"https://github.com/colony-2/api.git"},{"short_name":"recipe-tests","repo":"https://github.com/colony-2/recipe-tests.git"}]'
               exit_code: 0
+            artifacts:
+              feedback/user-feedback.md: ""
+              feedback/api-review-feedback.md: ""
+              requirements/prior-plan.json: ""
+              requirements/plan.json: ""
+              requirements/api-review.json: ""
+              requirements/index.md: ""
+              implementation/plan.json: ""
+              implementation/index.md: ""
+              outcome/plan.json: ""
+              outcome/review.json: ""
+              outcome/tests-index.md: ""
+              outcome/validation-commands.txt: ""
         - match:
             node_path: new-ticket-requirements-planning/persist_plan_and_docs
           behavior:
@@ -250,8 +325,10 @@ cases:
   - id: ts-010-plan-and-review-coexist
     type: recipe_case
     inputs:
-      title: Full bundle
-      description: Verify combined artifact set
+      prompt: |
+        Full bundle
+
+        Verify combined artifact set
     mocks:
       ops:
         - match:
@@ -267,6 +344,19 @@ cases:
             outputs:
               stdout: '[{"short_name":"core","repo":"https://github.com/colony-2/core.git"},{"short_name":"frontend","repo":"https://github.com/colony-2/frontend.git"},{"short_name":"api","repo":"https://github.com/colony-2/api.git"},{"short_name":"recipe-tests","repo":"https://github.com/colony-2/recipe-tests.git"}]'
               exit_code: 0
+            artifacts:
+              feedback/user-feedback.md: ""
+              feedback/api-review-feedback.md: ""
+              requirements/prior-plan.json: ""
+              requirements/plan.json: ""
+              requirements/api-review.json: ""
+              requirements/index.md: ""
+              implementation/plan.json: ""
+              implementation/index.md: ""
+              outcome/plan.json: ""
+              outcome/review.json: ""
+              outcome/tests-index.md: ""
+              outcome/validation-commands.txt: ""
         - match:
             node_path: new-ticket-requirements-planning/persist_plan_and_docs
           behavior:

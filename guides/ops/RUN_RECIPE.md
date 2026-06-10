@@ -10,6 +10,7 @@ Use these ops to start child recipes, wait for completion, and fetch outputs/art
 - `recipes.run`: start multiple child recipes and return job IDs immediately.
 - `recipes.run_and_wait`: start multiple child recipes and wait for completion (no outputs).
 - `recipe.await_result`: wait for a specific child job and fetch outputs.
+- `recipe.await_result_soft`: inspect a specific child job and fetch available outputs without failing solely because the child failed.
 - `recipe.get_result`: fetch outputs for a child job without waiting.
 
 ## Core Inputs
@@ -161,6 +162,39 @@ Example:
   inputs:
     job_id: "${{ sequence.start.outputs.job_ids[0] }}"
 ```
+
+### `recipe.await_result_soft`
+Waits for or inspects a single child job, then returns child status and any
+available outputs/artifacts. Unlike `recipe.await_result`, child failure is
+returned as structured data instead of automatically failing the parent node.
+
+Inputs:
+- `job_id`: string
+- `timeout`: optional duration
+- `poll_interval`: optional duration
+- `return_when`: optional `terminal` or `current_status`
+
+Outputs:
+- `job_id`: child job ID
+- `terminal`: boolean
+- `status`: recommended values include `running`, `completed`, `failed`,
+  `cancelled`, `timed_out`, and `unknown`
+- `failure_kind`: recommended values include `none`, `task_error`, `timeout`,
+  `system_error`, `cancellation`, and `unknown`
+- `failure_message`: string
+- `outputs.outputs`: child recipe outputs map when available
+- child artifacts are attached to the parent node artifacts when available
+
+Example:
+```yaml
+- id: wait_soft
+  op: recipe.await_result_soft
+  inputs:
+    job_id: "${{ sequence.start.outputs.job_ids[0] }}"
+```
+
+Use this op when the parent recipe owns the lifecycle decision for failed,
+cancelled, timed-out, or partially completed child jobs.
 
 ### `recipe.get_result`
 Fetches outputs and artifacts for a child job without waiting.

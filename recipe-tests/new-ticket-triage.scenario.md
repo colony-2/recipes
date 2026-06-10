@@ -5,8 +5,10 @@ cases:
   - id: ts-001-appropriate-cell
     type: recipe_case
     inputs:
-      title: Add retry handling
-      description: Improve resilience
+      prompt: |
+        Add retry handling
+
+        Improve resilience
     mocks:
       ops:
         - match:
@@ -22,6 +24,19 @@ cases:
             outputs:
               stdout: '[{"short_name":"core","repo":"https://github.com/colony-2/core.git"},{"short_name":"frontend","repo":"https://github.com/colony-2/frontend.git"},{"short_name":"api","repo":"https://github.com/colony-2/api.git"},{"short_name":"recipe-tests","repo":"https://github.com/colony-2/recipe-tests.git"}]'
               exit_code: 0
+            artifacts:
+              feedback/user-feedback.md: ""
+              feedback/api-review-feedback.md: ""
+              requirements/prior-plan.json: ""
+              requirements/plan.json: ""
+              requirements/api-review.json: ""
+              requirements/index.md: ""
+              implementation/plan.json: ""
+              implementation/index.md: ""
+              outcome/plan.json: ""
+              outcome/review.json: ""
+              outcome/tests-index.md: ""
+              outcome/validation-commands.txt: ""
         - match:
             node_path: new-ticket-triage/assess_cell
           behavior:
@@ -42,8 +57,10 @@ cases:
   - id: ts-002-out-of-cell-decision
     type: recipe_case
     inputs:
-      title: Build admin dashboard
-      description: UI-heavy task likely outside current cell
+      prompt: |
+        Build admin dashboard
+
+        UI-heavy task likely outside current cell
     mocks:
       ops:
         - match:
@@ -59,6 +76,19 @@ cases:
             outputs:
               stdout: '[{"short_name":"core","repo":"https://github.com/colony-2/core.git"},{"short_name":"frontend","repo":"https://github.com/colony-2/frontend.git"},{"short_name":"api","repo":"https://github.com/colony-2/api.git"},{"short_name":"recipe-tests","repo":"https://github.com/colony-2/recipe-tests.git"}]'
               exit_code: 0
+            artifacts:
+              feedback/user-feedback.md: ""
+              feedback/api-review-feedback.md: ""
+              requirements/prior-plan.json: ""
+              requirements/plan.json: ""
+              requirements/api-review.json: ""
+              requirements/index.md: ""
+              implementation/plan.json: ""
+              implementation/index.md: ""
+              outcome/plan.json: ""
+              outcome/review.json: ""
+              outcome/tests-index.md: ""
+              outcome/validation-commands.txt: ""
         - match:
             node_path: new-ticket-triage/assess_cell
           behavior:
@@ -79,8 +109,10 @@ cases:
   - id: ts-003-invalid-recommended-cell-fallback-check
     type: recipe_case
     inputs:
-      title: Unknown target
-      description: Should force fallback validation
+      prompt: |
+        Unknown target
+
+        Should force fallback validation
     mocks:
       ops:
         - match:
@@ -96,6 +128,19 @@ cases:
             outputs:
               stdout: '[{"short_name":"core","repo":"https://github.com/colony-2/core.git"},{"short_name":"frontend","repo":"https://github.com/colony-2/frontend.git"},{"short_name":"api","repo":"https://github.com/colony-2/api.git"},{"short_name":"recipe-tests","repo":"https://github.com/colony-2/recipe-tests.git"}]'
               exit_code: 0
+            artifacts:
+              feedback/user-feedback.md: ""
+              feedback/api-review-feedback.md: ""
+              requirements/prior-plan.json: ""
+              requirements/plan.json: ""
+              requirements/api-review.json: ""
+              requirements/index.md: ""
+              implementation/plan.json: ""
+              implementation/index.md: ""
+              outcome/plan.json: ""
+              outcome/review.json: ""
+              outcome/tests-index.md: ""
+              outcome/validation-commands.txt: ""
         - match:
             node_path: new-ticket-triage/assess_cell
           behavior:
@@ -116,8 +161,10 @@ cases:
   - id: ts-004-triage-artifact-emitted
     type: recipe_case
     inputs:
-      title: Emit triage artifact
-      description: Ensure triage json is persisted
+      prompt: |
+        Emit triage artifact
+
+        Ensure triage json is persisted
     mocks:
       ops:
         - match:
@@ -133,6 +180,19 @@ cases:
             outputs:
               stdout: '[{"short_name":"core","repo":"https://github.com/colony-2/core.git"},{"short_name":"frontend","repo":"https://github.com/colony-2/frontend.git"},{"short_name":"api","repo":"https://github.com/colony-2/api.git"},{"short_name":"recipe-tests","repo":"https://github.com/colony-2/recipe-tests.git"}]'
               exit_code: 0
+            artifacts:
+              feedback/user-feedback.md: ""
+              feedback/api-review-feedback.md: ""
+              requirements/prior-plan.json: ""
+              requirements/plan.json: ""
+              requirements/api-review.json: ""
+              requirements/index.md: ""
+              implementation/plan.json: ""
+              implementation/index.md: ""
+              outcome/plan.json: ""
+              outcome/review.json: ""
+              outcome/tests-index.md: ""
+              outcome/validation-commands.txt: ""
         - match:
             node_path: new-ticket-triage/assess_cell
           behavior:
