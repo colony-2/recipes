@@ -13,11 +13,12 @@ This plan should answer two questions:
 
 ## Latest Validation Result
 
-Status after the 2026-06-09 UTC focused rerun: **sufficient to proceed with the
-implementation plan, with live skill-quality validation included in the default
-suite**.
+Status after the 2026-06-10 UTC full runner: **sufficient to proceed with the
+implementation plan, with live `run_skill`, live Codex skill execution, and live
+skill-quality validation included in the default suite**.
 
-Reverification on 2026-06-09 UTC against `/usr/local/bin/c2j`
+Core runtime reverification on 2026-06-09 UTC and full suite validation on
+2026-06-10 UTC used `/usr/local/bin/c2j`
 (`c2j version v0.0.28-0.20260609031142-3374b852aa99`, SHA-256
 `7e6c92ca316fb0e332d786facd2fb35070e9a589b88253977417efc83117427a`):
 
@@ -46,6 +47,11 @@ Reverification on 2026-06-09 UTC against `/usr/local/bin/c2j`
   artifact and status-contract fields; TS-057 validates repair metadata is
   visible to recipes. c2ops `RunSkill` unit tests also passed at c2ops commit
   `8b37f01`.
+- Focused live `codex/run_skill` smoke passed. TS-092 validates that the actual
+  c2ops `codex/run_skill` op can discover a requested worktree skill, execute it
+  through Codex, validate artifact-first JSON output, and validate the declared
+  status contract. TS-093 validates parsed output fields, diagnostic artifacts,
+  same-recipe artifact bindings, and zero repair attempts.
 - Focused static C2 Superpowers skill-bundle suite passed. TS-058 validates the
   ten local role skills and OpenAI metadata under
   `skills-bundle/.agents/skills/c2-superpowers-*`.
@@ -95,6 +101,7 @@ Validated:
 - focused child orchestration smoke TS-049/TS-050 passed.
 - focused Superpowers recipe-shape smokes TS-051..TS-055 passed.
 - focused `codex/run_skill` smokes TS-056/TS-057 passed.
+- focused live `codex/run_skill` smoke TS-092/TS-093 passed.
 - focused C2 Superpowers skill-bundle smoke TS-058/TS-091 passed.
 - focused Superpowers route recipe smokes TS-059/TS-060 passed.
 - focused Superpowers brainstorm recipe smokes TS-061/TS-062 passed.
@@ -107,10 +114,10 @@ Validated:
 - focused debug smokes TS-074/TS-077 passed compile/validate/run.
 - focused plan-review smokes TS-078/TS-079 passed compile/validate/run.
 - focused primary-orchestrator smokes TS-080/TS-086/TS-088 passed compile/validate/run.
-- `recipe-tests/run-all.sh` passed end to end on 2026-06-10 with TS-058..TS-091
-  included in the default compile/validate/run path and with TS-042/TS-043
-  focused live skill-quality validation invoked as a required hard-failing
-  check.
+- `recipe-tests/run-all.sh` passed end to end on 2026-06-10 with TS-058..TS-093
+  included in the default compile/validate/run path and with TS-092/TS-093 live
+  `run_skill`, TS-044/TS-045 live Codex skill execution, and TS-042/TS-043
+  focused live skill-quality validation invoked as required hard-failing checks.
 - focused live skill-quality smoke TS-042/TS-043 passed after narrowing
   `skill-quality-smoke.yaml` to triage and requirements contracts. The script
   compiles the scenario first, runs c2j with explicit lease/wait timeouts, and
@@ -517,6 +524,7 @@ When these tests pass, implementation should proceed with:
 - C2-adapted Superpowers skill bundle.
 - Static bundle validation through TS-058.
 - Role-skill source wiring validation through TS-091.
+- Live artifact-first `codex/run_skill` validation through TS-092/TS-093.
 - Route/intake recipe validation through TS-059/TS-060.
 - Brainstorm/design recipe validation through TS-061/TS-062.
 - Write-plan recipe validation through TS-063/TS-064/TS-089/TS-090.
@@ -537,16 +545,20 @@ When these tests pass, implementation should proceed with:
 - Deterministic policy through `rule_gate`.
 - Skill invocation through `codex/run_skill`.
 
-## Remaining Unknowns To Resolve During Tests
+## Remaining Non-Blocking Follow-Ups
 
-- Exact live `run_skill` behavior for missing status contracts.
-- Exact live `run_skill` behavior for `output.validation.on_error:
-  incomplete|fail|warn`.
-- Whether output repair is stable enough for production use or should remain
-  advisory.
-- Whether a dedicated job-story/node-output introspection op is needed for
+- Add negative live `run_skill` smokes for missing status contracts only if a
+  recipe intentionally treats a missing status artifact as routeable workflow
+  data. Current Superpowers recipes require status contracts and fail hard when
+  the contract is absent.
+- Add focused live `run_skill` smokes for non-default
+  `output.validation.on_error` modes when a concrete recipe adopts them. TS-092
+  covers the production path used here: artifact-first output with
+  `on_error: fail`.
+- Keep output repair conservative. TS-057 proves repair metadata is visible at
+  the recipe boundary; production Superpowers paths should prefer schema-valid
+  first-pass outputs and use repair only where the recipe explicitly allows it.
+- Decide whether a dedicated job-story/node-output introspection op is needed for
   debugging failed child jobs. This is not normal recipe dataflow.
-- Whether target-ref advancement needs additional recipe policy for experiment
-  refs.
-- Whether c2ops `codex/run_skill` live artifact validation passes in a focused
-  artifact-first skill smoke.
+- Decide whether target-ref advancement needs additional recipe policy for
+  experiment refs after a concrete target-ref child-job flow exists.

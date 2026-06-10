@@ -22,7 +22,7 @@ with a focused live smoke.
 | Failed child jobs as workflow data | `recipe.await_result_soft` | Covered for failed-child status and failure routing by TS-049. Child internals remain encapsulated; parent-visible artifacts must be exported as child job result artifacts. |
 | Parallel reviewer/adversarial fanout | `child_group` | Covered. TS-050 validates required/optional reviewer aggregation. |
 | Dependent implementation tasks | ordinary recipe state machine plus same-job Codex sessions | Covered. TS-051..TS-055 validate native task selection, same-job role sessions, session isolation/resume, and adaptive task-plan iteration. No `for_each`, task-loop primitive, or child job is required for the normal Superpowers task chain. |
-| Structured skill invocation | c2ops `codex/run_skill` | Covered. TS-056/TS-057 validate parsed output artifacts, status-contract fields, and repair metadata at the recipe boundary. c2ops `RunSkill` unit tests pass at commit `8b37f01`. |
+| Structured skill invocation | c2ops `codex/run_skill` | Covered. TS-056/TS-057 validate parsed output artifacts, status-contract fields, and repair metadata at the recipe boundary. TS-092/TS-093 validate live artifact-first output, status-contract validation, diagnostics artifacts, and same-recipe artifact bindings with the actual c2ops op. c2ops `RunSkill` unit tests pass at commit `8b37f01`. |
 | C2-adapted Superpowers role skills | local skill bundle plus static recipe smoke | Covered for initial implementation. TS-058 validates ten role skills and OpenAI metadata under `skills-bundle/.agents/skills/c2-superpowers-*`. TS-091 validates every Superpowers `codex/run_skill` invocation installs the configured bundle ref through the top-level `skills` input. |
 | Route/intake recipe | `superpowers-route.yaml` state machine plus `codex/run_skill` fallback and `rule_gate` | Covered for initial implementation. TS-059/TS-060 validate heuristic prompt-only fallback; TS-065/TS-066 validate deterministic plan/design artifact routing without skill invocation in the run path. |
 | Brainstorm/design recipe | `superpowers-brainstorm.yaml` plus `codex/run_skill` and `rule_gate` | Covered for initial implementation. TS-061/TS-062 validate plan-ready designs and stop-before-planning questions. |
@@ -313,6 +313,10 @@ Commands and results:
 - Focused `codex/run_skill` recipe suites passed TS-056/TS-057 for parsed output
   artifacts, status-contract fields, and repair metadata. c2ops `RunSkill` unit
   tests also passed at c2ops commit `8b37f01`.
+- Focused live `codex/run_skill` smoke passed TS-092/TS-093 for worktree skill
+  discovery, Codex execution, artifact-first JSON output validation,
+  status-contract validation, diagnostic artifacts, and same-recipe artifact
+  bindings.
 - Focused static C2 Superpowers skill-bundle suite passed TS-058 for the ten
   C2-adapted role skills and their OpenAI metadata. TS-091 validates all
   Superpowers `codex/run_skill` invocations install the configured bundle ref
@@ -357,10 +361,10 @@ Commands and results:
   through revision and re-review. TS-086 validates primary RED/GREEN/refactor
   TDD enforcement before task review. TS-088 validates primary TDD spec-review
   failure routing through revision, GREEN/REFACTOR reruns, and re-review.
-- `recipe-tests/run-all.sh` passed end to end on 2026-06-10 with TS-058..TS-091
-  included in the default compile/validate/run suite and TS-042/TS-043 focused
-  live skill-quality validation invoked by the default runner as a required
-  hard-failing live check.
+- `recipe-tests/run-all.sh` passed end to end on 2026-06-10 with TS-058..TS-093
+  included in the default compile/validate/run suite. Required live checks now
+  include TS-092/TS-093 live `codex/run_skill`, TS-044/TS-045 live Codex skill
+  execution, and TS-042/TS-043 focused live skill-quality validation.
 - The focused rerun did not reproduce the story/chapter conflict signature
   (`workflow state conflict`, `chapter ordinal`, or duplicate ordinal errors).
   The original broad skill-quality run did reproduce that signature and has a

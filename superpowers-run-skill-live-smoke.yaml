@@ -1,0 +1,283 @@
+id: superpowers-run-skill-live-smoke
+version: 0.1.0
+desc: Live c2ops codex/run_skill smoke for artifact-first output and status-contract validation
+sequence:
+  - id: seed_skill
+    op: command_execution
+    inputs:
+      timeout: 30s
+      env:
+        WT: "{{ context.environment.op.worktree_path }}"
+      run: |
+        set -euo pipefail
+
+        skill_dir="$WT/.agents/skills/c2-run-skill-live-smoke"
+        mkdir -p "$skill_dir"
+        cat > "$skill_dir/SKILL.md" <<'EOF_SKILL'
+        ---
+        name: c2-run-skill-live-smoke
+        description: Writes the exact artifact output and status contract requested by the c2ops run_skill live smoke.
+        ---
+
+        You are validating the c2ops `codex/run_skill` artifact contract.
+
+        Required behavior:
+        - Read the invocation contract JSON file whose absolute path appears in the prompt.
+        - Use `artifact_outbox_path`, `output.path`, `status_contract.path`, and `input`
+          from that contract.
+        - Write the primary JSON output artifact at `artifact_outbox_path/output.path`.
+        - Write the status JSON artifact at `artifact_outbox_path/status_contract.path`.
+        - Do not modify repository files.
+
+        Primary output JSON:
+        {
+          "smoke": "run_skill_live_artifact",
+          "summary": "run_skill wrote artifact output",
+          "selected_skill": "c2-run-skill-live-smoke",
+          "next_phase": "validated",
+          "input_echo": "run-skill-live"
+        }
+
+        Status contract JSON:
+        {
+          "status": "completed",
+          "summary": {
+            "human": "Live run_skill smoke completed.",
+            "reason": "artifact and status contract written"
+          },
+          "nextSkillCandidates": [],
+          "checkpoint": {
+            "status": "completed",
+            "scope": "top_level",
+            "stack": []
+          }
+        }
+
+        Final response must be the structured Codex result for a completed run,
+        with a concise `assistantSummary`; do not put the primary output JSON in
+        `assistantSummary`.
+        EOF_SKILL
+
+  - id: run_skill
+    op: git+https://github.com/colony-2/c2ops.git//codex/run_skill@main
+    inputs:
+      sandbox:
+        type: none
+      idle_timeout: 3m
+      skill: c2-run-skill-live-smoke
+      input:
+        smoke_id: run-skill-live
+        expected_skill: c2-run-skill-live-smoke
+      prompt: |
+        Run the local `c2-run-skill-live-smoke` skill exactly.
+
+        This live smoke validates that c2ops `codex/run_skill` can:
+        - find a requested worktree skill,
+        - execute it through Codex,
+        - read the primary JSON output from the declared artifact path,
+        - validate that JSON against the configured schema, and
+        - validate the declared status contract artifact.
+      status_contract:
+        path: superpowers/run-skill-live/latest-status.json
+      output:
+        from: artifact
+        path: superpowers/run-skill-live/result.json
+        format: json
+        schema:
+          type: object
+          required:
+            - smoke
+            - summary
+            - selected_skill
+            - next_phase
+            - input_echo
+          properties:
+            smoke:
+              type: string
+              const: run_skill_live_artifact
+            summary:
+              type: string
+            selected_skill:
+              type: string
+              const: c2-run-skill-live-smoke
+            next_phase:
+              type: string
+              const: validated
+            input_echo:
+              type: string
+              const: run-skill-live
+        validation:
+          on_error: fail
+          repair:
+            enabled: false
+
+  - id: assert_contract
+    op: command_execution
+    artifacts:
+      result.json: '${{ sequence.run_skill.artifacts["superpowers/run-skill-live/result.json"] }}'
+      latest-status.json: '${{ sequence.run_skill.artifacts["superpowers/run-skill-live/latest-status.json"] }}'
+      contract.json: '${{ sequence.run_skill.artifacts["_skill_run/contract.json"] }}'
+      validation.json: '${{ sequence.run_skill.artifacts["_skill_run/validation.json"] }}'
+    inputs:
+      timeout: 30s
+      env:
+        INBOX: "{{ context.environment.op.inbox }}"
+        DIAGNOSTICS_PATH: "/tmp/superpowers-run-skill-live/assertions.json"
+        RUN_SKILL_STATUS: "{{ sequence.run_skill.outputs.status }}"
+        RUN_SKILL_SESSION_NONEMPTY: '${{ sequence.run_skill.outputs.sessionId != "" ? "true" : "false" }}'
+        RUN_SKILL_NAME: "{{ sequence.run_skill.outputs.skill }}"
+        RUN_SKILL_OUTPUT_SOURCE: "{{ sequence.run_skill.outputs.output_source }}"
+        RUN_SKILL_OUTPUT_PATH: "{{ sequence.run_skill.outputs.output_path }}"
+        RUN_SKILL_OUTPUT_SCHEMA_VALID: '${{ sequence.run_skill.outputs.output_schema_valid ? "true" : "false" }}'
+        RUN_SKILL_REPAIR_ATTEMPTS_ZERO: '${{ sequence.run_skill.outputs.output_repair_attempts == 0 ? "true" : "false" }}'
+        RUN_SKILL_STATUS_CONTRACT_PRESENT: '${{ sequence.run_skill.outputs.status_contract_present ? "true" : "false" }}'
+        RUN_SKILL_STATUS_CONTRACT_VALID: '${{ sequence.run_skill.outputs.status_contract_valid ? "true" : "false" }}'
+        RUN_SKILL_STATUS_CONTRACT_STATUS: "{{ sequence.run_skill.outputs.status_contract_json.status }}"
+        RUN_SKILL_PARSED_SMOKE: "{{ sequence.run_skill.outputs.parsed_output.smoke }}"
+        RUN_SKILL_PARSED_SELECTED_SKILL: "{{ sequence.run_skill.outputs.parsed_output.selected_skill }}"
+        RUN_SKILL_PARSED_NEXT_PHASE: "{{ sequence.run_skill.outputs.parsed_output.next_phase }}"
+        RUN_SKILL_PARSED_INPUT_ECHO: "{{ sequence.run_skill.outputs.parsed_output.input_echo }}"
+      run: |
+        set -euo pipefail
+        python3 - <<'PY'
+        import json
+        import os
+        import sys
+        from pathlib import Path
+
+        inbox = Path(os.environ["INBOX"])
+        diagnostics_path = Path(os.environ["DIAGNOSTICS_PATH"])
+
+        expected_result = {
+            "smoke": "run_skill_live_artifact",
+            "summary": "run_skill wrote artifact output",
+            "selected_skill": "c2-run-skill-live-smoke",
+            "next_phase": "validated",
+            "input_echo": "run-skill-live",
+        }
+        expected_status = {
+            "status": "completed",
+            "summary": {
+                "human": "Live run_skill smoke completed.",
+                "reason": "artifact and status contract written",
+            },
+            "nextSkillCandidates": [],
+            "checkpoint": {
+                "status": "completed",
+                "scope": "top_level",
+                "stack": [],
+            },
+        }
+
+        expected_values = {
+            "RUN_SKILL_STATUS": "completed",
+            "RUN_SKILL_NAME": "c2-run-skill-live-smoke",
+            "RUN_SKILL_OUTPUT_SOURCE": "artifact",
+            "RUN_SKILL_OUTPUT_PATH": "superpowers/run-skill-live/result.json",
+            "RUN_SKILL_STATUS_CONTRACT_STATUS": "completed",
+            "RUN_SKILL_PARSED_SMOKE": "run_skill_live_artifact",
+            "RUN_SKILL_PARSED_SELECTED_SKILL": "c2-run-skill-live-smoke",
+            "RUN_SKILL_PARSED_NEXT_PHASE": "validated",
+            "RUN_SKILL_PARSED_INPUT_ECHO": "run-skill-live",
+        }
+        expected_true = [
+            "RUN_SKILL_SESSION_NONEMPTY",
+            "RUN_SKILL_OUTPUT_SCHEMA_VALID",
+            "RUN_SKILL_REPAIR_ATTEMPTS_ZERO",
+            "RUN_SKILL_STATUS_CONTRACT_PRESENT",
+            "RUN_SKILL_STATUS_CONTRACT_VALID",
+        ]
+
+        diagnostics = {
+            "expected_true": {},
+            "expected_values": {},
+            "artifact_checks": {},
+            "failures": [],
+        }
+        failures = []
+
+        for key in expected_true:
+            actual = os.environ.get(key, "")
+            diagnostics["expected_true"][key] = actual
+            if actual.lower() != "true":
+                failures.append(f"{key}=true expected, got {actual!r}")
+
+        for key, expected in expected_values.items():
+            actual = os.environ.get(key, "")
+            diagnostics["expected_values"][key] = {
+                "actual": actual,
+                "expected": expected,
+            }
+            if actual != expected:
+                failures.append(f"{key}={expected!r} expected, got {actual!r}")
+
+        def read_json(name):
+            path = inbox / name
+            diagnostics["artifact_checks"][f"{name}_exists"] = path.exists()
+            if not path.exists():
+                failures.append(f"{name} artifact missing")
+                return None
+            try:
+                return json.loads(path.read_text())
+            except Exception as exc:
+                failures.append(f"{name} is not valid JSON: {exc}")
+                return None
+
+        result = read_json("result.json")
+        status = read_json("latest-status.json")
+        contract = read_json("contract.json")
+        validation = read_json("validation.json")
+
+        diagnostics["artifact_checks"]["result_exact"] = result == expected_result
+        if result != expected_result:
+            failures.append(f"result.json did not match expected payload: {result!r}")
+
+        diagnostics["artifact_checks"]["status_exact"] = status == expected_status
+        if status != expected_status:
+            failures.append(f"latest-status.json did not match expected payload: {status!r}")
+
+        if contract:
+            diagnostics["artifact_checks"]["contract_skill"] = contract.get("skill")
+            diagnostics["artifact_checks"]["contract_output_path"] = contract.get("output", {}).get("path")
+            if contract.get("skill") != "c2-run-skill-live-smoke":
+                failures.append(f"contract skill mismatch: {contract.get('skill')!r}")
+            if contract.get("output", {}).get("path") != "superpowers/run-skill-live/result.json":
+                failures.append("contract output path mismatch")
+
+        if validation:
+            diagnostics["artifact_checks"]["validation_schema_valid"] = validation.get("output_schema_valid")
+            diagnostics["artifact_checks"]["validation_status_valid"] = validation.get("status_contract_valid")
+            if validation.get("output_schema_valid") is not True:
+                failures.append("validation artifact did not report output_schema_valid=true")
+            if validation.get("status_contract_valid") is not True:
+                failures.append("validation artifact did not report status_contract_valid=true")
+
+        diagnostics["failures"] = failures
+        diagnostics_path.parent.mkdir(parents=True, exist_ok=True)
+        diagnostics_path.write_text(json.dumps(diagnostics, indent=2, sort_keys=True))
+
+        if failures:
+            print("superpowers run_skill live assertion failures:", file=sys.stderr)
+            for failure in failures:
+                print(f"- {failure}", file=sys.stderr)
+            sys.exit(1)
+
+        print(json.dumps(diagnostics, sort_keys=True))
+        PY
+
+outputs:
+  live_run_skill_status: "{{ sequence.run_skill.outputs.status }}"
+  live_run_skill_session_nonempty: '${{ sequence.run_skill.outputs.sessionId != "" }}'
+  live_run_skill_name: "{{ sequence.run_skill.outputs.skill }}"
+  live_run_skill_output_source: "{{ sequence.run_skill.outputs.output_source }}"
+  live_run_skill_output_path: "{{ sequence.run_skill.outputs.output_path }}"
+  live_run_skill_output_schema_valid: "${{ sequence.run_skill.outputs.output_schema_valid }}"
+  live_run_skill_output_repair_attempts: "${{ sequence.run_skill.outputs.output_repair_attempts }}"
+  live_run_skill_status_contract_present: "${{ sequence.run_skill.outputs.status_contract_present }}"
+  live_run_skill_status_contract_valid: "${{ sequence.run_skill.outputs.status_contract_valid }}"
+  live_run_skill_status_contract_status: "{{ sequence.run_skill.outputs.status_contract_json.status }}"
+  live_run_skill_parsed_smoke: "{{ sequence.run_skill.outputs.parsed_output.smoke }}"
+  live_run_skill_parsed_selected_skill: "{{ sequence.run_skill.outputs.parsed_output.selected_skill }}"
+  live_run_skill_parsed_next_phase: "{{ sequence.run_skill.outputs.parsed_output.next_phase }}"
+  live_run_skill_parsed_input_echo: "{{ sequence.run_skill.outputs.parsed_output.input_echo }}"
+  live_run_skill_artifact_assertions_passed: '${{ size(json_parse(sequence.assert_contract.outputs.stdout).failures) == 0 }}'

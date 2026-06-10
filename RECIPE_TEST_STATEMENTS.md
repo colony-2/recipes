@@ -97,6 +97,8 @@ These statements are intended to drive `c2j test` cases.
 | TS-089 | Superpowers write-plan emits TDD command contracts for recipe-enforced RED/GREEN/refactor gates. | `superpowers-write-plan.yaml` | High | Integration (`recipe_case`); deps: task-plan schema + c2ops `codex/run_skill`/`rule_gate` selector mocks | Positive |
 | TS-090 | Superpowers write-plan rejects child-job tasks missing matching boundary metadata. | `superpowers-write-plan.yaml` | High | Integration (`recipe_case`); deps: deterministic child-boundary policy gate + c2ops `rule_gate` passthrough | Negative |
 | TS-091 | Superpowers role-skill invocations install the configured skill bundle ref. | `superpowers-c2-skill-bundle-smoke.yaml`, `superpowers*.yaml` | High | Integration (`recipe_case`); deps: static recipe wiring check for c2ops `codex/run_skill` skills input | Positive |
+| TS-092 | Live `codex/run_skill` executes a worktree skill and validates artifact-first JSON output plus status contract artifacts. | `superpowers-run-skill-live-smoke.yaml`, `recipe-tests/verify-superpowers-run-skill-live.sh` | High | Live c2j integration; deps: c2ops `codex/run_skill` at `@main`, local worktree skill, Codex API access | Positive |
+| TS-093 | Live `codex/run_skill` exposes parsed artifact fields, diagnostics artifacts, and zero repair attempts to downstream recipe nodes. | `superpowers-run-skill-live-smoke.yaml`, `recipe-tests/verify-superpowers-run-skill-live.sh` | High | Live c2j integration; deps: c2ops `codex/run_skill` at `@main`, same-recipe artifact bindings | Positive |
 
 ## Notes for Test Authoring
 

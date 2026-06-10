@@ -53,6 +53,11 @@ Validated on 2026-06-08/09 UTC:
 - focused `codex/run_skill` smokes TS-056/TS-057 passed for parsed output
   artifact/status-contract fields and repair metadata. c2ops `RunSkill` unit
   tests also passed at c2ops commit `8b37f01`.
+- focused live `codex/run_skill` smoke TS-092/TS-093 passed. The actual c2ops
+  op discovered a worktree skill, executed it through Codex, validated
+  artifact-first JSON output, validated the status contract, exposed parsed
+  fields, and made diagnostics/output artifacts available to a downstream
+  same-recipe op.
 - static C2 Superpowers skill-bundle smoke TS-058 passed. The repository now has
   ten C2-adapted role skills under
   `skills-bundle/.agents/skills/c2-superpowers-*` with recipe-owned
@@ -108,10 +113,10 @@ Validated on 2026-06-08/09 UTC:
   design-to-finish path, enforces RED/GREEN/refactor TDD before task review, and
   routes TDD spec-review failure through revision, GREEN/REFACTOR reruns, and
   re-review.
-- `recipe-tests/run-all.sh` passed end to end on 2026-06-10 with TS-058..TS-091
-  included in the default compile/validate/run path and TS-042/TS-043 focused
-  live skill-quality validation invoked by the default runner as a required
-  hard-failing live check.
+- `recipe-tests/run-all.sh` passed end to end on 2026-06-10 with TS-058..TS-093
+  included in the default compile/validate/run path. Required live checks now
+  include TS-092/TS-093 live `codex/run_skill`, TS-044/TS-045 live Codex skill
+  execution, and TS-042/TS-043 focused live skill-quality validation.
 - focused live skill-quality smoke TS-042/TS-043 passed after narrowing the
   smoke to triage, requirements-author, and bad-requirements contrarian-review
   contracts. The runner does not gate this check behind an environment flag;
@@ -1332,53 +1337,56 @@ Prototype these focused recipes before building the full system:
    parsed output artifact and status-contract fields from `codex/run_skill`.
 2. `superpowers-run-skill-repair-smoke.yaml`: implemented as TS-057 to validate
    `codex/run_skill` repair metadata at the recipe boundary.
-3. `superpowers-native-task-selection-smoke.yaml`: implemented as TS-051/TS-052
+3. `superpowers-run-skill-live-smoke.yaml`: implemented as TS-092/TS-093 to
+   validate live `codex/run_skill` artifact-first output, status-contract
+   validation, diagnostic artifacts, and same-recipe artifact bindings.
+4. `superpowers-native-task-selection-smoke.yaml`: implemented as TS-051/TS-052
    to select `TASK-1` from plan state with native recipe state/CEL/templates and
    surface required child-job boundaries without spawning child jobs.
-4. `superpowers-task-session-smoke.yaml`: implemented as TS-053 to run one
+5. `superpowers-task-session-smoke.yaml`: implemented as TS-053 to run one
    same-job task boundary with implementer, spec reviewer, and quality reviewer
    sessions.
-5. `superpowers-adaptive-task-loop-smoke.yaml`: implemented as TS-055 to select
+6. `superpowers-adaptive-task-loop-smoke.yaml`: implemented as TS-055 to select
    task A, update plan state through a planner session, then select task B.
-6. `superpowers-session-contract-smoke.yaml`: implemented as TS-054 to prove no
+7. `superpowers-session-contract-smoke.yaml`: implemented as TS-054 to prove no
    `sessionId` isolates a session and passing `sessionId` resumes it.
-7. `superpowers-c2-skill-bundle-smoke.yaml`: implemented as TS-058/TS-091 to
+8. `superpowers-c2-skill-bundle-smoke.yaml`: implemented as TS-058/TS-091 to
    validate the initial C2-adapted Superpowers role skills, their OpenAI
    metadata, and role-skill source wiring through `skill_bundle_ref`.
-8. `superpowers-route.yaml`: implemented as TS-059/TS-060 to validate
+9. `superpowers-route.yaml`: implemented as TS-059/TS-060 to validate
    artifact-first route output, deterministic route gates, feature-to-brainstorm
    routing, and required user questions for ambiguous routes.
-9. `superpowers-brainstorm.yaml`: implemented as TS-061/TS-062 to validate
+10. `superpowers-brainstorm.yaml`: implemented as TS-061/TS-062 to validate
    plan-ready design output and stop-before-planning behavior when questions
    remain.
-10. `superpowers-write-plan.yaml`: implemented as TS-063/TS-064/TS-089/TS-090 to
+11. `superpowers-write-plan.yaml`: implemented as TS-063/TS-064/TS-089/TS-090 to
    validate task-plan output, ready task selection, required child-boundary
    surfacing, TDD command contracts for recipe-enforced gates, and child-job
    boundary metadata consistency.
-11. `superpowers-route.yaml`: expanded as TS-065/TS-066 to validate
+12. `superpowers-route.yaml`: expanded as TS-065/TS-066 to validate
    deterministic state-machine routing from submitted plan/design artifacts
    without skill invocation in the run path.
-12. `superpowers-execute-plan.yaml`: implemented as TS-067/TS-068/TS-082/TS-084/TS-087 and
+13. `superpowers-execute-plan.yaml`: implemented as TS-067/TS-068/TS-082/TS-084/TS-087 and
    passing focused compile/validate/run for same-job task execution,
    child-boundary stop behavior, recipe-enforced TDD, and spec/quality review
    revision routing, including TDD spec-review revision with GREEN/REFACTOR
    command reruns. It is included in the default compile/validate/run suite.
-13. `superpowers-verify.yaml`: implemented as TS-069/TS-070 and passing focused
+14. `superpowers-verify.yaml`: implemented as TS-069/TS-070 and passing focused
    compile/validate/run for fresh command verification and failed-command
    blocking evidence. It is included in the default compile/validate/run suite.
-14. `superpowers-finish.yaml`: implemented as TS-071/TS-073 and passing focused
+15. `superpowers-finish.yaml`: implemented as TS-071/TS-073 and passing focused
    compile/validate/run for merge-ready recommendation, blocked merge evidence,
    and explicit merge after the finish gate. It is included in the default
    compile/validate/run suite.
-15. `superpowers-debug.yaml`: implemented as TS-074/TS-077 and passing focused
+16. `superpowers-debug.yaml`: implemented as TS-074/TS-077 and passing focused
    compile/validate/run for reproduced failure routing, missing-reproduction
    stop behavior, plan-update routing, and third-attempt architecture review.
    It is included in the default compile/validate/run suite.
-16. `superpowers-plan-review.yaml`: implemented as TS-078/TS-079 and passing
+17. `superpowers-plan-review.yaml`: implemented as TS-078/TS-079 and passing
    focused compile/validate/run for aligned-plan approval and incomplete-plan
    replanning feedback. It is included in the default compile/validate/run
    suite.
-17. `superpowers.yaml`: implemented as TS-080/TS-086/TS-088 and passing focused
+18. `superpowers.yaml`: implemented as TS-080/TS-086/TS-088 and passing focused
    compile/validate/run for the same-job primary workflow, required
    child-boundary stop behavior, primary spec-review revision routing, and
    primary RED/GREEN/refactor TDD enforcement, including TDD spec-review

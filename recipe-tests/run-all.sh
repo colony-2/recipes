@@ -48,6 +48,7 @@ run_suite "superpowers-session-contract-smoke.yaml" "superpowers-session-contrac
 run_suite "superpowers-adaptive-task-loop-smoke.yaml" "superpowers-adaptive-task-loop-smoke.scenario.md" "superpowers_adaptive_task_loop"
 run_suite "superpowers-run-skill-output-smoke.yaml" "superpowers-run-skill-output-smoke.scenario.md" "superpowers_run_skill_output"
 run_suite "superpowers-run-skill-repair-smoke.yaml" "superpowers-run-skill-repair-smoke.scenario.md" "superpowers_run_skill_repair"
+run_suite "superpowers-run-skill-live-smoke.yaml" "superpowers-run-skill-live-smoke.scenario.md" "superpowers_run_skill_live"
 run_suite "superpowers-c2-skill-bundle-smoke.yaml" "superpowers-c2-skill-bundle-smoke.scenario.md" "superpowers_c2_skill_bundle"
 run_suite "superpowers-route.yaml" "superpowers-route.scenario.md" "superpowers_route"
 run_suite "superpowers-brainstorm.yaml" "superpowers-brainstorm.scenario.md" "superpowers_brainstorm"
@@ -59,12 +60,13 @@ run_suite "superpowers-finish.yaml" "superpowers-finish.scenario.md" "superpower
 run_suite "superpowers-debug.yaml" "superpowers-debug.scenario.md" "superpowers_debug"
 run_suite "superpowers.yaml" "superpowers.scenario.md" "superpowers_primary"
 
-echo "Recipe scenario suites passed: TS-001..TS-023, TS-028..TS-041, and TS-051..TS-091."
+echo "Recipe scenario suites passed: TS-001..TS-023, TS-028..TS-041, and TS-051..TS-093."
 "$ROOT_DIR/verify-cli-framework.sh"
 
 "$ROOT_DIR/verify-superpowers-rule-gate-live.sh"
 "$ROOT_DIR/verify-child-artifact-forwarding-live.sh"
 "$ROOT_DIR/verify-superpowers-child-orchestration-live.sh"
+"$ROOT_DIR/verify-superpowers-run-skill-live.sh"
 "$ROOT_DIR/verify-codex-skill-execution-live.sh"
 "$ROOT_DIR/verify-skill-quality-live.sh"
 
