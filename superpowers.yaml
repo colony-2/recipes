@@ -1,0 +1,1166 @@
+id: superpowers
+version: 0.1.0
+desc: Primary same-job C2 Superpowers workflow orchestrator
+input_schema:
+  prompt:
+    type: string
+    required: true
+  mode:
+    type: string
+    required: false
+  design_json:
+    type: string
+    required: false
+  plan_json:
+    type: string
+    required: false
+  task_id:
+    type: string
+    required: false
+  execution_result_json:
+    type: string
+    required: false
+  verification_result_json:
+    type: string
+    required: false
+  verification_commands:
+    type: string
+    required: false
+  completion_action:
+    type: string
+    required: false
+  bug_report:
+    type: string
+    required: false
+  local_hash:
+    type: string
+    required: false
+  upstream_repo:
+    type: string
+    required: false
+  upstream_branch:
+    type: string
+    required: false
+  commit_message:
+    type: string
+    required: false
+  skill_bundle_ref:
+    type: string
+    required: false
+inputs:
+  prompt: "{{ inputs.prompt }}"
+  mode: '${{ first_nonempty(inputs.?mode, "auto") }}'
+  design_json: '${{ first_nonempty(inputs.?design_json, "") }}'
+  plan_json: '${{ first_nonempty(inputs.?plan_json, "") }}'
+  task_id: '${{ first_nonempty(inputs.?task_id, "") }}'
+  execution_result_json: '${{ first_nonempty(inputs.?execution_result_json, "{}") }}'
+  verification_result_json: '${{ first_nonempty(inputs.?verification_result_json, "") }}'
+  verification_commands: '${{ first_nonempty(inputs.?verification_commands, "") }}'
+  completion_action: '${{ first_nonempty(inputs.?completion_action, "recommend") }}'
+  bug_report: '${{ first_nonempty(inputs.?bug_report, "") }}'
+  local_hash: '${{ first_nonempty(inputs.?local_hash, context.git.?hash.orValue(""), "") }}'
+  upstream_repo: '${{ first_nonempty(inputs.?upstream_repo, context.git.?repo.orValue(""), "") }}'
+  upstream_branch: '${{ first_nonempty(inputs.?upstream_branch, context.git.?ref.orValue(""), "") }}'
+  commit_message: '${{ first_nonempty(inputs.?commit_message, "Complete Superpowers workflow") }}'
+  skill_bundle_ref: '${{ first_nonempty(inputs.?skill_bundle_ref, "") }}'
+state:
+  initial: route
+  states:
+    route:
+      op: command_execution
+      transitions:
+        - to: needs_user_input
+          when: json_parse(outputs.stdout).workflow_route == "needs_user_input"
+        - to: debug_recipe_required
+          when: json_parse(outputs.stdout).workflow_route == "debug"
+        - to: finish_work
+          when: json_parse(outputs.stdout).workflow_route == "finish"
+        - to: verify_work
+          when: json_parse(outputs.stdout).workflow_route == "verify"
+        - to: review_plan
+          when: json_parse(outputs.stdout).workflow_route == "review_plan"
+        - to: select_task
+          when: json_parse(outputs.stdout).workflow_route == "execute_plan"
+        - to: write_plan
+          when: json_parse(outputs.stdout).workflow_route == "write_plan"
+        - to: brainstorm_design
+          when: true
+      inputs:
+        timeout: 30s
+        env:
+          C2_MODE: "{{ inputs.mode }}"
+          C2_DESIGN_JSON: "{{ inputs.design_json }}"
+          C2_PLAN_JSON: "{{ inputs.plan_json }}"
+          C2_VERIFICATION_JSON: "{{ inputs.verification_result_json }}"
+          C2_BUG_REPORT: "{{ inputs.bug_report }}"
+        run: |
+          set -euo pipefail
+          mkdir -p "{{ context.environment.op.outbox }}/superpowers"
+          python3 - <<'PY'
+          import json
+          import os
+
+          mode = (os.environ.get("C2_MODE") or "auto").strip()
+          has_design = bool((os.environ.get("C2_DESIGN_JSON") or "").strip())
+          has_plan = bool((os.environ.get("C2_PLAN_JSON") or "").strip())
+          has_verification = bool((os.environ.get("C2_VERIFICATION_JSON") or "").strip())
+          has_bug = bool((os.environ.get("C2_BUG_REPORT") or "").strip())
+
+          allowed = {
+              "auto",
+              "brainstorm",
+              "write_plan",
+              "review_plan",
+              "execute_plan",
+              "verify",
+              "finish",
+              "debug",
+              "needs_user_input",
+          }
+          if mode not in allowed:
+              route = "needs_user_input"
+              reason = f"Unknown mode {mode!r}."
+          elif mode != "auto":
+              route = mode
+              reason = "Explicit mode selected."
+          elif has_verification:
+              route = "finish"
+              reason = "Verification artifact is already present."
+          elif has_plan and has_design:
+              route = "review_plan"
+              reason = "Design and plan artifacts are present."
+          elif has_plan:
+              route = "execute_plan"
+              reason = "Task plan artifact is already present."
+          elif has_design:
+              route = "write_plan"
+              reason = "Design artifact is already present."
+          elif has_bug:
+              route = "debug"
+              reason = "Bug report was supplied."
+          else:
+              route = "brainstorm"
+              reason = "Feature request needs design before planning."
+
+          if route == "debug" and not has_bug:
+              route = "needs_user_input"
+              reason = "Debug mode requires a bug_report input."
+
+          result = {
+              "workflow_route": route,
+              "reason": reason,
+              "needs_user_input": route == "needs_user_input",
+              "user_question": "Which Superpowers phase should run next?" if route == "needs_user_input" else "",
+              "has_design": has_design,
+              "has_plan": has_plan,
+              "has_verification": has_verification,
+          }
+          out = "{{ context.environment.op.outbox }}/superpowers/route.json"
+          with open(out, "w", encoding="utf-8") as fh:
+              json.dump(result, fh, sort_keys=True)
+              fh.write("\n")
+          print(json.dumps(result, sort_keys=True))
+          PY
+
+    needs_user_input:
+      op: input
+      transitions: []
+      inputs:
+        form:
+          title: "Superpowers routing needs input"
+          fields:
+            - id: response
+              type: paragraph_text
+              question: '${{ json_parse(state_output("route", "stdout", "{\"user_question\":\"Which Superpowers phase should run next?\"}")).user_question }}'
+              required: true
+
+    debug_recipe_required:
+      op: command_execution
+      transitions: []
+      inputs:
+        timeout: 30s
+        run: |
+          set -euo pipefail
+          mkdir -p "{{ context.environment.op.outbox }}/superpowers/debug"
+          cat > "{{ context.environment.op.outbox }}/superpowers/debug/action.json" <<'JSON'
+          {"workflow_status":"debug_recipe_required","message":"Run superpowers-debug.yaml for systematic reproduction and root-cause routing."}
+          JSON
+          cat "{{ context.environment.op.outbox }}/superpowers/debug/action.json"
+
+    brainstorm_design:
+      op: git+https://github.com/colony-2/c2ops.git//codex/run_skill@main
+      transitions:
+        - to: write_plan
+          when: outputs.parsed_output.approved_for_planning
+        - to: needs_user_input
+          when: true
+      inputs:
+        skill: c2-superpowers-brainstorm
+        input:
+          ticket_prompt: "{{ inputs.prompt }}"
+          route_json: "{{ states.route.outputs.stdout }}"
+          user_feedback: ""
+          skill_bundle_ref: "{{ inputs.skill_bundle_ref }}"
+        prompt: |
+          Produce a C2 Superpowers design artifact before any implementation or
+          task planning starts.
+
+          Use the `c2-superpowers-brainstorm` contract. Recipes own routing,
+          gates, child-job decisions, and git persistence.
+
+          Write:
+          - `superpowers/brainstorm/design.md`
+          - `superpowers/brainstorm/result.json`
+          - `superpowers/brainstorm/latest-status.json`
+
+          Do not implement code, create child jobs, create git worktrees, or
+          make manual git commits.
+        status_contract:
+          path: superpowers/brainstorm/latest-status.json
+        output:
+          from: artifact
+          path: superpowers/brainstorm/result.json
+          format: json
+          schema:
+            type: object
+            required:
+              - summary
+              - recommended_approach
+              - alternatives
+              - open_questions
+              - approved_for_planning
+              - plan_inputs
+            properties:
+              summary:
+                type: string
+                minLength: 1
+              recommended_approach:
+                type: string
+              alternatives:
+                type: array
+                items: {}
+              open_questions:
+                type: array
+                items:
+                  type: string
+              approved_for_planning:
+                type: boolean
+              plan_inputs:
+                type: object
+            additionalProperties: true
+
+    write_plan:
+      op: git+https://github.com/colony-2/c2ops.git//codex/run_skill@main
+      transitions:
+        - to: review_plan
+          when: true
+      inputs:
+        skill: c2-superpowers-write-plan
+        input:
+          ticket_prompt: "{{ inputs.prompt }}"
+          design_json: '${{ first_nonempty(inputs.?design_json.orValue(""), state_output("brainstorm_design", "raw_output", "{}")) }}'
+          user_feedback: '${{ state_output("review_plan", "blocking_feedback", "") }}'
+          skill_bundle_ref: "{{ inputs.skill_bundle_ref }}"
+        prompt: |
+          Convert the approved design into a C2 Superpowers task plan.
+
+          Use the `c2-superpowers-write-plan` contract. Do not add manual commit
+          steps. Do not create child jobs for ordinary dependent tasks. Mark a
+          task `requires_child_job=true` only for a real C2 job boundary such as
+          target-ref advancement, cross-cell work, reuse, true parallelism, or
+          lifecycle isolation.
+
+          Write:
+          - `superpowers/plan/plan.md`
+          - `superpowers/plan/plan.json`
+          - `superpowers/plan/latest-status.json`
+        status_contract:
+          path: superpowers/plan/latest-status.json
+        output:
+          from: artifact
+          path: superpowers/plan/plan.json
+          format: json
+          schema:
+            type: object
+            required:
+              - plan_id
+              - summary
+              - tasks
+              - ready_task_ids
+              - validation_strategy
+              - child_job_boundaries
+            properties:
+              plan_id:
+                type: string
+                minLength: 1
+              summary:
+                type: string
+                minLength: 1
+              tasks:
+                type: array
+                minItems: 1
+                items:
+                  type: object
+              ready_task_ids:
+                type: array
+                minItems: 1
+                items:
+                  type: string
+              validation_strategy:
+                type: object
+              child_job_boundaries:
+                type: array
+                items: {}
+            additionalProperties: true
+
+    review_plan:
+      op: git+https://github.com/colony-2/c2ops.git//codex/run_skill@main
+      transitions:
+        - to: select_task
+          when: outputs.parsed_output.ok
+        - to: replan_required
+          when: true
+      inputs:
+        skill: c2-superpowers-plan-review
+        input:
+          ticket_prompt: "{{ inputs.prompt }}"
+          design_json: '${{ first_nonempty(inputs.?design_json.orValue(""), state_output("brainstorm_design", "raw_output", "{}")) }}'
+          plan_json: '${{ first_nonempty(inputs.?plan_json.orValue(""), state_output("write_plan", "raw_output", "{}")) }}'
+          skill_bundle_ref: "{{ inputs.skill_bundle_ref }}"
+        prompt: |
+          Review this C2 Superpowers task plan before execution starts.
+
+          Use the `c2-superpowers-plan-review` contract. Recipes own routing,
+          gates, child-job decisions, and git persistence. Do not rewrite the
+          plan, implement code, create child jobs, create git worktrees, or make
+          manual commits.
+
+          Write:
+          - `superpowers/plan-review/review.md`
+          - `superpowers/plan-review/result.json`
+          - `superpowers/plan-review/latest-status.json`
+        status_contract:
+          path: superpowers/plan-review/latest-status.json
+        output:
+          from: artifact
+          path: superpowers/plan-review/result.json
+          format: json
+          schema:
+            type: object
+            required:
+              - ok
+              - issues
+              - recommendations
+              - blocking_feedback
+              - requires_replan
+            properties:
+              ok:
+                type: boolean
+              issues:
+                type: array
+                items:
+                  type: string
+              recommendations:
+                type: array
+                items:
+                  type: string
+              blocking_feedback:
+                type: string
+              requires_replan:
+                type: boolean
+            additionalProperties: true
+
+    replan_required:
+      op: command_execution
+      transitions: []
+      inputs:
+        timeout: 30s
+        env:
+          BLOCKING_FEEDBACK: '${{ state_output("review_plan", "blocking_feedback", "") }}'
+        run: |
+          set -euo pipefail
+          mkdir -p "{{ context.environment.op.outbox }}/superpowers/plan-review"
+          python3 - <<'PY'
+          import json
+          import os
+
+          result = {
+              "workflow_status": "requires_replan",
+              "blocking_feedback": os.environ.get("BLOCKING_FEEDBACK", ""),
+          }
+          out = "{{ context.environment.op.outbox }}/superpowers/plan-review/action.json"
+          with open(out, "w", encoding="utf-8") as fh:
+              json.dump(result, fh, sort_keys=True)
+              fh.write("\n")
+          print(json.dumps(result, sort_keys=True))
+          PY
+
+    select_task:
+      op: command_execution
+      transitions:
+        - to: child_boundary_required
+          when: json_parse(outputs.stdout).requires_child_job == true
+        - to: run_task_boundary
+          when: json_parse(outputs.stdout).selected == true
+        - to: needs_user_input
+          when: true
+      inputs:
+        timeout: 30s
+        env:
+          C2_PLAN_JSON: '${{ first_nonempty(inputs.?plan_json.orValue(""), state_output("write_plan", "raw_output", "{}")) }}'
+          C2_TASK_ID: "{{ inputs.task_id }}"
+        run: |
+          set -euo pipefail
+          mkdir -p "{{ context.environment.op.outbox }}/superpowers/execution"
+          python3 - <<'PY'
+          import json
+          import os
+          import sys
+
+          plan = json.loads(os.environ["C2_PLAN_JSON"])
+          requested = os.environ.get("C2_TASK_ID", "")
+          tasks = plan.get("tasks", [])
+          by_id = {task.get("id", ""): task for task in tasks}
+
+          selected = by_id.get(requested) if requested else None
+          if selected is None:
+              for task_id in plan.get("ready_task_ids", []):
+                  selected = by_id.get(task_id)
+                  if selected is not None:
+                      break
+          if selected is None:
+              for task in tasks:
+                  if task.get("status", "pending") == "pending" and not task.get("dependencies", []):
+                      selected = task
+                      break
+          if selected is None:
+              result = {
+                  "selected": False,
+                  "task_id": "",
+                  "requires_child_job": False,
+                  "child_job_reason": "",
+                  "selected_task": {},
+              }
+              print(json.dumps(result, sort_keys=True))
+              sys.exit(0)
+
+          result = {
+              "selected": True,
+              "task_id": selected.get("id", ""),
+              "requires_child_job": bool(selected.get("requires_child_job", False)),
+              "child_job_reason": selected.get("child_job_reason", ""),
+              "selected_task": selected,
+          }
+          out = "{{ context.environment.op.outbox }}/superpowers/execution/selected-task.json"
+          with open(out, "w", encoding="utf-8") as fh:
+              json.dump(result, fh, sort_keys=True)
+              fh.write("\n")
+          print(json.dumps(result, sort_keys=True))
+          PY
+
+    child_boundary_required:
+      op: command_execution
+      transitions: []
+      inputs:
+        timeout: 30s
+        env:
+          SELECTED_TASK_JSON: "{{ states.select_task.outputs.stdout }}"
+        run: |
+          set -euo pipefail
+          mkdir -p "{{ context.environment.op.outbox }}/superpowers/execution"
+          printf '%s\n' "$SELECTED_TASK_JSON" > "{{ context.environment.op.outbox }}/superpowers/execution/child-boundary-required.json"
+          printf '%s\n' "$SELECTED_TASK_JSON"
+
+    run_task_boundary:
+      inputs:
+        selected_task_json: "{{ states.select_task.outputs.stdout }}"
+        skill_bundle_ref: "{{ inputs.skill_bundle_ref }}"
+      sequence:
+        - id: implement_task
+          op: git+https://github.com/colony-2/c2ops.git//codex/run_skill@main
+          inputs:
+            skill: c2-superpowers-task-implementer
+            input:
+              selected_task_json: "{{ inputs.selected_task_json }}"
+              skill_bundle_ref: "{{ inputs.skill_bundle_ref }}"
+            prompt: |
+              Implement exactly the selected task inside the current C2 job.
+
+              Do not create child jobs, create git worktrees, or make manual git
+              commits. C2 owns git persistence and gates.
+
+              Write:
+              - `superpowers/tasks/<task-id>/implementation-summary.md`
+              - `superpowers/tasks/latest-status.json`
+              - `superpowers/tasks/result.json`
+          status_contract:
+            path: superpowers/tasks/latest-status.json
+          output:
+            from: artifact
+            path: superpowers/tasks/result.json
+            format: json
+            schema:
+              type: object
+              required:
+                - task_id
+                - status
+                - summary
+                - validation_commands_run
+              properties:
+                task_id:
+                  type: string
+                status:
+                  type: string
+                  enum:
+                    - done
+                    - done_with_concerns
+                    - needs_context
+                    - blocked
+                    - needs_revision
+                summary:
+                  type: string
+                validation_commands_run:
+                  type: array
+                  items:
+                    type: string
+              additionalProperties: true
+
+        - id: spec_review
+          op: git+https://github.com/colony-2/c2ops.git//codex/run_skill@main
+          inputs:
+            skill: c2-superpowers-spec-reviewer
+            input:
+              selected_task_json: "{{ inputs.selected_task_json }}"
+              implementer_summary: "{{ sequence.implement_task.outputs.raw_output }}"
+              skill_bundle_ref: "{{ inputs.skill_bundle_ref }}"
+            prompt: |
+              Review the selected task for spec compliance only. Do not
+              implement fixes, create child jobs, create worktrees, or make
+              manual commits.
+          status_contract:
+            path: superpowers/tasks/spec-review-status.json
+          output:
+            from: artifact
+            path: superpowers/tasks/spec-review.json
+            format: json
+            schema:
+              type: object
+              required:
+                - ok
+                - blocking_issues
+                - feedback
+                - requires_revision
+              properties:
+                ok:
+                  type: boolean
+                blocking_issues:
+                  type: array
+                  items:
+                    type: string
+                feedback:
+                  type: string
+                requires_revision:
+                  type: boolean
+              additionalProperties: true
+
+        - id: quality_review
+          op: git+https://github.com/colony-2/c2ops.git//codex/run_skill@main
+          inputs:
+            skill: c2-superpowers-quality-reviewer
+            input:
+              selected_task_json: "{{ inputs.selected_task_json }}"
+              implementer_summary: "{{ sequence.implement_task.outputs.raw_output }}"
+              spec_review: "{{ sequence.spec_review.outputs.raw_output }}"
+              skill_bundle_ref: "{{ inputs.skill_bundle_ref }}"
+            prompt: |
+              Review the selected task for quality, maintainability, test
+              quality, compatibility, and C2 safety. Do not implement fixes,
+              create child jobs, create worktrees, or make manual commits.
+          status_contract:
+            path: superpowers/tasks/quality-review-status.json
+          output:
+            from: artifact
+            path: superpowers/tasks/quality-review.json
+            format: json
+            schema:
+              type: object
+              required:
+                - ok
+                - blocking_issues
+                - feedback
+                - requires_revision
+              properties:
+                ok:
+                  type: boolean
+                blocking_issues:
+                  type: array
+                  items:
+                    type: string
+                feedback:
+                  type: string
+                requires_revision:
+                  type: boolean
+              additionalProperties: true
+
+        - id: task_gate
+          op: git+https://github.com/colony-2/c2ops.git//rule_gate@main
+          inputs:
+            rules:
+              - id: implementation_done
+                type: assert
+                value: ${{ sequence.implement_task.outputs.parsed_output.status == "done" }}
+                message: Implementer must report task status done.
+              - id: spec_review_ok
+                type: assert
+                value: ${{ sequence.spec_review.outputs.parsed_output.ok }}
+                message: Spec review must pass.
+              - id: quality_review_ok
+                type: assert
+                value: ${{ sequence.quality_review.outputs.parsed_output.ok }}
+                message: Quality review must pass.
+      transitions:
+        - to: mark_plan_after_task
+          when: outputs.task_gate_ok
+        - to: task_needs_revision
+          when: true
+      outputs:
+        implementer_session_id: "{{ sequence.implement_task.outputs.sessionId }}"
+        spec_reviewer_session_id: "{{ sequence.spec_review.outputs.sessionId }}"
+        quality_reviewer_session_id: "{{ sequence.quality_review.outputs.sessionId }}"
+        implementation_raw_output: "{{ sequence.implement_task.outputs.raw_output }}"
+        implementation_status: "${{ sequence.implement_task.outputs.parsed_output.status }}"
+        spec_review_ok: "${{ sequence.spec_review.outputs.parsed_output.ok }}"
+        quality_review_ok: "${{ sequence.quality_review.outputs.parsed_output.ok }}"
+        task_gate_ok: "${{ sequence.task_gate.outputs.ok }}"
+
+    task_needs_revision:
+      op: command_execution
+      transitions: []
+      inputs:
+        timeout: 30s
+        run: |
+          set -euo pipefail
+          mkdir -p "{{ context.environment.op.outbox }}/superpowers/execution"
+          cat > "{{ context.environment.op.outbox }}/superpowers/execution/action.json" <<'JSON'
+          {"workflow_status":"needs_revision","message":"Task implementation or review gate failed."}
+          JSON
+          cat "{{ context.environment.op.outbox }}/superpowers/execution/action.json"
+
+    mark_plan_after_task:
+      op: command_execution
+      transitions:
+        - to: verify_work
+          when: true
+      inputs:
+        timeout: 30s
+        env:
+          PLAN_JSON: '${{ first_nonempty(inputs.?plan_json.orValue(""), state_output("write_plan", "raw_output", "{}")) }}'
+          SELECTED_TASK_JSON: "{{ states.select_task.outputs.stdout }}"
+          IMPLEMENTATION_JSON: "{{ states.run_task_boundary.outputs.implementation_raw_output }}"
+        run: |
+          set -euo pipefail
+          mkdir -p "{{ context.environment.op.outbox }}/superpowers/execution"
+          python3 - <<'PY'
+          import json
+          import os
+
+          plan = json.loads(os.environ["PLAN_JSON"])
+          selected = json.loads(os.environ["SELECTED_TASK_JSON"])
+          implementation = json.loads(os.environ.get("IMPLEMENTATION_JSON") or "{}")
+          task_id = selected.get("task_id", implementation.get("task_id", ""))
+
+          for task in plan.get("tasks", []):
+              if task.get("id") == task_id:
+                  task["status"] = "done"
+                  task["implementation_summary"] = implementation.get("summary", "")
+          ready = [tid for tid in plan.get("ready_task_ids", []) if tid != task_id]
+          plan["ready_task_ids"] = ready
+
+          execution = {
+              "task_id": task_id,
+              "status": implementation.get("status", "done"),
+              "summary": implementation.get("summary", ""),
+              "validation_commands_run": implementation.get("validation_commands_run", []),
+          }
+          result = {
+              "workflow_status": "task_done",
+              "task_id": task_id,
+              "updated_plan": plan,
+              "updated_plan_json": json.dumps(plan, sort_keys=True),
+              "execution_result": execution,
+              "execution_result_json": json.dumps(execution, sort_keys=True),
+          }
+          with open("{{ context.environment.op.outbox }}/superpowers/execution/updated-plan.json", "w", encoding="utf-8") as fh:
+              json.dump(plan, fh, sort_keys=True)
+              fh.write("\n")
+          with open("{{ context.environment.op.outbox }}/superpowers/execution/result.json", "w", encoding="utf-8") as fh:
+              json.dump(execution, fh, sort_keys=True)
+              fh.write("\n")
+          print(json.dumps(result, sort_keys=True))
+          PY
+
+    verify_work:
+      inputs:
+        plan_json: '${{ first_nonempty(inputs.?plan_json.orValue(""), json_parse(state_output("mark_plan_after_task", "stdout", "{\"updated_plan_json\":\"\"}")).updated_plan_json, state_output("write_plan", "raw_output", "{}")) }}'
+        execution_result_json: '${{ first_nonempty(inputs.?execution_result_json.orValue(""), json_parse(state_output("mark_plan_after_task", "stdout", "{\"execution_result_json\":\"{}\"}")).execution_result_json, "{}") }}'
+        verification_commands: "{{ inputs.verification_commands }}"
+        skill_bundle_ref: "{{ inputs.skill_bundle_ref }}"
+      sequence:
+        - id: collect_verification_inputs
+          op: command_execution
+          inputs:
+            timeout: 30s
+            env:
+              PLAN_JSON: "{{ inputs.plan_json }}"
+              EXECUTION_RESULT_JSON: "{{ inputs.execution_result_json }}"
+              VERIFICATION_COMMANDS: "{{ inputs.verification_commands }}"
+            run: |
+              set -euo pipefail
+              mkdir -p "{{ context.environment.op.outbox }}/superpowers/verify"
+              python3 - <<'PY'
+              import json
+              import os
+
+              plan = json.loads(os.environ["PLAN_JSON"])
+              execution = json.loads(os.environ.get("EXECUTION_RESULT_JSON") or "{}")
+              override = os.environ.get("VERIFICATION_COMMANDS", "")
+
+              commands = [line.strip() for line in override.splitlines() if line.strip()]
+              if not commands:
+                  strategy = plan.get("validation_strategy") or {}
+                  commands = [str(cmd).strip() for cmd in strategy.get("commands", []) if str(cmd).strip()]
+              if not commands:
+                  seen = set()
+                  for task in plan.get("tasks", []):
+                      for cmd in task.get("validation_commands", []):
+                          cmd = str(cmd).strip()
+                          if cmd and cmd not in seen:
+                              seen.add(cmd)
+                              commands.append(cmd)
+
+              result = {
+                  "plan_id": plan.get("plan_id", ""),
+                  "task_ids": [task.get("id", "") for task in plan.get("tasks", []) if task.get("id")],
+                  "commands_required": commands,
+                  "execution_status": execution.get("status", ""),
+                  "execution_task_id": execution.get("task_id", ""),
+              }
+              out = "{{ context.environment.op.outbox }}/superpowers/verify/verification-inputs.json"
+              with open(out, "w", encoding="utf-8") as fh:
+                  json.dump(result, fh, sort_keys=True)
+                  fh.write("\n")
+              print(json.dumps(result, sort_keys=True))
+              PY
+
+        - id: run_verification_commands
+          op: command_execution
+          inputs:
+            timeout: 60m
+            continue_on_error: true
+            env:
+              WT: "{{ context.environment.op.worktree_path }}"
+              VERIFICATION_INPUTS_JSON: "{{ sequence.collect_verification_inputs.outputs.stdout }}"
+            run: |
+              set -uo pipefail
+
+              OUT="{{ context.environment.op.outbox }}"
+              mkdir -p "$OUT/superpowers/verify"
+              cd "$WT"
+
+              python3 - <<'PY' > "$OUT/superpowers/verify/commands.sh"
+              import json
+              import os
+
+              data = json.loads(os.environ["VERIFICATION_INPUTS_JSON"])
+              commands = data.get("commands_required", [])
+              print("set -euo pipefail")
+              if not commands:
+                  print("echo 'No verification commands were provided.'")
+                  print("exit 2")
+              for command in commands:
+                  print(command)
+              PY
+
+              set +e
+              bash "$OUT/superpowers/verify/commands.sh" 2>&1 | tee "$OUT/superpowers/verify/output.txt"
+              RC=${PIPESTATUS[0]}
+              set -e
+              tail -n 120 "$OUT/superpowers/verify/output.txt" > "$OUT/superpowers/verify/output-tail.txt" || true
+              exit "$RC"
+
+        - id: summarize_verification
+          op: git+https://github.com/colony-2/c2ops.git//codex/run_skill@main
+          inputs:
+            skill: c2-superpowers-verify
+            input:
+              plan_json: "{{ inputs.plan_json }}"
+              execution_result_json: "{{ inputs.execution_result_json }}"
+              verification_inputs_json: "{{ sequence.collect_verification_inputs.outputs.stdout }}"
+              validation_exit_code: "${{ sequence.run_verification_commands.outputs.exit_code }}"
+              validation_stdout: "{{ sequence.run_verification_commands.outputs.stdout }}"
+              validation_stderr: "{{ sequence.run_verification_commands.outputs.stderr }}"
+              skill_bundle_ref: "{{ inputs.skill_bundle_ref }}"
+            prompt: |
+              Interpret the fresh verification command evidence for this C2
+              Superpowers workflow. Recipes already ran the verification
+              commands. Do not rerun commands, create child jobs, create
+              worktrees, or make manual commits.
+
+              Write:
+              - `superpowers/verify/evidence.md`
+              - `superpowers/verify/result.json`
+              - `superpowers/verify/latest-status.json`
+          status_contract:
+            path: superpowers/verify/latest-status.json
+          output:
+            from: artifact
+            path: superpowers/verify/result.json
+            format: json
+            schema:
+              type: object
+              required:
+                - ok
+                - commands_required
+                - commands_observed
+                - evidence_summary
+                - blocking_issues
+              properties:
+                ok:
+                  type: boolean
+                commands_required:
+                  type: array
+                  items:
+                    type: string
+                commands_observed:
+                  type: array
+                  items: {}
+                evidence_summary:
+                  type: string
+                blocking_issues:
+                  type: array
+                  items:
+                    type: string
+              additionalProperties: true
+
+        - id: verification_gate
+          op: git+https://github.com/colony-2/c2ops.git//rule_gate@main
+          inputs:
+            rules:
+              - id: commands_required
+                type: assert
+                value: ${{ size(json_parse(sequence.collect_verification_inputs.outputs.stdout).commands_required) > 0 }}
+                message: Verification must have at least one required command.
+              - id: command_exit_zero
+                type: assert
+                value: ${{ sequence.run_verification_commands.outputs.exit_code == 0 }}
+                message: Verification commands must exit zero.
+              - id: verify_output_schema_valid
+                type: assert
+                value: ${{ sequence.summarize_verification.outputs.output_schema_valid }}
+                message: Verify result artifact must match schema.
+              - id: verify_status_contract_valid
+                type: assert
+                value: ${{ sequence.summarize_verification.outputs.status_contract_present && sequence.summarize_verification.outputs.status_contract_valid }}
+                message: Verify status contract must be present and valid.
+              - id: verify_ok
+                type: assert
+                value: ${{ sequence.summarize_verification.outputs.parsed_output.ok }}
+                message: Verify skill must report ok=true only for proven completion.
+      transitions:
+        - to: finish_work
+          when: outputs.verification_gate_ok
+        - to: debug_needed
+          when: true
+      outputs:
+        plan_id: "${{ json_parse(sequence.collect_verification_inputs.outputs.stdout).plan_id }}"
+        commands_required: "${{ json_parse(sequence.collect_verification_inputs.outputs.stdout).commands_required }}"
+        validation_exit_code: "${{ sequence.run_verification_commands.outputs.exit_code }}"
+        validation_passed: "${{ sequence.run_verification_commands.outputs.exit_code == 0 }}"
+        verification_result_json: "{{ sequence.summarize_verification.outputs.raw_output }}"
+        verification_ok: "${{ sequence.summarize_verification.outputs.parsed_output.ok }}"
+        verification_blocking_issues: "${{ sequence.summarize_verification.outputs.parsed_output.blocking_issues }}"
+        verification_gate_ok: "${{ sequence.verification_gate.outputs.ok }}"
+        verify_session_id: "{{ sequence.summarize_verification.outputs.sessionId }}"
+
+    debug_needed:
+      op: command_execution
+      transitions: []
+      inputs:
+        timeout: 30s
+        run: |
+          set -euo pipefail
+          mkdir -p "{{ context.environment.op.outbox }}/superpowers/debug"
+          cat > "{{ context.environment.op.outbox }}/superpowers/debug/action.json" <<'JSON'
+          {"workflow_status":"needs_debug","message":"Fresh verification failed; route to superpowers-debug.yaml with the failing command evidence."}
+          JSON
+          cat "{{ context.environment.op.outbox }}/superpowers/debug/action.json"
+
+    finish_work:
+      inputs:
+        plan_json: '${{ first_nonempty(inputs.?plan_json.orValue(""), json_parse(state_output("mark_plan_after_task", "stdout", "{\"updated_plan_json\":\"\"}")).updated_plan_json, state_output("write_plan", "raw_output", "{}")) }}'
+        verification_result_json: '${{ first_nonempty(inputs.?verification_result_json.orValue(""), state_output("verify_work", "verification_result_json", "{}")) }}'
+        execution_result_json: '${{ first_nonempty(inputs.?execution_result_json.orValue(""), json_parse(state_output("mark_plan_after_task", "stdout", "{\"execution_result_json\":\"{}\"}")).execution_result_json, "{}") }}'
+        completion_action: "{{ inputs.completion_action }}"
+        local_hash: "{{ inputs.local_hash }}"
+        upstream_repo: "{{ inputs.upstream_repo }}"
+        upstream_branch: "{{ inputs.upstream_branch }}"
+        commit_message: "{{ inputs.commit_message }}"
+        skill_bundle_ref: "{{ inputs.skill_bundle_ref }}"
+      sequence:
+        - id: collect_finish_inputs
+          op: command_execution
+          inputs:
+            timeout: 30s
+            env:
+              PLAN_JSON: "{{ inputs.plan_json }}"
+              VERIFICATION_RESULT_JSON: "{{ inputs.verification_result_json }}"
+              EXECUTION_RESULT_JSON: "{{ inputs.execution_result_json }}"
+              COMPLETION_ACTION: "{{ inputs.completion_action }}"
+              LOCAL_HASH: "{{ inputs.local_hash }}"
+              UPSTREAM_REPO: "{{ inputs.upstream_repo }}"
+              UPSTREAM_BRANCH: "{{ inputs.upstream_branch }}"
+              COMMIT_MESSAGE: "{{ inputs.commit_message }}"
+            run: |
+              set -euo pipefail
+              mkdir -p "{{ context.environment.op.outbox }}/superpowers/finish"
+              python3 - <<'PY'
+              import json
+              import os
+
+              plan = json.loads(os.environ["PLAN_JSON"])
+              verification = json.loads(os.environ["VERIFICATION_RESULT_JSON"])
+              execution = json.loads(os.environ.get("EXECUTION_RESULT_JSON") or "{}")
+              action = os.environ.get("COMPLETION_ACTION") or "recommend"
+
+              tasks = plan.get("tasks", [])
+              complete_statuses = {"done", "complete", "completed", "skipped"}
+              incomplete = [
+                  task.get("id", "")
+                  for task in tasks
+                  if task.get("status", "pending") not in complete_statuses
+              ]
+              completed = [
+                  task.get("id", "")
+                  for task in tasks
+                  if task.get("status", "pending") in complete_statuses
+              ]
+              blocking = list(verification.get("blocking_issues", []) or [])
+
+              result = {
+                  "plan_id": plan.get("plan_id", ""),
+                  "task_count": len(tasks),
+                  "completed_tasks": [task for task in completed if task],
+                  "incomplete_tasks": [task for task in incomplete if task],
+                  "all_tasks_complete": bool(tasks) and not incomplete,
+                  "verification_present": "ok" in verification,
+                  "verification_ok": bool(verification.get("ok", False)),
+                  "verification_blocking_issues": blocking,
+                  "verification_summary": verification.get("evidence_summary", ""),
+                  "execution_status": execution.get("status", ""),
+                  "completion_action": action,
+                  "local_hash_present": bool(os.environ.get("LOCAL_HASH", "")),
+                  "upstream_repo_present": bool(os.environ.get("UPSTREAM_REPO", "")),
+                  "upstream_branch_present": bool(os.environ.get("UPSTREAM_BRANCH", "")),
+                  "commit_message_present": bool(os.environ.get("COMMIT_MESSAGE", "")),
+              }
+              out = "{{ context.environment.op.outbox }}/superpowers/finish/finish-inputs.json"
+              with open(out, "w", encoding="utf-8") as fh:
+                  json.dump(result, fh, sort_keys=True)
+                  fh.write("\n")
+              print(json.dumps(result, sort_keys=True))
+              PY
+
+        - id: write_finish_summary
+          op: git+https://github.com/colony-2/c2ops.git//codex/run_skill@main
+          inputs:
+            skill: c2-superpowers-finish
+            input:
+              plan_json: "{{ inputs.plan_json }}"
+              verification_result_json: "{{ inputs.verification_result_json }}"
+              execution_result_json: "{{ inputs.execution_result_json }}"
+              finish_inputs_json: "{{ sequence.collect_finish_inputs.outputs.stdout }}"
+              requested_action: "{{ inputs.completion_action }}"
+              skill_bundle_ref: "{{ inputs.skill_bundle_ref }}"
+            prompt: |
+              Summarize this verified C2 Superpowers workflow and recommend the
+              finish decision. Recipes own verification gates, merge choices,
+              and git operations. Do not rerun tests, create child jobs, create
+              worktrees, merge, or make manual commits.
+
+              Write:
+              - `superpowers/finish/summary.md`
+              - `superpowers/finish/result.json`
+              - `superpowers/finish/latest-status.json`
+          status_contract:
+            path: superpowers/finish/latest-status.json
+          output:
+            from: artifact
+            path: superpowers/finish/result.json
+            format: json
+            schema:
+              type: object
+              required:
+                - decision
+                - summary
+                - completed_tasks
+                - verification_summary
+                - remaining_risks
+                - merge_ready
+              properties:
+                decision:
+                  type: string
+                  enum:
+                    - merge_ready
+                    - hold_for_user
+                    - needs_revision
+                    - cancel
+                summary:
+                  type: string
+                  minLength: 1
+                completed_tasks:
+                  type: array
+                  items:
+                    type: string
+                verification_summary:
+                  type: string
+                remaining_risks:
+                  type: array
+                  items:
+                    type: string
+                merge_ready:
+                  type: boolean
+              additionalProperties: true
+
+        - id: finish_gate
+          op: git+https://github.com/colony-2/c2ops.git//rule_gate@main
+          inputs:
+            rules:
+              - id: finish_output_schema_valid
+                type: assert
+                value: ${{ sequence.write_finish_summary.outputs.output_schema_valid == true }}
+                message: Finish result artifact must match schema.
+              - id: finish_status_contract_valid
+                type: assert
+                value: ${{ sequence.write_finish_summary.outputs.status_contract_present == true && sequence.write_finish_summary.outputs.status_contract_valid == true }}
+                message: Finish status contract must be present and valid.
+              - id: verification_present
+                type: assert
+                value: ${{ json_parse(sequence.collect_finish_inputs.outputs.stdout).verification_present == true }}
+                message: Finish requires verification evidence.
+              - id: merge_ready_requires_verification_ok
+                type: assert
+                value: ${{ sequence.write_finish_summary.outputs.parsed_output.merge_ready != true || json_parse(sequence.collect_finish_inputs.outputs.stdout).verification_ok == true }}
+                message: Finish cannot be merge-ready unless verification passed.
+              - id: merge_ready_requires_no_blockers
+                type: assert
+                value: ${{ sequence.write_finish_summary.outputs.parsed_output.merge_ready != true || size(json_parse(sequence.collect_finish_inputs.outputs.stdout).verification_blocking_issues) == 0 }}
+                message: Finish cannot be merge-ready while verification has blocking issues.
+              - id: merge_ready_requires_completed_tasks
+                type: assert
+                value: ${{ sequence.write_finish_summary.outputs.parsed_output.merge_ready != true || json_parse(sequence.collect_finish_inputs.outputs.stdout).all_tasks_complete == true }}
+                message: Finish cannot be merge-ready until all planned tasks are complete.
+      transitions:
+        - to: merge
+          when: outputs.completion_action == "merge" && outputs.finish_gate_ok && outputs.merge_ready && outputs.local_hash_present && outputs.upstream_repo_present && outputs.upstream_branch_present
+        - to: merge_blocked
+          when: outputs.completion_action == "merge"
+        - to: cancel
+          when: outputs.completion_action == "cancel"
+        - to: hold
+          when: outputs.completion_action == "hold_for_user"
+        - to: recommend
+          when: true
+      outputs:
+        completion_action: "${{ json_parse(sequence.collect_finish_inputs.outputs.stdout).completion_action }}"
+        finish_decision: "${{ sequence.write_finish_summary.outputs.parsed_output.decision }}"
+        finish_summary: "${{ sequence.write_finish_summary.outputs.parsed_output.summary }}"
+        completed_tasks: "${{ sequence.write_finish_summary.outputs.parsed_output.completed_tasks }}"
+        remaining_risks: "${{ sequence.write_finish_summary.outputs.parsed_output.remaining_risks }}"
+        merge_ready: "${{ sequence.write_finish_summary.outputs.parsed_output.merge_ready }}"
+        finish_gate_ok: "${{ sequence.finish_gate.outputs.ok }}"
+        finish_failed_rule_ids: "${{ sequence.finish_gate.outputs.failed_rule_ids }}"
+        local_hash_present: "${{ json_parse(sequence.collect_finish_inputs.outputs.stdout).local_hash_present }}"
+        upstream_repo_present: "${{ json_parse(sequence.collect_finish_inputs.outputs.stdout).upstream_repo_present }}"
+        upstream_branch_present: "${{ json_parse(sequence.collect_finish_inputs.outputs.stdout).upstream_branch_present }}"
+        verification_ok: "${{ json_parse(sequence.collect_finish_inputs.outputs.stdout).verification_ok }}"
+        finish_session_id: "{{ sequence.write_finish_summary.outputs.sessionId }}"
+
+    recommend:
+      op: command_execution
+      transitions: []
+      inputs:
+        timeout: 30s
+        run: |
+          set -euo pipefail
+          mkdir -p "{{ context.environment.op.outbox }}/superpowers/finish"
+          printf '{"action_taken":"recommend","merged":false}\n' > "{{ context.environment.op.outbox }}/superpowers/finish/action.json"
+          cat "{{ context.environment.op.outbox }}/superpowers/finish/action.json"
+
+    hold:
+      op: command_execution
+      transitions: []
+      inputs:
+        timeout: 30s
+        run: |
+          set -euo pipefail
+          mkdir -p "{{ context.environment.op.outbox }}/superpowers/finish"
+          printf '{"action_taken":"hold_for_user","merged":false}\n' > "{{ context.environment.op.outbox }}/superpowers/finish/action.json"
+          cat "{{ context.environment.op.outbox }}/superpowers/finish/action.json"
+
+    cancel:
+      op: command_execution
+      transitions: []
+      inputs:
+        timeout: 30s
+        run: |
+          set -euo pipefail
+          mkdir -p "{{ context.environment.op.outbox }}/superpowers/finish"
+          printf '{"action_taken":"cancel","merged":false}\n' > "{{ context.environment.op.outbox }}/superpowers/finish/action.json"
+          cat "{{ context.environment.op.outbox }}/superpowers/finish/action.json"
+
+    merge_blocked:
+      op: command_execution
+      transitions: []
+      inputs:
+        timeout: 30s
+        run: |
+          set -euo pipefail
+          mkdir -p "{{ context.environment.op.outbox }}/superpowers/finish"
+          printf '{"action_taken":"merge_blocked","merged":false}\n' > "{{ context.environment.op.outbox }}/superpowers/finish/action.json"
+          cat "{{ context.environment.op.outbox }}/superpowers/finish/action.json"
+
+    merge:
+      op: squashrebasemerge
+      transitions: []
+      inputs:
+        repo_path: "{{ context.environment.op.worktree_path }}"
+        local_hash: '${{ first_nonempty(inputs.?local_hash.orValue(""), context.git.?hash.orValue(""), "0000000000000000000000000000000000000000") }}'
+        upstream_repo: '${{ first_nonempty(inputs.?upstream_repo.orValue(""), context.git.?repo.orValue(""), "missing-upstream-repo") }}'
+        upstream_branch: '${{ first_nonempty(inputs.?upstream_branch.orValue(""), context.git.?ref.orValue(""), "missing-upstream-branch") }}'
+        rebase: true
+        author: '${{ context.git.?author.orValue("") }}'
+        commit_message: '${{ first_nonempty(inputs.?commit_message.orValue(""), "Complete Superpowers workflow") }}'
+
+outputs:
+  workflow_status: '${{ state_exists("finish_work") ? (state_output("finish_work", "finish_decision", "finished")) : (state_exists("debug_needed") ? "needs_debug" : (state_exists("task_needs_revision") ? "needs_revision" : (state_exists("child_boundary_required") ? "child_job_required" : (state_exists("replan_required") ? "requires_replan" : (state_exists("debug_recipe_required") ? "debug_recipe_required" : (state_exists("needs_user_input") ? "needs_user_input" : "incomplete")))))) }}'
+  route: '${{ json_parse(state_output("route", "stdout", "{\"workflow_route\":\"\"}")).workflow_route }}'
+  selected_task_id: "${{ json_parse(state_output('select_task', 'stdout', '{\"task_id\":\"\"}')).task_id }}"
+  child_job_required: "${{ json_parse(state_output('select_task', 'stdout', '{\"requires_child_job\":false}')).requires_child_job }}"
+  child_job_reason: "${{ json_parse(state_output('select_task', 'stdout', '{\"child_job_reason\":\"\"}')).child_job_reason }}"
+  task_done: "${{ state_exists('mark_plan_after_task') }}"
+  updated_plan_json: '${{ json_parse(state_output("mark_plan_after_task", "stdout", "{\"updated_plan_json\":\"\"}")).updated_plan_json }}'
+  execution_result_json: '${{ json_parse(state_output("mark_plan_after_task", "stdout", "{\"execution_result_json\":\"{}\"}")).execution_result_json }}'
+  verification_ok: "${{ state_output('verify_work', 'verification_ok', false) }}"
+  verification_gate_ok: "${{ state_output('verify_work', 'verification_gate_ok', false) }}"
+  finish_decision: "${{ state_output('finish_work', 'finish_decision', '') }}"
+  merge_ready: "${{ state_output('finish_work', 'merge_ready', false) }}"
+  finish_gate_ok: "${{ state_output('finish_work', 'finish_gate_ok', false) }}"
+  action_taken: '${{ state_exists("merge") ? "merge" : (state_exists("merge_blocked") ? "merge_blocked" : (state_exists("cancel") ? "cancel" : (state_exists("hold") ? "hold_for_user" : (state_exists("recommend") ? "recommend" : "")))) }}'
+  brainstorm_session_id: "${{ state_output('brainstorm_design', 'sessionId', '') }}"
+  write_plan_session_id: "${{ state_output('write_plan', 'sessionId', '') }}"
+  plan_review_session_id: "${{ state_output('review_plan', 'sessionId', '') }}"
+  implementer_session_id: "${{ state_output('run_task_boundary', 'implementer_session_id', '') }}"
+  spec_reviewer_session_id: "${{ state_output('run_task_boundary', 'spec_reviewer_session_id', '') }}"
+  quality_reviewer_session_id: "${{ state_output('run_task_boundary', 'quality_reviewer_session_id', '') }}"
+  verify_session_id: "${{ state_output('verify_work', 'verify_session_id', '') }}"
+  finish_session_id: "${{ state_output('finish_work', 'finish_session_id', '') }}"

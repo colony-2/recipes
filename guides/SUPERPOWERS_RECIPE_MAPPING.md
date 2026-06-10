@@ -95,7 +95,7 @@ Validated on 2026-06-08/09 UTC:
 - focused plan-review recipe suite TS-078/TS-079 passed. `superpowers-plan-review.yaml`
   approves aligned task plans and returns replanning feedback for incomplete
   plans without rewriting the plan.
-- `recipe-tests/run-all.sh` passed end to end on 2026-06-10 with TS-058..TS-079
+- `recipe-tests/run-all.sh` passed end to end on 2026-06-10 with TS-058..TS-081
   included in the default compile/validate/run path and TS-042/TS-043 focused
   live skill-quality validation invoked by the default runner as a required
   hard-failing live check.
@@ -441,12 +441,13 @@ readability justifies it.
 
 Thin state-machine recipe that routes the ticket through the whole methodology:
 
-1. `bootstrap_route`
-2. `brainstorm`
+1. `route`
+2. `brainstorm_design`
 3. `write_plan`
-4. `execute_plan`
-5. `verify`
-6. `finish`
+4. `review_plan`
+5. `select_task` / `run_task_boundary`
+6. `verify_work`
+7. `finish_work`
 
 This should be the equivalent of the Superpowers session bootstrap, but C2-native:
 instead of injecting `using-superpowers` into every chat session, the recipe
@@ -469,6 +470,17 @@ Outputs:
 - implementation status
 - verification result
 - merge/completion decision
+
+Implementation status:
+
+- `superpowers.yaml` is implemented as a same-job state machine for the normal
+  design-to-finish MVP path. It does not invoke child recipes for ordinary
+  Superpowers role sessions.
+- TS-080 validates route, brainstorm, write-plan, plan-review, same-job
+  implement/spec/quality sessions, fresh verification, and finish recommendation
+  in one job.
+- TS-081 validates that a task marked `requires_child_job=true` stops before
+  the implementer session.
 
 ### Bootstrap And Routing
 
@@ -1324,11 +1336,15 @@ Prototype these focused recipes before building the full system:
    focused compile/validate/run for aligned-plan approval and incomplete-plan
    replanning feedback. It is included in the default compile/validate/run
    suite.
+17. `superpowers.yaml`: implemented as TS-080/TS-081 and passing focused
+   compile/validate/run for the same-job primary workflow and required
+   child-boundary stop behavior.
 
 Those tests prove the core recipe contracts: structured skill invocation,
 adaptive task-session chaining, session isolation/resume, and per-task review
-gates, the local role-skill bundle contract, route/intake, brainstorming, and
-write-plan, plan-review, execute-plan, verification, finish, and debug phases.
+gates, the local role-skill bundle contract, route/intake, brainstorming,
+write-plan, plan-review, execute-plan, verification, finish, debug, and primary
+orchestration phases.
 Parallel reviewer fanout is already covered by TS-050 and should be reused
 rather than reproved unless dynamic `children_from` coverage becomes important.
 
