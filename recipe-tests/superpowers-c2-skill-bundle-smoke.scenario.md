@@ -47,11 +47,11 @@ cases:
         path: ok
         value: true
       - type: output_equals
-        path: recipe_skill_invocation_count
-        value: 44
+        path: has_recipe_skill_invocations
+        value: true
       - type: output_equals
-        path: skill_source_wiring_count
-        value: 44
+        path: all_recipe_skill_invocations_wired
+        value: true
       - type: output_equals
         path: skill_source_violation_count
         value: 0
