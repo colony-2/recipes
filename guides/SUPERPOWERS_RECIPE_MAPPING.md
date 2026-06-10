@@ -98,7 +98,12 @@ Validated on 2026-06-08/09 UTC:
 - focused plan-review recipe suite TS-078/TS-079 passed. `superpowers-plan-review.yaml`
   approves aligned task plans and returns replanning feedback for incomplete
   plans without rewriting the plan.
-- `recipe-tests/run-all.sh` passed end to end on 2026-06-10 with TS-058..TS-087
+- primary orchestrator recipe TS-080/TS-086/TS-088 passed focused
+  compile/validate/run. `superpowers.yaml` routes the full same-job
+  design-to-finish path, enforces RED/GREEN/refactor TDD before task review, and
+  routes TDD spec-review failure through revision, GREEN/REFACTOR reruns, and
+  re-review.
+- `recipe-tests/run-all.sh` passed end to end on 2026-06-10 with TS-058..TS-088
   included in the default compile/validate/run path and TS-042/TS-043 focused
   live skill-quality validation invoked by the default runner as a required
   hard-failing live check.
@@ -490,6 +495,9 @@ Implementation status:
 - TS-086 validates that a primary task marked `requires_tdd=true` routes through
   recipe-enforced RED/GREEN/refactor gates before task review and does not invoke
   the normal implementer boundary.
+- TS-088 validates that a primary TDD task with blocking spec feedback routes
+  through a TDD revision session, reruns GREEN/REFACTOR verification, and
+  completes post-revision spec/quality review before verification and finish.
 
 ### Bootstrap And Routing
 
@@ -1355,10 +1363,11 @@ Prototype these focused recipes before building the full system:
    focused compile/validate/run for aligned-plan approval and incomplete-plan
    replanning feedback. It is included in the default compile/validate/run
    suite.
-17. `superpowers.yaml`: implemented as TS-080/TS-086 and passing focused
+17. `superpowers.yaml`: implemented as TS-080/TS-086/TS-088 and passing focused
    compile/validate/run for the same-job primary workflow, required
    child-boundary stop behavior, primary spec-review revision routing, and
-   primary RED/GREEN/refactor TDD enforcement.
+   primary RED/GREEN/refactor TDD enforcement, including TDD spec-review
+   revision with GREEN/REFACTOR command reruns.
 
 Those tests prove the core recipe contracts: structured skill invocation,
 adaptive task-session chaining, session isolation/resume, and per-task review

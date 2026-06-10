@@ -59,7 +59,7 @@ run_suite "superpowers-finish.yaml" "superpowers-finish.scenario.md" "superpower
 run_suite "superpowers-debug.yaml" "superpowers-debug.scenario.md" "superpowers_debug"
 run_suite "superpowers.yaml" "superpowers.scenario.md" "superpowers_primary"
 
-echo "Recipe scenario suites passed: TS-001..TS-023, TS-028..TS-041, and TS-051..TS-087."
+echo "Recipe scenario suites passed: TS-001..TS-023, TS-028..TS-041, and TS-051..TS-088."
 "$ROOT_DIR/verify-cli-framework.sh"
 
 "$ROOT_DIR/verify-superpowers-rule-gate-live.sh"
