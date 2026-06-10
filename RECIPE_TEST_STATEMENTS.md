@@ -83,6 +83,8 @@ These statements are intended to drive `c2j test` cases.
 | TS-075 | Superpowers debug stops before skill invocation when no reproduction command exists. | `superpowers-debug.yaml` | High | Integration (`recipe_case`); deps: deterministic state-machine routing | Negative |
 | TS-076 | Superpowers debug routes plan-caused failures back to plan update. | `superpowers-debug.yaml` | High | Integration (`recipe_case`); deps: command reproduction + c2ops `codex/run_skill`/`rule_gate` selector mocks | Negative |
 | TS-077 | Superpowers debug requires architecture review after a third reproduced failed attempt. | `superpowers-debug.yaml` | High | Integration (`recipe_case`); deps: command reproduction + c2ops `codex/run_skill`/`rule_gate` selector mocks | Positive |
+| TS-078 | Superpowers plan review approves an aligned task plan before execution. | `superpowers-plan-review.yaml` | High | Integration (`recipe_case`); deps: c2ops `codex/run_skill`/`rule_gate` selector mocks | Positive |
+| TS-079 | Superpowers plan review blocks incomplete plans and routes them to replanning. | `superpowers-plan-review.yaml` | High | Integration (`recipe_case`); deps: c2ops `codex/run_skill`/`rule_gate` selector mocks | Negative |
 
 ## Notes for Test Authoring
 

@@ -23,10 +23,11 @@ with a focused live smoke.
 | Parallel reviewer/adversarial fanout | `child_group` | Covered. TS-050 validates required/optional reviewer aggregation. |
 | Dependent implementation tasks | ordinary recipe state machine plus same-job Codex sessions | Covered. TS-051..TS-055 validate native task selection, same-job role sessions, session isolation/resume, and adaptive task-plan iteration. No `for_each`, task-loop primitive, or child job is required for the normal Superpowers task chain. |
 | Structured skill invocation | c2ops `codex/run_skill` | Covered. TS-056/TS-057 validate parsed output artifacts, status-contract fields, and repair metadata at the recipe boundary. c2ops `RunSkill` unit tests pass at commit `8b37f01`. |
-| C2-adapted Superpowers role skills | local skill bundle plus static recipe smoke | Covered for initial implementation. TS-058 validates nine role skills and OpenAI metadata under `skills-bundle/.agents/skills/c2-superpowers-*`. |
+| C2-adapted Superpowers role skills | local skill bundle plus static recipe smoke | Covered for initial implementation. TS-058 validates ten role skills and OpenAI metadata under `skills-bundle/.agents/skills/c2-superpowers-*`. |
 | Route/intake recipe | `superpowers-route.yaml` state machine plus `codex/run_skill` fallback and `rule_gate` | Covered for initial implementation. TS-059/TS-060 validate heuristic prompt-only fallback; TS-065/TS-066 validate deterministic plan/design artifact routing without skill invocation in the run path. |
 | Brainstorm/design recipe | `superpowers-brainstorm.yaml` plus `codex/run_skill` and `rule_gate` | Covered for initial implementation. TS-061/TS-062 validate plan-ready designs and stop-before-planning questions. |
 | Write-plan recipe | `superpowers-write-plan.yaml` plus `codex/run_skill` and `rule_gate` | Covered for initial implementation. TS-063/TS-064 validate ready task plans and required child-job boundary surfacing. |
+| Plan-review recipe | `superpowers-plan-review.yaml` plus `codex/run_skill` and `rule_gate` | Covered for initial implementation. TS-078/TS-079 pass focused compile/validate/run for aligned-plan approval and incomplete-plan replanning feedback. |
 | Execute-plan recipe path | `superpowers-execute-plan.yaml` state machine plus role skills | Covered for initial implementation. TS-067/TS-068 pass focused compile/validate/run for same-job task execution and child-boundary stop behavior, including a node non-execution assertion for required child boundaries. |
 | Verify recipe path | `superpowers-verify.yaml` command gates plus verify role skill | Covered for initial implementation. TS-069/TS-070 pass focused compile/validate/run for fresh command evidence and failed-command blocking data. |
 | Finish recipe path | `superpowers-finish.yaml` finish gates plus optional `squashrebasemerge` | Covered for initial implementation. TS-071/TS-073 pass focused compile/validate/run for merge-ready recommendation, blocked merge evidence, and explicit merge after passing gates. |
@@ -334,7 +335,10 @@ Commands and results:
   reproduction stops before skill invocation. TS-076 validates plan-caused
   failures route to plan update. TS-077 validates architecture review after a
   third reproduced failed attempt.
-- `recipe-tests/run-all.sh` passed end to end on 2026-06-10 with TS-058..TS-077
+- Focused plan-review suite passed TS-078/TS-079 with compile/validate/run.
+  TS-078 validates aligned-plan approval before execution. TS-079 validates
+  incomplete-plan blocking feedback for replanning.
+- `recipe-tests/run-all.sh` passed end to end on 2026-06-10 with TS-058..TS-079
   included in the default compile/validate/run suite and TS-042/TS-043 focused
   live skill-quality validation invoked by the default runner as a required
   hard-failing live check.

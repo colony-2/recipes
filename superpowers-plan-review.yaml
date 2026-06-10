@@ -1,0 +1,119 @@
+id: superpowers-plan-review
+version: 0.1.0
+desc: Review a C2 Superpowers task plan before execution
+input_schema:
+  prompt:
+    type: string
+    required: false
+  design_json:
+    type: string
+    required: true
+  plan_json:
+    type: string
+    required: true
+  skill_bundle_ref:
+    type: string
+    required: false
+inputs:
+  prompt: '${{ first_nonempty(inputs.?prompt, "") }}'
+  design_json: "{{ inputs.design_json }}"
+  plan_json: "{{ inputs.plan_json }}"
+  skill_bundle_ref: '${{ first_nonempty(inputs.?skill_bundle_ref, "") }}'
+sequence:
+  - id: review_plan
+    op: git+https://github.com/colony-2/c2ops.git//codex/run_skill@main
+    inputs:
+      skill: c2-superpowers-plan-review
+      input:
+        ticket_prompt: "{{ inputs.prompt }}"
+        design_json: "{{ inputs.design_json }}"
+        plan_json: "{{ inputs.plan_json }}"
+        skill_bundle_ref: "{{ inputs.skill_bundle_ref }}"
+      prompt: |
+        Review this C2 Superpowers task plan before execution starts.
+
+        Use the `c2-superpowers-plan-review` contract. Recipes own routing,
+        gates, child-job decisions, and git persistence. Do not rewrite the
+        plan, implement code, create child jobs, create git worktrees, or make
+        manual commits.
+
+        Write:
+        - `superpowers/plan-review/review.md`
+        - `superpowers/plan-review/result.json`
+        - `superpowers/plan-review/latest-status.json`
+
+        Set `ok=true` only when the plan covers the approved design, has clear
+        task dependencies, includes meaningful validation/review expectations,
+        and justifies any required child-job boundary.
+      status_contract:
+        path: superpowers/plan-review/latest-status.json
+      output:
+        from: artifact
+        path: superpowers/plan-review/result.json
+        format: json
+        schema:
+          type: object
+          required:
+            - ok
+            - issues
+            - recommendations
+            - blocking_feedback
+            - requires_replan
+          properties:
+            ok:
+              type: boolean
+            issues:
+              type: array
+              items:
+                type: string
+            recommendations:
+              type: array
+              items:
+                type: string
+            blocking_feedback:
+              type: string
+            requires_replan:
+              type: boolean
+          additionalProperties: true
+
+  - id: plan_review_gate
+    op: git+https://github.com/colony-2/c2ops.git//rule_gate@main
+    inputs:
+      rules:
+        - id: plan_review_completed
+          type: assert
+          value: ${{ sequence.review_plan.outputs.status == "completed" || sequence.review_plan.outputs.status == "incomplete" }}
+          message: Plan-review skill must return a normalized Codex status.
+        - id: plan_review_output_schema_valid
+          type: assert
+          value: ${{ sequence.review_plan.outputs.output_schema_valid }}
+          message: Plan-review result artifact must match schema.
+        - id: plan_review_status_contract_valid
+          type: assert
+          value: ${{ sequence.review_plan.outputs.status_contract_present && sequence.review_plan.outputs.status_contract_valid }}
+          message: Plan-review status contract must be present and valid.
+        - id: approved_plan_has_no_blocking_feedback
+          type: assert
+          value: ${{ !sequence.review_plan.outputs.parsed_output.ok || sequence.review_plan.outputs.parsed_output.blocking_feedback == "" }}
+          message: Approved plans must not include blocking feedback.
+        - id: rejected_plan_has_actionable_feedback
+          type: assert
+          value: ${{ sequence.review_plan.outputs.parsed_output.ok || sequence.review_plan.outputs.parsed_output.blocking_feedback != "" || size(sequence.review_plan.outputs.parsed_output.issues) > 0 }}
+          message: Rejected plans must include actionable feedback.
+        - id: replan_matches_approval
+          type: assert
+          value: ${{ sequence.review_plan.outputs.parsed_output.ok != sequence.review_plan.outputs.parsed_output.requires_replan }}
+          message: requires_replan must be the inverse of ok.
+
+outputs:
+  review_gate_ok: "${{ sequence.plan_review_gate.outputs.ok }}"
+  review_failed_rule_ids: "${{ sequence.plan_review_gate.outputs.failed_rule_ids }}"
+  plan_approved: "${{ sequence.review_plan.outputs.parsed_output.ok }}"
+  requires_replan: "${{ sequence.review_plan.outputs.parsed_output.requires_replan }}"
+  issues: "${{ sequence.review_plan.outputs.parsed_output.issues }}"
+  issue_count: "${{ size(sequence.review_plan.outputs.parsed_output.issues) }}"
+  recommendations: "${{ sequence.review_plan.outputs.parsed_output.recommendations }}"
+  blocking_feedback: "${{ sequence.review_plan.outputs.parsed_output.blocking_feedback }}"
+  plan_review_session_id: "{{ sequence.review_plan.outputs.sessionId }}"
+  output_schema_valid: "${{ sequence.review_plan.outputs.output_schema_valid }}"
+  status_contract_valid: "${{ sequence.review_plan.outputs.status_contract_valid }}"

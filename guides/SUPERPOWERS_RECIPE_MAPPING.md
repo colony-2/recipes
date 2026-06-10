@@ -54,7 +54,7 @@ Validated on 2026-06-08/09 UTC:
   artifact/status-contract fields and repair metadata. c2ops `RunSkill` unit
   tests also passed at c2ops commit `8b37f01`.
 - static C2 Superpowers skill-bundle smoke TS-058 passed. The repository now has
-  nine C2-adapted role skills under
+  ten C2-adapted role skills under
   `skills-bundle/.agents/skills/c2-superpowers-*` with recipe-owned
   orchestration, same-job session, status-contract, no-worktree, and
   no-manual-commit guardrails.
@@ -92,7 +92,10 @@ Validated on 2026-06-08/09 UTC:
 - focused write-plan recipe suite TS-063/TS-064 passed. `superpowers-write-plan.yaml`
   validates a ready dependent task chain and surfaces required C2 child-job
   boundaries without creating child jobs.
-- `recipe-tests/run-all.sh` passed end to end on 2026-06-10 with TS-058..TS-077
+- focused plan-review recipe suite TS-078/TS-079 passed. `superpowers-plan-review.yaml`
+  approves aligned task plans and returns replanning feedback for incomplete
+  plans without rewriting the plan.
+- `recipe-tests/run-all.sh` passed end to end on 2026-06-10 with TS-058..TS-079
   included in the default compile/validate/run path and TS-042/TS-043 focused
   live skill-quality validation invoked by the default runner as a required
   hard-failing live check.
@@ -617,7 +620,7 @@ Suggested `plan.json` shape:
 
 `superpowers-plan-review.yaml`
 
-Uses the upstream plan-review prompt template as a Codex review task.
+Uses `c2-superpowers-plan-review` as a Codex review task.
 
 Inputs:
 
@@ -631,12 +634,22 @@ Outputs:
   "ok": true,
   "issues": [],
   "recommendations": [],
-  "blocking_feedback": ""
+  "blocking_feedback": "",
+  "requires_replan": false
 }
 ```
 
 The primary orchestrator should route back to `superpowers-write-plan.yaml` when
 `ok=false`.
+
+Implementation status:
+
+- `superpowers-plan-review.yaml` is implemented for aligned-plan approval and
+  incomplete-plan replanning feedback.
+- TS-078 validates approval of a plan that covers the design and has validation
+  evidence.
+- TS-079 validates blocking feedback and `requires_replan=true` for incomplete
+  plans.
 
 ### Execute Plan
 
@@ -1307,11 +1320,15 @@ Prototype these focused recipes before building the full system:
    compile/validate/run for reproduced failure routing, missing-reproduction
    stop behavior, plan-update routing, and third-attempt architecture review.
    It is included in the default compile/validate/run suite.
+16. `superpowers-plan-review.yaml`: implemented as TS-078/TS-079 and passing
+   focused compile/validate/run for aligned-plan approval and incomplete-plan
+   replanning feedback. It is included in the default compile/validate/run
+   suite.
 
 Those tests prove the core recipe contracts: structured skill invocation,
 adaptive task-session chaining, session isolation/resume, and per-task review
 gates, the local role-skill bundle contract, route/intake, brainstorming, and
-write-plan, execute-plan, verification, finish, and debug phases.
+write-plan, plan-review, execute-plan, verification, finish, and debug phases.
 Parallel reviewer fanout is already covered by TS-050 and should be reused
 rather than reproved unless dynamic `children_from` coverage becomes important.
 

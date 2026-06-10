@@ -18,7 +18,7 @@ cases:
         value: true
       - type: output_equals
         path: skill_count
-        value: 9
+        value: 10
       - type: output_equals
         path: missing_count
         value: 0

@@ -52,12 +52,13 @@ run_suite "superpowers-c2-skill-bundle-smoke.yaml" "superpowers-c2-skill-bundle-
 run_suite "superpowers-route.yaml" "superpowers-route.scenario.md" "superpowers_route"
 run_suite "superpowers-brainstorm.yaml" "superpowers-brainstorm.scenario.md" "superpowers_brainstorm"
 run_suite "superpowers-write-plan.yaml" "superpowers-write-plan.scenario.md" "superpowers_write_plan"
+run_suite "superpowers-plan-review.yaml" "superpowers-plan-review.scenario.md" "superpowers_plan_review"
 run_suite "superpowers-execute-plan.yaml" "superpowers-execute-plan.scenario.md" "superpowers_execute_plan"
 run_suite "superpowers-verify.yaml" "superpowers-verify.scenario.md" "superpowers_verify"
 run_suite "superpowers-finish.yaml" "superpowers-finish.scenario.md" "superpowers_finish"
 run_suite "superpowers-debug.yaml" "superpowers-debug.scenario.md" "superpowers_debug"
 
-echo "Recipe scenario suites passed: TS-001..TS-023, TS-028..TS-041, and TS-051..TS-077."
+echo "Recipe scenario suites passed: TS-001..TS-023, TS-028..TS-041, and TS-051..TS-079."
 "$ROOT_DIR/verify-cli-framework.sh"
 
 "$ROOT_DIR/verify-superpowers-rule-gate-live.sh"
