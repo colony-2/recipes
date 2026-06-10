@@ -64,7 +64,8 @@ Reverification on 2026-06-09 UTC against `/usr/local/bin/c2j`
 - Focused execute-plan suite passed. TS-067 validates one same-job
   implementation/spec-review/quality-review task boundary; TS-068 validates the
   recipe stops before implementation when the selected task requires a child
-  job, with an explicit node non-execution assertion for the implementer.
+  job, with an explicit node non-execution assertion for the implementer; TS-082
+  validates recipe-enforced RED/GREEN/refactor TDD before task review.
 - Focused verify suite passed. TS-069 validates fresh command evidence before
   success; TS-070 validates failed command evidence remains blocking workflow
   data instead of being hidden by a verifier summary.
@@ -92,13 +93,13 @@ Validated:
 - focused Superpowers brainstorm recipe smokes TS-061/TS-062 passed.
 - focused Superpowers write-plan recipe smokes TS-063/TS-064 passed.
 - focused deterministic route smokes TS-065/TS-066 passed.
-- focused execute-plan smokes TS-067/TS-068 passed compile/validate/run.
+- focused execute-plan smokes TS-067/TS-068/TS-082 passed compile/validate/run.
 - focused verify smokes TS-069/TS-070 passed compile/validate/run.
 - focused finish smokes TS-071/TS-073 passed compile/validate/run.
 - focused debug smokes TS-074/TS-077 passed compile/validate/run.
 - focused plan-review smokes TS-078/TS-079 passed compile/validate/run.
 - focused primary-orchestrator smokes TS-080/TS-081 passed compile/validate/run.
-- `recipe-tests/run-all.sh` passed end to end on 2026-06-10 with TS-058..TS-081
+- `recipe-tests/run-all.sh` passed end to end on 2026-06-10 with TS-058..TS-082
   included in the default compile/validate/run path and with TS-042/TS-043
   focused live skill-quality validation invoked as a required hard-failing
   check.
@@ -512,7 +513,7 @@ When these tests pass, implementation should proceed with:
 - Write-plan recipe validation through TS-063/TS-064.
 - Plan-review validation through TS-078/TS-079.
 - Deterministic route-state validation through TS-065/TS-066.
-- Execute-plan validation through TS-067/TS-068.
+- Execute-plan validation through TS-067/TS-068/TS-082.
 - Verify validation through TS-069/TS-070.
 - Finish validation through TS-071/TS-073.
 - Debug validation through TS-074/TS-077.

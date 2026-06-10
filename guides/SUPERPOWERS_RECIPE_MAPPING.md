@@ -67,11 +67,12 @@ Validated on 2026-06-08/09 UTC:
 - focused deterministic route cases TS-065/TS-066 passed. Submitted plan
   artifacts route to execution and submitted design artifacts route to planning
   without skill invocation in the run path.
-- initial execute-plan recipe TS-067/TS-068 passed focused compile/validate/run.
-  `superpowers-execute-plan.yaml` keeps task selection and child-boundary
-  detection deterministic in recipe state, uses role skills only for
-  implementer/spec-review/quality-review sessions, and asserts the implementer
-  node is not executed when a required child-job boundary is selected.
+- execute-plan recipe TS-067/TS-068/TS-082 passed focused
+  compile/validate/run. `superpowers-execute-plan.yaml` keeps task selection
+  and child-boundary detection deterministic in recipe state, uses role skills
+  only for implementer/spec-review/quality-review sessions, asserts the
+  implementer node is not executed when a required child-job boundary is
+  selected, and enforces RED/GREEN/refactor TDD before task review.
 - initial verify recipe TS-069/TS-070 passed focused compile/validate/run.
   `superpowers-verify.yaml` runs fresh validation commands through recipe state,
   then uses the verify role skill only to interpret/write the verification
@@ -95,7 +96,7 @@ Validated on 2026-06-08/09 UTC:
 - focused plan-review recipe suite TS-078/TS-079 passed. `superpowers-plan-review.yaml`
   approves aligned task plans and returns replanning feedback for incomplete
   plans without rewriting the plan.
-- `recipe-tests/run-all.sh` passed end to end on 2026-06-10 with TS-058..TS-081
+- `recipe-tests/run-all.sh` passed end to end on 2026-06-10 with TS-058..TS-082
   included in the default compile/validate/run path and TS-042/TS-043 focused
   live skill-quality validation invoked by the default runner as a required
   hard-failing live check.
@@ -670,8 +671,10 @@ Implementation status:
 Implementation status: initial recipe implemented. TS-067 validates the run path
 for one same-job implementation/spec-review/quality-review task boundary.
 TS-068 validates deterministic stop-before-implementation behavior when the
-selected task requires a child job. Both pass focused compile/validate/run, and
-the execute-plan suite is wired into `recipe-tests/run-all.sh`.
+selected task requires a child job. TS-082 validates recipe-enforced
+RED/GREEN/refactor TDD before task review. All three pass focused
+compile/validate/run, and the execute-plan suite is wired into
+`recipe-tests/run-all.sh`.
 
 Maps `subagent-driven-development` first, with `executing-plans` as a sequential
 recipe-state implementation loop.
@@ -905,6 +908,10 @@ Design note:
 Nested `tdd_task` state inside `superpowers-execute-plan.yaml`
 
 Maps `test-driven-development`.
+
+Implementation status: implemented. TS-082 validates that tasks marked
+`requires_tdd=true` run RED, GREEN, and refactor command gates and cannot reach
+task review until the recipe-owned TDD evidence passes.
 
 Superpowers behavior to preserve:
 
@@ -1318,9 +1325,10 @@ Prototype these focused recipes before building the full system:
 11. `superpowers-route.yaml`: expanded as TS-065/TS-066 to validate
    deterministic state-machine routing from submitted plan/design artifacts
    without skill invocation in the run path.
-12. `superpowers-execute-plan.yaml`: implemented as TS-067/TS-068 and passing
-   focused compile/validate/run for same-job task execution and child-boundary
-   stop behavior. It is included in the default compile/validate/run suite.
+12. `superpowers-execute-plan.yaml`: implemented as TS-067/TS-068/TS-082 and
+   passing focused compile/validate/run for same-job task execution,
+   child-boundary stop behavior, and recipe-enforced TDD. It is included in the
+   default compile/validate/run suite.
 13. `superpowers-verify.yaml`: implemented as TS-069/TS-070 and passing focused
    compile/validate/run for fresh command verification and failed-command
    blocking evidence. It is included in the default compile/validate/run suite.

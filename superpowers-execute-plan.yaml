@@ -23,6 +23,8 @@ state:
       transitions:
         - to: child_boundary_required
           when: json_parse(outputs.stdout).requires_child_job == true
+        - to: run_tdd_task_boundary
+          when: json_parse(outputs.stdout).selected_task.?requires_tdd.orValue(false) == true
         - to: run_task_boundary
           when: json_parse(outputs.stdout).requires_child_job != true
       inputs:
@@ -234,36 +236,578 @@ state:
             rules:
               - id: implementation_done
                 type: assert
-                value: ${{ sequence.implement_task.outputs.parsed_output.status == "done" }}
+                value: '${{ sequence.implement_task.outputs.parsed_output.?status.orValue("") == "done" }}'
                 message: Implementer must report task status done.
               - id: spec_review_ok
                 type: assert
-                value: ${{ sequence.spec_review.outputs.parsed_output.ok }}
+                value: '${{ sequence.spec_review.outputs.parsed_output.?ok.orValue(false) }}'
                 message: Spec review must pass.
               - id: quality_review_ok
                 type: assert
-                value: ${{ sequence.quality_review.outputs.parsed_output.ok }}
+                value: '${{ sequence.quality_review.outputs.parsed_output.?ok.orValue(false) }}'
                 message: Quality review must pass.
       transitions: []
       outputs:
         implementer_session_id: "{{ sequence.implement_task.outputs.sessionId }}"
         spec_reviewer_session_id: "{{ sequence.spec_review.outputs.sessionId }}"
         quality_reviewer_session_id: "{{ sequence.quality_review.outputs.sessionId }}"
-        implementation_status: "${{ sequence.implement_task.outputs.parsed_output.status }}"
-        spec_review_ok: "${{ sequence.spec_review.outputs.parsed_output.ok }}"
-        quality_review_ok: "${{ sequence.quality_review.outputs.parsed_output.ok }}"
-        task_gate_ok: "${{ sequence.task_gate.outputs.ok }}"
+        implementation_status: '${{ sequence.implement_task.outputs.parsed_output.?status.orValue("") }}'
+        spec_review_ok: '${{ sequence.spec_review.outputs.parsed_output.?ok.orValue(false) }}'
+        quality_review_ok: '${{ sequence.quality_review.outputs.parsed_output.?ok.orValue(false) }}'
+        task_gate_ok: '${{ sequence.task_gate.outputs.?ok.orValue(false) }}'
+
+    run_tdd_task_boundary:
+      inputs:
+        selected_task_json: "{{ states.select_task.outputs.stdout }}"
+        skill_bundle_ref: "{{ inputs.skill_bundle_ref }}"
+      state:
+        initial: collect_tdd_plan
+        states:
+          collect_tdd_plan:
+            op: command_execution
+            transitions:
+              - to: write_red_test
+                when: true
+            inputs:
+              timeout: 30s
+              env:
+                SELECTED_TASK_JSON: "{{ inputs.selected_task_json }}"
+              run: |
+                set -euo pipefail
+                mkdir -p "{{ context.environment.op.outbox }}/superpowers/tasks/tdd"
+                python3 - <<'PY'
+                import json
+                import os
+
+                selected = json.loads(os.environ["SELECTED_TASK_JSON"])
+                task = selected.get("selected_task", selected)
+                tdd = task.get("tdd", {}) or {}
+                validation_commands = task.get("validation_commands", []) or []
+                first_validation = next((str(cmd).strip() for cmd in validation_commands if str(cmd).strip()), "")
+
+                red_command = (
+                    task.get("tdd_red_command")
+                    or tdd.get("red_command")
+                    or task.get("red_command")
+                    or first_validation
+                )
+                green_command = (
+                    task.get("tdd_green_command")
+                    or tdd.get("green_command")
+                    or task.get("green_command")
+                    or red_command
+                )
+                refactor_command = (
+                    task.get("tdd_refactor_command")
+                    or tdd.get("refactor_verification_command")
+                    or task.get("refactor_verification_command")
+                    or green_command
+                )
+                expected_failure = (
+                    task.get("tdd_expected_failure")
+                    or tdd.get("red_expected_failure")
+                    or task.get("red_expected_failure")
+                    or ""
+                )
+                result = {
+                    "task_id": task.get("id", selected.get("task_id", "")),
+                    "requires_tdd": bool(task.get("requires_tdd", False)),
+                    "red_command": red_command,
+                    "red_expected_failure": expected_failure,
+                    "green_command": green_command,
+                    "refactor_verification_command": refactor_command,
+                }
+                out = "{{ context.environment.op.outbox }}/superpowers/tasks/tdd/plan.json"
+                with open(out, "w", encoding="utf-8") as fh:
+                    json.dump(result, fh, sort_keys=True)
+                    fh.write("\n")
+                print(json.dumps(result, sort_keys=True))
+                PY
+
+          write_red_test:
+            op: git+https://github.com/colony-2/c2ops.git//codex/run_skill@main
+            transitions:
+              - to: run_red_test
+                when: true
+            inputs:
+              skill: c2-superpowers-task-implementer
+              input:
+                selected_task_json: "{{ inputs.selected_task_json }}"
+                tdd_plan_json: "{{ states.collect_tdd_plan.outputs.stdout }}"
+                skill_bundle_ref: "{{ inputs.skill_bundle_ref }}"
+              prompt: |
+                RED phase for the selected task. Write only the failing
+                behavioral test for the selected behavior. Do not implement
+                production code, create child jobs, create worktrees, or make
+                manual commits.
+
+                Write `superpowers/tasks/tdd/red-result.json`.
+            status_contract:
+              path: superpowers/tasks/tdd/red-status.json
+            output:
+              from: artifact
+              path: superpowers/tasks/tdd/red-result.json
+              format: json
+              schema:
+                type: object
+                required:
+                  - task_id
+                  - status
+                  - summary
+                  - red_command
+                properties:
+                  task_id:
+                    type: string
+                  status:
+                    type: string
+                  summary:
+                    type: string
+                  red_command:
+                    type: string
+                additionalProperties: true
+
+          run_red_test:
+            op: command_execution
+            transitions:
+              - to: assert_red
+                when: true
+            inputs:
+              timeout: 60m
+              continue_on_error: true
+              env:
+                WT: "{{ context.environment.op.worktree_path }}"
+                TDD_PLAN_JSON: "{{ states.collect_tdd_plan.outputs.stdout }}"
+              run: |
+                set -uo pipefail
+                OUT="{{ context.environment.op.outbox }}"
+                mkdir -p "$OUT/superpowers/tasks/tdd"
+                cd "$WT"
+
+                python3 - <<'PY' > "$OUT/superpowers/tasks/tdd/red-command.sh"
+                import json
+                import os
+
+                plan = json.loads(os.environ["TDD_PLAN_JSON"])
+                command = plan.get("red_command", "").strip()
+                print("set -euo pipefail")
+                if not command:
+                    print("echo 'No RED command was provided.'")
+                    print("exit 2")
+                else:
+                    print(command)
+                PY
+
+                set +e
+                bash "$OUT/superpowers/tasks/tdd/red-command.sh" 2>&1 | tee "$OUT/superpowers/tasks/tdd/red-output.txt"
+                RC=${PIPESTATUS[0]}
+                set -e
+                exit "$RC"
+
+          assert_red:
+            op: git+https://github.com/colony-2/c2ops.git//rule_gate@main
+            transitions:
+              - to: write_green_code
+                when: outputs.?ok.orValue(false)
+              - to: tdd_failed
+                when: true
+            inputs:
+              rules:
+                - id: red_command_present
+                  type: assert
+                  value: ${{ json_parse(states.collect_tdd_plan.outputs.stdout).red_command != "" }}
+                  message: TDD RED command must be present.
+                - id: red_command_failed
+                  type: assert
+                  value: ${{ states.run_red_test.outputs.exit_code != 0 }}
+                  message: RED command must fail before GREEN implementation.
+                - id: red_expected_failure_observed
+                  type: assert
+                  value: ${{ json_parse(states.collect_tdd_plan.outputs.stdout).red_expected_failure == "" || states.run_red_test.outputs.stdout.contains(json_parse(states.collect_tdd_plan.outputs.stdout).red_expected_failure) || states.run_red_test.outputs.stderr.contains(json_parse(states.collect_tdd_plan.outputs.stdout).red_expected_failure) }}
+                  message: RED failure must match the expected failure when one is supplied.
+                - id: red_output_schema_valid
+                  type: assert
+                  value: '${{ states.write_red_test.outputs.?output_schema_valid.orValue(false) }}'
+                  message: RED phase must write the expected result artifact.
+
+          write_green_code:
+            op: git+https://github.com/colony-2/c2ops.git//codex/run_skill@main
+            transitions:
+              - to: run_green_test
+                when: true
+            inputs:
+              skill: c2-superpowers-task-implementer
+              input:
+                selected_task_json: "{{ inputs.selected_task_json }}"
+                tdd_plan_json: "{{ states.collect_tdd_plan.outputs.stdout }}"
+                red_exit_code: "${{ states.run_red_test.outputs.exit_code }}"
+                red_stdout: "{{ states.run_red_test.outputs.stdout }}"
+                red_stderr: "{{ states.run_red_test.outputs.stderr }}"
+                skill_bundle_ref: "{{ inputs.skill_bundle_ref }}"
+              prompt: |
+                GREEN phase for the selected task. Implement the minimal code
+                necessary to make the RED test pass. Do not create child jobs,
+                create worktrees, or make manual commits.
+
+                Write `superpowers/tasks/tdd/green-result.json`.
+            status_contract:
+              path: superpowers/tasks/tdd/green-status.json
+            output:
+              from: artifact
+              path: superpowers/tasks/tdd/green-result.json
+              format: json
+              schema:
+                type: object
+                required:
+                  - task_id
+                  - status
+                  - summary
+                  - validation_commands_run
+                properties:
+                  task_id:
+                    type: string
+                  status:
+                    type: string
+                    enum:
+                      - done
+                      - done_with_concerns
+                      - needs_context
+                      - blocked
+                      - needs_revision
+                  summary:
+                    type: string
+                  validation_commands_run:
+                    type: array
+                    items:
+                      type: string
+                additionalProperties: true
+
+          run_green_test:
+            op: command_execution
+            transitions:
+              - to: assert_green
+                when: true
+            inputs:
+              timeout: 60m
+              continue_on_error: true
+              env:
+                WT: "{{ context.environment.op.worktree_path }}"
+                TDD_PLAN_JSON: "{{ states.collect_tdd_plan.outputs.stdout }}"
+              run: |
+                set -uo pipefail
+                OUT="{{ context.environment.op.outbox }}"
+                mkdir -p "$OUT/superpowers/tasks/tdd"
+                cd "$WT"
+
+                python3 - <<'PY' > "$OUT/superpowers/tasks/tdd/green-command.sh"
+                import json
+                import os
+
+                plan = json.loads(os.environ["TDD_PLAN_JSON"])
+                command = plan.get("green_command", "").strip()
+                print("set -euo pipefail")
+                if not command:
+                    print("echo 'No GREEN command was provided.'")
+                    print("exit 2")
+                else:
+                    print(command)
+                PY
+
+                set +e
+                bash "$OUT/superpowers/tasks/tdd/green-command.sh" 2>&1 | tee "$OUT/superpowers/tasks/tdd/green-output.txt"
+                RC=${PIPESTATUS[0]}
+                set -e
+                exit "$RC"
+
+          assert_green:
+            op: git+https://github.com/colony-2/c2ops.git//rule_gate@main
+            transitions:
+              - to: refactor_task
+                when: outputs.?ok.orValue(false)
+              - to: tdd_failed
+                when: true
+            inputs:
+              rules:
+                - id: green_command_present
+                  type: assert
+                  value: ${{ json_parse(states.collect_tdd_plan.outputs.stdout).green_command != "" }}
+                  message: TDD GREEN command must be present.
+                - id: green_command_passed
+                  type: assert
+                  value: ${{ states.run_green_test.outputs.exit_code == 0 }}
+                  message: GREEN command must pass after minimal implementation.
+                - id: green_output_schema_valid
+                  type: assert
+                  value: '${{ states.write_green_code.outputs.?output_schema_valid.orValue(false) }}'
+                  message: GREEN phase must write the expected result artifact.
+                - id: green_status_done
+                  type: assert
+                  value: '${{ states.write_green_code.outputs.parsed_output.?status.orValue("") == "done" }}'
+                  message: GREEN phase must report task status done.
+
+          refactor_task:
+            op: git+https://github.com/colony-2/c2ops.git//codex/run_skill@main
+            transitions:
+              - to: run_refactor_verification
+                when: true
+            inputs:
+              skill: c2-superpowers-task-implementer
+              input:
+                selected_task_json: "{{ inputs.selected_task_json }}"
+                tdd_plan_json: "{{ states.collect_tdd_plan.outputs.stdout }}"
+                green_summary: "{{ states.write_green_code.outputs.raw_output }}"
+                skill_bundle_ref: "{{ inputs.skill_bundle_ref }}"
+              prompt: |
+                REFACTOR phase for the selected task. Clean up the implementation
+                without adding behavior and keep the GREEN test passing. Do not
+                create child jobs, create worktrees, or make manual commits.
+
+                Write `superpowers/tasks/tdd/refactor-result.json`.
+            status_contract:
+              path: superpowers/tasks/tdd/refactor-status.json
+            output:
+              from: artifact
+              path: superpowers/tasks/tdd/refactor-result.json
+              format: json
+              schema:
+                type: object
+                required:
+                  - task_id
+                  - status
+                  - summary
+                  - validation_commands_run
+                properties:
+                  task_id:
+                    type: string
+                  status:
+                    type: string
+                    enum:
+                      - done
+                      - done_with_concerns
+                      - needs_context
+                      - blocked
+                      - needs_revision
+                  summary:
+                    type: string
+                  validation_commands_run:
+                    type: array
+                    items:
+                      type: string
+                additionalProperties: true
+
+          run_refactor_verification:
+            op: command_execution
+            transitions:
+              - to: assert_refactor
+                when: true
+            inputs:
+              timeout: 60m
+              continue_on_error: true
+              env:
+                WT: "{{ context.environment.op.worktree_path }}"
+                TDD_PLAN_JSON: "{{ states.collect_tdd_plan.outputs.stdout }}"
+              run: |
+                set -uo pipefail
+                OUT="{{ context.environment.op.outbox }}"
+                mkdir -p "$OUT/superpowers/tasks/tdd"
+                cd "$WT"
+
+                python3 - <<'PY' > "$OUT/superpowers/tasks/tdd/refactor-command.sh"
+                import json
+                import os
+
+                plan = json.loads(os.environ["TDD_PLAN_JSON"])
+                command = plan.get("refactor_verification_command", "").strip()
+                print("set -euo pipefail")
+                if not command:
+                    print("echo 'No REFACTOR verification command was provided.'")
+                    print("exit 2")
+                else:
+                    print(command)
+                PY
+
+                set +e
+                bash "$OUT/superpowers/tasks/tdd/refactor-command.sh" 2>&1 | tee "$OUT/superpowers/tasks/tdd/refactor-output.txt"
+                RC=${PIPESTATUS[0]}
+                set -e
+                exit "$RC"
+
+          assert_refactor:
+            op: git+https://github.com/colony-2/c2ops.git//rule_gate@main
+            transitions:
+              - to: spec_review
+                when: outputs.?ok.orValue(false)
+              - to: tdd_failed
+                when: true
+            inputs:
+              rules:
+                - id: refactor_command_present
+                  type: assert
+                  value: ${{ json_parse(states.collect_tdd_plan.outputs.stdout).refactor_verification_command != "" }}
+                  message: TDD refactor verification command must be present.
+                - id: refactor_verification_passed
+                  type: assert
+                  value: ${{ states.run_refactor_verification.outputs.exit_code == 0 }}
+                  message: Refactor verification must pass.
+                - id: refactor_output_schema_valid
+                  type: assert
+                  value: '${{ states.refactor_task.outputs.?output_schema_valid.orValue(false) }}'
+                  message: REFACTOR phase must write the expected result artifact.
+                - id: refactor_status_done
+                  type: assert
+                  value: '${{ states.refactor_task.outputs.parsed_output.?status.orValue("") == "done" }}'
+                  message: REFACTOR phase must report task status done.
+
+          spec_review:
+            op: git+https://github.com/colony-2/c2ops.git//codex/run_skill@main
+            transitions:
+              - to: quality_review
+                when: true
+            inputs:
+              skill: c2-superpowers-spec-reviewer
+              input:
+                selected_task_json: "{{ inputs.selected_task_json }}"
+                implementer_summary: "{{ states.write_green_code.outputs.raw_output }}"
+                tdd_evidence_json: "{{ states.collect_tdd_plan.outputs.stdout }}"
+                skill_bundle_ref: "{{ inputs.skill_bundle_ref }}"
+              prompt: |
+                Review the selected TDD task for spec compliance only. Include
+                the RED/GREEN/refactor evidence in your review. Do not implement
+                fixes, create child jobs, create worktrees, or make manual
+                commits.
+            status_contract:
+              path: superpowers/tasks/spec-review-status.json
+            output:
+              from: artifact
+              path: superpowers/tasks/spec-review.json
+              format: json
+              schema:
+                type: object
+                required:
+                  - ok
+                  - blocking_issues
+                  - feedback
+                  - requires_revision
+                properties:
+                  ok:
+                    type: boolean
+                  blocking_issues:
+                    type: array
+                    items:
+                      type: string
+                  feedback:
+                    type: string
+                  requires_revision:
+                    type: boolean
+                additionalProperties: true
+
+          quality_review:
+            op: git+https://github.com/colony-2/c2ops.git//codex/run_skill@main
+            transitions:
+              - to: task_gate
+                when: true
+            inputs:
+              skill: c2-superpowers-quality-reviewer
+              input:
+                selected_task_json: "{{ inputs.selected_task_json }}"
+                implementer_summary: "{{ states.write_green_code.outputs.raw_output }}"
+                spec_review: "{{ states.spec_review.outputs.raw_output }}"
+                skill_bundle_ref: "{{ inputs.skill_bundle_ref }}"
+              prompt: |
+                Review the selected TDD task for quality, maintainability, test
+                quality, compatibility, and C2 safety. Do not implement fixes,
+                create child jobs, create worktrees, or make manual commits.
+            status_contract:
+              path: superpowers/tasks/quality-review-status.json
+            output:
+              from: artifact
+              path: superpowers/tasks/quality-review.json
+              format: json
+              schema:
+                type: object
+                required:
+                  - ok
+                  - blocking_issues
+                  - feedback
+                  - requires_revision
+                properties:
+                  ok:
+                    type: boolean
+                  blocking_issues:
+                    type: array
+                    items:
+                      type: string
+                  feedback:
+                    type: string
+                  requires_revision:
+                    type: boolean
+                additionalProperties: true
+
+          task_gate:
+            op: git+https://github.com/colony-2/c2ops.git//rule_gate@main
+            transitions: []
+            inputs:
+              rules:
+                - id: red_gate_ok
+                  type: assert
+                  value: '${{ states.assert_red.outputs.?ok.orValue(false) }}'
+                  message: RED gate must pass before task review.
+                - id: green_gate_ok
+                  type: assert
+                  value: '${{ states.assert_green.outputs.?ok.orValue(false) }}'
+                  message: GREEN gate must pass before task review.
+                - id: refactor_gate_ok
+                  type: assert
+                  value: '${{ states.assert_refactor.outputs.?ok.orValue(false) }}'
+                  message: Refactor verification gate must pass before task review.
+                - id: spec_review_ok
+                  type: assert
+                  value: '${{ states.spec_review.outputs.parsed_output.?ok.orValue(false) }}'
+                  message: Spec review must pass.
+                - id: quality_review_ok
+                  type: assert
+                  value: '${{ states.quality_review.outputs.parsed_output.?ok.orValue(false) }}'
+                  message: Quality review must pass.
+
+          tdd_failed:
+            op: command_execution
+            transitions: []
+            inputs:
+              timeout: 30s
+              run: |
+                set -euo pipefail
+                mkdir -p "{{ context.environment.op.outbox }}/superpowers/tasks/tdd"
+                cat > "{{ context.environment.op.outbox }}/superpowers/tasks/tdd/action.json" <<'JSON'
+                {"task_status":"needs_revision","reason":"TDD gate failed before the task could advance."}
+                JSON
+                cat "{{ context.environment.op.outbox }}/superpowers/tasks/tdd/action.json"
+      transitions: []
+      outputs:
+        implementer_session_id: "${{ state_output('write_green_code', 'sessionId', '') }}"
+        spec_reviewer_session_id: "${{ state_output('spec_review', 'sessionId', '') }}"
+        quality_reviewer_session_id: "${{ state_output('quality_review', 'sessionId', '') }}"
+        implementation_status: "${{ state_output('write_green_code', 'parsed_output.status', '') }}"
+        spec_review_ok: "${{ state_output('spec_review', 'parsed_output.ok', false) }}"
+        quality_review_ok: "${{ state_output('quality_review', 'parsed_output.ok', false) }}"
+        task_gate_ok: "${{ state_output('task_gate', 'ok', false) }}"
+        tdd_red_exit_code: "${{ state_output('run_red_test', 'exit_code', -1) }}"
+        tdd_green_exit_code: "${{ state_output('run_green_test', 'exit_code', -1) }}"
+        tdd_refactor_exit_code: "${{ state_output('run_refactor_verification', 'exit_code', -1) }}"
+        tdd_evidence_ok: "${{ state_output('assert_refactor', 'ok', false) && state_output('assert_red', 'ok', false) && state_output('assert_green', 'ok', false) }}"
 
 outputs:
   selected_task_id: "${{ json_parse(state_output('select_task', 'stdout', '{}')).task_id }}"
   selected_task_json: "${{ state_output('select_task', 'stdout', '{}') }}"
   child_job_required: "${{ json_parse(state_output('select_task', 'stdout', '{}')).requires_child_job }}"
   child_job_reason: "${{ json_parse(state_output('select_task', 'stdout', '{}')).child_job_reason }}"
-  implementer_session_id: "${{ json_parse(state_output('select_task', 'stdout', '{}')).requires_child_job ? '' : state_output('run_task_boundary', 'implementer_session_id', '') }}"
-  spec_reviewer_session_id: "${{ json_parse(state_output('select_task', 'stdout', '{}')).requires_child_job ? '' : state_output('run_task_boundary', 'spec_reviewer_session_id', '') }}"
-  quality_reviewer_session_id: "${{ json_parse(state_output('select_task', 'stdout', '{}')).requires_child_job ? '' : state_output('run_task_boundary', 'quality_reviewer_session_id', '') }}"
-  implementation_status: "${{ json_parse(state_output('select_task', 'stdout', '{}')).requires_child_job ? '' : state_output('run_task_boundary', 'implementation_status', '') }}"
-  spec_review_ok: "${{ json_parse(state_output('select_task', 'stdout', '{}')).requires_child_job ? false : state_output('run_task_boundary', 'spec_review_ok', false) }}"
-  quality_review_ok: "${{ json_parse(state_output('select_task', 'stdout', '{}')).requires_child_job ? false : state_output('run_task_boundary', 'quality_review_ok', false) }}"
-  task_gate_ok: "${{ json_parse(state_output('select_task', 'stdout', '{}')).requires_child_job ? false : state_output('run_task_boundary', 'task_gate_ok', false) }}"
-  task_done: "${{ !json_parse(state_output('select_task', 'stdout', '{}')).requires_child_job && state_output('run_task_boundary', 'task_gate_ok', false) }}"
+  implementer_session_id: "${{ json_parse(state_output('select_task', 'stdout', '{}')).requires_child_job ? '' : first_nonempty(state_output('run_task_boundary', 'implementer_session_id', ''), state_output('run_tdd_task_boundary', 'implementer_session_id', '')) }}"
+  spec_reviewer_session_id: "${{ json_parse(state_output('select_task', 'stdout', '{}')).requires_child_job ? '' : first_nonempty(state_output('run_task_boundary', 'spec_reviewer_session_id', ''), state_output('run_tdd_task_boundary', 'spec_reviewer_session_id', '')) }}"
+  quality_reviewer_session_id: "${{ json_parse(state_output('select_task', 'stdout', '{}')).requires_child_job ? '' : first_nonempty(state_output('run_task_boundary', 'quality_reviewer_session_id', ''), state_output('run_tdd_task_boundary', 'quality_reviewer_session_id', '')) }}"
+  implementation_status: "${{ json_parse(state_output('select_task', 'stdout', '{}')).requires_child_job ? '' : first_nonempty(state_output('run_task_boundary', 'implementation_status', ''), state_output('run_tdd_task_boundary', 'implementation_status', '')) }}"
+  spec_review_ok: "${{ json_parse(state_output('select_task', 'stdout', '{}')).requires_child_job ? false : (state_output('run_task_boundary', 'spec_review_ok', false) || state_output('run_tdd_task_boundary', 'spec_review_ok', false)) }}"
+  quality_review_ok: "${{ json_parse(state_output('select_task', 'stdout', '{}')).requires_child_job ? false : (state_output('run_task_boundary', 'quality_review_ok', false) || state_output('run_tdd_task_boundary', 'quality_review_ok', false)) }}"
+  task_gate_ok: "${{ json_parse(state_output('select_task', 'stdout', '{}')).requires_child_job ? false : (state_output('run_task_boundary', 'task_gate_ok', false) || state_output('run_tdd_task_boundary', 'task_gate_ok', false)) }}"
+  task_done: "${{ !json_parse(state_output('select_task', 'stdout', '{}')).requires_child_job && (state_output('run_task_boundary', 'task_gate_ok', false) || state_output('run_tdd_task_boundary', 'task_gate_ok', false)) }}"
+  tdd_evidence_ok: "${{ state_output('run_tdd_task_boundary', 'tdd_evidence_ok', false) }}"
+  tdd_red_exit_code: "${{ state_output('run_tdd_task_boundary', 'tdd_red_exit_code', -1) }}"
+  tdd_green_exit_code: "${{ state_output('run_tdd_task_boundary', 'tdd_green_exit_code', -1) }}"
+  tdd_refactor_exit_code: "${{ state_output('run_tdd_task_boundary', 'tdd_refactor_exit_code', -1) }}"

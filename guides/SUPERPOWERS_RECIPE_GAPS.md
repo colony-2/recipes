@@ -28,7 +28,7 @@ with a focused live smoke.
 | Brainstorm/design recipe | `superpowers-brainstorm.yaml` plus `codex/run_skill` and `rule_gate` | Covered for initial implementation. TS-061/TS-062 validate plan-ready designs and stop-before-planning questions. |
 | Write-plan recipe | `superpowers-write-plan.yaml` plus `codex/run_skill` and `rule_gate` | Covered for initial implementation. TS-063/TS-064 validate ready task plans and required child-job boundary surfacing. |
 | Plan-review recipe | `superpowers-plan-review.yaml` plus `codex/run_skill` and `rule_gate` | Covered for initial implementation. TS-078/TS-079 pass focused compile/validate/run for aligned-plan approval and incomplete-plan replanning feedback. |
-| Execute-plan recipe path | `superpowers-execute-plan.yaml` state machine plus role skills | Covered for initial implementation. TS-067/TS-068 pass focused compile/validate/run for same-job task execution and child-boundary stop behavior, including a node non-execution assertion for required child boundaries. |
+| Execute-plan recipe path | `superpowers-execute-plan.yaml` state machine plus role skills | Covered for initial implementation. TS-067/TS-068 pass focused compile/validate/run for same-job task execution and child-boundary stop behavior, including a node non-execution assertion for required child boundaries. TS-082 passes focused compile/validate/run for recipe-enforced RED/GREEN/refactor TDD before task review. |
 | Verify recipe path | `superpowers-verify.yaml` command gates plus verify role skill | Covered for initial implementation. TS-069/TS-070 pass focused compile/validate/run for fresh command evidence and failed-command blocking data. |
 | Finish recipe path | `superpowers-finish.yaml` finish gates plus optional `squashrebasemerge` | Covered for initial implementation. TS-071/TS-073 pass focused compile/validate/run for merge-ready recommendation, blocked merge evidence, and explicit merge after passing gates. |
 | Debug recipe path | `superpowers-debug.yaml` reproduction state plus debug role skill and `rule_gate` | Covered for initial implementation. TS-074/TS-077 pass focused compile/validate/run for reproduced failure routing, missing-repro stop behavior, plan-update routing, and third-attempt architecture review. |
@@ -320,10 +320,11 @@ Commands and results:
   output and stop-before-planning behavior.
 - Focused write-plan recipe suite passed TS-063/TS-064 for ready task plans and
   required child-job boundary surfacing.
-- Focused execute-plan suite passed TS-067/TS-068 with compile/validate/run.
-  TS-067 validates a same-job implement/review/gate task boundary. TS-068
-  validates stop-before-implementation behavior with a node non-execution
-  assertion for the implementer boundary.
+- Focused execute-plan suite passed TS-067/TS-068/TS-082 with
+  compile/validate/run. TS-067 validates a same-job implement/review/gate task
+  boundary. TS-068 validates stop-before-implementation behavior with a node
+  non-execution assertion for the implementer boundary. TS-082 validates
+  recipe-enforced RED/GREEN/refactor TDD before task review.
 - Focused verify suite passed TS-069/TS-070 with compile/validate/run. TS-069
   validates fresh command evidence before success. TS-070 validates failed
   command evidence remains blocking workflow data.
@@ -343,7 +344,7 @@ Commands and results:
   compile/validate/run. TS-080 validates the normal same-job design-to-finish
   path. TS-081 validates the required child-job boundary stop without invoking
   the implementer session.
-- `recipe-tests/run-all.sh` passed end to end on 2026-06-10 with TS-058..TS-081
+- `recipe-tests/run-all.sh` passed end to end on 2026-06-10 with TS-058..TS-082
   included in the default compile/validate/run suite and TS-042/TS-043 focused
   live skill-quality validation invoked by the default runner as a required
   hard-failing live check.

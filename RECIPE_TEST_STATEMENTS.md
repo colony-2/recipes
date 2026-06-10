@@ -87,6 +87,7 @@ These statements are intended to drive `c2j test` cases.
 | TS-079 | Superpowers plan review blocks incomplete plans and routes them to replanning. | `superpowers-plan-review.yaml` | High | Integration (`recipe_case`); deps: c2ops `codex/run_skill`/`rule_gate` selector mocks | Negative |
 | TS-080 | Superpowers primary orchestrator runs the normal same-job design-to-finish path. | `superpowers.yaml` | High | Integration (`recipe_case`); deps: c2ops `codex/run_skill`/`rule_gate` selector mocks + command gates | Positive |
 | TS-081 | Superpowers primary orchestrator stops before implementation when a child-job boundary is required. | `superpowers.yaml` | High | Integration (`recipe_case`); deps: deterministic child-boundary detection + node non-execution assertion | Positive |
+| TS-082 | Superpowers execute-plan enforces RED/GREEN/refactor TDD before task review. | `superpowers-execute-plan.yaml` | High | Integration (`recipe_case`); deps: recipe state machine + command gates + c2ops `codex/run_skill`/`rule_gate` selector mocks | Positive |
 
 ## Notes for Test Authoring
 
