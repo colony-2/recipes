@@ -20,7 +20,13 @@ cases:
         path: skill_count
         value: 10
       - type: output_equals
+        path: actual_superpowers_skill_count
+        value: 10
+      - type: output_equals
         path: missing_count
+        value: 0
+      - type: output_equals
+        path: unexpected_count
         value: 0
       - type: output_equals
         path: violation_count
