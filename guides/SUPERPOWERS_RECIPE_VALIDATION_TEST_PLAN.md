@@ -95,7 +95,8 @@ Validated:
 - focused execute-plan smokes TS-067/TS-068 passed compile/validate/run.
 - focused verify smokes TS-069/TS-070 passed compile/validate/run.
 - focused finish smokes TS-071/TS-073 passed compile/validate/run.
-- `recipe-tests/run-all.sh` passed end to end on 2026-06-10 with TS-058..TS-073
+- focused debug smokes TS-074/TS-077 passed compile/validate/run.
+- `recipe-tests/run-all.sh` passed end to end on 2026-06-10 with TS-058..TS-077
   included in the default compile/validate/run path and with TS-042/TS-043
   focused live skill-quality validation invoked as a required hard-failing
   check.
@@ -511,6 +512,7 @@ When these tests pass, implementation should proceed with:
 - Execute-plan validation through TS-067/TS-068.
 - Verify validation through TS-069/TS-070.
 - Finish validation through TS-071/TS-073.
+- Debug validation through TS-074/TS-077.
 - Task-plan JSON Schema.
 - Parent execution recipe using a normal state machine.
 - Same-job task boundary owning implementation, TDD, review, and validation.

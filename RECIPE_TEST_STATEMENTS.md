@@ -79,6 +79,10 @@ These statements are intended to drive `c2j test` cases.
 | TS-071 | Superpowers finish recommends merge-ready only from verified completion evidence. | `superpowers-finish.yaml` | High | Integration (`recipe_case`); deps: c2ops `codex/run_skill`/`rule_gate` selector mocks | Positive |
 | TS-072 | Superpowers finish blocks merge when verification evidence has blocking issues. | `superpowers-finish.yaml` | High | Integration (`recipe_case`); deps: deterministic merge-blocked state + c2ops `codex/run_skill`/`rule_gate` selector mocks | Negative |
 | TS-073 | Superpowers finish runs merge only after explicit action and passing finish gate. | `superpowers-finish.yaml` | High | Integration (`recipe_case`); deps: `squashrebasemerge` selector mock + verified finish gate | Positive |
+| TS-074 | Superpowers debug routes reproduced failures with root-cause evidence to fix-ready. | `superpowers-debug.yaml` | High | Integration (`recipe_case`); deps: command reproduction + c2ops `codex/run_skill`/`rule_gate` selector mocks | Positive |
+| TS-075 | Superpowers debug stops before skill invocation when no reproduction command exists. | `superpowers-debug.yaml` | High | Integration (`recipe_case`); deps: deterministic state-machine routing | Negative |
+| TS-076 | Superpowers debug routes plan-caused failures back to plan update. | `superpowers-debug.yaml` | High | Integration (`recipe_case`); deps: command reproduction + c2ops `codex/run_skill`/`rule_gate` selector mocks | Negative |
+| TS-077 | Superpowers debug requires architecture review after a third reproduced failed attempt. | `superpowers-debug.yaml` | High | Integration (`recipe_case`); deps: command reproduction + c2ops `codex/run_skill`/`rule_gate` selector mocks | Positive |
 
 ## Notes for Test Authoring
 

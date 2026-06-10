@@ -30,6 +30,7 @@ with a focused live smoke.
 | Execute-plan recipe path | `superpowers-execute-plan.yaml` state machine plus role skills | Covered for initial implementation. TS-067/TS-068 pass focused compile/validate/run for same-job task execution and child-boundary stop behavior, including a node non-execution assertion for required child boundaries. |
 | Verify recipe path | `superpowers-verify.yaml` command gates plus verify role skill | Covered for initial implementation. TS-069/TS-070 pass focused compile/validate/run for fresh command evidence and failed-command blocking data. |
 | Finish recipe path | `superpowers-finish.yaml` finish gates plus optional `squashrebasemerge` | Covered for initial implementation. TS-071/TS-073 pass focused compile/validate/run for merge-ready recommendation, blocked merge evidence, and explicit merge after passing gates. |
+| Debug recipe path | `superpowers-debug.yaml` reproduction state plus debug role skill and `rule_gate` | Covered for initial implementation. TS-074/TS-077 pass focused compile/validate/run for reproduced failure routing, missing-repro stop behavior, plan-update routing, and third-attempt architecture review. |
 | Necessary child-job boundaries | target refs and child job result contracts | Covered for orchestration primitives. Create a child job only when the task requires a C2 job boundary such as independent target-ref advancement, cross-cell work, reuse, true parallelism, or lifecycle isolation. |
 | Task handoff | normal recipe inputs, outputs, artifacts, and job stories | Covered. No required `task_request.json`, `task_result.json`, `base_after`, thinpack, or commit-handoff protocol is needed. |
 
@@ -243,9 +244,9 @@ These are real work items, but they are not platform gaps:
 - Publish or otherwise expose the local skill bundle as a stable skill-source
   ref for live `codex/run_skill` execution. The route recipe accepts the ref as
   invocation metadata today, but does not yet install it dynamically.
-- Implement the remaining debug phase recipe if debugging becomes part of the
-  first workflow. Route, brainstorm/design, write-plan, execute-plan, verify,
-  and finish have initial recipes and focused tests.
+- Continue refining the debug phase only as concrete workflows require deeper
+  fix-loop integration. The initial debug recipe is implemented and covered by
+  TS-074/TS-077.
 - Add target-ref child-job validation only if a concrete flow requires that
   boundary.
 
@@ -328,7 +329,12 @@ Commands and results:
   validates merge-ready recommendation from verified evidence. TS-072 validates
   merge blocking when verification has issues. TS-073 validates explicit merge
   after the finish gate.
-- `recipe-tests/run-all.sh` passed end to end on 2026-06-10 with TS-058..TS-073
+- Focused debug suite passed TS-074/TS-077 with compile/validate/run. TS-074
+  validates reproduced-failure routing to fix-ready. TS-075 validates missing
+  reproduction stops before skill invocation. TS-076 validates plan-caused
+  failures route to plan update. TS-077 validates architecture review after a
+  third reproduced failed attempt.
+- `recipe-tests/run-all.sh` passed end to end on 2026-06-10 with TS-058..TS-077
   included in the default compile/validate/run suite and TS-042/TS-043 focused
   live skill-quality validation invoked by the default runner as a required
   hard-failing live check.

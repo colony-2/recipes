@@ -81,13 +81,18 @@ Validated on 2026-06-08/09 UTC:
   recipe state, blocks merge when verification has issues, and invokes
   `squashrebasemerge` only after an explicit merge action passes the finish
   gate.
+- initial debug recipe TS-074/TS-077 passed focused compile/validate/run.
+  `superpowers-debug.yaml` stops before skill invocation when reproduction is
+  missing, runs reproduction commands through recipe state, asks the debug role
+  skill only to interpret evidence, and exposes fix-ready, plan-update, and
+  architecture-review outcomes as recipe outputs.
 - focused brainstorm recipe suite TS-061/TS-062 passed. `superpowers-brainstorm.yaml`
   validates plan-ready design output and stops before planning when design
   questions remain.
 - focused write-plan recipe suite TS-063/TS-064 passed. `superpowers-write-plan.yaml`
   validates a ready dependent task chain and surfaces required C2 child-job
   boundaries without creating child jobs.
-- `recipe-tests/run-all.sh` passed end to end on 2026-06-10 with TS-058..TS-073
+- `recipe-tests/run-all.sh` passed end to end on 2026-06-10 with TS-058..TS-077
   included in the default compile/validate/run path and TS-042/TS-043 focused
   live skill-quality validation invoked by the default runner as a required
   hard-failing live check.
@@ -937,28 +942,40 @@ Maps `systematic-debugging`.
 
 Recipe states:
 
-1. `reproduce`
-2. `root_cause_evidence`
-3. `pattern_analysis`
-4. `hypothesis`
-5. `hypothesis_test`
-6. `tdd_regression_test`
-7. `fix`
-8. `verify`
-9. `architecture_review_gate` after three failed fix attempts
+1. `collect_debug_inputs`: normalize the bug report, optional reproduction
+   command, failure context, and failed-attempt count.
+2. `needs_repro_command`: stop before skill invocation when reproduction is
+   missing.
+3. `investigate`: run the reproduction command with `continue_on_error`,
+   invoke `c2-superpowers-debug` to interpret evidence, then gate the structured
+   result with `rule_gate`.
 
 Artifacts:
 
-- `superpowers/debug/repro.md`
+- `superpowers/debug/debug-inputs.json`
+- `superpowers/debug/repro-command.sh`
+- `superpowers/debug/repro-output.txt`
+- `superpowers/debug/repro-output-tail.txt`
 - `superpowers/debug/evidence.md`
-- `superpowers/debug/pattern-analysis.md`
-- `superpowers/debug/hypotheses.json`
-- `superpowers/debug/fix-attempts.json`
-- `superpowers/debug/regression-test-evidence.json`
-- `superpowers/debug/architecture-question.md`
+- `superpowers/debug/result.json`
+- `superpowers/debug/latest-status.json`
+- `superpowers/debug/action.json` when reproduction is missing
 
-The three-failed-fixes architecture gate should be a structured `input` state
-that asks whether to redesign, decompose, gather more evidence, or cancel.
+The debug recipe exposes a `debug_status` output instead of creating child jobs
+or fixing code itself. Current statuses are `needs_repro_command`, `fix_ready`,
+`requires_plan_update`, `architecture_review_required`, and `not_reproduced`.
+After three reproduced failed attempts, the output becomes
+`architecture_review_required`; a parent recipe should route that to a
+structured human/design gate before another fix attempt.
+
+Implementation status:
+
+- `superpowers-debug.yaml` is implemented for missing-reproduction,
+  reproduced-failure, plan-update, and third-attempt architecture-review paths.
+- TS-074 validates reproduced failure routing to fix-ready.
+- TS-075 validates missing reproduction stops before skill invocation.
+- TS-076 validates plan-caused failures route to plan update.
+- TS-077 validates architecture review after a third reproduced failed attempt.
 
 ### Verification Before Completion
 
@@ -1286,11 +1303,15 @@ Prototype these focused recipes before building the full system:
    compile/validate/run for merge-ready recommendation, blocked merge evidence,
    and explicit merge after the finish gate. It is included in the default
    compile/validate/run suite.
+15. `superpowers-debug.yaml`: implemented as TS-074/TS-077 and passing focused
+   compile/validate/run for reproduced failure routing, missing-reproduction
+   stop behavior, plan-update routing, and third-attempt architecture review.
+   It is included in the default compile/validate/run suite.
 
 Those tests prove the core recipe contracts: structured skill invocation,
 adaptive task-session chaining, session isolation/resume, and per-task review
 gates, the local role-skill bundle contract, route/intake, brainstorming, and
-write-plan, execute-plan, verification, and finish phases.
+write-plan, execute-plan, verification, finish, and debug phases.
 Parallel reviewer fanout is already covered by TS-050 and should be reused
 rather than reproved unless dynamic `children_from` coverage becomes important.
 

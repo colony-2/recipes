@@ -1,0 +1,252 @@
+id: superpowers-debug
+version: 0.1.0
+desc: Reproduce and investigate a C2 Superpowers failure before any fix work
+input_schema:
+  bug_report:
+    type: string
+    required: true
+  repro_command:
+    type: string
+    required: false
+  failure_context_json:
+    type: string
+    required: false
+  attempt_count:
+    type: string
+    required: false
+  skill_bundle_ref:
+    type: string
+    required: false
+inputs:
+  bug_report: "{{ inputs.bug_report }}"
+  repro_command: '${{ first_nonempty(inputs.?repro_command, "") }}'
+  failure_context_json: '${{ first_nonempty(inputs.?failure_context_json, "{}") }}'
+  attempt_count: '${{ first_nonempty(inputs.?attempt_count, "0") }}'
+  skill_bundle_ref: '${{ first_nonempty(inputs.?skill_bundle_ref, "") }}'
+state:
+  initial: collect_debug_inputs
+  states:
+    collect_debug_inputs:
+      op: command_execution
+      transitions:
+        - to: needs_repro_command
+          when: json_parse(outputs.stdout).has_repro_command != true
+        - to: investigate
+          when: true
+      inputs:
+        timeout: 30s
+        env:
+          BUG_REPORT: "{{ inputs.bug_report }}"
+          REPRO_COMMAND: "{{ inputs.repro_command }}"
+          FAILURE_CONTEXT_JSON: "{{ inputs.failure_context_json }}"
+          ATTEMPT_COUNT: "{{ inputs.attempt_count }}"
+        run: |
+          set -euo pipefail
+          mkdir -p "{{ context.environment.op.outbox }}/superpowers/debug"
+          python3 - <<'PY'
+          import json
+          import os
+
+          bug_report = os.environ["BUG_REPORT"].strip()
+          repro_command = os.environ.get("REPRO_COMMAND", "").strip()
+          try:
+              failure_context = json.loads(os.environ.get("FAILURE_CONTEXT_JSON") or "{}")
+          except json.JSONDecodeError as exc:
+              raise SystemExit(f"failure_context_json must be valid JSON: {exc}") from exc
+
+          try:
+              attempt_count = int(os.environ.get("ATTEMPT_COUNT") or "0")
+          except ValueError:
+              attempt_count = 0
+
+          result = {
+              "bug_report": bug_report,
+              "has_repro_command": bool(repro_command),
+              "repro_command": repro_command,
+              "failure_context": failure_context,
+              "attempt_count": attempt_count,
+          }
+          out = "{{ context.environment.op.outbox }}/superpowers/debug/debug-inputs.json"
+          with open(out, "w", encoding="utf-8") as fh:
+              json.dump(result, fh, sort_keys=True)
+              fh.write("\n")
+          print(json.dumps(result, sort_keys=True))
+          PY
+
+    needs_repro_command:
+      op: command_execution
+      transitions: []
+      inputs:
+        timeout: 30s
+        run: |
+          set -euo pipefail
+          mkdir -p "{{ context.environment.op.outbox }}/superpowers/debug"
+          cat > "{{ context.environment.op.outbox }}/superpowers/debug/action.json" <<'JSON'
+          {"debug_status":"needs_repro_command","reproduced":false,"requires_plan_update":false}
+          JSON
+          cat "{{ context.environment.op.outbox }}/superpowers/debug/action.json"
+
+    investigate:
+      inputs:
+        bug_report: "{{ inputs.bug_report }}"
+        failure_context_json: "{{ inputs.failure_context_json }}"
+        debug_inputs_json: "{{ states.collect_debug_inputs.outputs.stdout }}"
+        skill_bundle_ref: "{{ inputs.skill_bundle_ref }}"
+      sequence:
+        - id: run_reproduction
+          op: command_execution
+          inputs:
+            timeout: 60m
+            continue_on_error: true
+            env:
+              WT: "{{ context.environment.op.worktree_path }}"
+              REPRO_COMMAND: "${{ json_parse(inputs.debug_inputs_json).repro_command }}"
+            run: |
+              set -uo pipefail
+
+              OUT="{{ context.environment.op.outbox }}"
+              mkdir -p "$OUT/superpowers/debug"
+              cd "$WT"
+
+              python3 - <<'PY' > "$OUT/superpowers/debug/repro-command.sh"
+              import os
+
+              print("set -euo pipefail")
+              print(os.environ["REPRO_COMMAND"])
+              PY
+
+              set +e
+              bash "$OUT/superpowers/debug/repro-command.sh" 2>&1 | tee "$OUT/superpowers/debug/repro-output.txt"
+              RC=${PIPESTATUS[0]}
+              set -e
+              tail -n 120 "$OUT/superpowers/debug/repro-output.txt" > "$OUT/superpowers/debug/repro-output-tail.txt" || true
+              exit "$RC"
+
+        - id: summarize_debug
+          op: git+https://github.com/colony-2/c2ops.git//codex/run_skill@main
+          inputs:
+            skill: c2-superpowers-debug
+            input:
+              bug_report: "{{ inputs.bug_report }}"
+              failure_context_json: "{{ inputs.failure_context_json }}"
+              debug_inputs_json: "{{ inputs.debug_inputs_json }}"
+              reproduction_exit_code: "${{ sequence.run_reproduction.outputs.exit_code }}"
+              reproduction_stdout: "{{ sequence.run_reproduction.outputs.stdout }}"
+              reproduction_stderr: "{{ sequence.run_reproduction.outputs.stderr }}"
+              skill_bundle_ref: "{{ inputs.skill_bundle_ref }}"
+            prompt: |
+              Investigate this C2 Superpowers failure using the reproduction
+              command evidence that the recipe already collected.
+
+              Do not rerun commands, implement fixes, create child jobs, create
+              git worktrees, or make manual commits. The recipe owns
+              orchestration, fix routing, and git persistence.
+
+              Write:
+              - `superpowers/debug/evidence.md`
+              - `superpowers/debug/result.json`
+              - `superpowers/debug/latest-status.json`
+
+              Set `reproduced=true` only when the reproduction command evidence
+              demonstrates the reported failure. Set `requires_plan_update=true`
+              when the plan or task definition is the root cause.
+            status_contract:
+              path: superpowers/debug/latest-status.json
+            output:
+              from: artifact
+              path: superpowers/debug/result.json
+              format: json
+              schema:
+                type: object
+                required:
+                  - reproduced
+                  - root_cause
+                  - evidence
+                  - recommended_fix
+                  - requires_plan_update
+                  - validation_commands
+                properties:
+                  reproduced:
+                    type: boolean
+                  root_cause:
+                    type: string
+                  evidence:
+                    type: array
+                    items:
+                      type: string
+                  recommended_fix:
+                    type: string
+                  requires_plan_update:
+                    type: boolean
+                  validation_commands:
+                    type: array
+                    items:
+                      type: string
+                additionalProperties: true
+
+        - id: debug_gate
+          op: git+https://github.com/colony-2/c2ops.git//rule_gate@main
+          inputs:
+            rules:
+              - id: repro_command_present
+                type: assert
+                value: ${{ json_parse(inputs.debug_inputs_json).has_repro_command == true }}
+                message: Debugging requires an explicit reproduction command.
+              - id: reproduced_failure_must_have_nonzero_repro
+                type: assert
+                value: ${{ !sequence.summarize_debug.outputs.parsed_output.reproduced || sequence.run_reproduction.outputs.exit_code != 0 }}
+                message: reproduced=true requires a failing reproduction command.
+              - id: debug_output_schema_valid
+                type: assert
+                value: ${{ sequence.summarize_debug.outputs.output_schema_valid }}
+                message: Debug result artifact must match schema.
+              - id: debug_status_contract_valid
+                type: assert
+                value: ${{ sequence.summarize_debug.outputs.status_contract_present && sequence.summarize_debug.outputs.status_contract_valid }}
+                message: Debug status contract must be present and valid.
+              - id: reproduced_has_root_cause
+                type: assert
+                value: ${{ !sequence.summarize_debug.outputs.parsed_output.reproduced || sequence.summarize_debug.outputs.parsed_output.root_cause != "" }}
+                message: Reproduced failures must include root-cause evidence.
+              - id: reproduced_has_evidence
+                type: assert
+                value: ${{ !sequence.summarize_debug.outputs.parsed_output.reproduced || size(sequence.summarize_debug.outputs.parsed_output.evidence) > 0 }}
+                message: Reproduced failures must include supporting evidence.
+              - id: fix_path_has_validation_commands
+                type: assert
+                value: ${{ sequence.summarize_debug.outputs.parsed_output.requires_plan_update || !sequence.summarize_debug.outputs.parsed_output.reproduced || size(sequence.summarize_debug.outputs.parsed_output.validation_commands) > 0 }}
+                message: Fix-ready debugging results must include validation commands.
+      transitions: []
+      outputs:
+        attempt_count: "${{ json_parse(inputs.debug_inputs_json).attempt_count }}"
+        reproduction_exit_code: "${{ sequence.run_reproduction.outputs.exit_code }}"
+        reproduced: "${{ sequence.summarize_debug.outputs.parsed_output.reproduced }}"
+        root_cause: "${{ sequence.summarize_debug.outputs.parsed_output.root_cause }}"
+        evidence: "${{ sequence.summarize_debug.outputs.parsed_output.evidence }}"
+        evidence_count: "${{ size(sequence.summarize_debug.outputs.parsed_output.evidence) }}"
+        recommended_fix: "${{ sequence.summarize_debug.outputs.parsed_output.recommended_fix }}"
+        requires_plan_update: "${{ sequence.summarize_debug.outputs.parsed_output.requires_plan_update }}"
+        validation_commands: "${{ sequence.summarize_debug.outputs.parsed_output.validation_commands }}"
+        debug_gate_ok: "${{ sequence.debug_gate.outputs.ok }}"
+        debug_failed_rule_ids: "${{ sequence.debug_gate.outputs.failed_rule_ids }}"
+        debug_session_id: "{{ sequence.summarize_debug.outputs.sessionId }}"
+        output_schema_valid: "${{ sequence.summarize_debug.outputs.output_schema_valid }}"
+        status_contract_valid: "${{ sequence.summarize_debug.outputs.status_contract_valid }}"
+
+outputs:
+  debug_status: '${{ !json_parse(state_output("collect_debug_inputs", "stdout", "{\"has_repro_command\":false,\"attempt_count\":0}")).has_repro_command ? "needs_repro_command" : (state_output("investigate", "requires_plan_update", false) && state_output("investigate", "debug_gate_ok", false) ? "requires_plan_update" : (state_output("investigate", "reproduced", false) && json_parse(state_output("collect_debug_inputs", "stdout", "{\"has_repro_command\":false,\"attempt_count\":0}")).attempt_count >= 3 && state_output("investigate", "debug_gate_ok", false) ? "architecture_review_required" : (state_output("investigate", "reproduced", false) && state_output("investigate", "debug_gate_ok", false) ? "fix_ready" : "not_reproduced"))) }}'
+  has_repro_command: "${{ json_parse(state_output('collect_debug_inputs', 'stdout', '{\"has_repro_command\":false}')).has_repro_command }}"
+  attempt_count: "${{ json_parse(state_output('collect_debug_inputs', 'stdout', '{\"attempt_count\":0}')).attempt_count }}"
+  reproduction_exit_code: "${{ state_output('investigate', 'reproduction_exit_code', -1) }}"
+  reproduced: "${{ state_output('investigate', 'reproduced', false) }}"
+  root_cause: "${{ state_output('investigate', 'root_cause', '') }}"
+  evidence: "${{ state_output('investigate', 'evidence', []) }}"
+  evidence_count: "${{ state_output('investigate', 'evidence_count', 0) }}"
+  recommended_fix: "${{ state_output('investigate', 'recommended_fix', '') }}"
+  requires_plan_update: "${{ state_output('investigate', 'requires_plan_update', false) }}"
+  validation_commands: "${{ state_output('investigate', 'validation_commands', []) }}"
+  debug_gate_ok: "${{ state_output('investigate', 'debug_gate_ok', false) }}"
+  debug_failed_rule_ids: "${{ state_output('investigate', 'debug_failed_rule_ids', []) }}"
+  debug_session_id: "${{ state_output('investigate', 'debug_session_id', '') }}"
+  output_schema_valid: "${{ state_output('investigate', 'output_schema_valid', false) }}"
+  status_contract_valid: "${{ state_output('investigate', 'status_contract_valid', false) }}"
