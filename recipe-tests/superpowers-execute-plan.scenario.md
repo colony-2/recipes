@@ -298,6 +298,69 @@ cases:
       - type: node_not_executed
         node_path: "superpowers-execute-plan/run_task_boundary/state_machine/implement_task/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
 
+  - id: ts-095-execute-plan-stops-when-no-ready-task-exists
+    type: recipe_case
+    inputs:
+      plan_json: |
+        {
+          "plan_id": "PLAN-DONE",
+          "summary": "No remaining work.",
+          "tasks": [
+            {
+              "id": "TASK-DONE",
+              "title": "Already completed task",
+              "status": "done",
+              "dependencies": [],
+              "target_ref": "main",
+              "requires_child_job": false,
+              "child_job_reason": "",
+              "instructions": "No work remains.",
+              "validation_commands": [],
+              "review_requirements": []
+            }
+          ],
+          "ready_task_ids": [],
+          "validation_strategy": {"commands": []},
+          "child_job_boundaries": []
+        }
+    mocks:
+      ops:
+        - match:
+            op: command_execution
+          behavior:
+            mode: passthrough
+        - match:
+            op: command_execution
+          behavior:
+            mode: passthrough
+        - match:
+            op: sleep
+          behavior:
+            mode: return
+            outputs: {}
+        - match:
+            op: recipe_within_resolution
+          behavior:
+            mode: return
+            outputs:
+              resolved_selectors: {}
+    assertions:
+      - type: output_equals
+        path: selected_task_id
+        value: ""
+      - type: output_equals
+        path: child_job_required
+        value: false
+      - type: output_equals
+        path: task_done
+        value: false
+      - type: node_executed
+        node_path: "superpowers-execute-plan/no_task_selected/command_execution"
+      - type: node_not_executed
+        node_path: "superpowers-execute-plan/run_task_boundary/state_machine/implement_task/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
+      - type: node_not_executed
+        node_path: "superpowers-execute-plan/child_boundary_required/command_execution"
+
   - id: ts-082-execute-plan-enforces-tdd-red-green-refactor
     type: recipe_case
     inputs:

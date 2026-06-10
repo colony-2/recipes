@@ -72,12 +72,12 @@ Validated on 2026-06-08/09 UTC:
 - focused deterministic route cases TS-065/TS-066 passed. Submitted plan
   artifacts route to execution and submitted design artifacts route to planning
   without skill invocation in the run path.
-- execute-plan recipe TS-067/TS-068/TS-082/TS-084/TS-087 passed focused
+- execute-plan recipe TS-067/TS-068/TS-082/TS-083/TS-084/TS-087/TS-095 passed focused
   compile/validate/run. `superpowers-execute-plan.yaml` keeps task selection
   and child-boundary detection deterministic in recipe state, uses role skills
   only for implementer/spec-review/quality-review sessions, asserts the
   implementer node is not executed when a required child-job boundary is
-  selected, enforces RED/GREEN/refactor TDD before task review, and routes spec
+  selected, stops cleanly when no ready task exists, enforces RED/GREEN/refactor TDD before task review, and routes spec
   and quality review failures through a revision session before re-review,
   including TDD spec-review revision with GREEN/REFACTOR command reruns.
 - initial verify recipe TS-069/TS-070 passed focused compile/validate/run.
@@ -108,15 +108,19 @@ Validated on 2026-06-08/09 UTC:
 - focused plan-review recipe suite TS-078/TS-079 passed. `superpowers-plan-review.yaml`
   approves aligned task plans and returns replanning feedback for incomplete
   plans without rewriting the plan.
-- primary orchestrator recipe TS-080/TS-086/TS-088 passed focused
-  compile/validate/run. `superpowers.yaml` routes the full same-job
-  design-to-finish path, enforces RED/GREEN/refactor TDD before task review, and
-  routes TDD spec-review failure through revision, GREEN/REFACTOR reruns, and
-  re-review.
-- `recipe-tests/run-all.sh` passed end to end on 2026-06-10 with TS-058..TS-093
-  included in the default compile/validate/run path. Required live checks now
-  include TS-092/TS-093 live `codex/run_skill`, TS-044/TS-045 live Codex skill
-  execution, and TS-042/TS-043 focused live skill-quality validation.
+- primary orchestrator recipe TS-080/TS-081/TS-085/TS-086/TS-088 compile against
+  the inline production recipe. `superpowers.yaml` routes the full same-job
+  design-to-finish path by including the phase recipes and keeping only primary
+  orchestration glue. Direct `c2j test validate/run` for this include graph is
+  temporarily blocked by a c2j test local-include bug; TS-094 validates embedded
+  runtime resolution with `c2j submit --run --embed`.
+- `recipe-tests/run-all.sh` passed end to end on 2026-06-10 with TS-058..TS-079
+  plus TS-082..TS-093 and TS-095 included in the default compile/validate/run path, the
+  primary inline scenario suite compiled, and TS-094 covering embedded inline
+  primary execution. Required live checks now include TS-092/TS-093 live
+  `codex/run_skill`, TS-094 live inline primary execution, TS-044/TS-045 live
+  Codex skill execution, and TS-042/TS-043 focused live skill-quality
+  validation.
 - focused live skill-quality smoke TS-042/TS-043 passed after narrowing the
   smoke to triage, requirements-author, and bad-requirements contrarian-review
   contracts. The runner does not gate this check behind an environment flag;
@@ -463,7 +467,7 @@ Thin state-machine recipe that routes the ticket through the whole methodology:
 2. `brainstorm_design`
 3. `write_plan`
 4. `review_plan`
-5. `select_task` / `run_task_boundary`
+5. `execute_plan`
 6. `verify_work`
 7. `finish_work`
 
@@ -492,22 +496,25 @@ Outputs:
 Implementation status:
 
 - `superpowers.yaml` is implemented as a same-job state machine for the normal
-  design-to-finish MVP path. It does not invoke child recipes for ordinary
-  Superpowers role sessions.
-- TS-080 validates route, brainstorm, write-plan, plan-review, same-job
+  design-to-finish MVP path, using inline phase recipes for brainstorm,
+  write-plan, plan-review, execute-plan, verify, finish, and debug. It does not
+  invoke child jobs for ordinary Superpowers role sessions.
+- TS-080 compiles route, brainstorm, write-plan, plan-review, same-job
   implement/spec/quality sessions, fresh verification, and finish recommendation
-  in one job.
-- TS-081 validates that a task marked `requires_child_job=true` stops before
+  in one primary include graph.
+- TS-081 compiles that a task marked `requires_child_job=true` stops before
   the implementer session.
-- TS-085 validates that a failed spec review in the primary same-job task
+- TS-085 compiles that a failed spec review in the primary same-job task
   boundary routes through revision and then re-runs spec and quality review
   before verification and finish.
-- TS-086 validates that a primary task marked `requires_tdd=true` routes through
+- TS-086 compiles that a primary task marked `requires_tdd=true` routes through
   recipe-enforced RED/GREEN/refactor gates before task review and does not invoke
   the normal implementer boundary.
-- TS-088 validates that a primary TDD task with blocking spec feedback routes
+- TS-088 compiles that a primary TDD task with blocking spec feedback routes
   through a TDD revision session, reruns GREEN/REFACTOR verification, and
   completes post-revision spec/quality review before verification and finish.
+- TS-094 validates the same inline primary recipe resolves and runs in embedded
+  c2j runtime.
 
 ### Bootstrap And Routing
 
@@ -707,9 +714,10 @@ RED/GREEN/refactor TDD before task review. TS-083 validates spec-review failure
 routing through revision and re-review, including that initial quality review is
 not invoked before spec passes. TS-084 validates quality-review failure routing
 through revision and re-review, including that the initial task gate is not
-invoked before quality review passes. All five pass focused compile/validate/run, and
-the execute-plan suite is wired into
-`recipe-tests/run-all.sh`.
+invoked before quality review passes. TS-087 validates TDD spec-review revision
+with GREEN/REFACTOR command reruns. TS-095 validates no-task stop behavior
+without invoking implementation. The execute-plan suite is wired into
+`recipe-tests/run-all.sh` and passes focused compile/validate/run.
 
 Maps `subagent-driven-development` first, with `executing-plans` as a sequential
 recipe-state implementation loop.
@@ -1366,9 +1374,9 @@ Prototype these focused recipes before building the full system:
 12. `superpowers-route.yaml`: expanded as TS-065/TS-066 to validate
    deterministic state-machine routing from submitted plan/design artifacts
    without skill invocation in the run path.
-13. `superpowers-execute-plan.yaml`: implemented as TS-067/TS-068/TS-082/TS-084/TS-087 and
+13. `superpowers-execute-plan.yaml`: implemented as TS-067/TS-068/TS-082/TS-083/TS-084/TS-087/TS-095 and
    passing focused compile/validate/run for same-job task execution,
-   child-boundary stop behavior, recipe-enforced TDD, and spec/quality review
+   child-boundary stop behavior, no-task stop behavior, recipe-enforced TDD, and spec/quality review
    revision routing, including TDD spec-review revision with GREEN/REFACTOR
    command reruns. It is included in the default compile/validate/run suite.
 14. `superpowers-verify.yaml`: implemented as TS-069/TS-070 and passing focused
@@ -1386,11 +1394,12 @@ Prototype these focused recipes before building the full system:
    focused compile/validate/run for aligned-plan approval and incomplete-plan
    replanning feedback. It is included in the default compile/validate/run
    suite.
-18. `superpowers.yaml`: implemented as TS-080/TS-086/TS-088 and passing focused
-   compile/validate/run for the same-job primary workflow, required
-   child-boundary stop behavior, primary spec-review revision routing, and
-   primary RED/GREEN/refactor TDD enforcement, including TDD spec-review
-   revision with GREEN/REFACTOR command reruns.
+18. `superpowers.yaml`: implemented as an inline primary recipe that reuses the
+   phase recipes for brainstorm, write-plan, plan-review, execute-plan, verify,
+   finish, and debug. TS-080/TS-081/TS-085/TS-086/TS-088 compile the primary
+   scenario graph. TS-094 validates embedded runtime include resolution until
+   `c2j test validate/run` preserves local recipe directories for inline
+   includes.
 
 Those tests prove the core recipe contracts: structured skill invocation,
 adaptive task-session chaining, session isolation/resume, and per-task review

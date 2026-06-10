@@ -28,11 +28,11 @@ with a focused live smoke.
 | Brainstorm/design recipe | `superpowers-brainstorm.yaml` plus `codex/run_skill` and `rule_gate` | Covered for initial implementation. TS-061/TS-062 validate plan-ready designs and stop-before-planning questions. |
 | Write-plan recipe | `superpowers-write-plan.yaml` plus `codex/run_skill` and `rule_gate` | Covered for initial implementation. TS-063/TS-064 validate ready task plans and required child-job boundary surfacing. TS-089 validates explicit TDD command contracts for recipe-enforced RED/GREEN/refactor gates. TS-090 validates deterministic child-boundary metadata consistency. |
 | Plan-review recipe | `superpowers-plan-review.yaml` plus `codex/run_skill` and `rule_gate` | Covered for initial implementation. TS-078/TS-079 pass focused compile/validate/run for aligned-plan approval and incomplete-plan replanning feedback. |
-| Execute-plan recipe path | `superpowers-execute-plan.yaml` state machine plus role skills | Covered for initial implementation. TS-067/TS-068 pass focused compile/validate/run for same-job task execution and child-boundary stop behavior, including a node non-execution assertion for required child boundaries. TS-082 passes focused compile/validate/run for recipe-enforced RED/GREEN/refactor TDD before task review. TS-083/TS-084 pass focused compile/validate/run for spec-review and quality-review failure routing through revision and re-review. TS-087 passes focused compile/validate/run for TDD spec-review failure routing through revision, GREEN/REFACTOR reruns, and re-review. |
+| Execute-plan recipe path | `superpowers-execute-plan.yaml` state machine plus role skills | Covered for initial implementation. TS-067/TS-068 pass focused compile/validate/run for same-job task execution and child-boundary stop behavior, including a node non-execution assertion for required child boundaries. TS-082 passes focused compile/validate/run for recipe-enforced RED/GREEN/refactor TDD before task review. TS-083/TS-084 pass focused compile/validate/run for spec-review and quality-review failure routing through revision and re-review. TS-087 passes focused compile/validate/run for TDD spec-review failure routing through revision, GREEN/REFACTOR reruns, and re-review. TS-095 validates no-task stop behavior without invoking implementation. |
 | Verify recipe path | `superpowers-verify.yaml` command gates plus verify role skill | Covered for initial implementation. TS-069/TS-070 pass focused compile/validate/run for fresh command evidence and failed-command blocking data. |
 | Finish recipe path | `superpowers-finish.yaml` finish gates plus optional `squashrebasemerge` | Covered for initial implementation. TS-071/TS-073 pass focused compile/validate/run for merge-ready recommendation, blocked merge evidence, and explicit merge after passing gates. |
 | Debug recipe path | `superpowers-debug.yaml` reproduction state plus debug role skill and `rule_gate` | Covered for initial implementation. TS-074/TS-077 pass focused compile/validate/run for reproduced failure routing, missing-repro stop behavior, plan-update routing, and third-attempt architecture review. |
-| Primary orchestrator | `superpowers.yaml` same-job state machine | Covered for initial implementation. TS-080/TS-081 pass focused compile/validate/run for normal design-to-finish orchestration and required child-boundary stop behavior. TS-085 passes focused compile/validate/run for primary spec-review failure routing through revision and re-review. TS-086 passes focused compile/validate/run for primary RED/GREEN/refactor TDD enforcement before task review. TS-088 covers primary TDD spec-review failure routing through revision, GREEN/REFACTOR reruns, and re-review. |
+| Primary orchestrator | `superpowers.yaml` inline phase recipes plus same-job glue states | Covered for initial implementation. The production recipe now includes the brainstorm, write-plan, plan-review, execute-plan, verify, finish, and debug phase recipes instead of duplicating their internals. TS-080/TS-081/TS-085/TS-086/TS-088 compile against the primary include graph until the c2j test local-include bug is fixed. TS-094 validates the same inline primary recipe resolves and runs through embedded `c2j submit --run --embed`. |
 | Necessary child-job boundaries | target refs and child job result contracts | Covered for orchestration primitives. Create a child job only when the task requires a C2 job boundary such as independent target-ref advancement, cross-cell work, reuse, true parallelism, or lifecycle isolation. |
 | Task handoff | normal recipe inputs, outputs, artifacts, and job stories | Covered. No required `task_request.json`, `task_result.json`, `base_after`, thinpack, or commit-handoff protocol is needed. |
 
@@ -54,8 +54,24 @@ These should not be treated as missing c2j/c2ops primitives:
 
 ## Confirmed Product Gaps
 
-No confirmed blocking c2j/c2ops product gaps remain for the initial
+No confirmed blocking c2j/c2ops runtime product gaps remain for the initial
 Superpowers recipe implementation.
+
+The current validation-only product gap is `c2j test validate/run` local include
+resolution for inline recipe nodes. `c2j test compile` accepts
+`superpowers.yaml`, and embedded runtime execution resolves the same local
+includes successfully, but `c2j test validate/run --recipe-file
+superpowers.yaml` currently fails before execution with:
+
+```text
+relative include "./superpowers-brainstorm.yaml" has no local recipe directory
+```
+
+This is tracked in
+`guides/BUG_REPORT_C2J_TEST_RUN_INLINE_INCLUDE_LOSES_LOCAL_RECIPE_DIR.md`. Until
+that c2j test runner bug is fixed, the primary scenario suite is compile-only in
+`recipe-tests/run-all.sh`, with TS-094 covering embedded runtime include
+resolution.
 
 One non-blocking c2j reliability bug remains from the original oversized live
 skill-quality run: duplicate story chapter ordinals were logged before the job
@@ -330,7 +346,7 @@ Commands and results:
 - Focused write-plan recipe suite passed TS-063/TS-064/TS-089/TS-090 for ready
   task plans, required child-job boundary surfacing, TDD command contracts, and
   child-boundary metadata consistency.
-- Focused execute-plan suite passed TS-067/TS-068/TS-082/TS-084/TS-087 with
+- Focused execute-plan suite passed TS-067/TS-068/TS-082/TS-083/TS-084/TS-087/TS-095 with
   compile/validate/run. TS-067 validates a same-job implement/review/gate task
   boundary. TS-068 validates stop-before-implementation behavior with a node
   non-execution assertion for the implementer boundary. TS-082 validates
@@ -338,7 +354,8 @@ Commands and results:
   spec-review failure routing through revision and re-review. TS-084 validates
   quality-review failure routing through revision and re-review. TS-087
   validates TDD spec-review failure routing through revision, GREEN/REFACTOR
-  command reruns, and re-review.
+  command reruns, and re-review. TS-095 validates no-task stop behavior without
+  invoking implementation.
 - Focused verify suite passed TS-069/TS-070 with compile/validate/run. TS-069
   validates fresh command evidence before success. TS-070 validates failed
   command evidence remains blocking workflow data.
@@ -354,17 +371,20 @@ Commands and results:
 - Focused plan-review suite passed TS-078/TS-079 with compile/validate/run.
   TS-078 validates aligned-plan approval before execution. TS-079 validates
   incomplete-plan blocking feedback for replanning.
-- Focused primary orchestrator suite passed TS-080/TS-086/TS-088 with
-  compile/validate/run. TS-080 validates the normal same-job design-to-finish
-  path. TS-081 validates the required child-job boundary stop without invoking
-  the implementer session. TS-085 validates primary spec-review failure routing
-  through revision and re-review. TS-086 validates primary RED/GREEN/refactor
-  TDD enforcement before task review. TS-088 validates primary TDD spec-review
-  failure routing through revision, GREEN/REFACTOR reruns, and re-review.
-- `recipe-tests/run-all.sh` passed end to end on 2026-06-10 with TS-058..TS-093
-  included in the default compile/validate/run suite. Required live checks now
-  include TS-092/TS-093 live `codex/run_skill`, TS-044/TS-045 live Codex skill
-  execution, and TS-042/TS-043 focused live skill-quality validation.
+- Focused primary orchestrator suite now compiles TS-080/TS-081/TS-085/TS-086/TS-088
+  against the inline primary recipe. Direct `c2j test validate/run` for the
+  primary recipe is temporarily blocked by the local inline include resolution
+  bug tracked in
+  `guides/BUG_REPORT_C2J_TEST_RUN_INLINE_INCLUDE_LOSES_LOCAL_RECIPE_DIR.md`.
+  TS-094 validates that embedded runtime execution resolves the same inline
+  phase recipe graph.
+- `recipe-tests/run-all.sh` passed end to end on 2026-06-10 with TS-058..TS-079
+  plus TS-082..TS-093 and TS-095 included in the default compile/validate/run suite, the
+  primary inline scenario suite compiled, and TS-094 covering embedded inline
+  primary runtime. Required live checks now include TS-092/TS-093 live
+  `codex/run_skill`, TS-094 live inline primary execution, TS-044/TS-045 live
+  Codex skill execution, and TS-042/TS-043 focused live skill-quality
+  validation.
 - The focused rerun did not reproduce the story/chapter conflict signature
   (`workflow state conflict`, `chapter ordinal`, or duplicate ordinal errors).
   The original broad skill-quality run did reproduce that signature and has a

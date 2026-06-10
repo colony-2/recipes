@@ -22,11 +22,13 @@ state:
       op: command_execution
       transitions:
         - to: child_boundary_required
-          when: json_parse(outputs.stdout).requires_child_job == true
+          when: json_parse(outputs.stdout).selected == true && json_parse(outputs.stdout).requires_child_job == true
         - to: run_tdd_task_boundary
-          when: json_parse(outputs.stdout).selected_task.?requires_tdd.orValue(false) == true
+          when: json_parse(outputs.stdout).selected == true && json_parse(outputs.stdout).selected_task.?requires_tdd.orValue(false) == true
         - to: run_task_boundary
-          when: json_parse(outputs.stdout).requires_child_job != true
+          when: json_parse(outputs.stdout).selected == true && json_parse(outputs.stdout).requires_child_job != true
+        - to: no_task_selected
+          when: true
       inputs:
         timeout: 30s
         env:
@@ -94,6 +96,19 @@ state:
           mkdir -p "{{ context.environment.op.outbox }}/superpowers/execution"
           printf '%s\n' "$SELECTED_TASK_JSON" > "{{ context.environment.op.outbox }}/superpowers/execution/child-boundary-required.json"
           printf '%s\n' "$SELECTED_TASK_JSON"
+
+    no_task_selected:
+      op: command_execution
+      transitions: []
+      inputs:
+        timeout: 30s
+        run: |
+          set -euo pipefail
+          mkdir -p "{{ context.environment.op.outbox }}/superpowers/execution"
+          cat > "{{ context.environment.op.outbox }}/superpowers/execution/no-task-selected.json" <<'JSON'
+          {"workflow_status":"no_task_selected","message":"No ready task was available for execution."}
+          JSON
+          cat "{{ context.environment.op.outbox }}/superpowers/execution/no-task-selected.json"
 
     run_task_boundary:
       inputs:

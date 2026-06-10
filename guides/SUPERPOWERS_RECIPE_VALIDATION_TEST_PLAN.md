@@ -78,7 +78,9 @@ Core runtime reverification on 2026-06-09 UTC and full suite validation on
   job, with an explicit node non-execution assertion for the implementer; TS-082
   validates recipe-enforced RED/GREEN/refactor TDD before task review; TS-083
   validates spec-review failure routing through revision and re-review; TS-084
-  validates quality-review failure routing through revision and re-review.
+  validates quality-review failure routing through revision and re-review; TS-087
+  validates TDD spec-review revision with GREEN/REFACTOR command reruns; TS-095
+  validates no-task stop behavior without invoking implementation.
 - Focused verify suite passed. TS-069 validates fresh command evidence before
   success; TS-070 validates failed command evidence remains blocking workflow
   data instead of being hidden by a verifier summary.
@@ -107,17 +109,21 @@ Validated:
 - focused Superpowers brainstorm recipe smokes TS-061/TS-062 passed.
 - focused Superpowers write-plan recipe smokes TS-063/TS-064/TS-089/TS-090 passed.
 - focused deterministic route smokes TS-065/TS-066 passed.
-- focused execute-plan smokes TS-067/TS-068/TS-082/TS-084/TS-087 passed
+- focused execute-plan smokes TS-067/TS-068/TS-082/TS-083/TS-084/TS-087/TS-095 passed
   compile/validate/run.
 - focused verify smokes TS-069/TS-070 passed compile/validate/run.
 - focused finish smokes TS-071/TS-073 passed compile/validate/run.
 - focused debug smokes TS-074/TS-077 passed compile/validate/run.
 - focused plan-review smokes TS-078/TS-079 passed compile/validate/run.
-- focused primary-orchestrator smokes TS-080/TS-086/TS-088 passed compile/validate/run.
-- `recipe-tests/run-all.sh` passed end to end on 2026-06-10 with TS-058..TS-093
-  included in the default compile/validate/run path and with TS-092/TS-093 live
+- focused primary-orchestrator smokes TS-080/TS-081/TS-085/TS-086/TS-088 compile
+  against the inline production recipe. Direct `c2j test validate/run` for this
+  include graph is temporarily blocked by the c2j test local-include bug.
+- `recipe-tests/run-all.sh` passed end to end on 2026-06-10 with TS-058..TS-079
+  plus TS-082..TS-093 and TS-095 included in the default compile/validate/run path, the
+  primary inline scenario suite compiled, and TS-094 validating embedded inline
+  primary runtime. Required live checks also include TS-092/TS-093 live
   `run_skill`, TS-044/TS-045 live Codex skill execution, and TS-042/TS-043
-  focused live skill-quality validation invoked as required hard-failing checks.
+  focused live skill-quality validation invoked as hard-failing checks.
 - focused live skill-quality smoke TS-042/TS-043 passed after narrowing
   `skill-quality-smoke.yaml` to triage and requirements contracts. The script
   compiles the scenario first, runs c2j with explicit lease/wait timeouts, and
@@ -530,8 +536,9 @@ When these tests pass, implementation should proceed with:
 - Write-plan recipe validation through TS-063/TS-064/TS-089/TS-090.
 - Plan-review validation through TS-078/TS-079.
 - Deterministic route-state validation through TS-065/TS-066.
-- Execute-plan validation through TS-067/TS-068/TS-082/TS-084/TS-087.
-- Primary-orchestrator validation through TS-080/TS-086/TS-088.
+- Execute-plan validation through TS-067/TS-068/TS-082/TS-083/TS-084/TS-087/TS-095.
+- Primary-orchestrator compile coverage through TS-080/TS-081/TS-085/TS-086/TS-088.
+- Embedded primary inline runtime validation through TS-094.
 - Verify validation through TS-069/TS-070.
 - Finish validation through TS-071/TS-073.
 - Debug validation through TS-074/TS-077.
