@@ -67,13 +67,14 @@ Validated on 2026-06-08/09 UTC:
 - focused deterministic route cases TS-065/TS-066 passed. Submitted plan
   artifacts route to execution and submitted design artifacts route to planning
   without skill invocation in the run path.
-- execute-plan recipe TS-067/TS-068/TS-082/TS-084 passed focused
+- execute-plan recipe TS-067/TS-068/TS-082/TS-084/TS-087 passed focused
   compile/validate/run. `superpowers-execute-plan.yaml` keeps task selection
   and child-boundary detection deterministic in recipe state, uses role skills
   only for implementer/spec-review/quality-review sessions, asserts the
   implementer node is not executed when a required child-job boundary is
   selected, enforces RED/GREEN/refactor TDD before task review, and routes spec
-  and quality review failures through a revision session before re-review.
+  and quality review failures through a revision session before re-review,
+  including TDD spec-review revision with GREEN/REFACTOR command reruns.
 - initial verify recipe TS-069/TS-070 passed focused compile/validate/run.
   `superpowers-verify.yaml` runs fresh validation commands through recipe state,
   then uses the verify role skill only to interpret/write the verification
@@ -97,7 +98,7 @@ Validated on 2026-06-08/09 UTC:
 - focused plan-review recipe suite TS-078/TS-079 passed. `superpowers-plan-review.yaml`
   approves aligned task plans and returns replanning feedback for incomplete
   plans without rewriting the plan.
-- `recipe-tests/run-all.sh` passed end to end on 2026-06-10 with TS-058..TS-086
+- `recipe-tests/run-all.sh` passed end to end on 2026-06-10 with TS-058..TS-087
   included in the default compile/validate/run path and TS-042/TS-043 focused
   live skill-quality validation invoked by the default runner as a required
   hard-failing live check.
@@ -1334,10 +1335,11 @@ Prototype these focused recipes before building the full system:
 11. `superpowers-route.yaml`: expanded as TS-065/TS-066 to validate
    deterministic state-machine routing from submitted plan/design artifacts
    without skill invocation in the run path.
-12. `superpowers-execute-plan.yaml`: implemented as TS-067/TS-068/TS-082/TS-084 and
+12. `superpowers-execute-plan.yaml`: implemented as TS-067/TS-068/TS-082/TS-084/TS-087 and
    passing focused compile/validate/run for same-job task execution,
    child-boundary stop behavior, recipe-enforced TDD, and spec/quality review
-   revision routing. It is included in the default compile/validate/run suite.
+   revision routing, including TDD spec-review revision with GREEN/REFACTOR
+   command reruns. It is included in the default compile/validate/run suite.
 13. `superpowers-verify.yaml`: implemented as TS-069/TS-070 and passing focused
    compile/validate/run for fresh command verification and failed-command
    blocking evidence. It is included in the default compile/validate/run suite.
