@@ -186,6 +186,14 @@ sequence:
           type: assert
           value: ${{ sequence.write_plan.outputs.parsed_output.tasks.all(t, !t.requires_child_job || t.child_job_reason != "") }}
           message: Tasks that require child jobs must explain the C2 boundary.
+        - id: child_job_boundaries_cover_required_tasks
+          type: assert
+          value: ${{ sequence.write_plan.outputs.parsed_output.tasks.all(t, !t.requires_child_job || sequence.write_plan.outputs.parsed_output.child_job_boundaries.exists(b, b.task_id == t.id && b.reason != "")) }}
+          message: Every task requiring a child job must have a matching child_job_boundaries entry.
+        - id: child_job_boundaries_match_child_tasks
+          type: assert
+          value: ${{ sequence.write_plan.outputs.parsed_output.child_job_boundaries.all(b, sequence.write_plan.outputs.parsed_output.tasks.exists(t, t.id == b.task_id && t.requires_child_job)) }}
+          message: Child-job boundary entries must reference tasks marked requires_child_job=true.
         - id: tdd_tasks_include_recipe_commands
           type: assert
           value: ${{ sequence.write_plan.outputs.parsed_output.tasks.all(t, !has(t.requires_tdd) || !t.requires_tdd || (has(t.tdd) && has(t.tdd.red_command) && t.tdd.red_command != "" && has(t.tdd.green_command) && t.tdd.green_command != "" && has(t.tdd.refactor_verification_command) && t.tdd.refactor_verification_command != "")) }}
@@ -194,6 +202,9 @@ sequence:
 outputs:
   plan_ok: "${{ sequence.plan_gate.outputs.ok }}"
   plan_failed_rule_ids: "${{ sequence.plan_gate.outputs.failed_rule_ids }}"
+  plan_failed_rule_count: "${{ size(sequence.plan_gate.outputs.failed_rule_ids) }}"
+  child_boundary_coverage_failed: '${{ "child_job_boundaries_cover_required_tasks" in sequence.plan_gate.outputs.failed_rule_ids }}'
+  child_boundary_orphan_failed: '${{ "child_job_boundaries_match_child_tasks" in sequence.plan_gate.outputs.failed_rule_ids }}'
   plan_id: "${{ sequence.write_plan.outputs.parsed_output.plan_id }}"
   summary: "${{ sequence.write_plan.outputs.parsed_output.summary }}"
   tasks: "${{ sequence.write_plan.outputs.parsed_output.tasks }}"

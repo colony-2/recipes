@@ -268,4 +268,71 @@ cases:
       - type: output_equals
         path: first_task_tdd_refactor_command
         value: printf refactor
+
+  - id: ts-090-write-plan-rejects-missing-child-boundary-entry
+    type: recipe_case
+    inputs:
+      prompt: Split reporting work into a child job.
+      design_json: |
+        {
+          "approved_for_planning": true,
+          "recommended_approach": "The reporting-cell work requires a child job boundary."
+        }
+    mocks:
+      ops:
+        - match:
+            op: recipe_within_resolution
+          behavior:
+            mode: return
+            outputs:
+              resolved_selectors: {}
+        - match:
+            node_path: superpowers-write-plan/write_plan
+          behavior:
+            mode: return
+            outputs:
+              <<: *standard_plan
+              sessionId: sid-plan-4
+              raw_output: '{"plan_id":"PLAN-4","summary":"Invalid child boundary metadata.","tasks":[{"id":"TASK-CHILD-1","title":"Delegate reporting-cell update","status":"pending","dependencies":[],"target_ref":"main","requires_child_job":true,"child_job_reason":"cross-cell work","instructions":"Start a child job owned by the reporting cell.","validation_commands":[],"review_requirements":["spec"]}],"ready_task_ids":["TASK-CHILD-1"],"validation_strategy":{"commands":[]},"child_job_boundaries":[]}'
+              parsed_output:
+                plan_id: PLAN-4
+                summary: Invalid child boundary metadata.
+                tasks:
+                  - id: TASK-CHILD-1
+                    title: Delegate reporting-cell update
+                    status: pending
+                    dependencies: []
+                    target_ref: main
+                    requires_child_job: true
+                    child_job_reason: cross-cell work
+                    instructions: Start a child job owned by the reporting cell.
+                    validation_commands: []
+                    review_requirements:
+                      - spec
+                ready_task_ids:
+                  - TASK-CHILD-1
+                validation_strategy:
+                  commands: []
+                child_job_boundaries: []
+        - match:
+            op: git+https://github.com/colony-2/c2ops.git//rule_gate@main
+          behavior:
+            mode: passthrough
+        - match:
+            op: extension_execution
+          behavior:
+            mode: passthrough
+    assertions:
+      - type: output_equals
+        path: plan_ok
+        value: false
+      - type: output_equals
+        path: plan_failed_rule_count
+        value: 1
+      - type: output_equals
+        path: child_boundary_coverage_failed
+        value: true
+      - type: output_equals
+        path: child_boundary_orphan_failed
+        value: false
 ```

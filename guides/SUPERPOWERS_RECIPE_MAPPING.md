@@ -92,10 +92,11 @@ Validated on 2026-06-08/09 UTC:
 - focused brainstorm recipe suite TS-061/TS-062 passed. `superpowers-brainstorm.yaml`
   validates plan-ready design output and stops before planning when design
   questions remain.
-- focused write-plan recipe suite TS-063/TS-064/TS-089 passed.
+- focused write-plan recipe suite TS-063/TS-064/TS-089/TS-090 passed.
   `superpowers-write-plan.yaml` validates a ready dependent task chain,
   surfaces required C2 child-job boundaries without creating child jobs, and
-  requires TDD command contracts for recipe-enforced gates.
+  requires TDD command contracts for recipe-enforced gates. It also rejects
+  child-job tasks that are missing matching boundary metadata.
 - focused plan-review recipe suite TS-078/TS-079 passed. `superpowers-plan-review.yaml`
   approves aligned task plans and returns replanning feedback for incomplete
   plans without rewriting the plan.
@@ -104,7 +105,7 @@ Validated on 2026-06-08/09 UTC:
   design-to-finish path, enforces RED/GREEN/refactor TDD before task review, and
   routes TDD spec-review failure through revision, GREEN/REFACTOR reruns, and
   re-review.
-- `recipe-tests/run-all.sh` passed end to end on 2026-06-10 with TS-058..TS-089
+- `recipe-tests/run-all.sh` passed end to end on 2026-06-10 with TS-058..TS-090
   included in the default compile/validate/run path and TS-042/TS-043 focused
   live skill-quality validation invoked by the default runner as a required
   hard-failing live check.
@@ -582,11 +583,13 @@ Artifacts:
 ### Writing Plans
 
 Implementation status: initial `superpowers-write-plan.yaml` recipe implemented
-and validated by TS-063/TS-064/TS-089. It uses `codex/run_skill` for the
+and validated by TS-063/TS-064/TS-089/TS-090. It uses `codex/run_skill` for the
 `c2-superpowers-write-plan` role, validates the task-plan artifact, exposes the
 first ready task, and treats child-job boundaries as plan data rather than
 automatically creating child jobs. TDD tasks must include executable RED,
-GREEN, and refactor verification commands for the recipe-owned TDD loop.
+GREEN, and refactor verification commands for the recipe-owned TDD loop. Tasks
+marked `requires_child_job=true` must have matching `child_job_boundaries`
+entries, and orphan boundary entries are rejected.
 
 `superpowers-write-plan.yaml`
 
@@ -1342,9 +1345,10 @@ Prototype these focused recipes before building the full system:
 9. `superpowers-brainstorm.yaml`: implemented as TS-061/TS-062 to validate
    plan-ready design output and stop-before-planning behavior when questions
    remain.
-10. `superpowers-write-plan.yaml`: implemented as TS-063/TS-064/TS-089 to
+10. `superpowers-write-plan.yaml`: implemented as TS-063/TS-064/TS-089/TS-090 to
    validate task-plan output, ready task selection, required child-boundary
-   surfacing, and TDD command contracts for recipe-enforced gates.
+   surfacing, TDD command contracts for recipe-enforced gates, and child-job
+   boundary metadata consistency.
 11. `superpowers-route.yaml`: expanded as TS-065/TS-066 to validate
    deterministic state-machine routing from submitted plan/design artifacts
    without skill invocation in the run path.
