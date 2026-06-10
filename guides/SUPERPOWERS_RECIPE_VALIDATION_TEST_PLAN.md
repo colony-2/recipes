@@ -63,6 +63,9 @@ Reverification on 2026-06-09 UTC against `/usr/local/bin/c2j`
   without creating child jobs; TS-089 validates TDD task command contracts for
   recipe-enforced RED/GREEN/refactor gates; TS-090 validates child-boundary
   metadata consistency.
+- Focused skill-bundle source wiring passed. TS-091 validates every
+  Superpowers `codex/run_skill` role-skill invocation installs the configured
+  `skill_bundle_ref` through the op-level `skills` input.
 - Focused execute-plan suite passed. TS-067 validates one same-job
   implementation/spec-review/quality-review task boundary; TS-068 validates the
   recipe stops before implementation when the selected task requires a child
@@ -92,7 +95,7 @@ Validated:
 - focused child orchestration smoke TS-049/TS-050 passed.
 - focused Superpowers recipe-shape smokes TS-051..TS-055 passed.
 - focused `codex/run_skill` smokes TS-056/TS-057 passed.
-- focused C2 Superpowers skill-bundle smoke TS-058 passed.
+- focused C2 Superpowers skill-bundle smoke TS-058/TS-091 passed.
 - focused Superpowers route recipe smokes TS-059/TS-060 passed.
 - focused Superpowers brainstorm recipe smokes TS-061/TS-062 passed.
 - focused Superpowers write-plan recipe smokes TS-063/TS-064/TS-089/TS-090 passed.
@@ -104,7 +107,7 @@ Validated:
 - focused debug smokes TS-074/TS-077 passed compile/validate/run.
 - focused plan-review smokes TS-078/TS-079 passed compile/validate/run.
 - focused primary-orchestrator smokes TS-080/TS-086/TS-088 passed compile/validate/run.
-- `recipe-tests/run-all.sh` passed end to end on 2026-06-10 with TS-058..TS-090
+- `recipe-tests/run-all.sh` passed end to end on 2026-06-10 with TS-058..TS-091
   included in the default compile/validate/run path and with TS-042/TS-043
   focused live skill-quality validation invoked as a required hard-failing
   check.
@@ -513,6 +516,7 @@ When these tests pass, implementation should proceed with:
 
 - C2-adapted Superpowers skill bundle.
 - Static bundle validation through TS-058.
+- Role-skill source wiring validation through TS-091.
 - Route/intake recipe validation through TS-059/TS-060.
 - Brainstorm/design recipe validation through TS-061/TS-062.
 - Write-plan recipe validation through TS-063/TS-064/TS-089/TS-090.

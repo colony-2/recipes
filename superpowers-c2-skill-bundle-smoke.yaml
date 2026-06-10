@@ -5,8 +5,12 @@ input_schema:
   repo_root:
     type: string
     required: false
+  skill_bundle_ref:
+    type: string
+    required: false
 inputs:
   repo_root: '${{ first_nonempty(inputs.?repo_root, "/src") }}'
+  skill_bundle_ref: '${{ first_nonempty(inputs.?skill_bundle_ref, "") }}'
 sequence:
   - id: validate_bundle
     op: command_execution
@@ -40,6 +44,20 @@ sequence:
           "Do not make manual git commits"
           "status contract"
         )
+        recipe_files=(
+          superpowers-route.yaml
+          superpowers-brainstorm.yaml
+          superpowers-write-plan.yaml
+          superpowers-plan-review.yaml
+          superpowers-execute-plan.yaml
+          superpowers-verify.yaml
+          superpowers-finish.yaml
+          superpowers-debug.yaml
+          superpowers.yaml
+        )
+        left_braces="$(printf '{%s' '{')"
+        right_braces="$(printf '}%s' '}')"
+        expected_skill_ref_template="$(printf '%s %s %s' "$left_braces" 'inputs.skill_bundle_ref' "$right_braces")"
 
         json_escape() {
           printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
@@ -50,9 +68,13 @@ sequence:
         missing_count=0
         unexpected_count=0
         violation_count=0
+        recipe_skill_invocation_count=0
+        skill_source_wiring_count=0
+        skill_source_violation_count=0
         missing=""
         unexpected=""
         violations=""
+        skill_source_violations=""
 
         for skill in "${required_skills[@]}"; do
           skill_count=$((skill_count + 1))
@@ -114,8 +136,36 @@ sequence:
           fi
         done
 
+        for recipe_file in "${recipe_files[@]}"; do
+          path="$root/$recipe_file"
+          if [ ! -f "$path" ]; then
+            skill_source_violation_count=$((skill_source_violation_count + 1))
+            skill_source_violations="$skill_source_violations ${recipe_file}:missing"
+            continue
+          fi
+
+          prev_prev_line=""
+          prev_line=""
+          while IFS= read -r line || [ -n "$line" ]; do
+            if [[ "$line" =~ ^([[:space:]]*)skill:\ c2-superpowers- ]]; then
+              recipe_skill_invocation_count=$((recipe_skill_invocation_count + 1))
+              indent="${BASH_REMATCH[1]}"
+              expected_header="${indent}skills:"
+              expected_item="${indent}  - \"${expected_skill_ref_template}\""
+              if [ "$prev_prev_line" = "$expected_header" ] && [ "$prev_line" = "$expected_item" ]; then
+                skill_source_wiring_count=$((skill_source_wiring_count + 1))
+              else
+                skill_source_violation_count=$((skill_source_violation_count + 1))
+                skill_source_violations="$skill_source_violations ${recipe_file}:${recipe_skill_invocation_count}"
+              fi
+            fi
+            prev_prev_line="$prev_line"
+            prev_line="$line"
+          done < "$path"
+        done
+
         ok=false
-        if [ "$missing_count" -eq 0 ] && [ "$unexpected_count" -eq 0 ] && [ "$violation_count" -eq 0 ]; then
+        if [ "$missing_count" -eq 0 ] && [ "$unexpected_count" -eq 0 ] && [ "$violation_count" -eq 0 ] && [ "$skill_source_violation_count" -eq 0 ]; then
           ok=true
         fi
 
@@ -129,9 +179,13 @@ sequence:
           "missing_count": $missing_count,
           "unexpected_count": $unexpected_count,
           "violation_count": $violation_count,
+          "recipe_skill_invocation_count": $recipe_skill_invocation_count,
+          "skill_source_wiring_count": $skill_source_wiring_count,
+          "skill_source_violation_count": $skill_source_violation_count,
           "missing": "$(json_escape "$missing")",
           "unexpected": "$(json_escape "$unexpected")",
-          "violations": "$(json_escape "$violations")"
+          "violations": "$(json_escape "$violations")",
+          "skill_source_violations": "$(json_escape "$skill_source_violations")"
         }
         JSON
         cat "$out/bundle-contract.json"
@@ -143,6 +197,10 @@ outputs:
   missing_count: "${{ json_parse(sequence.validate_bundle.outputs.stdout).missing_count }}"
   unexpected_count: "${{ json_parse(sequence.validate_bundle.outputs.stdout).unexpected_count }}"
   violation_count: "${{ json_parse(sequence.validate_bundle.outputs.stdout).violation_count }}"
+  recipe_skill_invocation_count: "${{ json_parse(sequence.validate_bundle.outputs.stdout).recipe_skill_invocation_count }}"
+  skill_source_wiring_count: "${{ json_parse(sequence.validate_bundle.outputs.stdout).skill_source_wiring_count }}"
+  skill_source_violation_count: "${{ json_parse(sequence.validate_bundle.outputs.stdout).skill_source_violation_count }}"
   missing: "${{ json_parse(sequence.validate_bundle.outputs.stdout).missing }}"
   unexpected: "${{ json_parse(sequence.validate_bundle.outputs.stdout).unexpected }}"
   violations: "${{ json_parse(sequence.validate_bundle.outputs.stdout).violations }}"
+  skill_source_violations: "${{ json_parse(sequence.validate_bundle.outputs.stdout).skill_source_violations }}"

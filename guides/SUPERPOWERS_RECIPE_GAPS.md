@@ -23,7 +23,7 @@ with a focused live smoke.
 | Parallel reviewer/adversarial fanout | `child_group` | Covered. TS-050 validates required/optional reviewer aggregation. |
 | Dependent implementation tasks | ordinary recipe state machine plus same-job Codex sessions | Covered. TS-051..TS-055 validate native task selection, same-job role sessions, session isolation/resume, and adaptive task-plan iteration. No `for_each`, task-loop primitive, or child job is required for the normal Superpowers task chain. |
 | Structured skill invocation | c2ops `codex/run_skill` | Covered. TS-056/TS-057 validate parsed output artifacts, status-contract fields, and repair metadata at the recipe boundary. c2ops `RunSkill` unit tests pass at commit `8b37f01`. |
-| C2-adapted Superpowers role skills | local skill bundle plus static recipe smoke | Covered for initial implementation. TS-058 validates ten role skills and OpenAI metadata under `skills-bundle/.agents/skills/c2-superpowers-*`. |
+| C2-adapted Superpowers role skills | local skill bundle plus static recipe smoke | Covered for initial implementation. TS-058 validates ten role skills and OpenAI metadata under `skills-bundle/.agents/skills/c2-superpowers-*`. TS-091 validates every Superpowers `codex/run_skill` invocation installs the configured bundle ref through the top-level `skills` input. |
 | Route/intake recipe | `superpowers-route.yaml` state machine plus `codex/run_skill` fallback and `rule_gate` | Covered for initial implementation. TS-059/TS-060 validate heuristic prompt-only fallback; TS-065/TS-066 validate deterministic plan/design artifact routing without skill invocation in the run path. |
 | Brainstorm/design recipe | `superpowers-brainstorm.yaml` plus `codex/run_skill` and `rule_gate` | Covered for initial implementation. TS-061/TS-062 validate plan-ready designs and stop-before-planning questions. |
 | Write-plan recipe | `superpowers-write-plan.yaml` plus `codex/run_skill` and `rule_gate` | Covered for initial implementation. TS-063/TS-064 validate ready task plans and required child-job boundary surfacing. TS-089 validates explicit TDD command contracts for recipe-enforced RED/GREEN/refactor gates. TS-090 validates deterministic child-boundary metadata consistency. |
@@ -246,8 +246,9 @@ These are real work items, but they are not platform gaps:
   should preserve the no-manual-commit, no-worktree, same-job session, and
   recipe-owned orchestration contract.
 - Publish or otherwise expose the local skill bundle as a stable skill-source
-  ref for live `codex/run_skill` execution. The route recipe accepts the ref as
-  invocation metadata today, but does not yet install it dynamically.
+  ref for live `codex/run_skill` execution. The recipes now install a provided
+  `skill_bundle_ref` through the top-level `skills` input; TS-091 covers that
+  wiring. The remaining work is choosing the stable published ref value.
 - Continue refining the debug phase only as concrete workflows require deeper
   fix-loop integration. The initial debug recipe is implemented and covered by
   TS-074/TS-077.
@@ -313,7 +314,9 @@ Commands and results:
   artifacts, status-contract fields, and repair metadata. c2ops `RunSkill` unit
   tests also passed at c2ops commit `8b37f01`.
 - Focused static C2 Superpowers skill-bundle suite passed TS-058 for the ten
-  C2-adapted role skills and their OpenAI metadata.
+  C2-adapted role skills and their OpenAI metadata. TS-091 validates all
+  Superpowers `codex/run_skill` invocations install the configured bundle ref
+  through the op-level `skills` source list.
 - Focused route recipe suite passed TS-059/TS-060 for feature-to-brainstorm
   routing and user-input question enforcement.
 - Focused deterministic route cases passed TS-065/TS-066 for submitted
@@ -354,7 +357,7 @@ Commands and results:
   through revision and re-review. TS-086 validates primary RED/GREEN/refactor
   TDD enforcement before task review. TS-088 validates primary TDD spec-review
   failure routing through revision, GREEN/REFACTOR reruns, and re-review.
-- `recipe-tests/run-all.sh` passed end to end on 2026-06-10 with TS-058..TS-090
+- `recipe-tests/run-all.sh` passed end to end on 2026-06-10 with TS-058..TS-091
   included in the default compile/validate/run suite and TS-042/TS-043 focused
   live skill-quality validation invoked by the default runner as a required
   hard-failing live check.

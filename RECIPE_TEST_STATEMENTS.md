@@ -96,6 +96,7 @@ These statements are intended to drive `c2j test` cases.
 | TS-088 | Superpowers primary orchestrator routes TDD spec review failure through revision, TDD command reruns, and re-review. | `superpowers.yaml` | High | Integration (`recipe_case`); deps: primary TDD revision state machine + command gates + c2ops `codex/run_skill`/`rule_gate` selector mocks | Positive |
 | TS-089 | Superpowers write-plan emits TDD command contracts for recipe-enforced RED/GREEN/refactor gates. | `superpowers-write-plan.yaml` | High | Integration (`recipe_case`); deps: task-plan schema + c2ops `codex/run_skill`/`rule_gate` selector mocks | Positive |
 | TS-090 | Superpowers write-plan rejects child-job tasks missing matching boundary metadata. | `superpowers-write-plan.yaml` | High | Integration (`recipe_case`); deps: deterministic child-boundary policy gate + c2ops `rule_gate` passthrough | Negative |
+| TS-091 | Superpowers role-skill invocations install the configured skill bundle ref. | `superpowers-c2-skill-bundle-smoke.yaml`, `superpowers*.yaml` | High | Integration (`recipe_case`); deps: static recipe wiring check for c2ops `codex/run_skill` skills input | Positive |
 
 ## Notes for Test Authoring
 

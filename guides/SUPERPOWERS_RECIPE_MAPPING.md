@@ -97,6 +97,9 @@ Validated on 2026-06-08/09 UTC:
   surfaces required C2 child-job boundaries without creating child jobs, and
   requires TDD command contracts for recipe-enforced gates. It also rejects
   child-job tasks that are missing matching boundary metadata.
+- focused skill-bundle source wiring TS-091 passed. All Superpowers
+  `codex/run_skill` role-skill invocations install the configured
+  `skill_bundle_ref` through the op-level `skills` input.
 - focused plan-review recipe suite TS-078/TS-079 passed. `superpowers-plan-review.yaml`
   approves aligned task plans and returns replanning feedback for incomplete
   plans without rewriting the plan.
@@ -105,7 +108,7 @@ Validated on 2026-06-08/09 UTC:
   design-to-finish path, enforces RED/GREEN/refactor TDD before task review, and
   routes TDD spec-review failure through revision, GREEN/REFACTOR reruns, and
   re-review.
-- `recipe-tests/run-all.sh` passed end to end on 2026-06-10 with TS-058..TS-090
+- `recipe-tests/run-all.sh` passed end to end on 2026-06-10 with TS-058..TS-091
   included in the default compile/validate/run path and TS-042/TS-043 focused
   live skill-quality validation invoked by the default runner as a required
   hard-failing live check.
@@ -538,9 +541,9 @@ Implementation status: initial state-machine recipe implemented and validated by
 TS-059/TS-060 and TS-065/TS-066. Submitted plan/design/verification artifacts
 route deterministically without invoking Codex. Prompt-only classification uses
 `codex/run_skill` as the heuristic fallback and validates that output with
-`rule_gate`. The recipe currently keeps the skill bundle ref as metadata in the
-invocation contract; concrete skill-source installation should be wired once
-the local bundle is published at a stable git ref.
+`rule_gate`. When a `skill_bundle_ref` is provided, the route recipe installs it
+through `codex/run_skill.inputs.skills`; the remaining deployment choice is the
+stable published ref value used by production jobs.
 
 ### Brainstorming
 
@@ -1299,6 +1302,8 @@ Add scenario tests after the first live pass:
 
    Initial C2-adapted role skills are implemented in
    `skills-bundle/.agents/skills/c2-superpowers-*` and validated by TS-058.
+   TS-091 validates that every Superpowers `codex/run_skill` role invocation
+   installs the configured `skill_bundle_ref` through op-level skill sources.
    They preserve the upstream Superpowers role split while replacing manual git
    commits, worktree setup, and subagent dispatch with C2 recipe orchestration,
    same-job Codex sessions, C2 git persistence, and status/artifact contracts.
@@ -1337,8 +1342,9 @@ Prototype these focused recipes before building the full system:
    task A, update plan state through a planner session, then select task B.
 6. `superpowers-session-contract-smoke.yaml`: implemented as TS-054 to prove no
    `sessionId` isolates a session and passing `sessionId` resumes it.
-7. `superpowers-c2-skill-bundle-smoke.yaml`: implemented as TS-058 to validate
-   the initial C2-adapted Superpowers role skills and their OpenAI metadata.
+7. `superpowers-c2-skill-bundle-smoke.yaml`: implemented as TS-058/TS-091 to
+   validate the initial C2-adapted Superpowers role skills, their OpenAI
+   metadata, and role-skill source wiring through `skill_bundle_ref`.
 8. `superpowers-route.yaml`: implemented as TS-059/TS-060 to validate
    artifact-first route output, deterministic route gates, feature-to-brainstorm
    routing, and required user questions for ambiguous routes.
