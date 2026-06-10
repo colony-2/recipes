@@ -60,7 +60,8 @@ Reverification on 2026-06-09 UTC against `/usr/local/bin/c2j`
   questions remain.
 - Focused write-plan recipe suite passed. TS-063 validates a ready dependent
   task chain; TS-064 validates required child-job boundaries are surfaced
-  without creating child jobs.
+  without creating child jobs; TS-089 validates TDD task command contracts for
+  recipe-enforced RED/GREEN/refactor gates.
 - Focused execute-plan suite passed. TS-067 validates one same-job
   implementation/spec-review/quality-review task boundary; TS-068 validates the
   recipe stops before implementation when the selected task requires a child
@@ -93,7 +94,7 @@ Validated:
 - focused C2 Superpowers skill-bundle smoke TS-058 passed.
 - focused Superpowers route recipe smokes TS-059/TS-060 passed.
 - focused Superpowers brainstorm recipe smokes TS-061/TS-062 passed.
-- focused Superpowers write-plan recipe smokes TS-063/TS-064 passed.
+- focused Superpowers write-plan recipe smokes TS-063/TS-064/TS-089 passed.
 - focused deterministic route smokes TS-065/TS-066 passed.
 - focused execute-plan smokes TS-067/TS-068/TS-082/TS-084/TS-087 passed
   compile/validate/run.
@@ -102,7 +103,7 @@ Validated:
 - focused debug smokes TS-074/TS-077 passed compile/validate/run.
 - focused plan-review smokes TS-078/TS-079 passed compile/validate/run.
 - focused primary-orchestrator smokes TS-080/TS-086/TS-088 passed compile/validate/run.
-- `recipe-tests/run-all.sh` passed end to end on 2026-06-10 with TS-058..TS-088
+- `recipe-tests/run-all.sh` passed end to end on 2026-06-10 with TS-058..TS-089
   included in the default compile/validate/run path and with TS-042/TS-043
   focused live skill-quality validation invoked as a required hard-failing
   check.
@@ -513,7 +514,7 @@ When these tests pass, implementation should proceed with:
 - Static bundle validation through TS-058.
 - Route/intake recipe validation through TS-059/TS-060.
 - Brainstorm/design recipe validation through TS-061/TS-062.
-- Write-plan recipe validation through TS-063/TS-064.
+- Write-plan recipe validation through TS-063/TS-064/TS-089.
 - Plan-review validation through TS-078/TS-079.
 - Deterministic route-state validation through TS-065/TS-066.
 - Execute-plan validation through TS-067/TS-068/TS-082/TS-084/TS-087.

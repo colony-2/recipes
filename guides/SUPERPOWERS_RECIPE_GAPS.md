@@ -26,7 +26,7 @@ with a focused live smoke.
 | C2-adapted Superpowers role skills | local skill bundle plus static recipe smoke | Covered for initial implementation. TS-058 validates ten role skills and OpenAI metadata under `skills-bundle/.agents/skills/c2-superpowers-*`. |
 | Route/intake recipe | `superpowers-route.yaml` state machine plus `codex/run_skill` fallback and `rule_gate` | Covered for initial implementation. TS-059/TS-060 validate heuristic prompt-only fallback; TS-065/TS-066 validate deterministic plan/design artifact routing without skill invocation in the run path. |
 | Brainstorm/design recipe | `superpowers-brainstorm.yaml` plus `codex/run_skill` and `rule_gate` | Covered for initial implementation. TS-061/TS-062 validate plan-ready designs and stop-before-planning questions. |
-| Write-plan recipe | `superpowers-write-plan.yaml` plus `codex/run_skill` and `rule_gate` | Covered for initial implementation. TS-063/TS-064 validate ready task plans and required child-job boundary surfacing. |
+| Write-plan recipe | `superpowers-write-plan.yaml` plus `codex/run_skill` and `rule_gate` | Covered for initial implementation. TS-063/TS-064 validate ready task plans and required child-job boundary surfacing. TS-089 validates explicit TDD command contracts for recipe-enforced RED/GREEN/refactor gates. |
 | Plan-review recipe | `superpowers-plan-review.yaml` plus `codex/run_skill` and `rule_gate` | Covered for initial implementation. TS-078/TS-079 pass focused compile/validate/run for aligned-plan approval and incomplete-plan replanning feedback. |
 | Execute-plan recipe path | `superpowers-execute-plan.yaml` state machine plus role skills | Covered for initial implementation. TS-067/TS-068 pass focused compile/validate/run for same-job task execution and child-boundary stop behavior, including a node non-execution assertion for required child boundaries. TS-082 passes focused compile/validate/run for recipe-enforced RED/GREEN/refactor TDD before task review. TS-083/TS-084 pass focused compile/validate/run for spec-review and quality-review failure routing through revision and re-review. TS-087 passes focused compile/validate/run for TDD spec-review failure routing through revision, GREEN/REFACTOR reruns, and re-review. |
 | Verify recipe path | `superpowers-verify.yaml` command gates plus verify role skill | Covered for initial implementation. TS-069/TS-070 pass focused compile/validate/run for fresh command evidence and failed-command blocking data. |
@@ -235,7 +235,9 @@ correctness, maintain a parallel job history, or replace recipe state machines.
 
 These are real work items, but they are not platform gaps:
 
-- Define the Superpowers/C2 task-plan JSON Schema.
+- Keep the Superpowers/C2 task-plan JSON Schema aligned as task metadata grows.
+  The current write-plan schema covers dependencies, child-job boundaries,
+  validation commands, review requirements, and TDD command contracts.
 - Define review rules for child-job eligibility: scope, dependencies,
   validation commands, compatibility notes, target ref policy, and whether the
   task requires a C2 job boundary.
@@ -318,8 +320,8 @@ Commands and results:
   plan/design routing without skill invocation in the run path.
 - Focused brainstorm recipe suite passed TS-061/TS-062 for plan-ready design
   output and stop-before-planning behavior.
-- Focused write-plan recipe suite passed TS-063/TS-064 for ready task plans and
-  required child-job boundary surfacing.
+- Focused write-plan recipe suite passed TS-063/TS-064/TS-089 for ready task
+  plans, required child-job boundary surfacing, and TDD command contracts.
 - Focused execute-plan suite passed TS-067/TS-068/TS-082/TS-084/TS-087 with
   compile/validate/run. TS-067 validates a same-job implement/review/gate task
   boundary. TS-068 validates stop-before-implementation behavior with a node
@@ -351,7 +353,7 @@ Commands and results:
   through revision and re-review. TS-086 validates primary RED/GREEN/refactor
   TDD enforcement before task review. TS-088 validates primary TDD spec-review
   failure routing through revision, GREEN/REFACTOR reruns, and re-review.
-- `recipe-tests/run-all.sh` passed end to end on 2026-06-10 with TS-058..TS-088
+- `recipe-tests/run-all.sh` passed end to end on 2026-06-10 with TS-058..TS-089
   included in the default compile/validate/run suite and TS-042/TS-043 focused
   live skill-quality validation invoked by the default runner as a required
   hard-failing live check.

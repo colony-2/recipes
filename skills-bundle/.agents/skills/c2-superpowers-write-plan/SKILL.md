@@ -55,9 +55,20 @@ Each task must include:
 - `target_ref`
 - `requires_child_job`
 - `child_job_reason`
+- `requires_tdd`
 - `instructions`
 - `validation_commands`
 - `review_requirements`
+
+When `requires_tdd=true`, the task must also include:
+
+- `tdd.red_command`
+- `tdd.red_expected_failure`
+- `tdd.green_command`
+- `tdd.refactor_verification_command`
+
+The recipe executes these commands as RED, GREEN, and refactor verification
+gates. They are not advisory checklist text.
 
 ## Guardrails
 
@@ -66,3 +77,5 @@ Each task must include:
 - Do not request a child job for ordinary dependent tasks.
 - Mark `requires_child_job=true` only for target-ref advancement, cross-cell
   work, reuse, true parallelism, or lifecycle isolation.
+- Mark `requires_tdd=true` for behavior-changing implementation tasks unless
+  the design explicitly justifies a non-TDD path.

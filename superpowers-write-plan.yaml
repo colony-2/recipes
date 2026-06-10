@@ -45,6 +45,11 @@ sequence:
         dependent tasks. Mark a task `requires_child_job=true` only for a real
         C2 job boundary such as target-ref advancement, cross-cell work, reuse,
         true parallelism, or lifecycle isolation.
+
+        For behavior-changing tasks that need TDD, set `requires_tdd=true` and
+        include `tdd.red_command`, `tdd.green_command`, and
+        `tdd.refactor_verification_command`. These commands are executed by the
+        recipe gates; do not treat them as advisory text.
       status_contract:
         path: superpowers/plan/latest-status.json
       output:
@@ -101,6 +106,8 @@ sequence:
                     minLength: 1
                   requires_child_job:
                     type: boolean
+                  requires_tdd:
+                    type: boolean
                   child_job_reason:
                     type: string
                   instructions:
@@ -114,6 +121,25 @@ sequence:
                     type: array
                     items:
                       type: string
+                  tdd:
+                    type: object
+                    required:
+                      - red_command
+                      - green_command
+                      - refactor_verification_command
+                    properties:
+                      red_command:
+                        type: string
+                        minLength: 1
+                      red_expected_failure:
+                        type: string
+                      green_command:
+                        type: string
+                        minLength: 1
+                      refactor_verification_command:
+                        type: string
+                        minLength: 1
+                    additionalProperties: true
             ready_task_ids:
               type: array
               minItems: 1
@@ -160,6 +186,10 @@ sequence:
           type: assert
           value: ${{ sequence.write_plan.outputs.parsed_output.tasks.all(t, !t.requires_child_job || t.child_job_reason != "") }}
           message: Tasks that require child jobs must explain the C2 boundary.
+        - id: tdd_tasks_include_recipe_commands
+          type: assert
+          value: ${{ sequence.write_plan.outputs.parsed_output.tasks.all(t, !has(t.requires_tdd) || !t.requires_tdd || (has(t.tdd) && has(t.tdd.red_command) && t.tdd.red_command != "" && has(t.tdd.green_command) && t.tdd.green_command != "" && has(t.tdd.refactor_verification_command) && t.tdd.refactor_verification_command != "")) }}
+          message: TDD tasks must include RED, GREEN, and refactor verification commands for recipe gates.
 
 outputs:
   plan_ok: "${{ sequence.plan_gate.outputs.ok }}"
@@ -173,6 +203,10 @@ outputs:
   validation_strategy: "${{ sequence.write_plan.outputs.parsed_output.validation_strategy }}"
   child_job_boundaries: "${{ sequence.write_plan.outputs.parsed_output.child_job_boundaries }}"
   child_job_boundary_count: "${{ size(sequence.write_plan.outputs.parsed_output.child_job_boundaries) }}"
+  tdd_task_count: "${{ jq(sequence.write_plan.outputs.parsed_output, '.tasks | map(select(.requires_tdd == true)) | length') }}"
+  first_task_tdd_red_command: "${{ jq(sequence.write_plan.outputs.parsed_output, '.tasks[0].tdd.red_command // \"\"') }}"
+  first_task_tdd_green_command: "${{ jq(sequence.write_plan.outputs.parsed_output, '.tasks[0].tdd.green_command // \"\"') }}"
+  first_task_tdd_refactor_command: "${{ jq(sequence.write_plan.outputs.parsed_output, '.tasks[0].tdd.refactor_verification_command // \"\"') }}"
   write_plan_session_id: "{{ sequence.write_plan.outputs.sessionId }}"
   output_schema_valid: "${{ sequence.write_plan.outputs.output_schema_valid }}"
   status_contract_valid: "${{ sequence.write_plan.outputs.status_contract_valid }}"

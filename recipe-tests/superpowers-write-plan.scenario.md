@@ -183,4 +183,89 @@ cases:
       - type: output_equals
         path: child_job_boundary_count
         value: 1
+
+  - id: ts-089-write-plan-emits-tdd-task-command-contract
+    type: recipe_case
+    inputs:
+      prompt: Add authorization behavior for audit-log exports.
+      design_json: |
+        {
+          "approved_for_planning": true,
+          "recommended_approach": "Use TDD for the authorization boundary before export work."
+        }
+    mocks:
+      ops:
+        - match:
+            op: recipe_within_resolution
+          behavior:
+            mode: return
+            outputs:
+              resolved_selectors: {}
+        - match:
+            node_path: superpowers-write-plan/write_plan
+          behavior:
+            mode: return
+            outputs:
+              <<: *standard_plan
+              sessionId: sid-plan-3
+              raw_output: '{"plan_id":"PLAN-3","summary":"Add export authorization with recipe-enforced TDD.","tasks":[{"id":"TASK-TDD-1","title":"Add export authorization behavior","status":"pending","dependencies":[],"target_ref":"main","requires_child_job":false,"requires_tdd":true,"child_job_reason":"","instructions":"Use RED/GREEN/refactor for admin-only export authorization.","validation_commands":["printf green"],"review_requirements":["spec","quality"],"tdd":{"red_command":"printf red && exit 7","red_expected_failure":"authorization test fails before implementation","green_command":"printf green","refactor_verification_command":"printf refactor"}}],"ready_task_ids":["TASK-TDD-1"],"validation_strategy":{"commands":["printf green"]},"child_job_boundaries":[]}'
+              parsed_output:
+                plan_id: PLAN-3
+                summary: Add export authorization with recipe-enforced TDD.
+                tasks:
+                  - id: TASK-TDD-1
+                    title: Add export authorization behavior
+                    status: pending
+                    dependencies: []
+                    target_ref: main
+                    requires_child_job: false
+                    requires_tdd: true
+                    child_job_reason: ""
+                    instructions: Use RED/GREEN/refactor for admin-only export authorization.
+                    validation_commands:
+                      - printf green
+                    review_requirements:
+                      - spec
+                      - quality
+                    tdd:
+                      red_command: printf red && exit 7
+                      red_expected_failure: authorization test fails before implementation
+                      green_command: printf green
+                      refactor_verification_command: printf refactor
+                ready_task_ids:
+                  - TASK-TDD-1
+                validation_strategy:
+                  commands:
+                    - printf green
+                child_job_boundaries: []
+        - match:
+            op: git+https://github.com/colony-2/c2ops.git//rule_gate@main
+          behavior:
+            mode: passthrough
+        - match:
+            op: extension_execution
+          behavior:
+            mode: passthrough
+    assertions:
+      - type: output_equals
+        path: plan_ok
+        value: true
+      - type: output_equals
+        path: task_count
+        value: 1
+      - type: output_equals
+        path: first_ready_task_id
+        value: TASK-TDD-1
+      - type: output_equals
+        path: tdd_task_count
+        value: 1
+      - type: output_equals
+        path: first_task_tdd_red_command
+        value: printf red && exit 7
+      - type: output_equals
+        path: first_task_tdd_green_command
+        value: printf green
+      - type: output_equals
+        path: first_task_tdd_refactor_command
+        value: printf refactor
 ```
