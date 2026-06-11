@@ -108,15 +108,15 @@ Validated on 2026-06-08/09 UTC:
 - focused plan-review recipe suite TS-078/TS-079 passed. `superpowers-plan-review.yaml`
   approves aligned task plans and returns replanning feedback for incomplete
   plans without rewriting the plan.
-- primary orchestrator recipe TS-080/TS-081/TS-085/TS-086/TS-088 compile against
-  the inline production recipe. `superpowers.yaml` routes the full same-job
-  design-to-finish path by including the phase recipes and keeping only primary
-  orchestration glue. Direct `c2j test validate/run` for this include graph is
-  temporarily blocked by a c2j test local-include bug; TS-094 validates embedded
+- primary orchestrator recipe TS-080/TS-081/TS-085/TS-086/TS-088 compile and run
+  against the inline production recipe. `superpowers.yaml` routes the full
+  same-job design-to-finish path by including the phase recipes and keeping only
+  primary orchestration glue. Direct `c2j test validate` for this include graph
+  still reports `invalid` without a diagnostic; TS-094 validates embedded
   runtime resolution with `c2j submit --run --embed`.
-- `recipe-tests/run-all.sh` passed end to end on 2026-06-10 with TS-058..TS-079
+- `recipe-tests/run-all.sh` passed end to end on 2026-06-11 with TS-058..TS-079
   plus TS-082..TS-093 and TS-095 included in the default compile/validate/run path, the
-  primary inline scenario suite compiled, and TS-094 covering embedded inline
+  primary inline scenario suite compiled and ran, and TS-094 covering embedded inline
   primary execution. Required live checks now include TS-092/TS-093 live
   `codex/run_skill`, TS-094 live inline primary execution, TS-044/TS-045 live
   Codex skill execution, and TS-042/TS-043 focused live skill-quality
@@ -1396,10 +1396,10 @@ Prototype these focused recipes before building the full system:
    suite.
 18. `superpowers.yaml`: implemented as an inline primary recipe that reuses the
    phase recipes for brainstorm, write-plan, plan-review, execute-plan, verify,
-   finish, and debug. TS-080/TS-081/TS-085/TS-086/TS-088 compile the primary
-   scenario graph. TS-094 validates embedded runtime include resolution until
-   `c2j test validate/run` preserves local recipe directories for inline
-   includes.
+   finish, and debug. TS-080/TS-081/TS-085/TS-086/TS-088 compile and run the
+   primary scenario graph. TS-094 validates embedded runtime include resolution.
+   `c2j test validate` still reports the primary inline cases as `invalid`
+   without a diagnostic; see the c2j validate bug report.
 
 Those tests prove the core recipe contracts: structured skill invocation,
 adaptive task-session chaining, session isolation/resume, and per-task review

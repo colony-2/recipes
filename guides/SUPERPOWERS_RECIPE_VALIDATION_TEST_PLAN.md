@@ -13,12 +13,12 @@ This plan should answer two questions:
 
 ## Latest Validation Result
 
-Status after the 2026-06-10 UTC full runner: **sufficient to proceed with the
+Status after the 2026-06-11 UTC full runner: **sufficient to proceed with the
 implementation plan, with live `run_skill`, live Codex skill execution, and live
 skill-quality validation included in the default suite**.
 
 Core runtime reverification on 2026-06-09 UTC and full suite validation on
-2026-06-10 UTC used `/usr/local/bin/c2j`
+2026-06-11 UTC used `/usr/local/bin/c2j`
 (`c2j version v0.0.28-0.20260609031142-3374b852aa99`, SHA-256
 `7e6c92ca316fb0e332d786facd2fb35070e9a589b88253977417efc83117427a`):
 
@@ -116,12 +116,14 @@ Validated:
 - focused debug smokes TS-074/TS-077 passed compile/validate/run.
 - focused plan-review smokes TS-078/TS-079 passed compile/validate/run.
 - focused primary-orchestrator smokes TS-080/TS-081/TS-085/TS-086/TS-088 compile
-  against the inline production recipe. Direct `c2j test validate/run` for this
-  include graph is temporarily blocked by the c2j test local-include bug.
-- `recipe-tests/run-all.sh` passed end to end on 2026-06-10 with TS-058..TS-079
+  and run against the inline production recipe. Direct `c2j test validate` for
+  this include graph still reports `invalid` without a diagnostic; this is
+  tracked separately from the now-fixed local-include and built-in-op parser
+  bugs.
+- `recipe-tests/run-all.sh` passed end to end on 2026-06-11 with TS-058..TS-079
   plus TS-082..TS-093 and TS-095 included in the default compile/validate/run path, the
-  primary inline scenario suite compiled, and TS-094 validating embedded inline
-  primary runtime. Required live checks also include TS-092/TS-093 live
+  primary inline scenario suite compiled and ran, and TS-094 validating embedded
+  inline primary runtime. Required live checks also include TS-092/TS-093 live
   `run_skill`, TS-044/TS-045 live Codex skill execution, and TS-042/TS-043
   focused live skill-quality validation invoked as hard-failing checks.
 - focused live skill-quality smoke TS-042/TS-043 passed after narrowing

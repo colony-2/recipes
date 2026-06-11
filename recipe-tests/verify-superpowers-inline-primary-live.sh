@@ -16,7 +16,7 @@ timeout 5m c2j submit \
   --run \
   --embed >"$LOG" 2>&1
 
-if ! grep -q 'sequence include_superpowers_debug' "$LOG"; then
+if ! grep -q 'state-machine superpowers-debug' "$LOG"; then
   echo "expected embedded run to execute the included debug recipe" >&2
   cat "$LOG" >&2
   exit 1

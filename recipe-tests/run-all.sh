@@ -34,7 +34,7 @@ run_suite() {
     --evaluation-mode enforce
 }
 
-run_suite_compile_only() {
+run_suite_compile_and_run() {
   local recipe_file="$1"
   local suite_file="$2"
   local name="$3"
@@ -45,6 +45,15 @@ run_suite_compile_only() {
     --file "$ROOT_DIR/$suite_file" \
     --out "$WORK_DIR/${name}.compiled.json" \
     --strict
+
+  echo "== $name: run =="
+  c2j test run \
+    --recipe-file "$PWD/$recipe_file" \
+    --file "$ROOT_DIR/$suite_file" \
+    --parallelism 1 \
+    --artifact-mode inline \
+    --out-dir "$WORK_DIR/${name}.run" \
+    --evaluation-mode enforce
 }
 
 run_suite "new-ticket-triage.yaml" "new-ticket-triage.scenario.md" "triage"
@@ -71,9 +80,9 @@ run_suite "superpowers-execute-plan.yaml" "superpowers-execute-plan.scenario.md"
 run_suite "superpowers-verify.yaml" "superpowers-verify.scenario.md" "superpowers_verify"
 run_suite "superpowers-finish.yaml" "superpowers-finish.scenario.md" "superpowers_finish"
 run_suite "superpowers-debug.yaml" "superpowers-debug.scenario.md" "superpowers_debug"
-run_suite_compile_only "superpowers.yaml" "superpowers.scenario.md" "superpowers_primary"
+run_suite_compile_and_run "superpowers.yaml" "superpowers.scenario.md" "superpowers_primary"
 
-echo "Recipe scenario suites passed: TS-001..TS-023, TS-028..TS-041, TS-051..TS-079, TS-082..TS-093, and TS-095. Superpowers primary scenario suite compiled against inline includes; TS-094 live inline runtime check runs below."
+echo "Recipe scenario suites passed: TS-001..TS-023, TS-028..TS-041, TS-051..TS-093, and TS-095. Superpowers primary scenario suite compiled and ran against inline includes; TS-094 live inline runtime check runs below."
 "$ROOT_DIR/verify-cli-framework.sh"
 
 "$ROOT_DIR/verify-superpowers-rule-gate-live.sh"

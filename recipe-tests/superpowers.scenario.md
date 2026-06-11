@@ -38,17 +38,13 @@ cases:
           behavior:
             mode: passthrough
         - match:
-            op: command_execution
-          behavior:
-            mode: passthrough
-        - match:
             op: recipe_within_resolution
           behavior:
             mode: return
             outputs:
               resolved_selectors: {}
         - match:
-            node_path: superpowers/brainstorm_design/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main
+            node_path: superpowers/brainstorm_design/brainstorm_design/superpowers-brainstorm/brainstorm
           behavior:
             mode: return
             outputs: &brainstorm_ok
@@ -89,7 +85,7 @@ cases:
               status_contract_errors: []
               diagnostics: {}
         - match:
-            node_path: superpowers/write_plan/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main
+            node_path: superpowers/write_plan/write_plan/superpowers-write-plan/write_plan
           behavior:
             mode: return
             outputs: &plan_ready
@@ -121,7 +117,7 @@ cases:
                     - printf verified
                 child_job_boundaries: []
         - match:
-            node_path: superpowers/review_plan/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main
+            node_path: superpowers/review_plan/review_plan/superpowers-plan-review/review_plan
           behavior:
             mode: return
             outputs: &plan_review_ok
@@ -137,7 +133,7 @@ cases:
                 blocking_feedback: ""
                 requires_replan: false
         - match:
-            node_path: "superpowers/run_task_boundary/state_machine/implement_task/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
+            node_path: "superpowers/execute_plan/execute_plan/superpowers-execute-plan/run_task_boundary/state_machine/implement_task/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
           behavior:
             mode: return
             outputs: &implement_done
@@ -152,7 +148,7 @@ cases:
                 validation_commands_run:
                   - printf verified
         - match:
-            node_path: "superpowers/run_task_boundary/state_machine/spec_review/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
+            node_path: "superpowers/execute_plan/execute_plan/superpowers-execute-plan/run_task_boundary/state_machine/spec_review/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
           behavior:
             mode: return
             outputs: &spec_ok
@@ -166,7 +162,7 @@ cases:
                 feedback: Spec matches.
                 requires_revision: false
         - match:
-            node_path: "superpowers/run_task_boundary/state_machine/quality_review/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
+            node_path: "superpowers/execute_plan/execute_plan/superpowers-execute-plan/run_task_boundary/state_machine/quality_review/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
           behavior:
             mode: return
             outputs:
@@ -180,7 +176,7 @@ cases:
                 feedback: Quality acceptable.
                 requires_revision: false
         - match:
-            node_path: "superpowers/run_task_boundary/state_machine/task_gate/git+https://github.com/colony-2/c2ops.git//rule_gate@main"
+            node_path: "superpowers/execute_plan/execute_plan/superpowers-execute-plan/run_task_boundary/state_machine/task_gate/git+https://github.com/colony-2/c2ops.git//rule_gate@main"
           behavior:
             mode: return
             outputs: &gate_ok
@@ -190,48 +186,22 @@ cases:
               summary: gate passed
               results: {}
         - match:
-            node_path: "superpowers/run_task_boundary/state_machine/revise_after_spec/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
-          behavior:
-            mode: return
-            outputs: &revision_done
-              <<: *implement_done
-              sessionId: sid-revision-primary
-              raw_output: '{"task_id":"TASK-1","status":"done","summary":"Revised TASK-1.","validation_commands_run":["printf verified"]}'
-              parsed_output:
-                task_id: TASK-1
-                status: done
-                summary: Revised TASK-1.
-                validation_commands_run:
-                  - printf verified
-        - match:
-            node_path: "superpowers/run_task_boundary/state_machine/revise_after_quality/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
-          behavior:
-            mode: return
-            outputs:
-              <<: *revision_done
-              sessionId: sid-revision-quality-primary
-        - match:
-            node_path: "superpowers/run_task_boundary/state_machine/spec_review_after_revision/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
-          behavior:
-            mode: return
-            outputs:
-              <<: *spec_ok
-              sessionId: sid-spec-after-revision-primary
-        - match:
-            node_path: "superpowers/run_task_boundary/state_machine/quality_review_after_revision/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
-          behavior:
-            mode: return
-            outputs:
-              <<: *spec_ok
-              sessionId: sid-quality-after-revision-primary
-              skill: c2-superpowers-quality-reviewer
-        - match:
-            node_path: "superpowers/run_task_boundary/state_machine/task_gate_after_revision/git+https://github.com/colony-2/c2ops.git//rule_gate@main"
+            node_path: superpowers/brainstorm_design/brainstorm_design/superpowers-brainstorm/brainstorm_gate
           behavior:
             mode: return
             outputs: *gate_ok
         - match:
-            node_path: superpowers/verify_work/sequence/summarize_verification
+            node_path: superpowers/write_plan/write_plan/superpowers-write-plan/plan_gate
+          behavior:
+            mode: return
+            outputs: *gate_ok
+        - match:
+            node_path: superpowers/review_plan/review_plan/superpowers-plan-review/plan_review_gate
+          behavior:
+            mode: return
+            outputs: *gate_ok
+        - match:
+            node_path: superpowers/verify_work/verify_work/superpowers-verify/summarize_verification
           behavior:
             mode: return
             outputs: &verify_ok
@@ -249,12 +219,12 @@ cases:
                 evidence_summary: Required verification command passed.
                 blocking_issues: []
         - match:
-            node_path: superpowers/verify_work/sequence/verification_gate
+            node_path: superpowers/verify_work/verify_work/superpowers-verify/verification_gate
           behavior:
             mode: return
             outputs: *gate_ok
         - match:
-            node_path: superpowers/finish_work/sequence/write_finish_summary
+            node_path: superpowers/finish_work/finish_work/superpowers-finish/summarize_finish/sequence/write_finish_summary
           behavior:
             mode: return
             outputs:
@@ -271,7 +241,7 @@ cases:
                 remaining_risks: []
                 merge_ready: true
         - match:
-            node_path: superpowers/finish_work/sequence/finish_gate
+            node_path: superpowers/finish_work/finish_work/superpowers-finish/summarize_finish/sequence/finish_gate
           behavior:
             mode: return
             outputs: *gate_ok
@@ -301,9 +271,9 @@ cases:
         path: action_taken
         value: recommend
       - type: node_executed
-        node_path: "superpowers/run_task_boundary/state_machine/implement_task/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
+        node_path: "superpowers/execute_plan/execute_plan/superpowers-execute-plan/run_task_boundary/state_machine/implement_task/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
       - type: node_executed
-        node_path: superpowers/verify_work/sequence/run_verification_commands
+        node_path: superpowers/verify_work/verify_work/superpowers-verify/run_verification_commands
 
   - id: ts-081-superpowers-stops-at-required-child-boundary
     type: recipe_case
@@ -350,123 +320,11 @@ cases:
           behavior:
             mode: passthrough
         - match:
-            op: command_execution
-          behavior:
-            mode: passthrough
-        - match:
-            op: command_execution
-          behavior:
-            mode: passthrough
-        - match:
-            op: command_execution
-          behavior:
-            mode: passthrough
-        - match:
-            op: command_execution
-          behavior:
-            mode: passthrough
-        - match:
-            op: command_execution
-          behavior:
-            mode: passthrough
-        - match:
             op: recipe_within_resolution
           behavior:
             mode: return
             outputs:
               resolved_selectors: {}
-        - match:
-            node_path: superpowers/brainstorm_design/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main
-          behavior:
-            mode: return
-            outputs: *brainstorm_ok
-        - match:
-            node_path: superpowers/write_plan/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main
-          behavior:
-            mode: return
-            outputs: *plan_ready
-        - match:
-            node_path: superpowers/review_plan/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main
-          behavior:
-            mode: return
-            outputs: *plan_review_ok
-        - match:
-            node_path: "superpowers/run_task_boundary/state_machine/implement_task/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
-          behavior:
-            mode: return
-            outputs: *implement_done
-        - match:
-            node_path: "superpowers/run_task_boundary/state_machine/spec_review/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
-          behavior:
-            mode: return
-            outputs: *spec_ok
-        - match:
-            node_path: "superpowers/run_task_boundary/state_machine/quality_review/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
-          behavior:
-            mode: return
-            outputs: *spec_ok
-        - match:
-            node_path: "superpowers/run_task_boundary/state_machine/task_gate/git+https://github.com/colony-2/c2ops.git//rule_gate@main"
-          behavior:
-            mode: return
-            outputs: *gate_ok
-        - match:
-            node_path: "superpowers/run_task_boundary/state_machine/revise_after_spec/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
-          behavior:
-            mode: return
-            outputs: *revision_done
-        - match:
-            node_path: "superpowers/run_task_boundary/state_machine/revise_after_quality/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
-          behavior:
-            mode: return
-            outputs: *revision_done
-        - match:
-            node_path: "superpowers/run_task_boundary/state_machine/spec_review_after_revision/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
-          behavior:
-            mode: return
-            outputs: *spec_ok
-        - match:
-            node_path: "superpowers/run_task_boundary/state_machine/quality_review_after_revision/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
-          behavior:
-            mode: return
-            outputs: *spec_ok
-        - match:
-            node_path: "superpowers/run_task_boundary/state_machine/task_gate_after_revision/git+https://github.com/colony-2/c2ops.git//rule_gate@main"
-          behavior:
-            mode: return
-            outputs: *gate_ok
-        - match:
-            node_path: superpowers/verify_work/sequence/summarize_verification
-          behavior:
-            mode: return
-            outputs: *verify_ok
-        - match:
-            node_path: superpowers/verify_work/sequence/verification_gate
-          behavior:
-            mode: return
-            outputs: *gate_ok
-        - match:
-            node_path: superpowers/finish_work/sequence/write_finish_summary
-          behavior:
-            mode: return
-            outputs:
-              <<: *brainstorm_ok
-              sessionId: sid-finish-primary-2
-              skill: c2-superpowers-finish
-              raw_output: '{"decision":"merge_ready","summary":"Verified work is ready to merge.","completed_tasks":["TASK-1"],"verification_summary":"Required verification command passed.","remaining_risks":[],"merge_ready":true}'
-              parsed_output:
-                decision: merge_ready
-                summary: Verified work is ready to merge.
-                completed_tasks:
-                  - TASK-1
-                verification_summary: Required verification command passed.
-                remaining_risks: []
-                merge_ready: true
-        - match:
-            node_path: superpowers/finish_work/sequence/finish_gate
-          behavior:
-            mode: return
-            outputs: *gate_ok
     assertions:
       - type: output_equals
         path: route
@@ -489,7 +347,7 @@ cases:
       - type: node_executed
         node_path: superpowers/child_boundary_required/command_execution
       - type: node_not_executed
-        node_path: "superpowers/run_task_boundary/state_machine/implement_task/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
+        node_path: "superpowers/execute_plan/execute_plan/superpowers-execute-plan/run_task_boundary/state_machine/implement_task/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
 
   - id: ts-085-superpowers-primary-routes-spec-failure-through-revision
     type: recipe_case
@@ -550,39 +408,20 @@ cases:
           behavior:
             mode: passthrough
         - match:
-            op: command_execution
-          behavior:
-            mode: passthrough
-        - match:
             op: recipe_within_resolution
           behavior:
             mode: return
             outputs:
               resolved_selectors: {}
         - match:
-            node_path: superpowers/brainstorm_design/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main
-          behavior:
-            mode: return
-            outputs: *brainstorm_ok
-        - match:
-            node_path: superpowers/write_plan/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main
-          behavior:
-            mode: return
-            outputs: *plan_ready
-        - match:
-            node_path: superpowers/review_plan/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main
-          behavior:
-            mode: return
-            outputs: *plan_review_ok
-        - match:
-            node_path: "superpowers/run_task_boundary/state_machine/implement_task/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
+            node_path: "superpowers/execute_plan/execute_plan/superpowers-execute-plan/run_task_boundary/state_machine/implement_task/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
           behavior:
             mode: return
             outputs:
               <<: *implement_done
               sessionId: sid-implement-primary-revision
         - match:
-            node_path: "superpowers/run_task_boundary/state_machine/spec_review/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
+            node_path: "superpowers/execute_plan/execute_plan/superpowers-execute-plan/run_task_boundary/state_machine/spec_review/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
           behavior:
             mode: return
             outputs:
@@ -596,21 +435,11 @@ cases:
                 feedback: Add the required behavior.
                 requires_revision: true
         - match:
-            node_path: "superpowers/run_task_boundary/state_machine/quality_review/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
+            node_path: "superpowers/execute_plan/execute_plan/superpowers-execute-plan/run_task_boundary/state_machine/revise_after_spec/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
           behavior:
             mode: return
-            outputs: *spec_ok
-        - match:
-            node_path: "superpowers/run_task_boundary/state_machine/task_gate/git+https://github.com/colony-2/c2ops.git//rule_gate@main"
-          behavior:
-            mode: return
-            outputs: *gate_ok
-        - match:
-            node_path: "superpowers/run_task_boundary/state_machine/revise_after_spec/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
-          behavior:
-            mode: return
-            outputs:
-              <<: *revision_done
+            outputs: &revision_done
+              <<: *implement_done
               sessionId: sid-primary-spec-revision
               raw_output: '{"task_id":"TASK-PRIMARY-REV","status":"done","summary":"Revised TASK-PRIMARY-REV.","validation_commands_run":["printf verified"]}'
               parsed_output:
@@ -620,19 +449,14 @@ cases:
                 validation_commands_run:
                   - printf verified
         - match:
-            node_path: "superpowers/run_task_boundary/state_machine/revise_after_quality/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
-          behavior:
-            mode: return
-            outputs: *revision_done
-        - match:
-            node_path: "superpowers/run_task_boundary/state_machine/spec_review_after_revision/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
+            node_path: "superpowers/execute_plan/execute_plan/superpowers-execute-plan/run_task_boundary/state_machine/spec_review_after_revision/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
           behavior:
             mode: return
             outputs:
               <<: *spec_ok
               sessionId: sid-primary-spec-after-revision
         - match:
-            node_path: "superpowers/run_task_boundary/state_machine/quality_review_after_revision/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
+            node_path: "superpowers/execute_plan/execute_plan/superpowers-execute-plan/run_task_boundary/state_machine/quality_review_after_revision/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
           behavior:
             mode: return
             outputs:
@@ -640,22 +464,22 @@ cases:
               sessionId: sid-primary-quality-after-revision
               skill: c2-superpowers-quality-reviewer
         - match:
-            node_path: "superpowers/run_task_boundary/state_machine/task_gate_after_revision/git+https://github.com/colony-2/c2ops.git//rule_gate@main"
+            node_path: "superpowers/execute_plan/execute_plan/superpowers-execute-plan/run_task_boundary/state_machine/task_gate_after_revision/git+https://github.com/colony-2/c2ops.git//rule_gate@main"
           behavior:
             mode: return
             outputs: *gate_ok
         - match:
-            node_path: superpowers/verify_work/sequence/summarize_verification
+            node_path: superpowers/verify_work/verify_work/superpowers-verify/summarize_verification
           behavior:
             mode: return
             outputs: *verify_ok
         - match:
-            node_path: superpowers/verify_work/sequence/verification_gate
+            node_path: superpowers/verify_work/verify_work/superpowers-verify/verification_gate
           behavior:
             mode: return
             outputs: *gate_ok
         - match:
-            node_path: superpowers/finish_work/sequence/write_finish_summary
+            node_path: superpowers/finish_work/finish_work/superpowers-finish/summarize_finish/sequence/write_finish_summary
           behavior:
             mode: return
             outputs:
@@ -672,7 +496,7 @@ cases:
                 remaining_risks: []
                 merge_ready: true
         - match:
-            node_path: superpowers/finish_work/sequence/finish_gate
+            node_path: superpowers/finish_work/finish_work/superpowers-finish/summarize_finish/sequence/finish_gate
           behavior:
             mode: return
             outputs: *gate_ok
@@ -705,13 +529,13 @@ cases:
         path: finish_decision
         value: merge_ready
       - type: node_executed
-        node_path: "superpowers/run_task_boundary/state_machine/revise_after_spec/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
+        node_path: "superpowers/execute_plan/execute_plan/superpowers-execute-plan/run_task_boundary/state_machine/revise_after_spec/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
       - type: node_executed
-        node_path: "superpowers/run_task_boundary/state_machine/spec_review_after_revision/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
+        node_path: "superpowers/execute_plan/execute_plan/superpowers-execute-plan/run_task_boundary/state_machine/spec_review_after_revision/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
       - type: node_executed
-        node_path: "superpowers/run_task_boundary/state_machine/task_gate_after_revision/git+https://github.com/colony-2/c2ops.git//rule_gate@main"
+        node_path: "superpowers/execute_plan/execute_plan/superpowers-execute-plan/run_task_boundary/state_machine/task_gate_after_revision/git+https://github.com/colony-2/c2ops.git//rule_gate@main"
       - type: node_not_executed
-        node_path: "superpowers/run_task_boundary/state_machine/quality_review/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
+        node_path: "superpowers/execute_plan/execute_plan/superpowers-execute-plan/run_task_boundary/state_machine/quality_review/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
 
   - id: ts-086-superpowers-primary-enforces-tdd-red-green-refactor
     type: recipe_case
@@ -795,48 +619,13 @@ cases:
           behavior:
             mode: passthrough
         - match:
-            op: command_execution
-          behavior:
-            mode: passthrough
-        - match:
-            op: command_execution
-          behavior:
-            mode: passthrough
-        - match:
-            op: command_execution
-          behavior:
-            mode: passthrough
-        - match:
-            op: command_execution
-          behavior:
-            mode: passthrough
-        - match:
-            op: command_execution
-          behavior:
-            mode: passthrough
-        - match:
             op: recipe_within_resolution
           behavior:
             mode: return
             outputs:
               resolved_selectors: {}
         - match:
-            node_path: superpowers/brainstorm_design/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main
-          behavior:
-            mode: return
-            outputs: *brainstorm_ok
-        - match:
-            node_path: superpowers/write_plan/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main
-          behavior:
-            mode: return
-            outputs: *plan_ready
-        - match:
-            node_path: superpowers/review_plan/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main
-          behavior:
-            mode: return
-            outputs: *plan_review_ok
-        - match:
-            node_path: "superpowers/run_tdd_task_boundary/state_machine/write_red_test/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
+            node_path: "superpowers/execute_plan/execute_plan/superpowers-execute-plan/run_tdd_task_boundary/state_machine/write_red_test/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
           behavior:
             mode: return
             outputs: &primary_tdd_red
@@ -849,12 +638,12 @@ cases:
                 summary: RED test written.
                 red_command: printf expected failure && exit 7
         - match:
-            node_path: "superpowers/run_tdd_task_boundary/state_machine/assert_red/git+https://github.com/colony-2/c2ops.git//rule_gate@main"
+            node_path: "superpowers/execute_plan/execute_plan/superpowers-execute-plan/run_tdd_task_boundary/state_machine/assert_red/git+https://github.com/colony-2/c2ops.git//rule_gate@main"
           behavior:
             mode: return
             outputs: *gate_ok
         - match:
-            node_path: "superpowers/run_tdd_task_boundary/state_machine/write_green_code/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
+            node_path: "superpowers/execute_plan/execute_plan/superpowers-execute-plan/run_tdd_task_boundary/state_machine/write_green_code/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
           behavior:
             mode: return
             outputs: &primary_tdd_green
@@ -868,12 +657,12 @@ cases:
                 validation_commands_run:
                   - printf green
         - match:
-            node_path: "superpowers/run_tdd_task_boundary/state_machine/assert_green/git+https://github.com/colony-2/c2ops.git//rule_gate@main"
+            node_path: "superpowers/execute_plan/execute_plan/superpowers-execute-plan/run_tdd_task_boundary/state_machine/assert_green/git+https://github.com/colony-2/c2ops.git//rule_gate@main"
           behavior:
             mode: return
             outputs: *gate_ok
         - match:
-            node_path: "superpowers/run_tdd_task_boundary/state_machine/refactor_task/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
+            node_path: "superpowers/execute_plan/execute_plan/superpowers-execute-plan/run_tdd_task_boundary/state_machine/refactor_task/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
           behavior:
             mode: return
             outputs:
@@ -887,19 +676,19 @@ cases:
                 validation_commands_run:
                   - printf refactor
         - match:
-            node_path: "superpowers/run_tdd_task_boundary/state_machine/assert_refactor/git+https://github.com/colony-2/c2ops.git//rule_gate@main"
+            node_path: "superpowers/execute_plan/execute_plan/superpowers-execute-plan/run_tdd_task_boundary/state_machine/assert_refactor/git+https://github.com/colony-2/c2ops.git//rule_gate@main"
           behavior:
             mode: return
             outputs: *gate_ok
         - match:
-            node_path: "superpowers/run_tdd_task_boundary/state_machine/spec_review/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
+            node_path: "superpowers/execute_plan/execute_plan/superpowers-execute-plan/run_tdd_task_boundary/state_machine/spec_review/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
           behavior:
             mode: return
             outputs:
               <<: *spec_ok
               sessionId: sid-primary-tdd-spec
         - match:
-            node_path: "superpowers/run_tdd_task_boundary/state_machine/quality_review/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
+            node_path: "superpowers/execute_plan/execute_plan/superpowers-execute-plan/run_tdd_task_boundary/state_machine/quality_review/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
           behavior:
             mode: return
             outputs:
@@ -907,67 +696,22 @@ cases:
               sessionId: sid-primary-tdd-quality
               skill: c2-superpowers-quality-reviewer
         - match:
-            node_path: "superpowers/run_tdd_task_boundary/state_machine/task_gate/git+https://github.com/colony-2/c2ops.git//rule_gate@main"
+            node_path: "superpowers/execute_plan/execute_plan/superpowers-execute-plan/run_tdd_task_boundary/state_machine/task_gate/git+https://github.com/colony-2/c2ops.git//rule_gate@main"
           behavior:
             mode: return
             outputs: *gate_ok
         - match:
-            node_path: "superpowers/run_task_boundary/state_machine/implement_task/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
-          behavior:
-            mode: return
-            outputs: *implement_done
-        - match:
-            node_path: "superpowers/run_task_boundary/state_machine/spec_review/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
-          behavior:
-            mode: return
-            outputs: *spec_ok
-        - match:
-            node_path: "superpowers/run_task_boundary/state_machine/quality_review/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
-          behavior:
-            mode: return
-            outputs: *spec_ok
-        - match:
-            node_path: "superpowers/run_task_boundary/state_machine/task_gate/git+https://github.com/colony-2/c2ops.git//rule_gate@main"
-          behavior:
-            mode: return
-            outputs: *gate_ok
-        - match:
-            node_path: "superpowers/run_task_boundary/state_machine/revise_after_spec/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
-          behavior:
-            mode: return
-            outputs: *revision_done
-        - match:
-            node_path: "superpowers/run_task_boundary/state_machine/revise_after_quality/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
-          behavior:
-            mode: return
-            outputs: *revision_done
-        - match:
-            node_path: "superpowers/run_task_boundary/state_machine/spec_review_after_revision/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
-          behavior:
-            mode: return
-            outputs: *spec_ok
-        - match:
-            node_path: "superpowers/run_task_boundary/state_machine/quality_review_after_revision/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
-          behavior:
-            mode: return
-            outputs: *spec_ok
-        - match:
-            node_path: "superpowers/run_task_boundary/state_machine/task_gate_after_revision/git+https://github.com/colony-2/c2ops.git//rule_gate@main"
-          behavior:
-            mode: return
-            outputs: *gate_ok
-        - match:
-            node_path: superpowers/verify_work/sequence/summarize_verification
+            node_path: superpowers/verify_work/verify_work/superpowers-verify/summarize_verification
           behavior:
             mode: return
             outputs: *verify_ok
         - match:
-            node_path: superpowers/verify_work/sequence/verification_gate
+            node_path: superpowers/verify_work/verify_work/superpowers-verify/verification_gate
           behavior:
             mode: return
             outputs: *gate_ok
         - match:
-            node_path: superpowers/finish_work/sequence/write_finish_summary
+            node_path: superpowers/finish_work/finish_work/superpowers-finish/summarize_finish/sequence/write_finish_summary
           behavior:
             mode: return
             outputs:
@@ -984,7 +728,7 @@ cases:
                 remaining_risks: []
                 merge_ready: true
         - match:
-            node_path: superpowers/finish_work/sequence/finish_gate
+            node_path: superpowers/finish_work/finish_work/superpowers-finish/summarize_finish/sequence/finish_gate
           behavior:
             mode: return
             outputs: *gate_ok
@@ -1032,13 +776,13 @@ cases:
         path: finish_decision
         value: merge_ready
       - type: node_executed
-        node_path: "superpowers/run_tdd_task_boundary/state_machine/write_red_test/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
+        node_path: "superpowers/execute_plan/execute_plan/superpowers-execute-plan/run_tdd_task_boundary/state_machine/write_red_test/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
       - type: node_executed
-        node_path: "superpowers/run_tdd_task_boundary/state_machine/assert_refactor/git+https://github.com/colony-2/c2ops.git//rule_gate@main"
+        node_path: "superpowers/execute_plan/execute_plan/superpowers-execute-plan/run_tdd_task_boundary/state_machine/assert_refactor/git+https://github.com/colony-2/c2ops.git//rule_gate@main"
       - type: node_executed
-        node_path: "superpowers/run_tdd_task_boundary/state_machine/task_gate/git+https://github.com/colony-2/c2ops.git//rule_gate@main"
+        node_path: "superpowers/execute_plan/execute_plan/superpowers-execute-plan/run_tdd_task_boundary/state_machine/task_gate/git+https://github.com/colony-2/c2ops.git//rule_gate@main"
       - type: node_not_executed
-        node_path: "superpowers/run_task_boundary/state_machine/implement_task/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
+        node_path: "superpowers/execute_plan/execute_plan/superpowers-execute-plan/run_task_boundary/state_machine/implement_task/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
 
   - id: ts-088-superpowers-primary-routes-tdd-spec-failure-through-revision
     type: recipe_case
@@ -1130,48 +874,13 @@ cases:
           behavior:
             mode: passthrough
         - match:
-            op: command_execution
-          behavior:
-            mode: passthrough
-        - match:
-            op: command_execution
-          behavior:
-            mode: passthrough
-        - match:
-            op: command_execution
-          behavior:
-            mode: passthrough
-        - match:
-            op: command_execution
-          behavior:
-            mode: passthrough
-        - match:
-            op: command_execution
-          behavior:
-            mode: passthrough
-        - match:
             op: recipe_within_resolution
           behavior:
             mode: return
             outputs:
               resolved_selectors: {}
         - match:
-            node_path: superpowers/brainstorm_design/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main
-          behavior:
-            mode: return
-            outputs: *brainstorm_ok
-        - match:
-            node_path: superpowers/write_plan/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main
-          behavior:
-            mode: return
-            outputs: *plan_ready
-        - match:
-            node_path: superpowers/review_plan/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main
-          behavior:
-            mode: return
-            outputs: *plan_review_ok
-        - match:
-            node_path: "superpowers/run_tdd_task_boundary/state_machine/write_red_test/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
+            node_path: "superpowers/execute_plan/execute_plan/superpowers-execute-plan/run_tdd_task_boundary/state_machine/write_red_test/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
           behavior:
             mode: return
             outputs: &primary_tdd_revision_red
@@ -1184,12 +893,12 @@ cases:
                 summary: RED test written.
                 red_command: printf expected failure && exit 7
         - match:
-            node_path: "superpowers/run_tdd_task_boundary/state_machine/assert_red/git+https://github.com/colony-2/c2ops.git//rule_gate@main"
+            node_path: "superpowers/execute_plan/execute_plan/superpowers-execute-plan/run_tdd_task_boundary/state_machine/assert_red/git+https://github.com/colony-2/c2ops.git//rule_gate@main"
           behavior:
             mode: return
             outputs: *gate_ok
         - match:
-            node_path: "superpowers/run_tdd_task_boundary/state_machine/write_green_code/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
+            node_path: "superpowers/execute_plan/execute_plan/superpowers-execute-plan/run_tdd_task_boundary/state_machine/write_green_code/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
           behavior:
             mode: return
             outputs: &primary_tdd_revision_green
@@ -1203,12 +912,12 @@ cases:
                 validation_commands_run:
                   - printf green
         - match:
-            node_path: "superpowers/run_tdd_task_boundary/state_machine/assert_green/git+https://github.com/colony-2/c2ops.git//rule_gate@main"
+            node_path: "superpowers/execute_plan/execute_plan/superpowers-execute-plan/run_tdd_task_boundary/state_machine/assert_green/git+https://github.com/colony-2/c2ops.git//rule_gate@main"
           behavior:
             mode: return
             outputs: *gate_ok
         - match:
-            node_path: "superpowers/run_tdd_task_boundary/state_machine/refactor_task/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
+            node_path: "superpowers/execute_plan/execute_plan/superpowers-execute-plan/run_tdd_task_boundary/state_machine/refactor_task/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
           behavior:
             mode: return
             outputs:
@@ -1222,12 +931,12 @@ cases:
                 validation_commands_run:
                   - printf refactor
         - match:
-            node_path: "superpowers/run_tdd_task_boundary/state_machine/assert_refactor/git+https://github.com/colony-2/c2ops.git//rule_gate@main"
+            node_path: "superpowers/execute_plan/execute_plan/superpowers-execute-plan/run_tdd_task_boundary/state_machine/assert_refactor/git+https://github.com/colony-2/c2ops.git//rule_gate@main"
           behavior:
             mode: return
             outputs: *gate_ok
         - match:
-            node_path: "superpowers/run_tdd_task_boundary/state_machine/spec_review/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
+            node_path: "superpowers/execute_plan/execute_plan/superpowers-execute-plan/run_tdd_task_boundary/state_machine/spec_review/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
           behavior:
             mode: return
             outputs:
@@ -1241,17 +950,7 @@ cases:
                 feedback: Add the required behavior before finishing.
                 requires_revision: true
         - match:
-            node_path: "superpowers/run_tdd_task_boundary/state_machine/quality_review/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
-          behavior:
-            mode: return
-            outputs: *spec_ok
-        - match:
-            node_path: "superpowers/run_tdd_task_boundary/state_machine/task_gate/git+https://github.com/colony-2/c2ops.git//rule_gate@main"
-          behavior:
-            mode: return
-            outputs: *gate_ok
-        - match:
-            node_path: "superpowers/run_tdd_task_boundary/state_machine/revise_tdd_after_spec/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
+            node_path: "superpowers/execute_plan/execute_plan/superpowers-execute-plan/run_tdd_task_boundary/state_machine/revise_tdd_after_spec/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
           behavior:
             mode: return
             outputs: &primary_tdd_revision_done
@@ -1266,29 +965,24 @@ cases:
                   - printf green
                   - printf refactor
         - match:
-            node_path: "superpowers/run_tdd_task_boundary/state_machine/revise_tdd_after_quality/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
-          behavior:
-            mode: return
-            outputs: *primary_tdd_revision_done
-        - match:
-            node_path: "superpowers/run_tdd_task_boundary/state_machine/assert_revision_green/git+https://github.com/colony-2/c2ops.git//rule_gate@main"
+            node_path: "superpowers/execute_plan/execute_plan/superpowers-execute-plan/run_tdd_task_boundary/state_machine/assert_revision_green/git+https://github.com/colony-2/c2ops.git//rule_gate@main"
           behavior:
             mode: return
             outputs: *gate_ok
         - match:
-            node_path: "superpowers/run_tdd_task_boundary/state_machine/assert_revision_refactor/git+https://github.com/colony-2/c2ops.git//rule_gate@main"
+            node_path: "superpowers/execute_plan/execute_plan/superpowers-execute-plan/run_tdd_task_boundary/state_machine/assert_revision_refactor/git+https://github.com/colony-2/c2ops.git//rule_gate@main"
           behavior:
             mode: return
             outputs: *gate_ok
         - match:
-            node_path: "superpowers/run_tdd_task_boundary/state_machine/spec_review_after_revision/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
+            node_path: "superpowers/execute_plan/execute_plan/superpowers-execute-plan/run_tdd_task_boundary/state_machine/spec_review_after_revision/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
           behavior:
             mode: return
             outputs:
               <<: *spec_ok
               sessionId: sid-primary-tdd-spec-after-revision
         - match:
-            node_path: "superpowers/run_tdd_task_boundary/state_machine/quality_review_after_revision/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
+            node_path: "superpowers/execute_plan/execute_plan/superpowers-execute-plan/run_tdd_task_boundary/state_machine/quality_review_after_revision/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
           behavior:
             mode: return
             outputs:
@@ -1296,22 +990,22 @@ cases:
               sessionId: sid-primary-tdd-quality-after-revision
               skill: c2-superpowers-quality-reviewer
         - match:
-            node_path: "superpowers/run_tdd_task_boundary/state_machine/task_gate_after_revision/git+https://github.com/colony-2/c2ops.git//rule_gate@main"
+            node_path: "superpowers/execute_plan/execute_plan/superpowers-execute-plan/run_tdd_task_boundary/state_machine/task_gate_after_revision/git+https://github.com/colony-2/c2ops.git//rule_gate@main"
           behavior:
             mode: return
             outputs: *gate_ok
         - match:
-            node_path: superpowers/verify_work/sequence/summarize_verification
+            node_path: superpowers/verify_work/verify_work/superpowers-verify/summarize_verification
           behavior:
             mode: return
             outputs: *verify_ok
         - match:
-            node_path: superpowers/verify_work/sequence/verification_gate
+            node_path: superpowers/verify_work/verify_work/superpowers-verify/verification_gate
           behavior:
             mode: return
             outputs: *gate_ok
         - match:
-            node_path: superpowers/finish_work/sequence/write_finish_summary
+            node_path: superpowers/finish_work/finish_work/superpowers-finish/summarize_finish/sequence/write_finish_summary
           behavior:
             mode: return
             outputs:
@@ -1328,7 +1022,7 @@ cases:
                 remaining_risks: []
                 merge_ready: true
         - match:
-            node_path: superpowers/finish_work/sequence/finish_gate
+            node_path: superpowers/finish_work/finish_work/superpowers-finish/summarize_finish/sequence/finish_gate
           behavior:
             mode: return
             outputs: *gate_ok
@@ -1382,23 +1076,23 @@ cases:
         path: finish_decision
         value: merge_ready
       - type: node_executed
-        node_path: "superpowers/run_tdd_task_boundary/state_machine/revise_tdd_after_spec/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
+        node_path: "superpowers/execute_plan/execute_plan/superpowers-execute-plan/run_tdd_task_boundary/state_machine/revise_tdd_after_spec/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
       - type: node_executed
-        node_path: "superpowers/run_tdd_task_boundary/state_machine/assert_revision_green/git+https://github.com/colony-2/c2ops.git//rule_gate@main"
+        node_path: "superpowers/execute_plan/execute_plan/superpowers-execute-plan/run_tdd_task_boundary/state_machine/assert_revision_green/git+https://github.com/colony-2/c2ops.git//rule_gate@main"
       - type: node_executed
-        node_path: "superpowers/run_tdd_task_boundary/state_machine/assert_revision_refactor/git+https://github.com/colony-2/c2ops.git//rule_gate@main"
+        node_path: "superpowers/execute_plan/execute_plan/superpowers-execute-plan/run_tdd_task_boundary/state_machine/assert_revision_refactor/git+https://github.com/colony-2/c2ops.git//rule_gate@main"
       - type: node_executed
-        node_path: "superpowers/run_tdd_task_boundary/state_machine/spec_review_after_revision/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
+        node_path: "superpowers/execute_plan/execute_plan/superpowers-execute-plan/run_tdd_task_boundary/state_machine/spec_review_after_revision/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
       - type: node_executed
-        node_path: "superpowers/run_tdd_task_boundary/state_machine/quality_review_after_revision/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
+        node_path: "superpowers/execute_plan/execute_plan/superpowers-execute-plan/run_tdd_task_boundary/state_machine/quality_review_after_revision/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
       - type: node_executed
-        node_path: "superpowers/run_tdd_task_boundary/state_machine/task_gate_after_revision/git+https://github.com/colony-2/c2ops.git//rule_gate@main"
+        node_path: "superpowers/execute_plan/execute_plan/superpowers-execute-plan/run_tdd_task_boundary/state_machine/task_gate_after_revision/git+https://github.com/colony-2/c2ops.git//rule_gate@main"
       - type: node_not_executed
-        node_path: "superpowers/run_tdd_task_boundary/state_machine/quality_review/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
+        node_path: "superpowers/execute_plan/execute_plan/superpowers-execute-plan/run_tdd_task_boundary/state_machine/quality_review/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
       - type: node_not_executed
-        node_path: "superpowers/run_tdd_task_boundary/state_machine/task_gate/git+https://github.com/colony-2/c2ops.git//rule_gate@main"
+        node_path: "superpowers/execute_plan/execute_plan/superpowers-execute-plan/run_tdd_task_boundary/state_machine/task_gate/git+https://github.com/colony-2/c2ops.git//rule_gate@main"
       - type: node_not_executed
-        node_path: "superpowers/run_tdd_task_boundary/state_machine/revise_tdd_after_quality/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
+        node_path: "superpowers/execute_plan/execute_plan/superpowers-execute-plan/run_tdd_task_boundary/state_machine/revise_tdd_after_quality/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
       - type: node_not_executed
-        node_path: "superpowers/run_task_boundary/state_machine/implement_task/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
+        node_path: "superpowers/execute_plan/execute_plan/superpowers-execute-plan/run_task_boundary/state_machine/implement_task/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
 ```
