@@ -170,57 +170,57 @@ sequence:
       rules:
         - id: plan_completed
           type: assert
-          value: ${{ sequence.write_plan.outputs.status == "completed" || sequence.write_plan.outputs.status == "incomplete" }}
+          value: ${{ sequence.write_plan.outputs.?status.orValue("") == "completed" || sequence.write_plan.outputs.?status.orValue("") == "incomplete" }}
           message: Write-plan skill must return a normalized Codex status.
         - id: plan_output_schema_valid
           type: assert
-          value: ${{ sequence.write_plan.outputs.output_schema_valid }}
+          value: ${{ sequence.write_plan.outputs.?output_schema_valid.orValue(false) }}
           message: Plan artifact must match the C2 Superpowers task-plan schema.
         - id: plan_status_contract_valid
           type: assert
-          value: ${{ sequence.write_plan.outputs.status_contract_present && sequence.write_plan.outputs.status_contract_valid }}
+          value: ${{ sequence.write_plan.outputs.?status_contract_present.orValue(false) && sequence.write_plan.outputs.?status_contract_valid.orValue(false) }}
           message: Plan status contract must be present and valid.
         - id: ready_task_exists
           type: assert
-          value: ${{ size(sequence.write_plan.outputs.parsed_output.ready_task_ids) > 0 }}
+          value: ${{ size(sequence.write_plan.outputs.parsed_output.?ready_task_ids.orValue([])) > 0 }}
           message: Plan must expose at least one ready task id.
         - id: child_job_reasons_required
           type: assert
-          value: ${{ sequence.write_plan.outputs.parsed_output.tasks.all(t, !t.requires_child_job || t.child_job_reason != "") }}
+          value: ${{ sequence.write_plan.outputs.parsed_output.?tasks.orValue([]).all(t, !t.requires_child_job || t.child_job_reason != "") }}
           message: Tasks that require child jobs must explain the C2 boundary.
         - id: child_job_boundaries_cover_required_tasks
           type: assert
-          value: ${{ sequence.write_plan.outputs.parsed_output.tasks.all(t, !t.requires_child_job || sequence.write_plan.outputs.parsed_output.child_job_boundaries.exists(b, b.task_id == t.id && b.reason != "")) }}
+          value: ${{ sequence.write_plan.outputs.parsed_output.?tasks.orValue([]).all(t, !t.requires_child_job || sequence.write_plan.outputs.parsed_output.?child_job_boundaries.orValue([]).exists(b, b.task_id == t.id && b.reason != "")) }}
           message: Every task requiring a child job must have a matching child_job_boundaries entry.
         - id: child_job_boundaries_match_child_tasks
           type: assert
-          value: ${{ sequence.write_plan.outputs.parsed_output.child_job_boundaries.all(b, sequence.write_plan.outputs.parsed_output.tasks.exists(t, t.id == b.task_id && t.requires_child_job)) }}
+          value: ${{ sequence.write_plan.outputs.parsed_output.?child_job_boundaries.orValue([]).all(b, sequence.write_plan.outputs.parsed_output.?tasks.orValue([]).exists(t, t.id == b.task_id && t.requires_child_job)) }}
           message: Child-job boundary entries must reference tasks marked requires_child_job=true.
         - id: tdd_tasks_include_recipe_commands
           type: assert
-          value: ${{ sequence.write_plan.outputs.parsed_output.tasks.all(t, !has(t.requires_tdd) || !t.requires_tdd || (has(t.tdd) && has(t.tdd.red_command) && t.tdd.red_command != "" && has(t.tdd.green_command) && t.tdd.green_command != "" && has(t.tdd.refactor_verification_command) && t.tdd.refactor_verification_command != "")) }}
+          value: ${{ sequence.write_plan.outputs.parsed_output.?tasks.orValue([]).all(t, !has(t.requires_tdd) || !t.requires_tdd || (has(t.tdd) && has(t.tdd.red_command) && t.tdd.red_command != "" && has(t.tdd.green_command) && t.tdd.green_command != "" && has(t.tdd.refactor_verification_command) && t.tdd.refactor_verification_command != "")) }}
           message: TDD tasks must include RED, GREEN, and refactor verification commands for recipe gates.
 
 outputs:
-  plan_ok: "${{ sequence.plan_gate.outputs.ok }}"
-  plan_failed_rule_ids: "${{ sequence.plan_gate.outputs.failed_rule_ids }}"
-  plan_failed_rule_count: "${{ size(sequence.plan_gate.outputs.failed_rule_ids) }}"
-  child_boundary_coverage_failed: '${{ "child_job_boundaries_cover_required_tasks" in sequence.plan_gate.outputs.failed_rule_ids }}'
-  child_boundary_orphan_failed: '${{ "child_job_boundaries_match_child_tasks" in sequence.plan_gate.outputs.failed_rule_ids }}'
-  plan_id: "${{ sequence.write_plan.outputs.parsed_output.plan_id }}"
-  summary: "${{ sequence.write_plan.outputs.parsed_output.summary }}"
-  plan_json: "{{ sequence.write_plan.outputs.raw_output }}"
-  tasks: "${{ sequence.write_plan.outputs.parsed_output.tasks }}"
-  task_count: "${{ size(sequence.write_plan.outputs.parsed_output.tasks) }}"
-  ready_task_ids: "${{ sequence.write_plan.outputs.parsed_output.ready_task_ids }}"
-  first_ready_task_id: "${{ sequence.write_plan.outputs.parsed_output.ready_task_ids[0] }}"
-  validation_strategy: "${{ sequence.write_plan.outputs.parsed_output.validation_strategy }}"
-  child_job_boundaries: "${{ sequence.write_plan.outputs.parsed_output.child_job_boundaries }}"
-  child_job_boundary_count: "${{ size(sequence.write_plan.outputs.parsed_output.child_job_boundaries) }}"
-  tdd_task_count: "${{ jq(sequence.write_plan.outputs.parsed_output, '.tasks | map(select(.requires_tdd == true)) | length') }}"
-  first_task_tdd_red_command: "${{ jq(sequence.write_plan.outputs.parsed_output, '.tasks[0].tdd.red_command // \"\"') }}"
-  first_task_tdd_green_command: "${{ jq(sequence.write_plan.outputs.parsed_output, '.tasks[0].tdd.green_command // \"\"') }}"
-  first_task_tdd_refactor_command: "${{ jq(sequence.write_plan.outputs.parsed_output, '.tasks[0].tdd.refactor_verification_command // \"\"') }}"
-  write_plan_session_id: "{{ sequence.write_plan.outputs.sessionId }}"
-  output_schema_valid: "${{ sequence.write_plan.outputs.output_schema_valid }}"
-  status_contract_valid: "${{ sequence.write_plan.outputs.status_contract_valid }}"
+  plan_ok: "${{ sequence.plan_gate.outputs.?ok.orValue(false) }}"
+  plan_failed_rule_ids: "${{ sequence.plan_gate.outputs.?failed_rule_ids.orValue([]) }}"
+  plan_failed_rule_count: "${{ size(sequence.plan_gate.outputs.?failed_rule_ids.orValue([])) }}"
+  child_boundary_coverage_failed: '${{ "child_job_boundaries_cover_required_tasks" in sequence.plan_gate.outputs.?failed_rule_ids.orValue([]) }}'
+  child_boundary_orphan_failed: '${{ "child_job_boundaries_match_child_tasks" in sequence.plan_gate.outputs.?failed_rule_ids.orValue([]) }}'
+  plan_id: '${{ sequence.write_plan.outputs.parsed_output.?plan_id.orValue("") }}'
+  summary: '${{ sequence.write_plan.outputs.parsed_output.?summary.orValue("") }}'
+  plan_json: '${{ sequence.write_plan.outputs.?raw_output.orValue("{}") }}'
+  tasks: "${{ sequence.write_plan.outputs.parsed_output.?tasks.orValue([]) }}"
+  task_count: "${{ size(sequence.write_plan.outputs.parsed_output.?tasks.orValue([])) }}"
+  ready_task_ids: "${{ sequence.write_plan.outputs.parsed_output.?ready_task_ids.orValue([]) }}"
+  first_ready_task_id: '${{ jq(sequence.write_plan.outputs.?parsed_output.orValue({"ready_task_ids":[]}), ".ready_task_ids[0] // \"\"") }}'
+  validation_strategy: "${{ sequence.write_plan.outputs.parsed_output.?validation_strategy.orValue({}) }}"
+  child_job_boundaries: "${{ sequence.write_plan.outputs.parsed_output.?child_job_boundaries.orValue([]) }}"
+  child_job_boundary_count: "${{ size(sequence.write_plan.outputs.parsed_output.?child_job_boundaries.orValue([])) }}"
+  tdd_task_count: "${{ jq(sequence.write_plan.outputs.?parsed_output.orValue({\"tasks\":[]}), '.tasks | map(select(.requires_tdd == true)) | length') }}"
+  first_task_tdd_red_command: "${{ jq(sequence.write_plan.outputs.?parsed_output.orValue({\"tasks\":[]}), '.tasks[0].tdd.red_command // \"\"') }}"
+  first_task_tdd_green_command: "${{ jq(sequence.write_plan.outputs.?parsed_output.orValue({\"tasks\":[]}), '.tasks[0].tdd.green_command // \"\"') }}"
+  first_task_tdd_refactor_command: "${{ jq(sequence.write_plan.outputs.?parsed_output.orValue({\"tasks\":[]}), '.tasks[0].tdd.refactor_verification_command // \"\"') }}"
+  write_plan_session_id: '${{ sequence.write_plan.outputs.?sessionId.orValue("") }}'
+  output_schema_valid: "${{ sequence.write_plan.outputs.?output_schema_valid.orValue(false) }}"
+  status_contract_valid: "${{ sequence.write_plan.outputs.?status_contract_valid.orValue(false) }}"

@@ -4,7 +4,7 @@ desc: Run fresh verification commands and summarize Superpowers completion evide
 input_schema:
   plan_json:
     type: string
-    required: true
+    required: false
   execution_result_json:
     type: string
     required: false
@@ -15,8 +15,8 @@ input_schema:
     type: string
     required: false
 inputs:
-  plan_json: "{{ inputs.plan_json }}"
-  execution_result_json: '${{ first_nonempty(inputs.?execution_result_json, "{}") }}'
+  plan_json: '${{ inputs.?plan_json.orValue("") == "" || inputs.?plan_json.orValue("") == "null" ? "{}" : inputs.?plan_json.orValue("{}") }}'
+  execution_result_json: '${{ inputs.?execution_result_json.orValue("") == "" || inputs.?execution_result_json.orValue("") == "null" ? "{}" : inputs.?execution_result_json.orValue("{}") }}'
   verification_commands: '${{ first_nonempty(inputs.?verification_commands, "") }}'
   skill_bundle_ref: '${{ first_nonempty(inputs.?skill_bundle_ref, "") }}'
 sequence:
@@ -176,15 +176,15 @@ sequence:
           message: Verification commands must exit zero.
         - id: verify_output_schema_valid
           type: assert
-          value: ${{ sequence.summarize_verification.outputs.output_schema_valid }}
+          value: ${{ sequence.summarize_verification.outputs.?output_schema_valid.orValue(false) }}
           message: Verify result artifact must match schema.
         - id: verify_status_contract_valid
           type: assert
-          value: ${{ sequence.summarize_verification.outputs.status_contract_present && sequence.summarize_verification.outputs.status_contract_valid }}
+          value: ${{ sequence.summarize_verification.outputs.?status_contract_present.orValue(false) && sequence.summarize_verification.outputs.?status_contract_valid.orValue(false) }}
           message: Verify status contract must be present and valid.
         - id: verify_ok
           type: assert
-          value: ${{ sequence.summarize_verification.outputs.parsed_output.ok }}
+          value: ${{ sequence.summarize_verification.outputs.parsed_output.?ok.orValue(false) }}
           message: Verify skill must report ok=true only for proven completion.
 
 outputs:
@@ -193,12 +193,12 @@ outputs:
   commands_required_count: "${{ size(json_parse(sequence.collect_verification_inputs.outputs.stdout).commands_required) }}"
   validation_exit_code: "${{ sequence.run_verification_commands.outputs.exit_code }}"
   validation_passed: "${{ sequence.run_verification_commands.outputs.exit_code == 0 }}"
-  verification_result_json: "{{ sequence.summarize_verification.outputs.raw_output }}"
-  verification_ok: "${{ sequence.summarize_verification.outputs.parsed_output.ok }}"
-  verification_blocking_issues: "${{ sequence.summarize_verification.outputs.parsed_output.blocking_issues }}"
-  verification_blocking_issue_count: "${{ size(sequence.summarize_verification.outputs.parsed_output.blocking_issues) }}"
-  verification_gate_ok: "${{ sequence.verification_gate.outputs.ok }}"
-  verification_failed_rule_ids: "${{ sequence.verification_gate.outputs.failed_rule_ids }}"
-  verify_session_id: "{{ sequence.summarize_verification.outputs.sessionId }}"
-  output_schema_valid: "${{ sequence.summarize_verification.outputs.output_schema_valid }}"
-  status_contract_valid: "${{ sequence.summarize_verification.outputs.status_contract_valid }}"
+  verification_result_json: '${{ sequence.summarize_verification.outputs.?raw_output.orValue("{}") }}'
+  verification_ok: "${{ sequence.summarize_verification.outputs.parsed_output.?ok.orValue(false) }}"
+  verification_blocking_issues: "${{ sequence.summarize_verification.outputs.parsed_output.?blocking_issues.orValue([]) }}"
+  verification_blocking_issue_count: "${{ size(sequence.summarize_verification.outputs.parsed_output.?blocking_issues.orValue([])) }}"
+  verification_gate_ok: "${{ sequence.verification_gate.outputs.?ok.orValue(false) }}"
+  verification_failed_rule_ids: "${{ sequence.verification_gate.outputs.?failed_rule_ids.orValue([]) }}"
+  verify_session_id: '${{ sequence.summarize_verification.outputs.?sessionId.orValue("") }}'
+  output_schema_valid: "${{ sequence.summarize_verification.outputs.?output_schema_valid.orValue(false) }}"
+  status_contract_valid: "${{ sequence.summarize_verification.outputs.?status_contract_valid.orValue(false) }}"

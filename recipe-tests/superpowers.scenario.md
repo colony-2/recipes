@@ -38,6 +38,18 @@ cases:
           behavior:
             mode: passthrough
         - match:
+            op: command_execution
+          behavior:
+            mode: passthrough
+        - match:
+            op: command_execution
+          behavior:
+            mode: passthrough
+        - match:
+            op: command_execution
+          behavior:
+            mode: passthrough
+        - match:
             op: recipe_within_resolution
           behavior:
             mode: return
@@ -320,6 +332,10 @@ cases:
           behavior:
             mode: passthrough
         - match:
+            op: command_execution
+          behavior:
+            mode: passthrough
+        - match:
             op: recipe_within_resolution
           behavior:
             mode: return
@@ -379,6 +395,18 @@ cases:
         }
     mocks:
       ops:
+        - match:
+            op: command_execution
+          behavior:
+            mode: passthrough
+        - match:
+            op: command_execution
+          behavior:
+            mode: passthrough
+        - match:
+            op: command_execution
+          behavior:
+            mode: passthrough
         - match:
             op: command_execution
           behavior:
@@ -574,6 +602,18 @@ cases:
         }
     mocks:
       ops:
+        - match:
+            op: command_execution
+          behavior:
+            mode: passthrough
+        - match:
+            op: command_execution
+          behavior:
+            mode: passthrough
+        - match:
+            op: command_execution
+          behavior:
+            mode: passthrough
         - match:
             op: command_execution
           behavior:
@@ -821,6 +861,18 @@ cases:
         }
     mocks:
       ops:
+        - match:
+            op: command_execution
+          behavior:
+            mode: passthrough
+        - match:
+            op: command_execution
+          behavior:
+            mode: passthrough
+        - match:
+            op: command_execution
+          behavior:
+            mode: passthrough
         - match:
             op: command_execution
           behavior:

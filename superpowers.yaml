@@ -85,13 +85,13 @@ state:
           when: json_parse(outputs.stdout).workflow_route == "needs_user_input"
         - to: debug_work
           when: json_parse(outputs.stdout).workflow_route == "debug"
-        - to: finish_work
+        - to: prepare_finish_inputs
           when: json_parse(outputs.stdout).workflow_route == "finish"
-        - to: verify_work
+        - to: prepare_verification_plan
           when: json_parse(outputs.stdout).workflow_route == "verify"
         - to: review_plan
           when: json_parse(outputs.stdout).workflow_route == "review_plan"
-        - to: execute_plan
+        - to: prepare_execution_plan
           when: json_parse(outputs.stdout).workflow_route == "execute_plan"
         - to: write_plan
           when: json_parse(outputs.stdout).workflow_route == "write_plan"
@@ -190,12 +190,12 @@ state:
       include: ./superpowers-brainstorm.yaml
       transitions:
         - to: write_plan
-          when: outputs.approved_for_planning
+          when: outputs.?approved_for_planning.orValue(false) == true || outputs.?approved_for_planning.orValue("") == "true"
         - to: needs_user_input
           when: true
       inputs:
         prompt: "{{ inputs.prompt }}"
-        route_json: "{{ states.route.outputs.stdout }}"
+        route_json: '${{ state_output("route", "stdout", "{}") }}'
         user_feedback: ""
         skill_bundle_ref: "{{ inputs.skill_bundle_ref }}"
 
@@ -213,8 +213,8 @@ state:
     review_plan:
       include: ./superpowers-plan-review.yaml
       transitions:
-        - to: execute_plan
-          when: outputs.plan_approved
+        - to: prepare_execution_plan
+          when: outputs.?plan_approved.orValue(false) == true || outputs.?plan_approved.orValue("") == "true"
         - to: replan_required
           when: true
       inputs:
@@ -248,19 +248,47 @@ state:
           print(json.dumps(result, sort_keys=True))
           PY
 
+    prepare_execution_plan:
+      op: command_execution
+      transitions:
+        - to: execute_plan
+          when: true
+      inputs:
+        timeout: 30s
+        env:
+          INPUT_PLAN_JSON: "{{ inputs.plan_json }}"
+          WRITE_PLAN_JSON: '${{ state_output("write_plan", "plan_json", "") }}'
+        run: |
+          set -euo pipefail
+          mkdir -p "{{ context.environment.op.outbox }}/superpowers/execution"
+          python3 - <<'PY'
+          import os
+
+          candidates = [
+              os.environ.get("INPUT_PLAN_JSON", ""),
+              os.environ.get("WRITE_PLAN_JSON", ""),
+              "{}",
+          ]
+          for candidate in candidates:
+              candidate = (candidate or "").strip()
+              if candidate and candidate != "null":
+                  print(candidate)
+                  break
+          PY
+
     execute_plan:
       include: ./superpowers-execute-plan.yaml
       transitions:
         - to: child_boundary_required
-          when: outputs.child_job_required
+          when: outputs.?child_job_required.orValue(false) == true || outputs.?child_job_required.orValue("") == "true"
         - to: mark_plan_after_task
-          when: outputs.task_done
+          when: outputs.?task_done.orValue(false) == true || outputs.?task_done.orValue("") == "true"
         - to: needs_user_input
-          when: outputs.selected_task_id == ""
+          when: outputs.?selected_task_id.orValue("") == ""
         - to: task_needs_revision
           when: true
       inputs:
-        plan_json: '${{ first_nonempty(inputs.?plan_json.orValue(""), state_output("write_plan", "plan_json", "{}"), "{}") }}'
+        plan_json: '${{ state_output("prepare_execution_plan", "stdout", "{}") }}'
         task_id: "{{ inputs.task_id }}"
         skill_bundle_ref: "{{ inputs.skill_bundle_ref }}"
 
@@ -270,7 +298,7 @@ state:
       inputs:
         timeout: 30s
         env:
-          SELECTED_TASK_JSON: "{{ states.execute_plan.outputs.selected_task_json }}"
+          SELECTED_TASK_JSON: '${{ state_output("execute_plan", "selected_task_json", "{}") }}'
         run: |
           set -euo pipefail
           mkdir -p "{{ context.environment.op.outbox }}/superpowers/execution"
@@ -293,14 +321,14 @@ state:
     mark_plan_after_task:
       op: command_execution
       transitions:
-        - to: verify_work
+        - to: prepare_verification_plan
           when: true
       inputs:
         timeout: 30s
         env:
-          PLAN_JSON: '${{ first_nonempty(inputs.?plan_json.orValue(""), state_output("write_plan", "plan_json", "{}"), "{}") }}'
-          SELECTED_TASK_JSON: "{{ states.execute_plan.outputs.selected_task_json }}"
-          IMPLEMENTATION_JSON: "{{ states.execute_plan.outputs.implementation_raw_output }}"
+          PLAN_JSON: '${{ state_output("prepare_execution_plan", "stdout", "{}") }}'
+          SELECTED_TASK_JSON: '${{ state_output("execute_plan", "selected_task_json", "{}") }}'
+          IMPLEMENTATION_JSON: '${{ state_output("execute_plan", "implementation_raw_output", "{}") }}'
         run: |
           set -euo pipefail
           mkdir -p "{{ context.environment.op.outbox }}/superpowers/execution"
@@ -308,8 +336,8 @@ state:
           import json
           import os
 
-          plan = json.loads(os.environ["PLAN_JSON"])
-          selected = json.loads(os.environ["SELECTED_TASK_JSON"])
+          plan = json.loads(os.environ.get("PLAN_JSON") or "{}")
+          selected = json.loads(os.environ.get("SELECTED_TASK_JSON") or "{}")
           implementation = json.loads(os.environ.get("IMPLEMENTATION_JSON") or "{}")
           task_id = selected.get("task_id", implementation.get("task_id", ""))
 
@@ -343,16 +371,52 @@ state:
           print(json.dumps(result, sort_keys=True))
           PY
 
+    prepare_verification_plan:
+      op: command_execution
+      transitions:
+        - to: verify_work
+          when: true
+      inputs:
+        timeout: 30s
+        env:
+          INPUT_PLAN_JSON: "{{ inputs.plan_json }}"
+          MARK_RESULT_JSON: '${{ state_output("mark_plan_after_task", "stdout", "") }}'
+        run: |
+          set -euo pipefail
+          mkdir -p "{{ context.environment.op.outbox }}/superpowers/verify"
+          python3 - <<'PY'
+          import json
+          import os
+
+          explicit = (os.environ.get("INPUT_PLAN_JSON") or "").strip()
+          if explicit and explicit != "null":
+              print(explicit)
+              raise SystemExit(0)
+
+          raw = (os.environ.get("MARK_RESULT_JSON") or "").strip()
+          if raw and raw != "null":
+              try:
+                  result = json.loads(raw)
+                  plan_json = result.get("updated_plan_json") or ""
+                  if plan_json:
+                      print(plan_json)
+                      raise SystemExit(0)
+              except json.JSONDecodeError:
+                  pass
+
+          print("{}")
+          PY
+
     verify_work:
       include: ./superpowers-verify.yaml
       transitions:
-        - to: finish_work
-          when: outputs.verification_gate_ok
+        - to: prepare_finish_inputs
+          when: outputs.?verification_gate_ok.orValue(false) == true || outputs.?verification_gate_ok.orValue("") == "true"
         - to: debug_needed
           when: true
       inputs:
-        plan_json: '${{ first_nonempty(inputs.?plan_json.orValue(""), json_parse(state_output("mark_plan_after_task", "stdout", "{\"updated_plan_json\":\"\"}")).updated_plan_json, state_output("write_plan", "plan_json", "{}"), "{}") }}'
-        execution_result_json: '${{ first_nonempty(inputs.?execution_result_json.orValue(""), json_parse(state_output("mark_plan_after_task", "stdout", "{\"execution_result_json\":\"{}\"}")).execution_result_json, "{}") }}'
+        plan_json: '${{ state_output("prepare_verification_plan", "stdout", "{}") }}'
+        execution_result_json: '${{ inputs.?execution_result_json.orValue("") != "" ? inputs.?execution_result_json.orValue("") : "{}" }}'
         verification_commands: "{{ inputs.verification_commands }}"
         skill_bundle_ref: "{{ inputs.skill_bundle_ref }}"
 
@@ -379,13 +443,68 @@ state:
         attempt_count: "{{ inputs.attempt_count }}"
         skill_bundle_ref: "{{ inputs.skill_bundle_ref }}"
 
+    prepare_finish_inputs:
+      transitions:
+        - to: finish_work
+          when: true
+      sequence:
+        - id: collect_finish_handoff
+          op: command_execution
+          inputs:
+            timeout: 30s
+            env:
+              INPUT_PLAN_JSON: '${{ inputs.?plan_json.orValue("") }}'
+              INPUT_VERIFICATION_RESULT_JSON: '${{ inputs.?verification_result_json.orValue("") }}'
+              INPUT_EXECUTION_RESULT_JSON: '${{ inputs.?execution_result_json.orValue("") }}'
+              PREPARED_PLAN_JSON: '${{ state_output("prepare_verification_plan", "stdout", "") }}'
+              VERIFY_RESULT_JSON: '${{ state_output("verify_work", "verification_result_json", "") }}'
+              MARK_RESULT_JSON: '${{ state_output("mark_plan_after_task", "stdout", "") }}'
+            run: |
+              set -euo pipefail
+              mkdir -p "{{ context.environment.op.outbox }}/superpowers/finish"
+              python3 - <<'PY'
+              import json
+              import os
+
+              def clean(value):
+                  value = (value or "").strip()
+                  return "" if value == "null" else value
+
+              def mark_field(name):
+                  raw = clean(os.environ.get("MARK_RESULT_JSON"))
+                  if not raw:
+                      return ""
+                  try:
+                      return clean(json.loads(raw).get(name, ""))
+                  except json.JSONDecodeError:
+                      return ""
+
+              result = {
+                  "plan_json": clean(os.environ.get("INPUT_PLAN_JSON"))
+                  or clean(os.environ.get("PREPARED_PLAN_JSON"))
+                  or mark_field("updated_plan_json")
+                  or "{}",
+                  "verification_result_json": clean(os.environ.get("INPUT_VERIFICATION_RESULT_JSON"))
+                  or clean(os.environ.get("VERIFY_RESULT_JSON"))
+                  or "{}",
+                  "execution_result_json": clean(os.environ.get("INPUT_EXECUTION_RESULT_JSON"))
+                  or mark_field("execution_result_json")
+                  or "{}",
+              }
+              print(json.dumps(result, sort_keys=True))
+              PY
+      outputs:
+        plan_json: '${{ json_parse(sequence.collect_finish_handoff.outputs.stdout).plan_json }}'
+        verification_result_json: '${{ json_parse(sequence.collect_finish_handoff.outputs.stdout).verification_result_json }}'
+        execution_result_json: '${{ json_parse(sequence.collect_finish_handoff.outputs.stdout).execution_result_json }}'
+
     finish_work:
       include: ./superpowers-finish.yaml
       transitions: []
       inputs:
-        plan_json: '${{ first_nonempty(inputs.?plan_json.orValue(""), json_parse(state_output("mark_plan_after_task", "stdout", "{\"updated_plan_json\":\"\"}")).updated_plan_json, state_output("write_plan", "plan_json", "{}"), "{}") }}'
-        verification_result_json: '${{ first_nonempty(inputs.?verification_result_json.orValue(""), state_output("verify_work", "verification_result_json", "{}"), "{}") }}'
-        execution_result_json: '${{ first_nonempty(inputs.?execution_result_json.orValue(""), json_parse(state_output("mark_plan_after_task", "stdout", "{\"execution_result_json\":\"{}\"}")).execution_result_json, "{}") }}'
+        plan_json: '${{ state_output("prepare_finish_inputs", "plan_json", "{}") }}'
+        verification_result_json: '${{ state_output("prepare_finish_inputs", "verification_result_json", "{}") }}'
+        execution_result_json: '${{ state_output("prepare_finish_inputs", "execution_result_json", "{}") }}'
         completion_action: "{{ inputs.completion_action }}"
         local_hash: "{{ inputs.local_hash }}"
         upstream_repo: "{{ inputs.upstream_repo }}"
@@ -400,8 +519,8 @@ outputs:
   child_job_required: "${{ state_output('execute_plan', 'child_job_required', false) }}"
   child_job_reason: "${{ state_output('execute_plan', 'child_job_reason', '') }}"
   task_done: "${{ state_exists('mark_plan_after_task') }}"
-  updated_plan_json: '${{ json_parse(state_output("mark_plan_after_task", "stdout", "{\"updated_plan_json\":\"\"}")).updated_plan_json }}'
-  execution_result_json: '${{ json_parse(state_output("mark_plan_after_task", "stdout", "{\"execution_result_json\":\"{}\"}")).execution_result_json }}'
+  updated_plan_json: '${{ json_parse(state_output("mark_plan_after_task", "stdout", "{\"updated_plan_json\":\"\"}")).?updated_plan_json.orValue("") }}'
+  execution_result_json: '${{ json_parse(state_output("mark_plan_after_task", "stdout", "{\"execution_result_json\":\"{}\"}")).?execution_result_json.orValue("{}") }}'
   verification_result_json: "${{ state_output('verify_work', 'verification_result_json', '') }}"
   verification_ok: "${{ state_output('verify_work', 'verification_ok', false) }}"
   verification_gate_ok: "${{ state_output('verify_work', 'verification_gate_ok', false) }}"

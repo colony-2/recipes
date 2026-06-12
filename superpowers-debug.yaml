@@ -196,44 +196,44 @@ state:
                 message: Debugging requires an explicit reproduction command.
               - id: reproduced_failure_must_have_nonzero_repro
                 type: assert
-                value: ${{ !sequence.summarize_debug.outputs.parsed_output.reproduced || sequence.run_reproduction.outputs.exit_code != 0 }}
+                value: ${{ !sequence.summarize_debug.outputs.parsed_output.?reproduced.orValue(false) || sequence.run_reproduction.outputs.exit_code != 0 }}
                 message: reproduced=true requires a failing reproduction command.
               - id: debug_output_schema_valid
                 type: assert
-                value: ${{ sequence.summarize_debug.outputs.output_schema_valid }}
+                value: ${{ sequence.summarize_debug.outputs.?output_schema_valid.orValue(false) }}
                 message: Debug result artifact must match schema.
               - id: debug_status_contract_valid
                 type: assert
-                value: ${{ sequence.summarize_debug.outputs.status_contract_present && sequence.summarize_debug.outputs.status_contract_valid }}
+                value: ${{ sequence.summarize_debug.outputs.?status_contract_present.orValue(false) && sequence.summarize_debug.outputs.?status_contract_valid.orValue(false) }}
                 message: Debug status contract must be present and valid.
               - id: reproduced_has_root_cause
                 type: assert
-                value: ${{ !sequence.summarize_debug.outputs.parsed_output.reproduced || sequence.summarize_debug.outputs.parsed_output.root_cause != "" }}
+                value: ${{ !sequence.summarize_debug.outputs.parsed_output.?reproduced.orValue(false) || sequence.summarize_debug.outputs.parsed_output.?root_cause.orValue("") != "" }}
                 message: Reproduced failures must include root-cause evidence.
               - id: reproduced_has_evidence
                 type: assert
-                value: ${{ !sequence.summarize_debug.outputs.parsed_output.reproduced || size(sequence.summarize_debug.outputs.parsed_output.evidence) > 0 }}
+                value: ${{ !sequence.summarize_debug.outputs.parsed_output.?reproduced.orValue(false) || size(sequence.summarize_debug.outputs.parsed_output.?evidence.orValue([])) > 0 }}
                 message: Reproduced failures must include supporting evidence.
               - id: fix_path_has_validation_commands
                 type: assert
-                value: ${{ sequence.summarize_debug.outputs.parsed_output.requires_plan_update || !sequence.summarize_debug.outputs.parsed_output.reproduced || size(sequence.summarize_debug.outputs.parsed_output.validation_commands) > 0 }}
+                value: ${{ sequence.summarize_debug.outputs.parsed_output.?requires_plan_update.orValue(false) || !sequence.summarize_debug.outputs.parsed_output.?reproduced.orValue(false) || size(sequence.summarize_debug.outputs.parsed_output.?validation_commands.orValue([])) > 0 }}
                 message: Fix-ready debugging results must include validation commands.
       transitions: []
       outputs:
         attempt_count: "${{ json_parse(inputs.debug_inputs_json).attempt_count }}"
         reproduction_exit_code: "${{ sequence.run_reproduction.outputs.exit_code }}"
-        reproduced: "${{ sequence.summarize_debug.outputs.parsed_output.reproduced }}"
-        root_cause: "${{ sequence.summarize_debug.outputs.parsed_output.root_cause }}"
-        evidence: "${{ sequence.summarize_debug.outputs.parsed_output.evidence }}"
-        evidence_count: "${{ size(sequence.summarize_debug.outputs.parsed_output.evidence) }}"
-        recommended_fix: "${{ sequence.summarize_debug.outputs.parsed_output.recommended_fix }}"
-        requires_plan_update: "${{ sequence.summarize_debug.outputs.parsed_output.requires_plan_update }}"
-        validation_commands: "${{ sequence.summarize_debug.outputs.parsed_output.validation_commands }}"
-        debug_gate_ok: "${{ sequence.debug_gate.outputs.ok }}"
-        debug_failed_rule_ids: "${{ sequence.debug_gate.outputs.failed_rule_ids }}"
-        debug_session_id: "{{ sequence.summarize_debug.outputs.sessionId }}"
-        output_schema_valid: "${{ sequence.summarize_debug.outputs.output_schema_valid }}"
-        status_contract_valid: "${{ sequence.summarize_debug.outputs.status_contract_valid }}"
+        reproduced: "${{ sequence.summarize_debug.outputs.parsed_output.?reproduced.orValue(false) }}"
+        root_cause: '${{ sequence.summarize_debug.outputs.parsed_output.?root_cause.orValue("") }}'
+        evidence: "${{ sequence.summarize_debug.outputs.parsed_output.?evidence.orValue([]) }}"
+        evidence_count: "${{ size(sequence.summarize_debug.outputs.parsed_output.?evidence.orValue([])) }}"
+        recommended_fix: '${{ sequence.summarize_debug.outputs.parsed_output.?recommended_fix.orValue("") }}'
+        requires_plan_update: "${{ sequence.summarize_debug.outputs.parsed_output.?requires_plan_update.orValue(false) }}"
+        validation_commands: "${{ sequence.summarize_debug.outputs.parsed_output.?validation_commands.orValue([]) }}"
+        debug_gate_ok: "${{ sequence.debug_gate.outputs.?ok.orValue(false) }}"
+        debug_failed_rule_ids: "${{ sequence.debug_gate.outputs.?failed_rule_ids.orValue([]) }}"
+        debug_session_id: '${{ sequence.summarize_debug.outputs.?sessionId.orValue("") }}'
+        output_schema_valid: "${{ sequence.summarize_debug.outputs.?output_schema_valid.orValue(false) }}"
+        status_contract_valid: "${{ sequence.summarize_debug.outputs.?status_contract_valid.orValue(false) }}"
 
 outputs:
   debug_status: '${{ !json_parse(state_output("collect_debug_inputs", "stdout", "{\"has_repro_command\":false,\"attempt_count\":0}")).has_repro_command ? "needs_repro_command" : (state_output("investigate", "requires_plan_update", false) && state_output("investigate", "debug_gate_ok", false) ? "requires_plan_update" : (state_output("investigate", "reproduced", false) && json_parse(state_output("collect_debug_inputs", "stdout", "{\"has_repro_command\":false,\"attempt_count\":0}")).attempt_count >= 3 && state_output("investigate", "debug_gate_ok", false) ? "architecture_review_required" : (state_output("investigate", "reproduced", false) && state_output("investigate", "debug_gate_ok", false) ? "fix_ready" : "not_reproduced"))) }}'
