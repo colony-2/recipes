@@ -32,10 +32,10 @@ Core runtime reverification on 2026-06-09 UTC and full suite validation on
   errors, or chapter ordinal conflict signatures.
 - `recipe-tests/verify-codex-skill-execution-live.sh` passed, and its log did
   not contain the thin-pack restore or chapter ordinal conflict signatures.
-- `recipe-tests/verify-superpowers-rule-gate-live.sh` passed. TS-047 validates
+- `recipes/superpowers/tests/verify-superpowers-rule-gate-live.sh` passed. TS-047 validates
   JSON parse, JSON Schema, assertion policy failure, and `child_status` routing.
   TS-048 confirms invalid `rule_gate` input is rejected by selector validation.
-- `recipe-tests/verify-superpowers-child-orchestration-live.sh` passed. TS-049
+- `recipes/superpowers/tests/verify-superpowers-child-orchestration-live.sh` passed. TS-049
   validates failed-child status through `recipe.await_result_soft` and
   `rule_gate child_status`. TS-050 validates `child_group` required/optional
   reviewer aggregation.
@@ -115,15 +115,12 @@ Validated:
 - focused finish smokes TS-071/TS-073 passed compile/validate/run.
 - focused debug smokes TS-074/TS-077 passed compile/validate/run.
 - focused plan-review smokes TS-078/TS-079 passed compile/validate/run.
-- focused primary-orchestrator smokes TS-080/TS-081/TS-085/TS-086/TS-088 compile
-  and run against the inline production recipe. Direct `c2j test validate` for
-  this include graph still reports `invalid` without a diagnostic; this is
-  tracked separately from the now-fixed local-include and built-in-op parser
-  bugs.
-- `recipe-tests/run-all.sh` passed end to end on 2026-06-11 with TS-058..TS-079
-  plus TS-082..TS-093 and TS-095 included in the default compile/validate/run path, the
-  primary inline scenario suite compiled and ran, and TS-094 validating embedded
-  inline primary runtime. Required live checks also include TS-092/TS-093 live
+- focused primary-orchestrator smokes TS-080/TS-081/TS-085/TS-086/TS-088
+  compile, validate, and run against the inline production recipe.
+- `recipes/superpowers/tests/run-all.sh` passed end to end on 2026-06-12 with
+  TS-058..TS-095 included in the default compile/validate/run path, the primary
+  inline scenario suite validated and ran, and TS-094 validating embedded inline
+  primary runtime. Required live checks also include TS-092/TS-093 live
   `run_skill`, TS-044/TS-045 live Codex skill execution, and TS-042/TS-043
   focused live skill-quality validation invoked as hard-failing checks.
 - focused live skill-quality smoke TS-042/TS-043 passed after narrowing
@@ -378,33 +375,33 @@ c2j run one --embed --tenant-id "$TENANT_ID" --job-id "$JOB_ID" --lease-duration
 
 Focused smokes:
 
-1. `superpowers-run-skill-output-smoke.yaml`
+1. `recipes/superpowers/tests/superpowers-run-skill-output-smoke.yaml`
    - Status: implemented as TS-056.
    - Use `codex/run_skill`.
    - Require an output artifact with JSON Schema.
    - Assert `parsed_output`, `output_schema_valid`, and status-contract fields.
 
-2. `superpowers-run-skill-repair-smoke.yaml`
+2. `recipes/superpowers/tests/superpowers-run-skill-repair-smoke.yaml`
    - Status: implemented as TS-057.
    - Configure `output.validation.repair.enabled: true`.
    - Confirm repair-attempt metadata is visible to recipes after the declared
      artifact validates.
 
-3. `superpowers-rule-gate-schema-smoke.yaml`
+3. `recipes/superpowers/tests/superpowers-rule-gate-schema-smoke.yaml`
    - Status: implemented as TS-047, with invalid-input rejection in TS-048.
    - Validate an artifact with `json_parse`.
    - Validate the same artifact with `json_schema`.
    - Confirm policy failure returns `ok=false` with zero process failure.
    - Confirm invalid rule input fails the node.
 
-4. `recipe-tests/verify-superpowers-child-orchestration-live.sh`
+4. `recipes/superpowers/tests/verify-superpowers-child-orchestration-live.sh`
    - Status: implemented as TS-049 for failed-child status and policy routing.
    - Start a child recipe that fails.
    - Await it with `recipe.await_result_soft`.
    - Confirm parent receives child status and failure metadata without failing
      the parent node.
 
-5. `recipe-tests/verify-superpowers-child-orchestration-live.sh`
+5. `recipes/superpowers/tests/verify-superpowers-child-orchestration-live.sh`
    - Status: implemented as TS-050.
    - Run required and optional reviewer children.
    - Confirm failed required child yields `ok=false`.
@@ -412,24 +409,24 @@ Focused smokes:
    - Confirm `review_pack` aggregate artifact is produced and group summary is
      consumable by `rule_gate`.
 
-6. `superpowers-native-task-selection-smoke.yaml`
+6. `recipes/superpowers/tests/superpowers-native-task-selection-smoke.yaml`
    - Status: implemented as TS-051/TS-052.
    - Select the first ready head task from plan state using native recipe
      templates.
    - Surface required child-job boundaries without starting child jobs.
 
-7. `superpowers-task-session-smoke.yaml`
+7. `recipes/superpowers/tests/superpowers-task-session-smoke.yaml`
    - Status: implemented as TS-053.
    - Run implementer, spec reviewer, and quality reviewer as distinct same-job
      Codex sessions.
    - Confirm the task boundary does not use a child job.
 
-8. `superpowers-session-contract-smoke.yaml`
+8. `recipes/superpowers/tests/superpowers-session-contract-smoke.yaml`
    - Status: implemented as TS-054.
    - Confirm omitted `sessionId` starts isolated context.
    - Confirm explicit `sessionId` resumes the previous session.
 
-9. `superpowers-adaptive-task-loop-smoke.yaml`
+9. `recipes/superpowers/tests/superpowers-adaptive-task-loop-smoke.yaml`
    - Status: implemented as TS-055.
    - Run task A, route task feedback to a planner session, update plan state,
      and select task B in the same job.

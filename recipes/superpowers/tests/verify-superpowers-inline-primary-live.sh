@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+RECIPE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORK_DIR="/tmp/superpowers-inline-primary"
 LOG="$WORK_DIR/run.log"
 
 rm -rf "$WORK_DIR"
 mkdir -p "$WORK_DIR"
 
-cd "$ROOT_DIR"
+cd "$RECIPE_DIR"
 
 timeout 5m c2j submit \
   --recipe-file ./superpowers.yaml \

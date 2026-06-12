@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+TEST_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WORK_DIR="/tmp/superpowers-rule-gate-live"
 C2J_BIN="${C2J_BIN:-c2j}"
 
@@ -9,20 +9,20 @@ rm -rf "$WORK_DIR"
 mkdir -p "$WORK_DIR"
 
 "$C2J_BIN" test compile \
-  --recipe-file "$PWD/superpowers-rule-gate-schema-smoke.yaml" \
-  --file "$ROOT_DIR/superpowers-rule-gate-schema-smoke.scenario.md" \
+  --recipe-file "$TEST_DIR/superpowers-rule-gate-schema-smoke.yaml" \
+  --file "$TEST_DIR/superpowers-rule-gate-schema-smoke.scenario.md" \
   --out "$WORK_DIR/rule-gate-schema.compiled.json" \
   --strict
 
 "$C2J_BIN" test validate \
-  --recipe-file "$PWD/superpowers-rule-gate-schema-smoke.yaml" \
-  --file "$ROOT_DIR/superpowers-rule-gate-schema-smoke.scenario.md" \
+  --recipe-file "$TEST_DIR/superpowers-rule-gate-schema-smoke.yaml" \
+  --file "$TEST_DIR/superpowers-rule-gate-schema-smoke.scenario.md" \
   --parallelism 1 \
   --strict
 
 "$C2J_BIN" test run \
-  --recipe-file "$PWD/superpowers-rule-gate-schema-smoke.yaml" \
-  --file "$ROOT_DIR/superpowers-rule-gate-schema-smoke.scenario.md" \
+  --recipe-file "$TEST_DIR/superpowers-rule-gate-schema-smoke.yaml" \
+  --file "$TEST_DIR/superpowers-rule-gate-schema-smoke.scenario.md" \
   --parallelism 1 \
   --artifact-mode inline \
   --out-dir "$WORK_DIR/rule-gate-schema.run" \
@@ -30,15 +30,15 @@ mkdir -p "$WORK_DIR"
   --case-timeout 5m
 
 "$C2J_BIN" test compile \
-  --recipe-file "$PWD/superpowers-rule-gate-invalid-input-smoke.yaml" \
-  --file "$ROOT_DIR/superpowers-rule-gate-invalid-input-smoke.scenario.md" \
+  --recipe-file "$TEST_DIR/superpowers-rule-gate-invalid-input-smoke.yaml" \
+  --file "$TEST_DIR/superpowers-rule-gate-invalid-input-smoke.scenario.md" \
   --out "$WORK_DIR/rule-gate-invalid-input.compiled.json" \
   --strict
 
 set +e
 "$C2J_BIN" test validate \
-  --recipe-file "$PWD/superpowers-rule-gate-invalid-input-smoke.yaml" \
-  --file "$ROOT_DIR/superpowers-rule-gate-invalid-input-smoke.scenario.md" \
+  --recipe-file "$TEST_DIR/superpowers-rule-gate-invalid-input-smoke.yaml" \
+  --file "$TEST_DIR/superpowers-rule-gate-invalid-input-smoke.scenario.md" \
   --parallelism 1 \
   --strict >"$WORK_DIR/rule-gate-invalid-input.log" 2>&1
 INVALID_RC=$?

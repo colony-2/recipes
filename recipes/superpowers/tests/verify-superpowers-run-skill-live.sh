@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+TEST_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WORK_DIR="/tmp/superpowers-run-skill-live"
 C2J_BIN="${C2J_BIN:-c2j}"
 
@@ -31,8 +31,8 @@ dump_diagnostics() {
 }
 
 "$C2J_BIN" test compile \
-  --recipe-file "$PWD/superpowers-run-skill-live-smoke.yaml" \
-  --file "$ROOT_DIR/superpowers-run-skill-live-smoke.scenario.md" \
+  --recipe-file "$TEST_DIR/superpowers-run-skill-live-smoke.yaml" \
+  --file "$TEST_DIR/superpowers-run-skill-live-smoke.scenario.md" \
   --out "$WORK_DIR/superpowers-run-skill-live.compiled.json" \
   --strict
 
@@ -45,7 +45,7 @@ CELL_REPO="$(prepare_cell_repo)"
 
 run_live() {
   local job_json tenant_id job_id
-  job_json="$("$C2J_BIN" submit --cell "$CELL_REPO" --recipe-file "$PWD/superpowers-run-skill-live-smoke.yaml" --embed --json)"
+  job_json="$("$C2J_BIN" submit --cell "$CELL_REPO" --recipe-file "$TEST_DIR/superpowers-run-skill-live-smoke.yaml" --embed --json)"
   tenant_id="$(printf '%s' "$job_json" | jq -r .tenant_id)"
   job_id="$(printf '%s' "$job_json" | jq -r .job_id)"
   "$C2J_BIN" run one --embed --tenant-id "$tenant_id" --job-id "$job_id" --lease-duration 10m --wait-timeout 10m
