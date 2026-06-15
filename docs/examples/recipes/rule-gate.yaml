@@ -1,0 +1,41 @@
+id: docs-rule-gate
+version: 0.1.0
+desc: c2ops rule_gate extension example.
+sequence:
+  - id: write_policy_input
+    op: command_execution
+    inputs:
+      timeout: 30s
+      working_directory: "{{ context.environment.op.outbox }}"
+      run: |
+        set -euo pipefail
+        printf '{"status":"ready","items":[1,2]}\n' > policy.json
+
+  - id: gate
+    op: git+https://github.com/colony-2/c2ops.git//rule_gate@main
+    artifacts:
+      policy.json: '${{ sequence.write_policy_input.artifacts["policy.json"] }}'
+    inputs:
+      rules:
+        - id: policy_json_parseable
+          type: json_parse
+          inbox_path: policy.json
+          message: Policy input must be parseable JSON.
+        - id: policy_schema
+          type: json_schema
+          inbox_path: policy.json
+          schema:
+            type: object
+            required: [status, items]
+            properties:
+              status:
+                type: string
+                enum: [ready]
+              items:
+                type: array
+                minItems: 1
+          message: Policy input must match the ready schema.
+outputs:
+  ok: '${{ sequence.gate.outputs.ok }}'
+  failed_rule_ids: '${{ sequence.gate.outputs.failed_rule_ids }}'
+

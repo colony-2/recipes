@@ -1,0 +1,56 @@
+id: docs-state-switch
+version: 0.1.0
+desc: Route through a state machine using a switch transition table.
+input_schema:
+  route:
+    type: string
+    required: false
+    default_value: fast
+inputs:
+  route: "{{ inputs.route }}"
+state:
+  initial: choose
+  states:
+    choose:
+      op: command_execution
+      inputs:
+        timeout: 30s
+        env:
+          ROUTE: "{{ inputs.route }}"
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          print(json.dumps({"route": os.environ["ROUTE"]}))
+          PY
+      transitions:
+        switch: json_parse(outputs.stdout).route
+        cases:
+          - value: fast
+            to: fast_path
+          - value: slow
+            to: slow_path
+        default:
+          to: unknown_path
+
+    fast_path:
+      op: command_execution
+      inputs:
+        timeout: 30s
+        run: printf 'fast path'
+
+    slow_path:
+      op: command_execution
+      inputs:
+        timeout: 30s
+        run: printf 'slow path'
+
+    unknown_path:
+      op: command_execution
+      inputs:
+        timeout: 30s
+        run: printf 'unknown path'
+outputs:
+  selected: '${{ state_output("fast_path", "stdout", first_nonempty(state_output("slow_path", "stdout", ""), state_output("unknown_path", "stdout", ""))) }}'
+
