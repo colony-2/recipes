@@ -20,7 +20,7 @@ This ticket is about c2j timeout enforcement and process cleanup. The separate C
 
 ```bash
 /tmp/c2j-local-bin/c2j test run \
-  --recipe-file /src/codex-skill-execution-smoke.yaml \
+  --recipe-file /src/recipes/smoke/codex-skill-execution-smoke.yaml \
   --file /src/recipe-tests/codex-skill-execution-smoke.scenario.md \
   --parallelism 1 \
   --artifact-mode inline \

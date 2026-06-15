@@ -21,7 +21,7 @@ This ticket is about the Codex op hanging or failing to make progress. The separ
 
 ```bash
 /tmp/c2j-local-bin/c2j test run \
-  --recipe-file /src/codex-skill-execution-smoke.yaml \
+  --recipe-file /src/recipes/smoke/codex-skill-execution-smoke.yaml \
   --file /src/recipe-tests/codex-skill-execution-smoke.scenario.md \
   --parallelism 1 \
   --artifact-mode inline \
@@ -82,13 +82,13 @@ Changes observed:
 
 - `/c2j` on `main` at `2863bbb Overlay recipe test timeouts onto execution` now enforces `--case-timeout` and cleans up the Codex subprocess tree.
 - The live smoke scenario was updated to provide enough passthrough mocks for all three `command_execution` nodes.
-- `codex-skill-execution-smoke.yaml` was updated so boolean values passed through `command_execution.inputs.env` are rendered as strings.
+- `recipes/smoke/codex-skill-execution-smoke.yaml` was updated so boolean values passed through `command_execution.inputs.env` are rendered as strings.
 
 Reevaluation command:
 
 ```bash
 /tmp/c2j-local-bin/c2j test run \
-  --recipe-file /src/codex-skill-execution-smoke.yaml \
+  --recipe-file /src/recipes/smoke/codex-skill-execution-smoke.yaml \
   --file /src/recipe-tests/codex-skill-execution-smoke.scenario.md \
   --parallelism 1 \
   --artifact-mode inline \
@@ -116,7 +116,7 @@ Reevaluation command used a shorter case timeout:
 
 ```bash
 /tmp/c2j-local-bin/c2j test run \
-  --recipe-file /src/codex-skill-execution-smoke.yaml \
+  --recipe-file /src/recipes/smoke/codex-skill-execution-smoke.yaml \
   --file /src/recipe-tests/codex-skill-execution-smoke.scenario.md \
   --parallelism 1 \
   --artifact-mode inline \
@@ -142,7 +142,7 @@ Reevaluation command:
 
 ```bash
 /tmp/c2j-local-bin/c2j test run \
-  --recipe-file /src/codex-skill-execution-smoke.yaml \
+  --recipe-file /src/recipes/smoke/codex-skill-execution-smoke.yaml \
   --file /src/recipe-tests/codex-skill-execution-smoke.scenario.md \
   --parallelism 1 \
   --artifact-mode inline \

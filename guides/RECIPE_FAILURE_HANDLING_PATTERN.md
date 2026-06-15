@@ -13,9 +13,9 @@ not specify the c2j executor implementation.
 Current recipes already handle expected business outcomes by returning structured
 outputs and branching on them:
 
-- `new-ticket.yaml` routes from implementation to review when the Codex op
+- `recipes/new-ticket/new-ticket.yaml` routes from implementation to review when the Codex op
   returns `incompleteCategory`.
-- `job-validate.yaml` uses `continue_on_error: true` so validation command
+- `recipes/new-ticket/job-validate.yaml` uses `continue_on_error: true` so validation command
   failures become outputs like `exit_code`, `success`, and `timed_out`.
 - State machines use ordered `transitions` and switch transitions to route after
   a node completes successfully.
@@ -434,7 +434,7 @@ and broader parent handlers act as fallbacks.
 
 ## Example: Timeout Takes An Alternative Path
 
-This pattern fits the existing `new-ticket.yaml` implementation state.
+This pattern fits the existing `recipes/new-ticket/new-ticket.yaml` implementation state.
 
 ```yaml
 implement:

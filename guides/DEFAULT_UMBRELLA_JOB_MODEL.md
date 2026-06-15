@@ -117,8 +117,8 @@ upstream merge and instead outputs:
 - `restart_points`: supported stage names and artifact keys
 - `pending_dependencies`: dependency jobs or required cross-cell work
 
-The current `new-ticket.yaml` already contains most of this lifecycle. A future
-split could make `default.yaml` the umbrella and make `new-ticket.yaml` or
+The current `recipes/new-ticket/new-ticket.yaml` already contains most of this lifecycle. A future
+split could make `default.yaml` the umbrella and make `recipes/new-ticket/new-ticket.yaml` or
 `new-ticket-attempt.yaml` the child attempt recipe.
 
 ## Control Form
@@ -347,8 +347,8 @@ state:
 - Should child recipes perform their own human review checkpoints, or should all
   human review happen in the umbrella?
 - Should a failed child expose partial artifacts by default?
-- Should `new-ticket.yaml` become the umbrella, or should a new `default.yaml`
-  wrap the existing `new-ticket.yaml` first and split attempt semantics later?
+- Should `recipes/new-ticket/new-ticket.yaml` become the umbrella, or should a new `default.yaml`
+  wrap the existing `recipes/new-ticket/new-ticket.yaml` first and split attempt semantics later?
 - What is the minimal status op needed for "child failure as data" in c2j?
 
 ## Recommended First Iteration

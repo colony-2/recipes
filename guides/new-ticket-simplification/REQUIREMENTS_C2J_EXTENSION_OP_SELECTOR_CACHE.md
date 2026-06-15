@@ -22,8 +22,8 @@ Observed with a one-selector mocked suite:
 
 ```bash
 c2j test validate \
-  --recipe-file /src/superpowers-run-skill-output-smoke.yaml \
-  --file /src/recipe-tests/superpowers-run-skill-output-smoke.scenario.md \
+  --recipe-file /src/recipes/superpowers/tests/superpowers-run-skill-output-smoke.yaml \
+  --file /src/recipes/superpowers/tests/superpowers-run-skill-output-smoke.scenario.md \
   --parallelism 1 \
   --json
 ```
@@ -295,8 +295,8 @@ Run a one-selector mocked validate with process tracing:
 strace -ff -tt -T -e trace=process \
   -o /tmp/c2j-selector-cache-baseline/trace \
   c2j test validate \
-    --recipe-file /src/superpowers-run-skill-output-smoke.yaml \
-    --file /src/recipe-tests/superpowers-run-skill-output-smoke.scenario.md \
+    --recipe-file /src/recipes/superpowers/tests/superpowers-run-skill-output-smoke.yaml \
+    --file /src/recipes/superpowers/tests/superpowers-run-skill-output-smoke.scenario.md \
     --parallelism 1 \
     --json
 ```
@@ -319,8 +319,8 @@ Run:
 
 ```bash
 c2j test validate \
-  --recipe-file /src/superpowers.yaml \
-  --file /src/recipe-tests/superpowers.scenario.md \
+  --recipe-file /src/recipes/superpowers/superpowers.yaml \
+  --file /src/recipes/superpowers/tests/superpowers.scenario.md \
   --parallelism 1 \
   --json
 ```

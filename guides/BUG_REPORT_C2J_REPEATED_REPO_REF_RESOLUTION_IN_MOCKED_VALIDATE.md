@@ -226,8 +226,8 @@ Profiled command:
 strace -f -ttt -T -e trace=process -s 512 \
   -o /tmp/c2j-profile-ts080/process.trace \
   c2j test validate \
-    --recipe-file /src/superpowers.yaml \
-    --file /src/recipe-tests/superpowers.scenario.md \
+    --recipe-file /src/recipes/superpowers/superpowers.yaml \
+    --file /src/recipes/superpowers/tests/superpowers.scenario.md \
     --case ts-080-superpowers-orchestrates-same-job-happy-path \
     --parallelism 1 \
     --json

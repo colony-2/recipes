@@ -29,7 +29,7 @@ outputs, failure handling, and job-story record.
 
 ## Current Friction
 
-`new-ticket.yaml` is a state machine that calls several child recipes:
+`recipes/new-ticket/new-ticket.yaml` is a state machine that calls several child recipes:
 
 - `new-ticket-triage`
 - `new-ticket-requirements-planning`
@@ -754,7 +754,7 @@ Build a prototype with existing primitives:
    artifact and schema checks.
 4. Create `new-ticket-attempt.yaml` that calls those three recipes, then the
    existing `c2-implementation-loop`, then `job-validate`, then the final gate.
-5. Keep `new-ticket.yaml` intact until the attempt recipe can satisfy the
+5. Keep `recipes/new-ticket/new-ticket.yaml` intact until the attempt recipe can satisfy the
    existing recipe tests with equivalent outputs.
 
 This gets the recipe tree cleaner immediately while preserving the current

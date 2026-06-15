@@ -10,8 +10,8 @@ through the c2ops `codex` op.
 
 This proposal is based on:
 
-- Local C2 recipe examples in this repository, especially `new-ticket.yaml`,
-  `new-ticket-*-planning.yaml`, `job-implement.yaml`, and `job-validate.yaml`.
+- Local C2 recipe examples in this repository, especially `recipes/new-ticket/new-ticket.yaml`,
+  `new-ticket-*-planning.yaml`, `recipes/jobs/job-implement.yaml`, and `recipes/new-ticket/job-validate.yaml`.
 - Local recipe authoring guidance in `guides/RECIPE_AUTHORING_GUIDE.md`,
   `guides/ops/README.md`, `guides/ops/RUN_RECIPE.md`,
   `guides/ops/OP_CODEX_EXEC.md`, `guides/NODE_SCOPE_SPEC.md`, and
@@ -1055,7 +1055,7 @@ Implementation status:
 
 `recipes/superpowers/superpowers-verify.yaml`
 
-Maps `verification-before-completion` and can reuse or wrap `job-validate.yaml`.
+Maps `verification-before-completion` and can reuse or wrap `recipes/new-ticket/job-validate.yaml`.
 
 Superpowers behavior to preserve:
 
@@ -1139,7 +1139,7 @@ Superpowers behavior to preserve:
 
 C2 adaptation:
 
-- Use `recipes/superpowers/superpowers-verify.yaml` or `job-validate.yaml`.
+- Use `recipes/superpowers/superpowers-verify.yaml` or `recipes/new-ticket/job-validate.yaml`.
 - Use a structured `input` form for merge/PR/keep/cancel.
 - Use `squashrebasemerge` for merge.
 - Do not do manual worktree cleanup unless the recipe created an extra worktree.

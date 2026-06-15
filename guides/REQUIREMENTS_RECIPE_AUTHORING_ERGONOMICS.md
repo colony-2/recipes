@@ -9,7 +9,7 @@ Draft requirements for c2j and recipe-system improvements.
 Current state-machine recipes can become hard to read when they need to safely
 pull optional values from prior states, especially review/input states.
 
-For example, `new-ticket.yaml` has to repeatedly express logic like:
+For example, `recipes/new-ticket/new-ticket.yaml` has to repeatedly express logic like:
 
 ```cel
 ("pre_implementation_review" in states &&

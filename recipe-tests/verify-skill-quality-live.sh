@@ -33,7 +33,7 @@ dump_diagnostics() {
 
 # Keep the local scenario compile-valid before running the live c2j submission.
 "$C2J_BIN" test compile \
-  --recipe-file "$PWD/skill-quality-smoke.yaml" \
+  --recipe-file "$PWD/recipes/smoke/skill-quality-smoke.yaml" \
   --file "$ROOT_DIR/skill-quality-smoke.scenario.md" \
   --out "$WORK_DIR/skill-quality.compiled.json" \
   --strict
@@ -47,7 +47,7 @@ CELL_REPO="$(prepare_cell_repo)"
 
 run_live() {
   local job_json tenant_id job_id
-  job_json="$("$C2J_BIN" submit --cell "$CELL_REPO" --recipe-file "$PWD/skill-quality-smoke.yaml" --embed --json)"
+  job_json="$("$C2J_BIN" submit --cell "$CELL_REPO" --recipe-file "$PWD/recipes/smoke/skill-quality-smoke.yaml" --embed --json)"
   tenant_id="$(printf '%s' "$job_json" | jq -r .tenant_id)"
   job_id="$(printf '%s' "$job_json" | jq -r .job_id)"
   "$C2J_BIN" run one --embed --tenant-id "$tenant_id" --job-id "$job_id" --lease-duration 45m --wait-timeout 45m

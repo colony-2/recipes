@@ -39,7 +39,7 @@ recipe-tests/verify-codex-skill-execution-live.sh
 The script:
 
 1. Creates a temporary cell repository.
-2. Submits `codex-skill-execution-smoke.yaml` through embedded c2j.
+2. Submits `recipes/smoke/codex-skill-execution-smoke.yaml` through embedded c2j.
 3. Runs the submitted job with `c2j run one`.
 4. The recipe seeds artifacts, runs a live c2ops Codex implementation step, and
    then runs a `command_execution` probe.

@@ -191,8 +191,8 @@ The same issue is visible in the Superpowers production recipe:
 
 ```bash
 c2j test compile \
-  --recipe-file superpowers.yaml \
-  --file recipe-tests/superpowers.scenario.md \
+  --recipe-file recipes/superpowers/superpowers.yaml \
+  --file recipes/superpowers/tests/superpowers.scenario.md \
   --out /tmp/superpowers.inline-test.compiled.json \
   --strict
 ```
@@ -201,15 +201,15 @@ Actual result:
 
 ```text
 Error: resolve inline recipes: resolve include "./superpowers-finish.yaml" at root/finish_work:
-parse local recipe "/src/superpowers-finish.yaml": unknown op: [squashrebasemerge] at [0:0]
+parse local recipe "/src/recipes/superpowers/superpowers-finish.yaml": unknown op: [squashrebasemerge] at [0:0]
 ```
 
 The included recipe compiles successfully on its own:
 
 ```bash
 c2j test compile \
-  --recipe-file superpowers-finish.yaml \
-  --file recipe-tests/superpowers-finish.scenario.md \
+  --recipe-file recipes/superpowers/superpowers-finish.yaml \
+  --file recipes/superpowers/tests/superpowers-finish.scenario.md \
   --out /tmp/superpowers-finish.standalone.compiled.json \
   --strict
 ```

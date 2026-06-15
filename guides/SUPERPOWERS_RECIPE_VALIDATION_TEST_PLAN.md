@@ -124,7 +124,7 @@ Validated:
   `run_skill`, TS-044/TS-045 live Codex skill execution, and TS-042/TS-043
   focused live skill-quality validation invoked as hard-failing checks.
 - focused live skill-quality smoke TS-042/TS-043 passed after narrowing
-  `skill-quality-smoke.yaml` to triage and requirements contracts. The script
+  `recipes/smoke/skill-quality-smoke.yaml` to triage and requirements contracts. The script
   compiles the scenario first, runs c2j with explicit lease/wait timeouts, and
   hard-fails on missing resources, timeout, story conflict, thin-pack restore,
   replay-cache, or c2j `ERROR` log signatures.
@@ -446,7 +446,7 @@ Focused smokes:
 
 Required live smokes:
 
-11. `skill-quality-smoke.yaml`
+11. `recipes/smoke/skill-quality-smoke.yaml`
    - Status: implemented as TS-042/TS-043.
    - Exercises focused upstream/C2-adapted triage, requirements-author, and
      bad-requirements contrarian-review contracts.

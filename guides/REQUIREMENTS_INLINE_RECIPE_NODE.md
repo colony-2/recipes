@@ -321,8 +321,8 @@ Tests should support:
 - showing source locations for failed expectations inside inlined recipes.
 
 This is the key Superpowers use case: phase behavior tests should be able to run
-against `superpowers.yaml`, while the phase recipe files remain independently
-testable during authoring.
+against `recipes/superpowers/superpowers.yaml`, while the phase recipe files
+remain independently testable during authoring.
 
 ## Requirement 11: Job Story And Diagnostics
 
@@ -348,11 +348,12 @@ The story must clearly distinguish:
 
 The feature is sufficient for the Superpowers production recipe when:
 
-- `superpowers.yaml` can inline proper recipe files for brainstorm, write-plan,
-  plan-review, execute-plan, verify, finish, and debug phases;
+- `recipes/superpowers/superpowers.yaml` can inline proper recipe files for
+  brainstorm, write-plan, plan-review, execute-plan, verify, finish, and debug
+  phases;
 - the same phase files can still be submitted directly for focused authoring;
-- production behavior tests can target `superpowers.yaml` rather than separate
-  phase harnesses;
+- production behavior tests can target `recipes/superpowers/superpowers.yaml`
+  rather than separate phase harnesses;
 - no child job is created for ordinary same-job Superpowers phases;
 - child jobs remain available only for concrete C2 job boundaries;
 - the production recipe can consume phase outputs through the inline callsite

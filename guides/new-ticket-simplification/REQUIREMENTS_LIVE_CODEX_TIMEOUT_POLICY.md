@@ -16,7 +16,7 @@ job total timed out after 30m0s
 ```
 
 That result did **not** mean one Codex op should take 30 minutes. The original
-`skill-quality-smoke.yaml` recipe was a large live integration smoke with 17
+`recipes/smoke/skill-quality-smoke.yaml` recipe was a large live integration smoke with 17
 top-level nodes, most of which invoked Codex. Logs showed many Codex ops
 successfully completing and the job continuing through the recipe before the
 overall run hit the 30-minute limit.
@@ -54,7 +54,7 @@ separate from the thin-pack git restore bug: it is job-story persistence/replay
 behavior, not git state propagation, and it now has its own bug report.
 
 The fix is not to accept 30-minute smokes as normal. The current
-`skill-quality-smoke.yaml` is focused on triage, requirements-author, and
+`recipes/smoke/skill-quality-smoke.yaml` is focused on triage, requirements-author, and
 bad-requirements contrarian-review contracts: seven top-level nodes, four live
 Codex calls, and deterministic assertions. It uses explicit `c2j run one`
 lease/wait timeouts and scans live logs for c2j failure signatures. It passed

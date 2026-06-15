@@ -8,7 +8,7 @@ mkdir -p "$WORK_DIR"
 
 # TS-024: compile writes canonical IR JSON
 c2j test compile \
-  --recipe-file "$PWD/new-ticket-triage.yaml" \
+  --recipe-file "$PWD/recipes/new-ticket/new-ticket-triage.yaml" \
   --file "$ROOT_DIR/new-ticket-triage.scenario.md" \
   --out "$WORK_DIR/triage.compiled.json" \
   --strict
@@ -21,7 +21,7 @@ fi
 # TS-025: validate returns non-zero when case selection is empty
 set +e
 c2j test validate \
-  --recipe-file "$PWD/new-ticket-triage.yaml" \
+  --recipe-file "$PWD/recipes/new-ticket/new-ticket-triage.yaml" \
   --file "$ROOT_DIR/new-ticket-triage.scenario.md" \
   --case does-not-exist \
   --parallelism 1 >/tmp/ts025.log 2>&1
@@ -35,7 +35,7 @@ fi
 
 # TS-026: run writes summary and per-case result artifacts
 c2j test run \
-  --recipe-file "$PWD/new-ticket-triage.yaml" \
+  --recipe-file "$PWD/recipes/new-ticket/new-ticket-triage.yaml" \
   --file "$ROOT_DIR/new-ticket-triage.scenario.md" \
   --case ts-001-appropriate-cell \
   --parallelism 1 \
@@ -57,7 +57,7 @@ done
 # TS-027: scenario markdown without fenced block fails compile
 set +e
 c2j test compile \
-  --recipe-file "$PWD/new-ticket-triage.yaml" \
+  --recipe-file "$PWD/recipes/new-ticket/new-ticket-triage.yaml" \
   --file "$ROOT_DIR/invalid-no-fence.md" \
   --out "$WORK_DIR/invalid.compiled.json" \
   --strict >/tmp/ts027.log 2>&1
