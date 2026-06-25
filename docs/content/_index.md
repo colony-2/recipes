@@ -1,6 +1,7 @@
 ---
 title: "c2j Authoring Reference"
 weight: 1
+description: "A verified reference for authoring c2 recipes with c2j."
 ---
 
 This site is the maintained reference for authoring c2 recipes with `c2j`.
@@ -24,4 +25,3 @@ Validated against:
 c2j version
 # c2j version v0.0.36
 ```
-

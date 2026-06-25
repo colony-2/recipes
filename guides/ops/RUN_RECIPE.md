@@ -13,6 +13,12 @@ Use these ops to start child recipes, wait for completion, and fetch outputs/art
 - `recipe.await_result_soft`: inspect a specific child job and fetch available outputs without failing solely because the child failed.
 - `recipe.get_result`: fetch outputs for a child job without waiting.
 
+Use `include` instead when the work should stay in the same parent job. Use
+`child_group` when you need first-class fan-out/fan-in with required and
+optional children, warnings, blocking issues, or aggregate output shapes. Use
+the direct child ops in this guide when you need one child, split start/wait
+lifecycle control, or explicit status routing with `recipe.await_result_soft`.
+
 ## Core Inputs
 
 ### Single recipe input (used by `recipe.run_and_get_result` and within `recipes.run*`)
@@ -58,6 +64,10 @@ defaults:
 
 If you omit `defaults`, the op still uses these template defaults internally.
 
+For `recipes.run` and `recipes.run_and_wait`, `git_ref` is an op-level shared
+input. The `recipes` list contains child recipe objects with `name`,
+`cell_name`, `inputs`, and `artifacts`.
+
 ### Output shape
 
 Child outputs are wrapped under `outputs.outputs` in the parent step output:
@@ -70,6 +80,10 @@ outputs:
 
 Child artifacts are attached to the parent job output artifacts automatically.
 You can reference those as `sequence.<step-id>.artifacts["name"]` in later nodes.
+
+The parent cannot reference arbitrary intermediate nodes inside the child job.
+Export values through the child recipe's top-level `outputs`, and make
+parent-needed files part of the child job result artifact contract.
 
 ## Ops Reference
 

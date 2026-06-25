@@ -21,6 +21,12 @@ inside a supported sandbox.
 Use `context.environment.host.*` only when you intentionally need the path as
 seen by the c2j worker host.
 
+`inputs.sandbox` currently applies to `command_execution` and selector-backed or
+local extension ops. It is not a recipe-wide flag and does not apply to
+`include`, `child_group`, child recipe ops, `input`, `sleep`, or git integration
+ops. For a child recipe, sandbox behavior is configured on the ops inside that
+child recipe.
+
 ## Available Path Context
 
 | Field | Meaning |

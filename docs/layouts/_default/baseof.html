@@ -1,103 +1,80 @@
-<!doctype html>
-<html lang="en">
+<!DOCTYPE html>
+{{- block "storeOutputFormat" . }}{{ end }}
+{{- if .IsHome }}
+  {{- $hugoVersion := "0.141.0" }}
+  {{- if lt hugo.Version $hugoVersion }}
+    {{- errorf "The Relearn theme requires Hugo %s or later" $hugoVersion }}
+  {{- end }}
+{{- end }}
+{{- if site.Params.description }}
+  {{- warnf "UNSUPPORTED usage of 'params.description' config parameter found, move it to the front matter of your home page; see https://mcshelby.github.io/hugo-theme-relearn/introduction/releasenotes/6/#6-0-0" }}
+{{- end }}
+<html id="R-html" lang="{{ .Page.Language.Locale }}" dir="{{ .Page.Language.Direction | default (T "Reading-direction") | default "ltr" }}" itemscope itemtype="http://schema.org/Article" data-r-output-format="{{ with .Store.Get "relearnOutputFormat" }}{{ . }}{{ else }}html{{ end }}">
   <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{{ if .IsHome }}{{ site.Title }}{{ else }}{{ .Title }} | {{ site.Title }}{{ end }}</title>
-    <style>
-      :root {
-        color-scheme: light;
-        --ink: #17202a;
-        --muted: #566573;
-        --line: #d8dee4;
-        --panel: #f6f8fa;
-        --accent: #0969da;
-        --code: #24292f;
-      }
-      body {
-        margin: 0;
-        color: var(--ink);
-        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        line-height: 1.55;
-        background: #fff;
-      }
-      a { color: var(--accent); text-decoration: none; }
-      a:hover { text-decoration: underline; }
-      .shell {
-        display: grid;
-        grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
-        min-height: 100vh;
-      }
-      nav {
-        border-right: 1px solid var(--line);
-        background: var(--panel);
-        padding: 24px 20px;
-      }
-      nav h1 {
-        margin: 0 0 18px;
-        font-size: 1.05rem;
-      }
-      nav ul {
-        list-style: none;
-        margin: 0;
-        padding: 0;
-      }
-      nav li { margin: 7px 0; }
-      main {
-        max-width: 980px;
-        padding: 42px 48px 72px;
-      }
-      h1, h2, h3 { line-height: 1.2; }
-      h1 { margin-top: 0; font-size: 2.1rem; }
-      h2 { margin-top: 2rem; border-bottom: 1px solid var(--line); padding-bottom: 0.25rem; }
-      table { border-collapse: collapse; width: 100%; }
-      th, td { border: 1px solid var(--line); padding: 8px 10px; text-align: left; vertical-align: top; }
-      th { background: var(--panel); }
-      code {
-        color: var(--code);
-        background: var(--panel);
-        border-radius: 4px;
-        padding: 0.1rem 0.25rem;
-      }
-      pre {
-        overflow-x: auto;
-        padding: 16px;
-        border: 1px solid var(--line);
-        border-radius: 6px;
-        background: var(--panel);
-      }
-      pre code {
-        background: transparent;
-        padding: 0;
-      }
-      .children {
-        margin-top: 2rem;
-        padding-top: 1rem;
-        border-top: 1px solid var(--line);
-      }
-      .children li { margin: 0.5rem 0; }
-      .meta { color: var(--muted); }
-      @media (max-width: 800px) {
-        .shell { display: block; }
-        nav { border-right: 0; border-bottom: 1px solid var(--line); }
-        main { padding: 28px 20px 52px; }
-      }
-    </style>
+    {{- partial "meta.html" . }}
+    {{- $title := partial "title.gotmpl" (dict "page" . "fullyQualified" true "reverse" true) }}
+    <title>{{ $title }}</title>
+
+    {{- /* multilingual stuff */}}
+    {{- if .IsTranslated -}}
+      {{- range $index, $trans := .AllTranslations }}
+        {{- if eq $index 0 }}
+    <link href="{{ partial "permalink.gotmpl" (dict "to" . "abs" true) }}" rel="alternate" hreflang="x-default">
+        {{- end }}
+    <link href="{{ partial "permalink.gotmpl" (dict "to" . "abs" true) }}" rel="alternate" hreflang="{{ .Language.Locale }}">
+      {{- end }}
+    {{- end }}
+
+    {{- /* output formats */}}
+    {{- $page := . }}
+    {{- $link := "<link href=\"%s\" rel=\"%s\" type=\"%s\" title=\"%s\">" }}
+    {{- range .AlternativeOutputFormats }}
+      {{- if eq .Rel "canonical" }}
+    {{ (printf $link (partial "permalink.gotmpl" (dict "to" . "abs" true)) .Rel .MediaType.Type ($title | htmlEscape)) | safeHTML }}
+      {{- else if not (partial "_relearn/pageIsSpecial.gotmpl" $page) }}
+    {{ (printf $link (partial "permalink.gotmpl" (dict "to" .)) .Rel .MediaType.Type ($title | htmlEscape)) | safeHTML }}
+      {{- end }}
+    {{- end }}
+
+    {{- partialCached "favicon.html" site.Home }}
+    {{- partial "dependencies.html" (dict "page" . "location" "header") }}
+    {{- partial "custom-header.html" . }}
   </head>
-  <body>
-    <div class="shell">
-      <nav aria-label="Site navigation">
-        <h1><a href="{{ site.Home.RelPermalink }}">{{ site.Title }}</a></h1>
-        <ul>
-          {{ range site.Sections.ByWeight }}
-            <li><a href="{{ .RelPermalink }}">{{ .Title }}</a></li>
-          {{ end }}
-        </ul>
+  <body class="mobile-support {{ with .Store.Get "relearnOutputFormat" }}{{ . }}{{ else }}html{{ end }}{{- if site.Params.disableHoverBlockCopyToClipBoard }} disableHoverBlockCopyToClipBoard{{ end }}" data-origin="{{ partial "permalink.gotmpl" (dict "to" .) }}">
+    <div id="R-body" class="default-animation">
+      <div id="R-body-overlay"></div>
+      <nav id="R-topbar" class="default-animation">
+        <div class="topbar-wrapper default-animation">
+          <div class="topbar-sidebar-divider default-animation"></div>
+          <div class="topbar-area topbar-area-start" data-area="start">
+            {{- partial "topbar/area/start.html" . }}
+          </div>
+          {{- $showBreadcrumb := (and (not .Params.disableBreadcrumb) (not site.Params.disableBreadcrumb)) }}
+          {{- if $showBreadcrumb }}
+          <ol class="topbar-breadcrumbs breadcrumbs highlightable" itemscope itemtype="http://schema.org/BreadcrumbList">
+            {{- partial "breadcrumbs.html" (dict "page" . "schema" true) }}
+          </ol>
+          {{- else }}
+          <span class="topbar-breadcrumbs highlightable">
+            {{ partial "title.gotmpl" (dict "page" . "linkTitle" true) }}
+          </span>
+          {{- end }}
+          <div class="topbar-area topbar-area-end" data-area="end">
+            {{- partial "topbar/area/end.html" . }}
+          </div>
+        </div>
       </nav>
-      <main>
-        {{ block "main" . }}{{ end }}
+      <div id="R-main-overlay"></div>
+      <main id="R-body-inner" class="highlightable{{ with or .Type "default" }} {{ . }}{{ end }}" tabindex="-1">
+        <div class="flex-block-wrapper">
+{{- block "body" . }}{{ end }}
+        </div>
       </main>
+{{- partial "custom-comments.html" . }}
     </div>
+{{- block "menu" . }}{{ end }}
+{{- partial "dependencies.html" (dict "page" . "location" "footer") }}
+{{- partial "custom-footer.html" . }}
+    <div id="toast-container" role="status" aria-live="polite" aria-atomic="false"></div>
   </body>
 </html>
-

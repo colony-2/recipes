@@ -23,6 +23,8 @@ continue_on_error: false
 timeout: 5m
 ```
 
+`sandbox` is supported by `command_execution`; see [Op-Visible Paths]({{% relref "/reference/op-visible-paths" %}}) for direct and sandboxed path examples.
+
 Outputs:
 
 ```yaml
@@ -64,7 +66,7 @@ Use these when manually composing child recipe orchestration:
 - `recipe.await_result_soft`
 - `recipe.get_result`
 
-Prefer `child_group` for first-class fan-out/fan-in when the shape fits.
+See [Child Recipe Ops]({{% relref "/ops/child-recipes" %}}) for invocation shapes, output wrapping, and lifecycle examples. Prefer `child_group` for first-class fan-out/fan-in when the shape fits.
 
 ## Git Ops
 
@@ -72,4 +74,3 @@ Prefer `child_group` for first-class fan-out/fan-in when the shape fits.
 - `squashrebasemerge`
 
 Use these for integration phases, not for intermediate validation.
-

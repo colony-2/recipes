@@ -232,7 +232,12 @@ Supported values today:
 - `type: none`
 - `type: shai`
 
-For `shai`, inline config can be merged into the local `.shai/config.yaml`.
+Use `context.environment.op.*` for any paths passed to the extension process.
+Those values are host paths for direct execution and sandbox-visible paths for
+`sandbox.type: shai`.
+
+Do not include `sandbox` in the extension `input_schema`; c2j consumes it before
+schema validation and before stdin is delivered to the extension process.
 
 ## Validation Timing
 
