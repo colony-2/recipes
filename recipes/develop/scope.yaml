@@ -1,0 +1,66 @@
+id: development-scope
+version: 0.2.0
+input_schema:
+  target_directory:
+    type: string
+    default_value: .
+  base_hash:
+    type: string
+    default_value: ''
+  read_only:
+    type: boolean
+    default_value: false
+  create_target:
+    type: boolean
+    default_value: false
+inputs:
+  target_directory: ${{ inputs.target_directory }}
+  base_hash: ${{ inputs.base_hash }}
+  read_only: ${{ inputs.read_only }}
+  create_target: ${{ inputs.create_target }}
+sequence:
+- id: check
+  op: command_execution
+  inputs:
+    timeout: 30s
+    env:
+      CELL_ROOT: '{{ context.environment.op.worktree_path }}'
+      TARGET_DIRECTORY: ${{ inputs.target_directory }}
+      BASE_HASH: ${{ inputs.base_hash }}
+      READ_ONLY: '${{ inputs.read_only ? "true" : "false" }}'
+      CREATE_TARGET: '${{ inputs.create_target ? "true" : "false" }}'
+    run: |
+      python3 - <<'PY'
+      import json, os, pathlib, subprocess
+      root = pathlib.Path(os.environ['CELL_ROOT']).resolve()
+      raw = os.environ['TARGET_DIRECTORY']
+      relative = pathlib.PurePosixPath(raw)
+      if not raw or relative.is_absolute() or '..' in relative.parts:
+          raise ValueError('Target must be a relative path within the cell')
+      target = (root / raw).resolve()
+      if not target.is_relative_to(root):
+          raise ValueError('Target escapes the cell through a symlink')
+      if any((root.joinpath(*relative.parts[:i])).is_symlink() for i in range(1, len(relative.parts)+1)):
+          raise ValueError('Target may not traverse symlinks')
+      if os.environ.get('CREATE_TARGET') == 'true':
+          target.mkdir(parents=True, exist_ok=True)
+      def git(*args):
+          return subprocess.check_output(['git', '-C', str(root), *args])
+      head = git('rev-parse', 'HEAD').decode().strip()
+      base = os.environ.get('BASE_HASH') or head
+      git('rev-parse', '--verify', base + '^{commit}')
+      # --no-renames reports both sides, including deletions; -z preserves unusual names.
+      changed = set(git('diff', '--no-renames', '--name-only', '-z', base, '--').split(b'\0'))
+      changed.update(git('ls-files', '--others', '--exclude-standard', '-z').split(b'\0'))
+      changed.discard(b'')
+      files = sorted(os.fsdecode(p) for p in changed)
+      if os.environ.get('READ_ONLY') == 'true' and files:
+          raise ValueError('Design/review/verification changed cell files: ' + repr(files))
+      for name in files:
+          lexical = root / name
+          if not lexical.is_relative_to(target) or not lexical.resolve().is_relative_to(target):
+              raise ValueError('Changed file escapes approved scope: ' + name)
+      print(json.dumps({'base_hash':base,'head':head,'target_directory':str(target.relative_to(root)), 'files':files, 'clean':not git('status','--porcelain').strip()}))
+      PY
+outputs:
+  snapshot: ${{ json_parse(sequence.check.outputs.stdout) }}

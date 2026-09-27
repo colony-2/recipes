@@ -56,6 +56,8 @@ run_suite_compile_and_run() {
     --evaluation-mode enforce
 }
 
+"$ROOT_DIR/run-defaults.sh"
+
 run_suite "recipes/new-ticket/new-ticket-triage.yaml" "new-ticket-triage.scenario.md" "triage"
 run_suite "recipes/new-ticket/new-ticket-requirements-planning.yaml" "new-ticket-requirements-planning.scenario.md" "requirements"
 run_suite "recipes/new-ticket/new-ticket-implementation-planning.yaml" "new-ticket-implementation-planning.scenario.md" "implementation_planning"

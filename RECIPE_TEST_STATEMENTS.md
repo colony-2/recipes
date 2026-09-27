@@ -102,6 +102,45 @@ These statements are intended to drive `c2j test` cases.
 | TS-094 | Superpowers primary orchestrator resolves inline phase recipes in embedded runtime. | `recipes/superpowers/superpowers.yaml`, `recipes/superpowers/tests/verify-superpowers-inline-primary-live.sh` | High | Live c2j integration; deps: `c2j submit --run --embed` and local inline recipe includes | Positive |
 | TS-095 | Superpowers execute-plan stops without implementation when no ready task exists. | `recipes/superpowers/superpowers-execute-plan.yaml` | High | Integration (`recipe_case`); deps: deterministic task selection + node non-execution assertions | Negative |
 
+## Default Build and Evolve Recipes
+
+| ID | Test statement | Relevant files | Importance | Level / dependencies | Case |
+|---|---|---|---|---|---|
+| TS-096 | Build presents the latest coding summary and commits only after satisfaction is confirmed. | `build.yaml`, `recipe-tests/build.scenario.md` | Critical | Integration; c2j, mocked Codex and input | Positive |
+| TS-097 | Repeated feedback continues the same coding conversation and presents each updated summary before approval. | `build.yaml`, `evolve.yaml`, `recipe-tests/verify-default-recipes.py` | Critical | Integration; c2j, mocked Codex and input | Positive |
+| TS-098 | Rejection without feedback requests feedback again and does not commit. | `build.yaml`, `evolve.yaml`, `recipe-tests/build.scenario.md`, `recipe-tests/evolve.scenario.md` | Critical | Integration; c2j, mocked Codex and input | Negative |
+| TS-099 | Failed coding or missing continuation context cannot commit or silently start a new conversation. | `build.yaml`, `evolve.yaml`, `recipe-tests/build.scenario.md`, `recipe-tests/evolve.scenario.md` | Critical | Integration; c2j, mocked Codex and input | Negative |
+| TS-100 | Evolve explains recipe-only scope, shared defaults, and committed target-cell overrides throughout the feedback loop. | `evolve.yaml`, `recipe-tests/verify-default-recipes.py` | Critical | Integration; c2j, mocked Codex and input | Positive |
+| TS-101 | Incomplete coding work requires further feedback before it can be approved. | `build.yaml`, `evolve.yaml`, `recipe-tests/build.scenario.md`, `recipe-tests/evolve.scenario.md` | High | Integration; c2j, mocked Codex and input | Negative |
+| TS-102 | Approval squashes accepted changes into the target upstream branch and reports its resulting commit. | `build.yaml`, `evolve.yaml`, `recipe-tests/verify-default-recipes.py` | Critical | Integration; c2j, git, temporary upstream repository | Positive |
+| TS-103 | Default recipe tests use disposable runtime storage independently of the persistent user database. | `recipe-tests/run-defaults.sh`, `recipe-tests/verify-default-recipes.py` | Critical | Integration; c2j passthrough harness, temporary database | Positive |
+| TS-104 | Each coding iteration supplies a structured result that passes schema validation before human review. | `build.yaml`, `evolve.yaml`, `recipe-tests/verify-default-recipes.py` | Critical | Integration; c2j, c2ops rule_gate | Positive |
+| TS-105 | Missing, malformed, or incomplete result artifacts prevent approval and upstream merge, including after previously valid iterations. | `build.yaml`, `evolve.yaml`, `recipe-tests/verify-default-recipes.py` | Critical | Integration; c2j, c2ops rule_gate | Negative |
+| TS-106 | Codex uses automatic runtime and artifact paths; only a scoped target intentionally overrides its working directory. | `build.yaml`, `evolve.yaml`, `recipe-tests/verify-default-recipes.py` | High | Integration; c2j extension defaults, c2ops Codex manifest | Positive |
+
+## Shared Development Workflow
+
+These statements extend the default-recipe contracts above. Build retains automatic
+op paths; evolve intentionally overrides the Codex working directory. The shared
+workflow adds a design/test-plan approval checkpoint before outcome acceptance.
+
+| ID | Test statement | Relevant files | Importance | Level / dependencies | Case |
+|---|---|---|---|---|---|
+| TS-107 | Build and evolve share design, test planning, independent reviews, implementation, verification, and acceptance stages. | `build.yaml`, `evolve.yaml`, `recipes/develop/develop.yaml` | Critical | Integration; c2j, mocked Codex/input | Positive |
+| TS-108 | Invalid or rejected design and test-plan results prevent implementation until revised and approved. | `recipes/develop/develop.yaml`, `recipes/develop/agent.yaml` | Critical | Integration; c2j, rule_gate | Negative |
+| TS-109 | Test statements precede implementation and identify outcomes, requirements, files, importance, test level, and dependencies. | `recipes/develop/test-plan.yaml` | Critical | Integration; c2j, command checks | Positive |
+| TS-110 | Test plans with uncovered requirements, duplicate identifiers, missing commands, or invalid statements cannot be approved. | `recipes/develop/test-plan.yaml` | Critical | Integration; c2j, rule_gate, command checks | Negative |
+| TS-111 | Feedback resumes the implementation session while independent reviewers receive fresh conversations. | `recipes/develop/develop.yaml`, `recipes/develop/agent.yaml` | Critical | Integration; c2j input rendering | Positive |
+| TS-112 | Failed or missing verification evidence prevents acceptance and upstream merge. | `recipes/develop/verify.yaml`, `recipes/develop/develop.yaml` | Critical | Integration; real command execution | Negative |
+| TS-113 | Evolve runs Codex in its configured subdirectory with sandboxing enabled and automatic artifact paths. | `evolve.yaml`, `recipes/develop/agent.yaml` | Critical | Integration; c2j rendering; launcher probe documented separately | Positive |
+| TS-114 | Out-of-scope changes and writes during design or review prevent progression, including additions, deletions, and renames. | `recipes/develop/scope.yaml`, `recipes/develop/agent.yaml` | Critical | Integration; disposable git repository | Negative |
+| TS-115 | Requirement feedback returns to design and requires renewed plan approval before implementation resumes. | `recipes/develop/develop.yaml` | Critical | Integration; c2j, mocked input | Positive |
+| TS-116 | Only verified, reviewed, explicitly accepted work can squash merge into upstream. | `recipes/develop/finish.yaml`, `recipes/develop/develop.yaml` | Critical | Integration; c2j, disposable upstream | Positive |
+| TS-117 | Traversal and symlink escapes cannot broaden the configured development scope. | `recipes/develop/scope.yaml` | Critical | Integration; disposable filesystem | Negative |
+| TS-118 | Verification preserves command logs and rejects checks that modify tracked candidate content. | `recipes/develop/verify.yaml` | High | Integration; real commands, disposable git repository | Positive/negative |
+| TS-119 | Local specialization wrappers can reference shared phases without copying sibling recipes. | `build.yaml`, `evolve.yaml`, `recipes/develop/develop.yaml` | High | Integration; c2j include resolution | Positive |
+| TS-120 | Repeated invalid human choices and blank feedback cannot bypass approvals or lose the original request. | `recipes/develop/develop.yaml` | High | Integration; c2j, mocked input | Negative |
+
 ## Notes for Test Authoring
 
 - Prefer `recipe_case` with explicit op mocks for deterministic branch coverage under test-policy sandboxing.

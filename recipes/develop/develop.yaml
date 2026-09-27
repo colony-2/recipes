@@ -1,0 +1,319 @@
+id: develop
+version: 0.2.0
+input_schema:
+  prompt:
+    type: string
+    required: true
+  mode:
+    type: string
+    default_value: build
+  target_directory:
+    type: string
+    default_value: .
+inputs:
+  prompt: ${{ inputs.prompt }}
+  mode: ${{ inputs.mode }}
+  target_directory: ${{ inputs.target_directory }}
+state:
+  initial: prepare
+  states:
+    prepare:
+      include: ./scope.yaml
+      inputs:
+        target_directory: ${{ inputs.target_directory }}
+        create_target: true
+      transitions:
+      - to: design
+        when: true
+    design:
+      include: ./design.yaml
+      inputs:
+        prompt: ${{ inputs.prompt }}
+        target_directory: ${{ inputs.target_directory }}
+        mode: ${{ inputs.mode }}
+        feedback: ${{ state_field("plan_feedback", "feedback", "") }}
+        context_json: '${{ json_stringify({"design": state_output("design", "result", {}), "design_review": state_output("design_review",
+          "result", {}), "test_plan": state_output("test_plan", "result", {}), "test_review": state_output("test_review",
+          "result", {})}) }}'
+        session_id: ${{ "" }}
+        evidence_json: '${{ json_stringify(state_exists("verify") ? states.verify.artifacts : context.artifacts)
+          }}'
+      transitions:
+      - to: design_review
+        when: outputs.valid && outputs.completed && outputs.result.status == "ready" && size(outputs.result.questions)
+          == 0 && size(outputs.result.blocking_issues) == 0
+      - to: failed
+        when: '!outputs.valid'
+      - to: plan_feedback
+        when: true
+    design_review:
+      include: ./review-design.yaml
+      inputs:
+        prompt: ${{ inputs.prompt }}
+        target_directory: ${{ inputs.target_directory }}
+        mode: ${{ inputs.mode }}
+        feedback: ${{ state_field("plan_feedback", "feedback", "") }}
+        context_json: '${{ json_stringify({"design": state_output("design", "result", {})}) }}'
+        session_id: ${{ "" }}
+        evidence_json: '${{ json_stringify(state_exists("verify") ? states.verify.artifacts : context.artifacts)
+          }}'
+      transitions:
+      - to: test_plan
+        when: outputs.valid && outputs.completed && outputs.result.status == "ready" && size(outputs.result.questions)
+          == 0 && size(outputs.result.blocking_issues) == 0
+      - to: failed
+        when: '!outputs.valid'
+      - to: plan_feedback
+        when: true
+    test_plan:
+      include: ./test-plan.yaml
+      inputs:
+        prompt: ${{ inputs.prompt }}
+        target_directory: ${{ inputs.target_directory }}
+        mode: ${{ inputs.mode }}
+        feedback: ${{ state_field("plan_feedback", "feedback", "") }}
+        context_json: '${{ json_stringify({"design": state_output("design", "result", {})}) }}'
+        session_id: ${{ "" }}
+        evidence_json: '${{ json_stringify(state_exists("verify") ? states.verify.artifacts : context.artifacts)
+          }}'
+      transitions:
+      - to: test_review
+        when: outputs.valid && outputs.completed && outputs.result.status == "ready" && size(outputs.result.questions)
+          == 0 && size(outputs.result.blocking_issues) == 0
+      - to: plan_feedback
+        when: true
+    test_review:
+      include: ./review-test-plan.yaml
+      inputs:
+        prompt: ${{ inputs.prompt }}
+        target_directory: ${{ inputs.target_directory }}
+        mode: ${{ inputs.mode }}
+        feedback: ${{ state_field("plan_feedback", "feedback", "") }}
+        context_json: '${{ json_stringify({"design": state_output("design", "result", {}), "test_plan": state_output("test_plan",
+          "result", {})}) }}'
+        session_id: ${{ "" }}
+        evidence_json: '${{ json_stringify(state_exists("verify") ? states.verify.artifacts : context.artifacts)
+          }}'
+      transitions:
+      - to: approve_plan
+        when: outputs.valid && outputs.completed && outputs.result.status == "ready" && size(outputs.result.questions)
+          == 0 && size(outputs.result.blocking_issues) == 0
+      - to: failed
+        when: '!outputs.valid'
+      - to: plan_feedback
+        when: true
+    approve_plan:
+      op: input
+      inputs:
+        form:
+          title: Approve design and test plan
+          question: |-
+            {{ vars.scope_explanation }}
+
+            Mode: {{ inputs.mode }}; target: {{ inputs.target_directory }}
+
+            Design:
+            ${{ states.design.outputs.result.design_markdown }}
+
+            Reviewed test statements and commands:
+            ${{ states.test_plan.outputs.markdown }}
+
+            Approve these outcomes before implementation?
+          type: multiple_choice
+          options:
+          - value: approve
+            label: Approve design and test plan
+          - value: revise
+            label: Revise the plan
+      transitions:
+      - to: implementation
+        when: outputs.response == "approve"
+      - to: plan_feedback
+        when: outputs.response == "revise"
+      - to: approve_plan
+        when: true
+    plan_feedback:
+      op: input
+      inputs:
+        form:
+          title: Design or test-plan feedback
+          fields:
+          - id: feedback
+            type: paragraph_text
+            required: true
+            validation:
+              pattern: \S
+            question: |-
+              {{ vars.scope_explanation }}
+
+              Resolve questions and review findings before implementation.
+              ${{ json_stringify({"design": state_output("design", "result", {}), "design_review": state_output("design_review", "result", {}), "test_review": state_output("test_review", "result", {}), "test_plan_error": state_output("test_plan", "contract_error", "")}) }}
+
+              What should change or what is the answer to the open questions?
+      transitions:
+      - to: design
+        when: has(outputs.fields.feedback) && outputs.fields.feedback.matches("[^[:space:]]")
+      - to: plan_feedback
+        when: true
+    implementation:
+      include: ./implement.yaml
+      inputs:
+        prompt: ${{ inputs.prompt }}
+        target_directory: ${{ inputs.target_directory }}
+        mode: ${{ inputs.mode }}
+        feedback: ${{ state_field("implementation_feedback", "feedback", "") }}
+        context_json: '${{ json_stringify({"design": state_output("design", "result", {}), "test_plan": state_output("test_plan",
+          "result", {}), "specification": state_output("specification", "result", {}), "quality": state_output("quality",
+          "result", {}), "verify": state_output("verify", "result", {})}) }}'
+        session_id: ${{ state_output("implementation", "session_id", "") }}
+        evidence_json: '${{ json_stringify(state_exists("verify") ? states.verify.artifacts : context.artifacts)
+          }}'
+      transitions:
+      - to: failed
+        when: outputs.session_id == "" || !outputs.valid
+      - to: specification
+        when: outputs.valid && outputs.completed && outputs.result.status == "ready" && size(outputs.result.questions)
+          == 0 && size(outputs.result.blocking_issues) == 0
+      - to: implementation_feedback
+        when: true
+    specification:
+      include: ./review-specification.yaml
+      inputs:
+        prompt: ${{ inputs.prompt }}
+        target_directory: ${{ inputs.target_directory }}
+        mode: ${{ inputs.mode }}
+        feedback: ${{ "" }}
+        context_json: '${{ json_stringify({"design": state_output("design", "result", {}), "test_plan": state_output("test_plan",
+          "result", {}), "implementation": state_output("implementation", "result", {})}) }}'
+        session_id: ${{ "" }}
+        evidence_json: '${{ json_stringify(state_exists("verify") ? states.verify.artifacts : context.artifacts)
+          }}'
+      transitions:
+      - to: quality
+        when: outputs.valid && outputs.completed && outputs.result.status == "ready" && size(outputs.result.questions)
+          == 0 && size(outputs.result.blocking_issues) == 0
+      - to: failed
+        when: '!outputs.valid'
+      - to: implementation_feedback
+        when: true
+    quality:
+      include: ./review-quality.yaml
+      inputs:
+        prompt: ${{ inputs.prompt }}
+        target_directory: ${{ inputs.target_directory }}
+        mode: ${{ inputs.mode }}
+        feedback: ${{ "" }}
+        context_json: '${{ json_stringify({"design": state_output("design", "result", {}), "test_plan": state_output("test_plan",
+          "result", {}), "implementation": state_output("implementation", "result", {})}) }}'
+        session_id: ${{ "" }}
+        evidence_json: '${{ json_stringify(state_exists("verify") ? states.verify.artifacts : context.artifacts)
+          }}'
+      transitions:
+      - to: verify
+        when: outputs.valid && outputs.completed && outputs.result.status == "ready" && size(outputs.result.questions)
+          == 0 && size(outputs.result.blocking_issues) == 0
+      - to: failed
+        when: '!outputs.valid'
+      - to: implementation_feedback
+        when: true
+    verify:
+      include: ./verify.yaml
+      inputs:
+        target_directory: ${{ inputs.target_directory }}
+        plan_json: ${{ json_stringify(states.test_plan.outputs.result) }}
+        implementation_json: ${{ json_stringify(states.implementation.outputs.result) }}
+      transitions:
+      - to: accept
+        when: outputs.ok
+      - to: implementation_feedback
+        when: true
+    accept:
+      op: input
+      inputs:
+        form:
+          title: Review verified outcome
+          question: |-
+            {{ vars.scope_explanation }}
+
+            Mode: {{ inputs.mode }}; target: {{ inputs.target_directory }}
+
+            Outcome:
+            ${{ states.implementation.outputs.result.summary }}
+
+            Verification evidence:
+            ${{ states.verify.outputs.evidence.?report_markdown.orValue(json_stringify(states.verify.outputs.evidence)) }}
+
+            Are you satisfied? Approval squashes and merges this verified candidate into upstream.
+          type: multiple_choice
+          options:
+          - value: satisfied
+            label: 'Satisfied: squash and merge'
+          - value: revise
+            label: Revise implementation
+          - value: redesign
+            label: Change requirements or design
+      transitions:
+      - to: finish
+        when: outputs.response == "satisfied"
+      - to: implementation_feedback
+        when: outputs.response == "revise"
+      - to: plan_feedback
+        when: outputs.response == "redesign"
+      - to: accept
+        when: true
+    implementation_feedback:
+      op: input
+      inputs:
+        form:
+          title: Implementation feedback
+          fields:
+          - id: feedback
+            type: paragraph_text
+            required: true
+            validation:
+              pattern: \S
+            question: |-
+              {{ vars.scope_explanation }}
+
+              Work needs revision before merge.
+              ${{ json_stringify({"implementation": state_output("implementation", "result", {}), "specification": state_output("specification", "result", {}), "quality": state_output("quality", "result", {}), "verification": state_output("verify", "evidence", {})}) }}
+
+              Provide feedback or answer the outstanding questions. Changes to requirements should use the design option at outcome review.
+      transitions:
+      - to: implementation
+        when: has(outputs.fields.feedback) && outputs.fields.feedback.matches("[^[:space:]]") && state_output("implementation",
+          "session_id", "") != ""
+      - to: implementation_feedback
+        when: true
+    finish:
+      include: ./finish.yaml
+      inputs:
+        target_directory: ${{ inputs.target_directory }}
+        base_hash: ${{ states.prepare.outputs.snapshot.head }}
+        candidate_hash: ${{ states.verify.outputs.evidence.candidate_hash }}
+        summary: ${{ states.implementation.outputs.result.summary }}
+        approved: ${{ states.accept.outputs.response == "satisfied" }}
+        verified: ${{ states.verify.outputs.ok }}
+      transitions:
+      - to: failed
+        when: '!outputs.merged'
+    failed:
+      op: command_execution
+      inputs:
+        run: |
+          printf '%s\n' 'Development stopped: invalid result, missing session, scope violation, or merge gate failure.' >&2
+          exit 1
+        timeout: 5s
+vars:
+  scope_explanation: '${{ inputs.mode == "evolve" ? "Evolve improves workflow recipes and instructions in the selected
+    directory. Shared defaults live at github.com/colony-2/recipes; committed local specializations live at .c2j/recipes/build.yaml
+    and .c2j/recipes/evolve.yaml. Only missing recipes fall back to shared defaults." : "Build implements the requested
+    software behavior in the selected cell directory." }}'
+outputs:
+  merged: ${{ state_output("finish", "merged", false) }}
+  merged_hash: ${{ state_output("finish", "merged_hash", "") }}
+  target_branch: ${{ state_output("finish", "target_branch", "") }}
+  session_id: ${{ state_output("implementation", "session_id", "") }}
+  assistant_summary: ${{ state_output("implementation", "result", {}).?summary.orValue("") }}
+  result: ${{ state_output("implementation", "result", {}) }}
+  verification: ${{ state_output("verify", "evidence", {}) }}

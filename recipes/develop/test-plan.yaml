@@ -1,0 +1,202 @@
+id: development-test-plan
+version: 0.2.0
+input_schema:
+  prompt:
+    type: string
+    required: true
+  target_directory:
+    type: string
+    default_value: .
+  mode:
+    type: string
+    default_value: build
+  feedback:
+    type: string
+    default_value: ''
+  context_json:
+    type: string
+    default_value: '{}'
+  session_id:
+    type: string
+    default_value: ''
+  evidence_json:
+    type: string
+    default_value: '{}'
+inputs:
+  prompt: ${{ inputs.prompt }}
+  target_directory: ${{ inputs.target_directory }}
+  mode: ${{ inputs.mode }}
+  feedback: ${{ inputs.feedback }}
+  context_json: ${{ inputs.context_json }}
+  session_id: ${{ inputs.session_id }}
+  evidence_json: ${{ inputs.evidence_json }}
+vars:
+  result_schema:
+    type: object
+    additionalProperties: false
+    required:
+    - status
+    - summary
+    - blocking_issues
+    - questions
+    - statements
+    - commands
+    properties:
+      status:
+        type: string
+        enum:
+        - ready
+        - revise
+        - needs_input
+      summary: &id001
+        type: string
+        pattern: \S
+      blocking_issues:
+        type: array
+        items: *id001
+        minItems: 0
+      questions:
+        type: array
+        items: *id001
+        minItems: 0
+      statements:
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          required:
+          - id
+          - statement
+          - requirement_ids
+          - files
+          - importance
+          - level
+          - dependencies
+          - case
+          properties:
+            id: *id001
+            statement: *id001
+            requirement_ids:
+              type: array
+              items: *id001
+              minItems: 1
+            files:
+              type: array
+              items: *id001
+              minItems: 1
+            importance:
+              enum:
+              - critical
+              - high
+              - normal
+            level:
+              enum:
+              - unit
+              - integration
+            dependencies:
+              type: array
+              items: *id001
+              minItems: 0
+            case:
+              enum:
+              - positive
+              - negative
+        minItems: 1
+      commands:
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          required:
+          - id
+          - run
+          - statement_ids
+          - timeout_seconds
+          properties:
+            id: *id001
+            run: *id001
+            statement_ids:
+              type: array
+              items: *id001
+              minItems: 1
+            timeout_seconds:
+              type: integer
+              minimum: 1
+              maximum: 600
+        minItems: 1
+state:
+  initial: author
+  states:
+    author:
+      include: ./agent.yaml
+      inputs:
+        prompt: ${{ inputs.prompt }}
+        target_directory: ${{ inputs.target_directory }}
+        mode: ${{ inputs.mode }}
+        feedback: ${{ inputs.feedback }}
+        context_json: ${{ inputs.context_json }}
+        session_id: ${{ inputs.session_id }}
+        evidence_json: ${{ inputs.evidence_json }}
+        instructions: Write outcome-focused test statements BEFORE implementation. Each statement has a stable ID,
+          at most 30 words, requirement IDs, files, importance, unit/integration level, dependencies, and positive/negative
+          case. Include both cases for critical requirements. Define real verification commands relative to the
+          approved target with statement IDs and bounded timeouts. Use existing GitHub workflows where appropriate.
+          Tests of recipes must use c2j test with disposable databases, never a home-sourced database. Do not edit
+          cell files.
+        result_schema_json: ${{ json_stringify(vars.result_schema) }}
+      transitions:
+      - to: contract
+        when: outputs.valid && outputs.completed && outputs.result.status == "ready" && size(outputs.result.blocking_issues)
+          == 0 && size(outputs.result.questions) == 0
+    contract:
+      op: command_execution
+      inputs:
+        timeout: 15s
+        continue_on_error: true
+        env:
+          PLAN_JSON: ${{ json_stringify(states.author.outputs.result) }}
+          DESIGN_CONTEXT: ${{ inputs.context_json }}
+          OUTBOX: '{{ context.environment.op.outbox }}'
+        run: |
+          python3 - <<'PY'
+          import json, os, pathlib
+          plan=json.loads(os.environ['PLAN_JSON'])
+          context=json.loads(os.environ['DESIGN_CONTEXT'])
+          requirements={x['id'] for x in context['design']['requirements']}
+          assert len(requirements)==len(context['design']['requirements']), 'Duplicate requirement IDs'
+          statements=plan['statements']; ids=[s['id'] for s in statements]
+          assert len(set(ids))==len(ids), 'Duplicate statement IDs'
+          covered=set(); critical=set(); cases={r:set() for r in requirements}
+          for s in statements:
+              assert len(s['statement'].split())<=30, 'Statement exceeds 30 words'
+              refs=set(s['requirement_ids']); assert refs and refs<=requirements, 'Unknown requirement'
+              covered |= refs
+              for r in refs: cases[r].add(s['case'])
+              if s['importance']=='critical': critical |= refs
+              for file in s['files']:
+                  p=pathlib.PurePosixPath(file)
+                  assert not p.is_absolute() and '..' not in p.parts, 'Invalid statement filename'
+          assert covered==requirements, 'Uncovered requirements'
+          assert all(cases[r]=={'positive','negative'} for r in critical), 'Missing critical negative coverage'
+          commands=plan['commands']; command_ids=[c['id'] for c in commands]
+          assert commands and len(set(command_ids))==len(command_ids), 'Missing/duplicate commands'
+          verified=set()
+          for c in commands:
+              refs=set(c['statement_ids']); assert refs and refs<=set(ids), 'Unknown statement'
+              verified |= refs
+          assert verified==set(ids), 'Unverified statements'
+          lines=['# Test statements', '']
+          for s in statements:
+              lines += [f"- **{s['id']}**: {s['statement']}",
+                        '  Files: '+', '.join(s['files'])+'; importance: '+s['importance']+'; '+s['level']+'; '+s['case']+'; dependencies: '+(', '.join(s['dependencies']) or 'none')+'; requirements: '+', '.join(s['requirement_ids'])]
+          pathlib.Path(os.environ['OUTBOX'],'test-statements.md').write_text('\n'.join(lines)+'\n')
+          print(json.dumps({'ok':True, 'markdown':'\n'.join(lines)+'\n'}))
+          PY
+outputs:
+  markdown: '${{ state_output("contract", "success", false) ? json_parse(states.contract.outputs.stdout).?markdown.orValue("")
+    : "" }}'
+  valid: ${{ states.author.outputs.valid && state_output("contract", "success", false) }}
+  completed: ${{ states.author.outputs.completed }}
+  result: ${{ states.author.outputs.result }}
+  session_id: ${{ states.author.outputs.session_id }}
+  contract_error: ${{ state_output("contract", "stderr", "") }}

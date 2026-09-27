@@ -117,7 +117,7 @@ Write recipes with these rules:
 - use `json_parse(...)` when consuming `llm2` responses produced under `response_schema`
 - guard optional values with `has(...)` before indexing or dereferencing
 
-For c2ops `codex`, use `git+https://github.com/colony-2/c2ops.git//codex@main` so the op tracks the latest c2ops changes, and pass the op-visible paths explicitly:
+For c2ops `codex`, use `git+https://github.com/colony-2/c2ops.git//codex@main` so the op tracks the latest c2ops changes. Its manifest supplies these op-visible path defaults automatically; omit them from recipe inputs unless intentionally overriding a path:
 
 - `worktree_path: "{{ context.environment.op.worktree_path }}"`
 - `workdir_path: "{{ context.environment.op.workdir }}"`

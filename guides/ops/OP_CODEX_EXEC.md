@@ -24,10 +24,14 @@ Common fields:
 - `model`: Codex model override.
 - `env`: extra environment variables.
 - `sandbox`: reserved c2j extension sandbox config. Use `sandbox.type: none` to run the extension process without the c2j wrapper sandbox.
-- `worktree_path` (required): current cell worktree root as seen by the running op process. Prefer `{{ context.environment.op.worktree_path }}`.
-- `workdir_path`: operation workdir root as seen by the running op process.
-- `artifact_inbox_path`: operation inbox path as seen by the running op process.
-- `artifact_outbox_path`: operation outbox path as seen by the running op process.
+- `worktree_path`: defaults to `{{ context.environment.op.worktree_path }}`.
+- `workdir_path`: defaults to `{{ context.environment.op.workdir }}`.
+- `artifact_inbox_path`: defaults to `{{ context.environment.op.inbox }}`.
+- `artifact_outbox_path`: defaults to `{{ context.environment.op.outbox }}`.
+
+These paths are resolved by the extension manifest. Recipes should omit the
+inputs unless they need an explicit override. The resolved worktree is required
+by the Codex implementation, but callers do not need to supply it themselves.
 
 Skill-related fields:
 - `skill`: optional top-level skill to enforce for this invocation.
@@ -65,7 +69,6 @@ Merged precedence during execution:
   op: git+https://github.com/colony-2/c2ops.git//codex@main
   inputs:
     prompt: "Summarize the changes in this repo."
-    worktree_path: "{{ context.environment.op.worktree_path }}"
 ```
 
 ## Example: Skill Sources via Git Refs
@@ -82,8 +85,16 @@ Merged precedence during execution:
     skills:
       - "github.com/acme/codex-platform-skills/.agents/skills@platform-v12"
       - "github.com/acme/payments-cell-skills/.agents/skills@main"
-    worktree_path: "{{ context.environment.op.worktree_path }}"
 ```
+
+## Structured Results
+
+The plain Codex op already enforces its normalized execution envelope
+(`status`, `assistantSummary`, and related fields). It does not expose a custom
+`response_schema` input for task-specific results. Ask Codex to write a JSON
+artifact in the op outbox, include the desired schema in its prompt, and bind
+that artifact to c2ops `rule_gate` with a `json_schema` rule before consuming it.
+`codex/run_skill` also supports an artifact output contract when running a skill.
 
 ## Test Mocks
 
@@ -164,3 +175,13 @@ Example:
   }
 }
 ```
+
+## Scoped development recipes
+
+`worktree_path` also selects Codex's starting directory. The shared evolve
+workflow intentionally overrides it with the cell worktree plus `.c2j`, while
+leaving runtime and artifact paths at their defaults. Build retains all defaults.
+Both enable the supported Shai wrapper. The current launcher disables native
+Codex sandboxing, and the outer wrapper grants workspace-wide writes: see
+[the scoped sandbox report](../BUG_REPORT_SCOPED_CODEX_SANDBOX.md). Do not infer
+write isolation from a subdirectory cwd; enforce recipe scope checks as well.

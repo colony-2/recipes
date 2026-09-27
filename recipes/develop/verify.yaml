@@ -1,0 +1,66 @@
+id: development-verify
+version: 0.2.0
+input_schema:
+  target_directory:
+    type: string
+    default_value: .
+  plan_json:
+    type: string
+    required: true
+  implementation_json:
+    type: string
+    required: true
+inputs:
+  target_directory: ${{ inputs.target_directory }}
+  plan_json: ${{ inputs.plan_json }}
+  implementation_json: ${{ inputs.implementation_json }}
+sequence:
+- id: execute
+  op: command_execution
+  inputs:
+    timeout: 60m
+    continue_on_error: true
+    sandbox:
+      type: shai
+    env:
+      CELL_ROOT: '{{ context.environment.op.worktree_path }}'
+      TARGET_DIRECTORY: ${{ inputs.target_directory }}
+      PLAN_JSON: ${{ inputs.plan_json }}
+      IMPLEMENTATION_JSON: ${{ inputs.implementation_json }}
+      OUTBOX: '{{ context.environment.op.outbox }}'
+    run: |
+      python3 - <<'PY'
+      import json, os, pathlib, subprocess, signal
+      root=pathlib.Path(os.environ['CELL_ROOT']).resolve()
+      target=(root/os.environ['TARGET_DIRECTORY']).resolve()
+      assert target.is_relative_to(root), 'Target escapes cell'
+      plan=json.loads(os.environ['PLAN_JSON']); implementation=json.loads(os.environ['IMPLEMENTATION_JSON'])
+      ids={s['id'] for s in plan['statements']}
+      assert ids and {s['statement_id'] for s in implementation['statement_tests']}==ids, 'Implementation does not map every test statement'
+      commands=plan['commands']; assert commands, 'No verification commands'
+      out=pathlib.Path(os.environ['OUTBOX']); evidence=[]
+      def git(*args): return subprocess.check_output(['git','-C',str(root),*args]).decode().strip()
+      head=git('rev-parse','HEAD')
+      assert not git('status','--porcelain'), 'Candidate must be clean before verification'
+      for i, command in enumerate(commands):
+          log=out/f'check-{i+1}.log'
+          with log.open('wb') as stream:
+              process=subprocess.Popen(['bash','-euo','pipefail','-c',command['run']],cwd=target,stdout=stream,stderr=subprocess.STDOUT,start_new_session=True)
+              timed_out=False
+              try: rc=process.wait(timeout=command['timeout_seconds'])
+              except subprocess.TimeoutExpired:
+                  timed_out=True; os.killpg(process.pid,signal.SIGKILL); process.wait(); rc=124
+          evidence.append({'id':command['id'],'statement_ids':command['statement_ids'],'exit_code':rc,'timed_out':timed_out,'log':log.name})
+      covered={sid for sid in ids if any(sid in c['statement_ids'] for c in evidence) and all(c['exit_code']==0 for c in evidence if sid in c['statement_ids'])}
+      clean=git('rev-parse','HEAD')==head and not git('status','--porcelain')
+      report='\n'.join('- '+s['id']+': '+s['statement']+' — '+('passed' if s['id'] in covered else 'FAILED') for s in plan['statements'])
+      result={'report_markdown':report,'ok':clean and covered==ids and all(c['exit_code']==0 for c in evidence),'candidate_hash':head,'checks':evidence,'candidate_unchanged':clean}
+      (out/'verification.json').write_text(json.dumps(result,indent=2)+'\n')
+      print(json.dumps(result))
+      PY
+outputs:
+  result: '${{ sequence.execute.outputs.success ? json_parse(sequence.execute.outputs.stdout) : {"ok": false, "error":
+    sequence.execute.outputs.stderr} }}'
+  ok: ${{ sequence.execute.outputs.success && json_parse(sequence.execute.outputs.stdout).ok }}
+  evidence: '${{ sequence.execute.outputs.success ? json_parse(sequence.execute.outputs.stdout) : {"ok": false,
+    "error": sequence.execute.outputs.stderr} }}'
