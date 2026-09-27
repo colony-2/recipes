@@ -1,0 +1,76 @@
+id: development-wait-children
+version: 0.1.0
+input_schema:
+  job_ids_json:
+    type: string
+    required: true
+  history_json:
+    type: string
+    default_value: '{}'
+inputs:
+  job_ids_json: ${{ inputs.job_ids_json }}
+  history_json: ${{ inputs.history_json }}
+state:
+  initial: select
+  states:
+    select:
+      op: command_execution
+      inputs:
+        timeout: 5s
+        env:
+          JOB_IDS: ${{ inputs.job_ids_json }}
+          HISTORY: ${{ state_output("record", "stdout", inputs.history_json) }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          ids=json.loads(os.environ['JOB_IDS'])
+          history=json.loads(os.environ['HISTORY'])
+          assert isinstance(ids,list) and all(isinstance(i,str) and i.strip() for i in ids)
+          assert isinstance(history,dict)
+          pending=sorted(set(ids)-history.keys())
+          current=[history[i] for i in set(ids) if i in history]
+          ok=not pending and all(r.get('terminal') is True and r.get('status')=='completed'
+              and r.get('outputs',{}).get('merged',True) is True for r in current)
+          # Artifact-set expansion uses each ref's name, not its map key.
+          # Change the inbox alias while preserving the stored artifact identity.
+          artifacts={f'{job}/{name}': {**ref, 'name':f'{job}/{name}'}
+              for job,r in history.items() for name,ref in r.get('artifacts',{}).items()}
+          print(json.dumps({'next':pending[0] if pending else '', 'ok':ok,
+              'results':history, 'child_artifacts':artifacts}))
+          PY
+      transitions:
+      - to: await
+        when: json_parse(outputs.stdout).next != ""
+    await:
+      op: recipe.await_result_soft
+      inputs:
+        job_id: ${{ json_parse(states.select.outputs.stdout).next }}
+        return_when: terminal
+      transitions:
+      - to: record
+        when: true
+    record:
+      op: command_execution
+      inputs:
+        timeout: 5s
+        env:
+          HISTORY: ${{ json_stringify(json_parse(states.select.outputs.stdout).results) }}
+          CHILD: ${{ json_stringify(states.await.outputs) }}
+          JOB_ID: ${{ json_parse(states.select.outputs.stdout).next }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          history=json.loads(os.environ['HISTORY'])
+          child=json.loads(os.environ['CHILD'])
+          assert child.get('job_id') == os.environ['JOB_ID'], 'Await returned a different child'
+          assert child.get('terminal') is True, 'Terminal await returned a nonterminal child'
+          history[os.environ['JOB_ID']]=child
+          print(json.dumps(history))
+          PY
+      transitions:
+      - to: select
+        when: true
+outputs:
+  ok: ${{ json_parse(states.select.outputs.stdout).ok }}
+  results: ${{ json_parse(states.select.outputs.stdout).results }}
+  child_artifacts: ${{ json_parse(states.select.outputs.stdout).child_artifacts }}

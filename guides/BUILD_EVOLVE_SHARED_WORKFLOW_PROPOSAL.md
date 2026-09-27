@@ -41,12 +41,22 @@ Phase files live under `recipes/develop/`:
 | `review-specification.yaml`, `review-quality.yaml` | Separate specification review from quality review | Two independent structured verdicts with actionable issues |
 | `verify.yaml` | Execute approved checks against the candidate revision and validate change scope | Command logs, exit codes, per-statement evidence, candidate hash |
 | `finish.yaml` | Check acceptance, scope and candidate freshness, then squash merge upstream | Merge hash; human review and feedback are owned by `develop.yaml` |
+| `agent.yaml`, `wait-children.yaml` | Capture children created by a phase, await required outcomes, and resume the same session | Child results keyed by job ID, namespaced artifact references, dependency history |
 
 Use includes for normal same-job phase composition, keeping git state and session
 continuation explicit. Use child jobs for actual cross-cell or lifecycle
 boundaries. Local entrypoint specializations reference the shared workflow by
 selector; they should not need copies of every phase. Shared relative includes
 must resolve from their source repository and pinned commit.
+
+Cross-cell prerequisites are submitted asynchronously from Codex using `c2j
+submit --cell ...`. Each phase captures the op's `jobs.job_ids` and awaits all
+children through `recipe.await_result_soft`. Success resumes the requesting
+session with outputs and artifacts; failure, cancellation, or an explicit
+`merged: false` requires feedback. The requesting phase must produce a fresh
+result after consuming successful dependencies. Phase history survives human
+revision loops and is exported by both entrypoints. Runtime services and workers
+must support brokered submission; tests run a separate disposable JobDB service.
 
 ## Review and revision flow
 

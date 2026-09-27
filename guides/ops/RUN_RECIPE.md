@@ -184,9 +184,10 @@ returned as structured data instead of automatically failing the parent node.
 
 Inputs:
 - `job_id`: string
-- `timeout`: optional duration
-- `poll_interval`: optional duration
 - `return_when`: optional `terminal` or `current_status`
+
+`timeout` and `poll_interval` are rejected by this op. Terminal waits use JobDB
+dependency scheduling; workers must also be available to run the child jobs.
 
 Outputs:
 - `job_id`: child job ID
@@ -196,8 +197,9 @@ Outputs:
 - `failure_kind`: recommended values include `none`, `task_error`, `timeout`,
   `system_error`, `cancellation`, and `unknown`
 - `failure_message`: string
-- `outputs.outputs`: child recipe outputs map when available
-- child artifacts are attached to the parent node artifacts when available
+- `outputs`: child recipe outputs map when available (for example,
+  `states.wait_soft.outputs.outputs.merged` from a containing state machine)
+- `artifacts`: child artifact references when available; bind these to later ops' inboxes
 
 Example:
 ```yaml

@@ -31,6 +31,9 @@ input_schema:
   writable:
     type: boolean
     default_value: false
+  dependency_history_json:
+    type: string
+    default_value: '{}'
 inputs:
   prompt: ${{ inputs.prompt }}
   target_directory: ${{ inputs.target_directory }}
@@ -42,6 +45,7 @@ inputs:
   instructions: ${{ inputs.instructions }}
   result_schema_json: ${{ inputs.result_schema_json }}
   writable: ${{ inputs.writable }}
+  dependency_history_json: ${{ inputs.dependency_history_json }}
 state:
   initial: snapshot
   states:
@@ -60,11 +64,18 @@ state:
         env:
           CONTEXT_JSON: ${{ inputs.context_json }}
           OUTBOX: '{{ context.environment.op.outbox }}'
+          DEPENDENCIES_JSON: ${{ json_stringify(state_output("dependencies", "results", json_parse(inputs.dependency_history_json)))
+            }}
         run: |
           python3 - <<'PY'
           import json, os, pathlib
           value=json.loads(os.environ['CONTEXT_JSON'])
+          dependencies=json.loads(os.environ['DEPENDENCIES_JSON'])
+          if dependencies:
+              value={'phase':value, 'dependencies':dependencies}
           pathlib.Path(os.environ['OUTBOX'], 'context.json').write_text(json.dumps(value))
+          print(json.dumps({f'{job}/{name}': {**ref, 'name':f'{job}/{name}'}
+              for job,r in dependencies.items() for name,ref in r.get('artifacts',{}).items()}))
           PY
       transitions:
       - to: run
@@ -76,12 +87,13 @@ state:
         mode: ${{ inputs.mode }}
         feedback: ${{ inputs.feedback }}
         context_json: ${{ inputs.context_json }}
-        session_id: ${{ inputs.session_id }}
+        session_id: ${{ state_output("run", "session_id", inputs.session_id) }}
         evidence_json: ${{ inputs.evidence_json }}
         instructions: ${{ inputs.instructions }}
         result_schema_json: ${{ inputs.result_schema_json }}
         writable: ${{ inputs.writable }}
         prepared_context_json: ${{ json_stringify(states.prepare_context.artifacts) }}
+        dependency_artifacts_json: ${{ states.prepare_context.outputs.stdout }}
       state:
         initial:
         - to: root
@@ -95,6 +107,7 @@ state:
               submitted/: ${{ context.artifacts }}
               prior/: ${{ json_parse(inputs.evidence_json) }}
               phase/: ${{ json_parse(inputs.prepared_context_json) }}
+              dependencies/: ${{ json_parse(inputs.dependency_artifacts_json) }}
             inputs:
               prompt: |
                 {{ inputs.instructions }}
@@ -118,6 +131,18 @@ state:
                 Design and reviewers must not edit cell files. Implementation may edit only the approved target.
                 Changed workflow instructions do not alter the gates governing this run.
                 Write only phase artifacts to {{ context.environment.op.outbox }}.
+                When another cell must do prerequisite work, submit it using c2j submit with an explicit --cell
+                and --build or --evolve. Preserve inherited C2J_CURRENT_* and C2J_CHILD_JOB_* environment.
+                Submit asynchronously, without --run, and finish submission before this op returns.
+                Every child you create is required: the recipe captures this op's jobs metadata and waits for all.
+                Do independent work first; then yield a schema-valid needs_input result explaining the dependency.
+                Do not poll with c2j list or resubmit a captured job. Ambiguous submission errors need reconciliation,
+                not blind retries. Do not launch optional background jobs through this workflow.
+                On resumption, read child outcomes in that context file and artifacts under
+                {{ context.environment.op.inbox }}/dependencies.
+                Incorporate the completed dependency into this cell, check compatible commits/versions explicitly,
+                and rerun affected checks. Child completion alone does not refresh this cell's git snapshot.
+                Failed or cancelled children require human feedback before replacement or a change of approach.
                 Always write result.json there using this exact JSON Schema:
                 ${{ inputs.result_schema_json }}
                 Use status needs_input for unanswered questions, revise for blocking issues, and ready only
@@ -131,6 +156,7 @@ state:
               submitted/: ${{ context.artifacts }}
               prior/: ${{ json_parse(inputs.evidence_json) }}
               phase/: ${{ json_parse(inputs.prepared_context_json) }}
+              dependencies/: ${{ json_parse(inputs.dependency_artifacts_json) }}
             inputs:
               prompt: |
                 {{ inputs.instructions }}
@@ -154,6 +180,18 @@ state:
                 Design and reviewers must not edit cell files. Implementation may edit only the approved target.
                 Changed workflow instructions do not alter the gates governing this run.
                 Write only phase artifacts to {{ context.environment.op.outbox }}.
+                When another cell must do prerequisite work, submit it using c2j submit with an explicit --cell
+                and --build or --evolve. Preserve inherited C2J_CURRENT_* and C2J_CHILD_JOB_* environment.
+                Submit asynchronously, without --run, and finish submission before this op returns.
+                Every child you create is required: the recipe captures this op's jobs metadata and waits for all.
+                Do independent work first; then yield a schema-valid needs_input result explaining the dependency.
+                Do not poll with c2j list or resubmit a captured job. Ambiguous submission errors need reconciliation,
+                not blind retries. Do not launch optional background jobs through this workflow.
+                On resumption, read child outcomes in that context file and artifacts under
+                {{ context.environment.op.inbox }}/dependencies.
+                Incorporate the completed dependency into this cell, check compatible commits/versions explicitly,
+                and rerun affected checks. Child completion alone does not refresh this cell's git snapshot.
+                Failed or cancelled children require human feedback before replacement or a change of approach.
                 Always write result.json there using this exact JSON Schema:
                 ${{ inputs.result_schema_json }}
                 Use status needs_input for unanswered questions, revise for blocking issues, and ready only
@@ -165,6 +203,8 @@ state:
         status: '${{ state_exists("scoped") ? states.scoped.outputs.status : states.root.outputs.status }}'
         session_id: '${{ state_exists("scoped") ? states.scoped.outputs.?sessionId.orValue("") : states.root.outputs.?sessionId.orValue("")
           }}'
+        child_job_ids: '${{ state_exists("scoped") ? (has(states.scoped.jobs.job_ids) ? states.scoped.jobs.job_ids :
+          []) : (has(states.root.jobs.job_ids) ? states.root.jobs.job_ids : []) }}'
       transitions:
       - to: scope
         when: true
@@ -175,6 +215,8 @@ state:
         base_hash: ${{ states.snapshot.outputs.snapshot.head }}
         read_only: ${{ !inputs.writable }}
       transitions:
+      - to: dependencies
+        when: size(states.run.outputs.child_job_ids) > 0
       - to: schema
         when: true
     schema:
@@ -208,9 +250,42 @@ state:
               pathlib.Path(os.environ['OUTBOX'], 'design.md').write_text(result['design_markdown']+'\n')
           print(json.dumps(result))
           PY
+      transitions:
+      - to: blocked
+        when: size(states.run.outputs.child_job_ids) > 0 && !states.dependencies.outputs.ok
+      - to: prepare_context
+        when: size(states.run.outputs.child_job_ids) > 0 && states.dependencies.outputs.ok && states.run.outputs.session_id
+          != "" && states.run.outputs.status in ["completed", "incomplete"]
+    dependencies:
+      include: ./wait-children.yaml
+      inputs:
+        job_ids_json: ${{ json_stringify(states.run.outputs.child_job_ids) }}
+        history_json: ${{ json_stringify(state_output("dependencies", "results", json_parse(inputs.dependency_history_json)))
+          }}
+      transitions:
+      - to: schema
+        when: true
+    blocked:
+      op: command_execution
+      inputs:
+        timeout: 5s
+        env:
+          RESULT_JSON: ${{ states.read.outputs.stdout }}
+          DEPENDENCIES_JSON: ${{ json_stringify(states.dependencies.outputs.results) }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          result=json.loads(os.environ['RESULT_JSON'])
+          result['status']='needs_input'
+          result['summary']+=' Required child work did not complete successfully.'
+          result['questions'].append('Resolve failed, cancelled, or unmerged dependencies before continuing: '+os.environ['DEPENDENCIES_JSON'])
+          print(json.dumps(result))
+          PY
 outputs:
-  valid: ${{ state_output("schema", "ok", false) && state_exists("read") && state_output("run", "status", "") in
-    ["completed", "incomplete"] }}
-  result: ${{ json_parse(state_output("read", "stdout", "{}")) }}
+  valid: ${{ state_output("schema", "ok", false) && state_exists("read") && state_output("run", "status", "") in ["completed",
+    "incomplete"] }}
+  result: ${{ json_parse(state_output("blocked", "stdout", state_output("read", "stdout", "{}"))) }}
   session_id: ${{ state_output("run", "session_id", "") }}
-  completed: ${{ state_output("run", "status", "") == "completed" }}
+  completed: ${{ state_output("run", "status", "") == "completed" && (size(state_output("run", "child_job_ids", []))
+    == 0 || state_exists("blocked")) }}
+  dependencies: ${{ state_output("dependencies", "results", json_parse(inputs.dependency_history_json)) }}

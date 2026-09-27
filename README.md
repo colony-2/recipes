@@ -46,6 +46,25 @@ prior artifacts and feedback. Incomplete implementation requests feedback; inval
 artifacts and missing continuation sessions fail without merging. Automatic c2j
 checkpoints preserve edits; only final acceptance publishes them.
 
+Any phase can request prerequisite work in another cell with asynchronous
+`c2j submit ... --cell <owner> --build` (or `--evolve`). The shared agent captures
+the submitting op's `jobs.job_ids`, waits for every child using
+`recipe.await_result_soft`, and resumes the same Codex session with child results
+and namespaced artifacts. It deduplicates by job ID and retains results across
+dependency rounds. A successful child cannot approve the parent's earlier result:
+Codex must incorporate the dependency before reviews and verification continue.
+Failed, cancelled, or explicitly unmerged children require human feedback.
+The workflow neither retries submissions nor cancels children automatically.
+Cancelled parents may leave children running; operators must cancel those separately.
+
+Cross-cell submission requires a JobDB service, available workers, and `c2j`
+installed in the op sandbox with `C2J_JOBDB` configured for that service and tenant.
+Embedded execution is suitable for local authoring without subprocess children.
+The inherited broker environment must reach Codex subprocesses. Child completion
+does not refresh the parent's repository snapshot: the resumed agent must consume
+the correct dependency version within its approved scope. An upstream advancement
+still requires a fresh verified candidate before merge.
+
 Each phase writes a schema-validated `result.json` artifact. Test statements are
 also rendered as Markdown, with requirement IDs, filenames, importance, test
 level and dependencies. The contract rejects uncovered requirements, duplicate
@@ -85,8 +104,12 @@ input_schema:
   prompt:
     type: string
     required: true
+  type:
+    type: string
+    default_value: evolve
 inputs:
   prompt: '${{ inputs.prompt }}'
+  type: '${{ inputs.type }}'
 sequence:
   - id: develop
     include: git+https://github.com/colony-2/recipes.git//recipes/develop/develop.yaml@main
@@ -119,6 +142,10 @@ against disposable repositories. c2j passthrough runtimes use temporary database
 with scratch files under a per-run `TMPDIR`; tests never submit to the home
 embedded database. Rendered sandbox configuration is covered, but a live Codex
 or Shai container run is not part of this deterministic suite.
+The suite also starts a separate temporary in-memory JobDB service and independent
+c2j workers to test brokered cross-cell submission, durable waits, worker replacement,
+session resumption, and dependency artifacts. The test server binds only to loopback
+and exits with the suite; it uses no persistent database.
 
 ## Authoring Loop
 

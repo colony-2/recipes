@@ -168,7 +168,11 @@ def run_suite(recipe, suite, dest, *, parallelism=1, failure_contains=None):
 def verify_routing(work):
     instrument(ROOT, work / "observed")
     for name in ("build", "evolve"):
-        results = run_suite(work / "observed" / f"{name}.yaml", routing_cases(), work / name, parallelism=4)
+        cases = routing_cases()
+        # c2j's named build/evolve submission contract injects this field.
+        for test in cases:
+            test["inputs"]["type"] = name
+        results = run_suite(work / "observed" / f"{name}.yaml", cases, work / name, parallelism=4)
         for case_id, result in results.items():
             observations = result["run"]["diagnostics"].get("vars", [])
             observed = [(o["node_path"], o["vars"]["observed_inputs"]) for o in observations if "observed_inputs" in o["vars"]]
