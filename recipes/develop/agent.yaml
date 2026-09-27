@@ -136,13 +136,19 @@ state:
                 Submit asynchronously, without --run, and finish submission before this op returns.
                 Every child you create is required: the recipe captures this op's jobs metadata and waits for all.
                 Do independent work first; then yield a schema-valid needs_input result explaining the dependency.
-                Do not poll with c2j list or resubmit a captured job. Ambiguous submission errors need reconciliation,
-                not blind retries. Do not launch optional background jobs through this workflow.
+                Do not poll with c2j list or blindly repeat submissions. Ambiguous submission errors need reconciliation.
+                Do not launch optional background jobs through this workflow.
                 On resumption, read child outcomes in that context file and artifacts under
                 {{ context.environment.op.inbox }}/dependencies.
                 Incorporate the completed dependency into this cell, check compatible commits/versions explicitly,
                 and rerun affected checks. Child completion alone does not refresh this cell's git snapshot.
-                Failed or cancelled children require human feedback before replacement or a change of approach.
+                Handle failed, cancelled, or unmerged dependencies in this session. Inspect their status,
+                failure details, partial outputs and available artifacts; partial results are not completed work.
+                Diagnose the cause and choose a recovery within the approved scope. You may submit corrected
+                prerequisite work to the owning cell or use another valid approach, explaining the resolution
+                in your result summary. Preserve the original outcomes and do not blindly retry unchanged work.
+                Respect deliberate cancellation and any stop instructions. Ask for input only when a needed
+                decision or unresolved blocker prevents recovery. Report ready only after resolving dependencies.
                 Always write result.json there using this exact JSON Schema:
                 ${{ inputs.result_schema_json }}
                 Use status needs_input for unanswered questions, revise for blocking issues, and ready only
@@ -185,13 +191,19 @@ state:
                 Submit asynchronously, without --run, and finish submission before this op returns.
                 Every child you create is required: the recipe captures this op's jobs metadata and waits for all.
                 Do independent work first; then yield a schema-valid needs_input result explaining the dependency.
-                Do not poll with c2j list or resubmit a captured job. Ambiguous submission errors need reconciliation,
-                not blind retries. Do not launch optional background jobs through this workflow.
+                Do not poll with c2j list or blindly repeat submissions. Ambiguous submission errors need reconciliation.
+                Do not launch optional background jobs through this workflow.
                 On resumption, read child outcomes in that context file and artifacts under
                 {{ context.environment.op.inbox }}/dependencies.
                 Incorporate the completed dependency into this cell, check compatible commits/versions explicitly,
                 and rerun affected checks. Child completion alone does not refresh this cell's git snapshot.
-                Failed or cancelled children require human feedback before replacement or a change of approach.
+                Handle failed, cancelled, or unmerged dependencies in this session. Inspect their status,
+                failure details, partial outputs and available artifacts; partial results are not completed work.
+                Diagnose the cause and choose a recovery within the approved scope. You may submit corrected
+                prerequisite work to the owning cell or use another valid approach, explaining the resolution
+                in your result summary. Preserve the original outcomes and do not blindly retry unchanged work.
+                Respect deliberate cancellation and any stop instructions. Ask for input only when a needed
+                decision or unresolved blocker prevents recovery. Report ready only after resolving dependencies.
                 Always write result.json there using this exact JSON Schema:
                 ${{ inputs.result_schema_json }}
                 Use status needs_input for unanswered questions, revise for blocking issues, and ready only
@@ -251,10 +263,8 @@ state:
           print(json.dumps(result))
           PY
       transitions:
-      - to: blocked
-        when: size(states.run.outputs.child_job_ids) > 0 && !states.dependencies.outputs.ok
       - to: prepare_context
-        when: size(states.run.outputs.child_job_ids) > 0 && states.dependencies.outputs.ok && states.run.outputs.session_id
+        when: size(states.run.outputs.child_job_ids) > 0 && states.run.outputs.session_id
           != "" && states.run.outputs.status in ["completed", "incomplete"]
     dependencies:
       include: ./wait-children.yaml
@@ -265,27 +275,11 @@ state:
       transitions:
       - to: schema
         when: true
-    blocked:
-      op: command_execution
-      inputs:
-        timeout: 5s
-        env:
-          RESULT_JSON: ${{ states.read.outputs.stdout }}
-          DEPENDENCIES_JSON: ${{ json_stringify(states.dependencies.outputs.results) }}
-        run: |
-          python3 - <<'PY'
-          import json, os
-          result=json.loads(os.environ['RESULT_JSON'])
-          result['status']='needs_input'
-          result['summary']+=' Required child work did not complete successfully.'
-          result['questions'].append('Resolve failed, cancelled, or unmerged dependencies before continuing: '+os.environ['DEPENDENCIES_JSON'])
-          print(json.dumps(result))
-          PY
+
 outputs:
   valid: ${{ state_output("schema", "ok", false) && state_exists("read") && state_output("run", "status", "") in ["completed",
     "incomplete"] }}
-  result: ${{ json_parse(state_output("blocked", "stdout", state_output("read", "stdout", "{}"))) }}
+  result: ${{ json_parse(state_output("read", "stdout", "{}")) }}
   session_id: ${{ state_output("run", "session_id", "") }}
-  completed: ${{ state_output("run", "status", "") == "completed" && (size(state_output("run", "child_job_ids", []))
-    == 0 || state_exists("blocked")) }}
+  completed: ${{ state_output("run", "status", "") == "completed" && size(state_output("run", "child_job_ids", [])) == 0 }}
   dependencies: ${{ state_output("dependencies", "results", json_parse(inputs.dependency_history_json)) }}

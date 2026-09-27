@@ -115,8 +115,11 @@ def verify_service(work, scenario='success'):
                      "env": {"RELEASE": "${{ inputs.release }}", "OUTBOX": "{{ context.environment.op.outbox }}"},
                      "timeout": "60s", "run": "while [ ! -f \"$RELEASE\" ]; do sleep 0.1; done\nprintf 'dependency evidence' > \"$OUTBOX/evidence.txt\""}}], "outputs": {"merged": True, "value": "dependency ready"}}
             child_path = work / "child.yaml"
+            recovery_path = work / "recovery.yaml"
+            write_yaml(recovery_path, child)
             if scenario == 'failed':
-                child['sequence'][0]['inputs']['run'] += '\nexit 1\n'
+                # Keep evidence from a completed op available before failing.
+                child['sequence'].append({'id': 'fail', 'op': 'command_execution', 'inputs': {'run': 'exit 1'}})
             if scenario == 'unmerged':
                 child['outputs']['merged'] = False
             write_yaml(child_path, child)
@@ -129,6 +132,7 @@ def verify_service(work, scenario='success'):
                 node["inputs"] = {"timeout": "60s", "env": {
                     "SESSION": "${{ inputs.session_id }}", "INBOX": "{{ context.environment.op.inbox }}", "OUTBOX": "{{ context.environment.op.outbox }}",
                     "CHILD_CELL": str(child_repo), "CHILD_RECIPE": str(child_path), "RELEASE": str(work / "release"),
+                    "RECOVERY_RECIPE": str(recovery_path),
                     "C2J_JOBDB": uri, "TRACE": str(work / "agent-trace.jsonl"), "SCENARIO": scenario,
                     "OP_RELEASE": str(work / 'op-release')}, "run": '''python3 - <<'PY'
 import json, os, pathlib, subprocess, time
@@ -144,12 +148,32 @@ if not os.environ['SESSION'] or (os.environ['SCENARIO']=='rounds' and len(depend
         while not pathlib.Path(os.environ['OP_RELEASE']).exists(): time.sleep(.1)
 else:
     assert os.environ['SESSION']=='fixture-session'
-    assert len(context['dependencies'])==(3 if os.environ['SCENARIO']=='rounds' else 2)
-    assert all(r['status']=='completed' for r in context['dependencies'].values())
+    scenario=os.environ['SCENARIO']
+    assert len(dependencies) in ((2,3) if scenario=='failed' else (3,) if scenario=='rounds' else (2,))
+    statuses=[r['status'] for r in dependencies.values()]
+    if scenario=='failed':
+        assert statuses.count('failed')==2
+        assert all(r['failure_message'] for r in dependencies.values() if r['status']=='failed')
+        if len(dependencies)==3: assert statuses.count('completed')==1
+    elif scenario=='cancelled':
+        assert sorted(statuses)==['cancelled','completed']
+    else:
+        assert all(status=='completed' for status in statuses)
     evidence=list((inbox/'dependencies').rglob('evidence.txt'))
-    assert len(evidence)==len(dependencies), evidence
+    assert len(evidence)==sum(len(r['artifacts']) for r in dependencies.values()), evidence
     assert all(p.read_text()=='dependency evidence' for p in evidence)
+    if scenario=='failed' and len(dependencies)==2:
+        subprocess.run(['c2j','submit','Correct the diagnosed dependency failure','--recipe-file',os.environ['RECOVERY_RECIPE'],
+            '--cell',os.environ['CHILD_CELL'],'--inputs-json',json.dumps({'release':os.environ['RELEASE']}),'--json'],check=True)
 result={'status':'ready','summary':'Integrated child outcomes' if os.environ['SESSION'] else 'Submitted dependencies','blocking_issues':[],'questions':[]}
+if os.environ['SESSION']:
+    if os.environ['SCENARIO']=='failed':
+        result['summary']='Resolved failure with corrected dependency' if len(dependencies)==3 else 'Requested corrected dependency'
+    elif os.environ['SCENARIO']=='cancelled':
+        result['summary']='Resolved cancellation using an existing compatible interface'
+    elif os.environ['SCENARIO']=='unmerged':
+        assert all(r['outputs']['merged'] is False for r in dependencies.values())
+        result.update(status='needs_input', summary='Dependency integration needs a decision', questions=['Which upstream should receive the dependency?'])
 if os.environ['SCENARIO']=='invalid-result': del result['summary']
 (outbox/'result.json').write_text(json.dumps(result))
 PY
@@ -202,7 +226,7 @@ PY
                 log = (work / 'resumed-parent.log').open('w'); logs.append(log)
                 resumed = subprocess.Popen(['c2j', 'run', 'one', '--job-id', parent, '--poll-interval', '100ms', '--wait-timeout', '60s'], env=env, stdout=log, stderr=log)
                 processes.append(resumed)
-            if scenario == 'rounds':
+            if scenario in ('rounds', 'failed'):
                 new_children = eventually(lambda: (value if len(value['jobs']) == 3 else None) if (value := children()) else None)
                 new_id = (set(c['job_id'] for c in new_children['jobs']) - set(ids)).pop()
                 run(['c2j','run','one','--job-id',new_id], env=env, timeout=45)
@@ -212,18 +236,24 @@ PY
             (work / 'final.json').write_text(json.dumps(final, indent=2))
             assert final['Job']['Status'] == 'COMPLETED', final
             result = final['Attempts'][-1]['Output']['Data']
-            success = scenario in ('success', 'scoped', 'rounds', 'already-finished', 'feedback-history')
-            assert len(trace()) == (3 if scenario == 'rounds' else 2 if success else 1), trace()
+            session_resumed = scenario not in ('missing-session', 'invalid-result')
+            assert len(trace()) == (3 if scenario in ('rounds', 'failed') else 2 if session_resumed else 1), trace()
             assert result['valid'] == (scenario != 'invalid-result'), result
             assert result['completed'] == (scenario not in ('missing-session', 'invalid-result')), result
             assert set(result['dependencies']) == set(ids), result
-            if success:
+            if session_resumed:
                 assert all(t['session'] == 'fixture-session' for t in trace()[1:])
                 assert set(trace()[-1]['context']['dependencies']) == set(ids)
-                assert result['result']['summary'] == 'Integrated child outcomes'
-            elif scenario in ('failed', 'cancelled', 'unmerged'):
-                assert result['result']['status'] == 'needs_input' and result['result']['questions'], result
-                assert all(job in result['result']['questions'][-1] for job in ids), result
+                # The final decision belongs to the resumed session, not a
+                # recipe-generated failure response or the pre-wait result.
+                if scenario == 'unmerged':
+                    assert result['result']['status'] == 'needs_input', result
+                    assert result['result']['questions'] == ['Which upstream should receive the dependency?'], result
+                else:
+                    assert result['result']['status'] == 'ready' and not result['result']['questions'], result
+                    expected_summary = {'failed': 'Resolved failure with corrected dependency',
+                                        'cancelled': 'Resolved cancellation using an existing compatible interface'}.get(scenario, 'Integrated child outcomes')
+                    assert result['result']['summary'] == expected_summary, result
             assert sorted(c['job_id'] for c in children()['jobs']) == sorted(ids), 'Replay duplicated children'
             if scenario == 'feedback-history':
                 followup = json.loads(run(['c2j','submit','Revisit the phase after human feedback','--recipe-file',str(fixture / 'agent.yaml'),

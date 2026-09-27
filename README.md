@@ -53,8 +53,13 @@ the submitting op's `jobs.job_ids`, waits for every child using
 and namespaced artifacts. It deduplicates by job ID and retains results across
 dependency rounds. A successful child cannot approve the parent's earlier result:
 Codex must incorporate the dependency before reviews and verification continue.
-Failed, cancelled, or explicitly unmerged children require human feedback.
-The workflow neither retries submissions nor cancels children automatically.
+Failed, cancelled, or explicitly unmerged children also resume the requesting
+session with failure details, partial outputs, and available artifacts. The
+session diagnoses the issue and can submit corrected prerequisite work or use
+another valid approach within scope. Only unresolved blockers or decisions
+requiring input go to human feedback. The phase must produce a fresh result
+explaining the resolution before it can advance. The workflow does not blindly
+retry submissions or cancel children automatically.
 Cancelled parents may leave children running; operators must cancel those separately.
 
 Cross-cell submission requires a JobDB service, available workers, and `c2j`

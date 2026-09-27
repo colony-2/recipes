@@ -51,11 +51,14 @@ must resolve from their source repository and pinned commit.
 
 Cross-cell prerequisites are submitted asynchronously from Codex using `c2j
 submit --cell ...`. Each phase captures the op's `jobs.job_ids` and awaits all
-children through `recipe.await_result_soft`. Success resumes the requesting
-session with outputs and artifacts; failure, cancellation, or an explicit
-`merged: false` requires feedback. The requesting phase must produce a fresh
-result after consuming successful dependencies. Phase history survives human
-revision loops and is exported by both entrypoints. Runtime services and workers
+children through `recipe.await_result_soft`. Every terminal outcome resumes the
+requesting session with outputs, failure details, and available artifacts.
+The session handles failure, cancellation, or an explicit `merged: false` by
+diagnosing the issue and submitting corrected work or choosing another valid
+approach. It requests human input only when recovery needs a decision or remains
+blocked. The requesting phase must produce a fresh result explaining how it
+resolved dependencies. Phase history survives human revision loops and is
+exported by both entrypoints. Runtime services and workers
 must support brokered submission; tests run a separate disposable JobDB service.
 
 ## Review and revision flow

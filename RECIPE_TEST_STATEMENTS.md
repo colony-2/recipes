@@ -148,11 +148,13 @@ workflow adds a design/test-plan approval checkpoint before outcome acceptance.
 | TS-121 | CLI build and evolve submissions accept the injected recipe type. | `build.yaml`, `evolve.yaml` | Critical | Integration; c2j | Positive |
 | TS-122 | Every captured child finishes before its requesting phase resumes or advances. | `recipes/develop/agent.yaml`, `recipes/develop/wait-children.yaml` | Critical | Integration; separate temporary JobDB service, c2j workers | Positive |
 | TS-123 | Successful dependencies resume the same conversation with child outputs and artifacts before review. | `recipes/develop/agent.yaml` | Critical | Integration; c2j, deterministic agent | Positive |
-| TS-124 | Failed, cancelled, or unmerged dependencies require feedback and prevent automatic approval. | `recipes/develop/wait-children.yaml`, `recipes/develop/agent.yaml` | Critical | Integration; c2j | Negative |
+| TS-124 | Failed, cancelled, or unmerged dependencies resume the requesting session with outcomes before the phase can advance. | `recipes/develop/wait-children.yaml`, `recipes/develop/agent.yaml` | Critical | Integration; c2j | Negative |
 | TS-125 | Duplicate child identities are awaited once, including children already finished when the submitting operation returns. | `recipes/develop/wait-children.yaml` | High | Integration; separate temporary JobDB service | Positive |
 | TS-126 | Repeated dependency rounds retain earlier outcomes and never resubmit a captured job automatically. | `recipes/develop/agent.yaml` | Critical | Integration; c2j | Positive |
 | TS-127 | Invalid agent results or missing sessions cannot bypass dependency handling or reach acceptance. | `recipes/develop/agent.yaml` | Critical | Integration; c2j | Negative |
 | TS-128 | Human feedback preserves completed dependency outcomes and artifacts without creating replacement jobs. | `recipes/develop/develop.yaml`, `recipes/develop/agent.yaml` | Critical | Integration; separate temporary JobDB service | Positive |
+| TS-129 | The resumed session can submit corrected dependency work, retaining failed history and awaiting replacement results before advancing. | `recipes/develop/agent.yaml`, `recipe-tests/verify-dependencies.py` | Critical | Integration; separate temporary JobDB service | Positive |
+| TS-130 | Unresolved dependency problems reach human feedback only when the resumed session reports that it needs input. | `recipes/develop/agent.yaml`, `recipe-tests/verify-dependencies.py` | Critical | Integration; separate temporary JobDB service | Negative |
 
 ## Notes for Test Authoring
 
