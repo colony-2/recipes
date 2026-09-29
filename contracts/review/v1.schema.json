@@ -1,0 +1,459 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$comment": "DRAFT proposed c2j contract, not supported by current input op. Select a $defs entry for specification, submission, or receipt validation.",
+  "title": "C2 native review handoff v1 (proposal)",
+  "$ref": "#/$defs/ReviewRequest",
+  "$defs": {
+    "StoredArtifactRef": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "stored"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "stored": {
+          "type": "object",
+          "properties": {
+            "key": {
+              "type": "object",
+              "properties": {
+                "jobId": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "taskOrdinal": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "name": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "sizeBytes": {
+                  "type": "integer",
+                  "minimum": -1
+                }
+              },
+              "required": [
+                "jobId",
+                "taskOrdinal",
+                "name",
+                "sizeBytes"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "key"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "kind",
+        "stored"
+      ],
+      "additionalProperties": false,
+      "description": "Existing c2j stored artifact reference; never a worktree, inbox, or external URL. Tenant is the input request tenant."
+    },
+    "Decision": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$"
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "accepts_reviewed_content": {
+          "type": "boolean"
+        },
+        "feedback_required": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "label",
+        "accepts_reviewed_content",
+        "feedback_required"
+      ],
+      "additionalProperties": false,
+      "description": "Recipes choose IDs and routing. Accepting reviewed content is incompatible with document annotations; feedback_required accepts nonblank feedback or annotations."
+    },
+    "Subject": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "id",
+        "version"
+      ],
+      "additionalProperties": false,
+      "description": "Optional immutable subject identified by the recipe; outcome review uses cell identity and the verified candidate commit."
+    },
+    "FileSpec": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "media_type": {
+          "enum": [
+            "text/markdown",
+            "text/plain",
+            "application/json"
+          ]
+        },
+        "artifact_ref": {
+          "$ref": "#/$defs/StoredArtifactRef"
+        },
+        "annotations": {
+          "enum": [
+            "none",
+            "criticmarkup"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "media_type",
+        "artifact_ref",
+        "annotations"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "annotations": {
+                "const": "criticmarkup"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "media_type": {
+                "const": "text/markdown"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "ReviewFile": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "media_type": {
+          "enum": [
+            "text/markdown",
+            "text/plain",
+            "application/json"
+          ]
+        },
+        "artifact_ref": {
+          "$ref": "#/$defs/StoredArtifactRef"
+        },
+        "annotations": {
+          "enum": [
+            "none",
+            "criticmarkup"
+          ]
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "download_url": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "media_type",
+        "artifact_ref",
+        "annotations",
+        "sha256",
+        "download_url"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "annotations": {
+                "const": "criticmarkup"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "media_type": {
+                "const": "text/markdown"
+              }
+            }
+          }
+        }
+      ],
+      "description": "Runtime resolves exact bytes, computes SHA-256, and provides an authorized download URL; URL is presentation, artifact_ref is identity."
+    },
+    "ReviewSpec": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "const": "c2.review-spec/v1"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "summary_markdown": {
+          "type": "string",
+          "minLength": 1
+        },
+        "subject": {
+          "$ref": "#/$defs/Subject"
+        },
+        "decisions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Decision"
+          },
+          "minItems": 1
+        },
+        "files": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/FileSpec"
+          }
+        }
+      },
+      "required": [
+        "schema",
+        "title",
+        "summary_markdown",
+        "decisions",
+        "files"
+      ],
+      "additionalProperties": false,
+      "description": "Recipe input at inputs.form.review. c2j supplies identity, hashes, and retrieval URLs."
+    },
+    "ReviewRequest": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "const": "c2.review-request/v1"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "summary_markdown": {
+          "type": "string",
+          "minLength": 1
+        },
+        "subject": {
+          "$ref": "#/$defs/Subject"
+        },
+        "decisions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Decision"
+          },
+          "minItems": 1
+        },
+        "files": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ReviewFile"
+          }
+        },
+        "review_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "origin": {
+          "type": "object",
+          "properties": {
+            "project_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "job_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "input_id": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "project_id",
+            "job_id",
+            "input_id"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "schema",
+        "title",
+        "summary_markdown",
+        "decisions",
+        "files",
+        "review_id",
+        "origin"
+      ],
+      "additionalProperties": false,
+      "description": "Immutable published request at form.review and review-request.json; runtime replays the same request for the same pending input."
+    },
+    "Annotation": {
+      "type": "object",
+      "properties": {
+        "file_id": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$"
+        },
+        "base_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "format": {
+          "const": "criticmarkup"
+        },
+        "markdown": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "file_id",
+        "base_sha256",
+        "format",
+        "markdown"
+      ],
+      "additionalProperties": false,
+      "description": "Complete UTF-8 document with CriticMarkup suggestions. This is user feedback, never an automatic patch or repository destination."
+    },
+    "ReviewSubmission": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "const": "c2.review-submission/v1"
+        },
+        "review_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "submission_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "decision": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$"
+        },
+        "feedback": {
+          "type": "string"
+        },
+        "annotations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Annotation"
+          }
+        }
+      },
+      "required": [
+        "schema",
+        "review_id",
+        "submission_id",
+        "decision",
+        "feedback",
+        "annotations"
+      ],
+      "additionalProperties": false,
+      "description": "Client payload at FormResponse.review; authenticated submitter and timestamps belong to the runtime receipt."
+    },
+    "ReviewReceipt": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "const": "c2.review-receipt/v1"
+        },
+        "submission": {
+          "$ref": "#/$defs/ReviewSubmission"
+        },
+        "user_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "submitted_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "artifact_refs": {
+          "type": "object",
+          "properties": {
+            "request": {
+              "$ref": "#/$defs/StoredArtifactRef"
+            },
+            "submission": {
+              "$ref": "#/$defs/StoredArtifactRef"
+            },
+            "annotations": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/$defs/StoredArtifactRef"
+              }
+            }
+          },
+          "required": [
+            "request",
+            "submission",
+            "annotations"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "schema",
+        "submission",
+        "user_id",
+        "submitted_at",
+        "artifact_refs"
+      ],
+      "additionalProperties": false,
+      "description": "Durable output at outputs.review; annotations artifact map is keyed by request file ID. Existing response mirrors submission.decision."
+    }
+  }
+}

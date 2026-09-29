@@ -180,6 +180,20 @@ workflow adds a design/test-plan approval checkpoint before outcome acceptance.
 | TS-150 | Both entrypoints export verification reports and command logs with child provenance; awaiting parents receive those same artifact keys after worker replacement. | `build.yaml`, `evolve.yaml`, `recipe-tests/verify-development-lifecycle.py` | Critical | Integration; isolated JobDB, c2j, git | Positive |
 | TS-151 | Missing verification artifacts or changed dependency artifact keys cannot pass the full development lifecycle regression. | `recipe-tests/verify-development-lifecycle.py` | Critical | Integration; isolated JobDB, c2j, git | Negative |
 
+## Proposed native review contract
+
+These cover the draft contract fixtures, not an implemented c2j review op.
+Runtime acceptance coverage is specified in `guides/NATIVE_REVIEW_HANDOFF_PROPOSAL.md`
+and remains the c2j team's implementation responsibility.
+
+| ID | Test statement | Relevant files | Importance | Level / dependencies | Case |
+|---|---|---|---|---|---|
+| TS-152 | Review packages identify their summary, available decisions, and immutable documents independently of recipe-specific presentation. | `contracts/review/v1.schema.json`, `recipe-tests/verify-review-contract.py` | High | Contract integration; Python, jsonschema | Positive |
+| TS-153 | Review submissions identify the reviewed version and each annotated document's original hash while preserving CriticMarkup text. | `contracts/review/v1.schema.json`, `recipe-tests/verify-review-contract.py` | Critical | Contract integration; Python, jsonschema | Positive |
+| TS-154 | Unversioned reviews, filesystem-only documents, malformed hashes, unknown fields, and incomplete annotations fail contract validation. | `contracts/review/v1.schema.json`, `recipe-tests/verify-review-contract.py` | Critical | Contract integration; Python, jsonschema | Negative |
+| TS-155 | Recipe review specifications cannot supply runtime review identities or client download locations. | `contracts/review/v1.schema.json`, `recipe-tests/verify-review-contract.py` | High | Contract integration; Python, jsonschema | Negative |
+| TS-156 | Review receipts retain the submitted feedback and durable request and response artifacts for downstream consumers. | `contracts/review/v1.schema.json`, `recipe-tests/verify-review-contract.py` | High | Contract integration; Python, jsonschema | Positive |
+
 ## Notes for Test Authoring
 
 - Prefer `recipe_case` with explicit op mocks for deterministic branch coverage under test-policy sandboxing.

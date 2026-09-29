@@ -2,6 +2,12 @@
 
 Collects user input either as a single question or as a multi-field form; returns the response and user metadata.
 
+For the proposed native review-file and CriticMarkup submission contract, see
+[Native review handoffs](../NATIVE_REVIEW_HANDOFF_PROPOSAL.md). It requires c2j
+support and is not part of the currently supported inputs below. In particular,
+do not rely on op `metadata` as a public HTTP submission channel: the inspected
+input API accepts `response` and `fields`, but does not declare response metadata.
+
 ## What you can ask for
 
 - **Single question mode:** Provide `question` and a `type` (no `fields`). Good for quick prompts like short text, date, or a single choice.
