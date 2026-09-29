@@ -142,6 +142,15 @@ Do not hard-code `/src/inbox` or `/src/outbox` in Codex prompts. Recipes should 
 
 See `../OP_VISIBLE_PATHS_USER_GUIDE.md` for the op-visible and host-visible path contract.
 
+For child-job results, export earlier evidence explicitly through the root recipe's
+`outputs.artifact_refs` map. Composite nodes otherwise return their final node's
+artifacts; a final merge does not republish earlier verification files. Build and
+evolve forward the verification artifact references through their shared
+development recipe, preserving the originating job/task keys. The awaiting
+parent receives these references in the child result's `artifacts` map and can
+bind them into its dependency inbox. Child Git snapshots remain references and
+do not replace the parent's working state.
+
 ## 5. Validation Levels
 
 Use the fastest tool that answers the question you have:

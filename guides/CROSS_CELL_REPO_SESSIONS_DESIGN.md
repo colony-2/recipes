@@ -198,7 +198,10 @@ reject repeated model turns, premature approval/merge, duplicate child submissio
 lost candidate edits, and experiments leaking from B into A. Model/human decisions
 are scripted; the actual verification command runs locally instead of inside Shai.
 
-The full lifecycle cases currently fail at the parent's await after B successfully
-merges: [child snapshot collision](BUG_REPORT_CHILD_SNAPSHOT_COLLISION_AFTER_CONSULTATION.md).
-This is distinct from the two confirmed fixes above. The stronger tests stay
-failing until the parent can consume B's actual Git artifacts and finish.
+The [child snapshot collision](BUG_REPORT_CHILD_SNAPSHOT_COLLISION_AFTER_CONSULTATION.md)
+is fixed in c2j `0a48289`, verified with both full lifecycle cases on clean commit
+`0a482892458ebf5c319b0700ad5b7fabd5c97ed2`. Build/evolve also explicitly export
+verification report/log references via `outputs.artifact_refs`; a final merge alone
+does not republish earlier phase artifacts. The tests check child provenance and
+exact reference preservation through awaiting and worker replacement, then require
+the parent's own verification and squash merge to complete.

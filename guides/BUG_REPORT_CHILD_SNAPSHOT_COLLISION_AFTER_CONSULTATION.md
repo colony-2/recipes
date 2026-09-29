@@ -1,6 +1,14 @@
 # Awaiting a merged child collides with the parent's workspace snapshot
 
-Status: reproducible, not fixed. Owner: c2j runtime.
+Status: fixed in c2j `0a48289`, verified 2026-09-29 on clean commit
+`0a482892458ebf5c319b0700ad5b7fabd5c97ed2`. Owner: c2j runtime.
+
+Both full build/evolve lifecycle tests now complete, including child verification
+and merge, parent worker replacement, dependency consumption, and parent verification
+and merge. The companion recipe fix explicitly exports verification artifacts
+through `outputs.artifact_refs`; tests check their original child job/task keys.
+
+The historical failure and reproduction are retained below.
 Detected 2026-09-29 on clean c2j commit
 `bfc97e35b72c2708de7dd7c474375abb0d805783`, built from `git archive` without the
 checkout's unrelated uncommitted changes. Local c2ops commit: `73165cf`.
@@ -64,7 +72,7 @@ verified dependency version and artifacts, then complete its own reviews,
 verification, acceptance and squash merge. No consultation, approval or child
 submission should be repeated.
 
-## Suspected cause
+## Cause and fix
 
 In `pkg/ops/recipe/recipe_output.go`, `decodeRecipeJobOutput` filters internal Git
 artifacts from operation output only when `deps.GitContext().Workspace != nil`.
@@ -74,10 +82,11 @@ can therefore emit both its own restored thin pack and B's returned thin pack.
 `pkg/worker/compiler/artifact_job_context.go` rejects multiple thin packs once
 scoped forwarding is active.
 
-This is a source-based diagnosis, not a verified runtime patch. The recipe
-cannot filter the result after awaiting: the runtime rejects the task result
-before `wait-children.yaml` reaches its record state. Setting the await operation
-const would still carry both the restored pack and explicit dependency artifacts.
+The runtime fix preserves child Git artifacts as references while excluding them
+from the awaiting task's automatic Git state, including the implicit root workspace.
+The recipe fix addresses a separate evidence-export gap: build/evolve now forward
+the verification step's artifact references through the coordinator and public
+entrypoints. No post-await filtering or synthetic child success is used.
 
 ## Acceptance coverage
 

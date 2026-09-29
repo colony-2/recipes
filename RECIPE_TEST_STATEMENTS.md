@@ -177,6 +177,8 @@ workflow adds a design/test-plan approval checkpoint before outcome acceptance.
 | TS-147 | Named build and evolve handoffs execute committed child recipes with includes, reassess ownership, and merge verified work before the parent resumes. | `recipe-tests/verify-development-lifecycle.py` | Critical | Integration; isolated JobDB, c2j, git | Positive |
 | TS-148 | Late dependency discoveries require renewed design approval; parent restart preserves conversations and candidate edits without duplicating child submissions. | `recipe-tests/verify-development-lifecycle.py` | Critical | Integration; isolated JobDB, c2j workers | Positive and negative |
 | TS-149 | Parent acceptance and merge remain unreachable while an approved dependency is pending. | `recipe-tests/verify-development-lifecycle.py` | Critical | Integration; isolated JobDB, c2j workers | Negative |
+| TS-150 | Both entrypoints export verification reports and command logs with child provenance; awaiting parents receive those same artifact keys after worker replacement. | `build.yaml`, `evolve.yaml`, `recipe-tests/verify-development-lifecycle.py` | Critical | Integration; isolated JobDB, c2j, git | Positive |
+| TS-151 | Missing verification artifacts or changed dependency artifact keys cannot pass the full development lifecycle regression. | `recipe-tests/verify-development-lifecycle.py` | Critical | Integration; isolated JobDB, c2j, git | Negative |
 
 ## Notes for Test Authoring
 

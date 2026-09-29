@@ -5,7 +5,8 @@
 
 Only model/human decisions are scripted. Verification commands run on the host
 instead of Shai; schema gates, scope, includes, jobs, artifacts and Git are real.
-Currently exposes guides/BUG_REPORT_CHILD_SNAPSHOT_COLLISION_AFTER_CONSULTATION.md.
+Guards guides/BUG_REPORT_CHILD_SNAPSHOT_COLLISION_AFTER_CONSULTATION.md and
+the public default recipe contract for exporting verification evidence.
 """
 import copy
 import importlib.util
@@ -113,6 +114,10 @@ def verify_lifecycle(work, binary, mode):
         assert start(child,'child').wait(timeout=180)==0,(work/'child.log').read_text()[-8000:]
         child_result=inspect(child)['Attempts'][-1]['Output']['Data']
         assert child_result['merged'] and child_result['verification']['ok'] and child_result['design']['assessment']['fit']=='fits'
+        evidence=child_result['artifact_refs']
+        for name in ['verification.json', 'check-1.log']:
+            assert name in evidence, ('Child did not export verification evidence',name,evidence)
+            assert evidence[name]['stored']['key']['jobId']==child, 'Evidence lost child provenance'
         assert d.run(['git','--git-dir',str(upstreams['B']),'rev-parse','main']).strip()==child_result['merged_hash']
         assert d.run(['git','--git-dir',str(upstreams['B']),'rev-list','--count',heads['B']+'..main']).strip()=='1'
         assert d.run(['git','--git-dir',str(upstreams['A']),'rev-parse','main']).strip()==heads['A']
@@ -122,6 +127,8 @@ def verify_lifecycle(work, binary, mode):
         assert result['session_id']=='A-implement'
         assert list(result['dependencies']['implementation'])==[child]
         assert result['dependencies']['implementation'][child]['outputs']['merged_hash']==child_result['merged_hash']
+        for name in ['verification.json', 'check-1.log']:
+            assert result['dependencies']['implementation'][child]['artifacts'][name]==evidence[name], 'Await changed evidence provenance'
         thread=result['consultations']['service']
         assert thread['session_id']=='B-consult' and thread['commit']==heads['B'] and len(thread['turns'])==1
         assert result['design']['handoffs'][0]['provenance']['commit']==heads['B']

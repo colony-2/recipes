@@ -93,11 +93,13 @@ Cross-cell submission requires a JobDB service, available workers, and `c2j`
 installed in the op sandbox with `C2J_JOBDB` configured for that service and tenant.
 Embedded execution is suitable for local authoring without subprocess children.
 The inherited broker environment must reach Codex subprocesses. Use c2j containing
-`d02c9cc` (compiled-include submission) and `bfc97e3` (workspace replay). Both fixes
-were verified against a clean build of `bfc97e35b72c2708de7dd7c474375abb0d805783`;
-the [broker report](guides/BUG_REPORT_CHILD_BROKER_COMPILED_INCLUDES.md) and
-[replay report](guides/BUG_REPORT_WORKSPACE_DIALOGUE_CHILD_WAIT_REPLAY.md) retain
-historical reproductions. Child completion
+`0a48289` (child snapshot isolation), which also includes the earlier broker and
+workspace replay fixes. The full lifecycle is verified against clean commit
+`0a482892458ebf5c319b0700ad5b7fabd5c97ed2`. The
+[broker](guides/BUG_REPORT_CHILD_BROKER_COMPILED_INCLUDES.md),
+[replay](guides/BUG_REPORT_WORKSPACE_DIALOGUE_CHILD_WAIT_REPLAY.md), and
+[snapshot collision](guides/BUG_REPORT_CHILD_SNAPSHOT_COLLISION_AFTER_CONSULTATION.md)
+reports retain historical reproductions. Child completion
 does not refresh the parent's repository snapshot: the resumed agent must consume
 the correct dependency version within its approved scope. An upstream advancement
 still requires a fresh verified candidate before merge.
@@ -201,9 +203,10 @@ waits, runs B through real verification and squash merge, then requires A to res
 through its own verification and squash merge. It checks candidate/session preservation,
 no premature parent acceptance, and exactly one child submission and merge per cell.
 Only model/human decisions are scripted; verification runs on the host without Shai.
-These fuller cases currently expose a separate [child snapshot collision](guides/BUG_REPORT_CHILD_SNAPSHOT_COLLISION_AFTER_CONSULTATION.md):
-B verifies and merges, but A's await rejects the returned Git artifacts. Both cases
-remain failing regressions; the original two regressions pass.
+Both full lifecycle cases guard the resolved child snapshot collision and verify
+that `artifact_refs` exports the verification report and command logs. The parent
+receives identical child-owned artifact references after worker replacement;
+evidence is available even though the child's last operation was its merge.
 The runner attempts every suite and exits nonzero if any fails; neither regression
 has an expected-failure exemption.
 
