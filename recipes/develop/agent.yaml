@@ -34,6 +34,12 @@ input_schema:
   dependency_history_json:
     type: string
     default_value: '{}'
+  session_artifacts_json:
+    type: string
+    default_value: '{}'
+  allow_child_jobs:
+    type: boolean
+    default_value: true
 inputs:
   prompt: ${{ inputs.prompt }}
   target_directory: ${{ inputs.target_directory }}
@@ -46,6 +52,8 @@ inputs:
   result_schema_json: ${{ inputs.result_schema_json }}
   writable: ${{ inputs.writable }}
   dependency_history_json: ${{ inputs.dependency_history_json }}
+  session_artifacts_json: ${{ inputs.session_artifacts_json }}
+  allow_child_jobs: ${{ inputs.allow_child_jobs }}
 state:
   initial: snapshot
   states:
@@ -94,6 +102,9 @@ state:
         writable: ${{ inputs.writable }}
         prepared_context_json: ${{ json_stringify(states.prepare_context.artifacts) }}
         dependency_artifacts_json: ${{ states.prepare_context.outputs.stdout }}
+        session_artifacts_json: '${{ state_exists("run") ? json_stringify(states.run.outputs.session_artifacts)
+          : inputs.session_artifacts_json }}'
+        allow_child_jobs: ${{ inputs.allow_child_jobs }}
       state:
         initial:
         - to: root
@@ -108,6 +119,7 @@ state:
               prior/: ${{ json_parse(inputs.evidence_json) }}
               phase/: ${{ json_parse(inputs.prepared_context_json) }}
               dependencies/: ${{ json_parse(inputs.dependency_artifacts_json) }}
+              ./: ${{ json_parse(inputs.session_artifacts_json) }}
             inputs:
               prompt: |
                 {{ inputs.instructions }}
@@ -131,7 +143,13 @@ state:
                 Design and reviewers must not edit cell files. Implementation may edit only the approved target.
                 Changed workflow instructions do not alter the gates governing this run.
                 Write only phase artifacts to {{ context.environment.op.outbox }}.
-                When another cell must do prerequisite work, submit it using c2j submit with an explicit --cell
+                Child submission permitted in this phase: {{ inputs.allow_child_jobs }}.
+                If false, never submit jobs: use the design consultation request or report the needed design change.
+                If true, submit only prerequisite work covered by the approved design.handoffs.
+                Include the handoff design_markdown, outcome IDs, and consulted cell/commit provenance in the child prompt.
+                The receiving job must reassess its current mandate; this brief does not authorize scope expansion.
+                For an unapproved dependency, request redesign instead of submitting work.
+                When approved prerequisite work is needed, submit it using c2j submit with an explicit --cell
                 and --build or --evolve. Preserve inherited C2J_CURRENT_* and C2J_CHILD_JOB_* environment.
                 Submit asynchronously, without --run, and finish submission before this op returns.
                 Every child you create is required: the recipe captures this op's jobs metadata and waits for all.
@@ -163,6 +181,7 @@ state:
               prior/: ${{ json_parse(inputs.evidence_json) }}
               phase/: ${{ json_parse(inputs.prepared_context_json) }}
               dependencies/: ${{ json_parse(inputs.dependency_artifacts_json) }}
+              ./: ${{ json_parse(inputs.session_artifacts_json) }}
             inputs:
               prompt: |
                 {{ inputs.instructions }}
@@ -186,7 +205,13 @@ state:
                 Design and reviewers must not edit cell files. Implementation may edit only the approved target.
                 Changed workflow instructions do not alter the gates governing this run.
                 Write only phase artifacts to {{ context.environment.op.outbox }}.
-                When another cell must do prerequisite work, submit it using c2j submit with an explicit --cell
+                Child submission permitted in this phase: {{ inputs.allow_child_jobs }}.
+                If false, never submit jobs: use the design consultation request or report the needed design change.
+                If true, submit only prerequisite work covered by the approved design.handoffs.
+                Include the handoff design_markdown, outcome IDs, and consulted cell/commit provenance in the child prompt.
+                The receiving job must reassess its current mandate; this brief does not authorize scope expansion.
+                For an unapproved dependency, request redesign instead of submitting work.
+                When approved prerequisite work is needed, submit it using c2j submit with an explicit --cell
                 and --build or --evolve. Preserve inherited C2J_CURRENT_* and C2J_CHILD_JOB_* environment.
                 Submit asynchronously, without --run, and finish submission before this op returns.
                 Every child you create is required: the recipe captures this op's jobs metadata and waits for all.
@@ -215,8 +240,9 @@ state:
         status: '${{ state_exists("scoped") ? states.scoped.outputs.status : states.root.outputs.status }}'
         session_id: '${{ state_exists("scoped") ? states.scoped.outputs.?sessionId.orValue("") : states.root.outputs.?sessionId.orValue("")
           }}'
-        child_job_ids: '${{ state_exists("scoped") ? (has(states.scoped.jobs.job_ids) ? states.scoped.jobs.job_ids :
-          []) : (has(states.root.jobs.job_ids) ? states.root.jobs.job_ids : []) }}'
+        child_job_ids: '${{ state_exists("scoped") ? (has(states.scoped.jobs.job_ids) ? states.scoped.jobs.job_ids
+          : []) : (has(states.root.jobs.job_ids) ? states.root.jobs.job_ids : []) }}'
+        session_artifacts: '${{ state_exists("scoped") ? states.scoped.artifacts : states.root.artifacts }}'
       transitions:
       - to: scope
         when: true
@@ -227,6 +253,8 @@ state:
         base_hash: ${{ states.snapshot.outputs.snapshot.head }}
         read_only: ${{ !inputs.writable }}
       transitions:
+      - to: forbidden_children
+        when: '!inputs.allow_child_jobs && size(states.run.outputs.child_job_ids) > 0'
       - to: dependencies
         when: size(states.run.outputs.child_job_ids) > 0
       - to: schema
@@ -264,8 +292,8 @@ state:
           PY
       transitions:
       - to: prepare_context
-        when: size(states.run.outputs.child_job_ids) > 0 && states.run.outputs.session_id
-          != "" && states.run.outputs.status in ["completed", "incomplete"]
+        when: size(states.run.outputs.child_job_ids) > 0 && states.run.outputs.session_id != "" && states.run.outputs.status
+          in ["completed", "incomplete"]
     dependencies:
       include: ./wait-children.yaml
       inputs:
@@ -275,11 +303,20 @@ state:
       transitions:
       - to: schema
         when: true
-
+    forbidden_children:
+      op: command_execution
+      inputs:
+        timeout: 10s
+        env: {}
+        run: |
+          printf '%s\n' 'This phase may consult cells but must not submit jobs.' >&2
+          exit 1
 outputs:
-  valid: ${{ state_output("schema", "ok", false) && state_exists("read") && state_output("run", "status", "") in ["completed",
-    "incomplete"] }}
+  valid: ${{ state_output("schema", "ok", false) && state_exists("read") && state_output("run", "status", "") in
+    ["completed", "incomplete"] }}
   result: ${{ json_parse(state_output("read", "stdout", "{}")) }}
   session_id: ${{ state_output("run", "session_id", "") }}
-  completed: ${{ state_output("run", "status", "") == "completed" && size(state_output("run", "child_job_ids", [])) == 0 }}
+  completed: ${{ state_output("run", "status", "") == "completed" && size(state_output("run", "child_job_ids", []))
+    == 0 }}
   dependencies: ${{ state_output("dependencies", "results", json_parse(inputs.dependency_history_json)) }}
+  session_artifacts: '${{ state_exists("run") ? states.run.outputs.session_artifacts : {} }}'

@@ -25,6 +25,9 @@ input_schema:
   dependency_history_json:
     type: string
     default_value: '{}'
+  session_artifacts_json:
+    type: string
+    default_value: '{}'
 inputs:
   prompt: ${{ inputs.prompt }}
   target_directory: ${{ inputs.target_directory }}
@@ -34,6 +37,7 @@ inputs:
   session_id: ${{ inputs.session_id }}
   evidence_json: ${{ inputs.evidence_json }}
   dependency_history_json: ${{ inputs.dependency_history_json }}
+  session_artifacts_json: ${{ inputs.session_artifacts_json }}
 vars:
   result_schema:
     type: object
@@ -52,6 +56,7 @@ vars:
         - ready
         - revise
         - needs_input
+        - redesign
       summary: &id001
         type: string
         pattern: \S
@@ -94,16 +99,23 @@ sequence:
     session_id: ${{ inputs.session_id }}
     evidence_json: ${{ inputs.evidence_json }}
     instructions: Implement the approved design and test plan provided in context_json. Write the tests and implementation.
-      Map every approved test statement to test files in statement_tests. Preserve approved expectations; changes to
-      existing expectations require the deprecation process. Address supplied review feedback. The current approved design
-      and test plan supersede prior feedback when requirements have changed. Remain in the same implementation session
-      on revision.
+      Map every approved test statement to test files in statement_tests. Preserve approved expectations; changes
+      to existing expectations require the deprecation process. Address supplied review feedback. The current approved
+      design and test plan supersede prior feedback when requirements have changed. Remain in the same implementation
+      session on revision. Implement only locally owned requirements. Submit the approved design.handoffs to their
+      owning cells before declaring ready, carrying the refined design and consultation provenance as the child
+      request. Track each handoff against the dependency ledger to avoid duplicate submissions. Do not implement
+      external outcomes here. New or changed external work requires returning to design approval. Return status
+      redesign when a new dependency, changed handoff, or changed requirement needs design approval; explain the
+      necessary decision in questions.
     result_schema_json: ${{ json_stringify(vars.result_schema) }}
     writable: true
     dependency_history_json: ${{ inputs.dependency_history_json }}
+    session_artifacts_json: ${{ inputs.session_artifacts_json }}
 outputs:
   valid: ${{ sequence.agent.outputs.valid }}
   result: ${{ sequence.agent.outputs.result }}
   session_id: ${{ sequence.agent.outputs.session_id }}
   completed: ${{ sequence.agent.outputs.completed }}
   dependencies: ${{ sequence.agent.outputs.dependencies }}
+  session_artifacts: ${{ sequence.agent.outputs.session_artifacts }}

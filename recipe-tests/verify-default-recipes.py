@@ -22,6 +22,7 @@ GATE = "git+https://github.com/colony-2/c2ops.git//rule_gate@main"
 HASH = "a" * 40
 BASE = dict(status="ready", summary="Ready", blocking_issues=[], questions=[])
 DESIGN = {**BASE, "design_markdown": "Add the requested behavior", "requirements": [{"id": "R1", "statement": "Requested behavior works"}]}
+DESIGN.update(assessment={"assessment_status":"assessed","fit":"fits","rationale":"Owned behavior","outcomes":[{"id":"R1","statement":"Requested behavior works","ownership":"local","suggested_owner":"test","mandate_evidence":["OWN-01"],"reason":"Owned"}],"questions":[]},consultation=None,handoffs=[])
 PLAN = {**BASE, "statements": [{"id": "T1", "statement": "Requested behavior works", "requirement_ids": ["R1"], "files": ["test.sh"], "importance": "high", "level": "integration", "dependencies": [], "case": "positive"}], "commands": [{"id": "check", "run": "true", "statement_ids": ["T1"], "timeout_seconds": 10}]}
 IMPLEMENTATION = {**BASE, "summary": "Implemented behavior", "changes": ["Requested change"], "statement_tests": [{"statement_id": "T1", "files": ["test.sh"]}]}
 SNAPSHOT = {"head": HASH, "base_hash": HASH, "target_directory": ".", "files": [], "clean": True}
@@ -55,6 +56,9 @@ def phase(result, *, valid=True, status="completed", session="implementation-ses
     ops = [command(SNAPSHOT), prepared_context(), mock("extension_execution", {"status": status, "sessionId": session}, {"result.json": json.dumps(result)}), command(SNAPSHOT), mock("extension_execution", {"ok": valid})]
     if valid:
         ops.append(command(result))
+    if "design_markdown" in result:
+        ops.insert(0, command({"cell":"test","valid":True}))
+        if valid: ops.append(command({"result":result,"selection":{}}))
     return ops
 
 
@@ -94,6 +98,7 @@ def routing_cases():
     cases = [case("happy", start + end)]
     cases += [case("repeat-feedback", start + implementation("First outcome") + verification() + [response("revise"), feedback("Add coverage")] + implementation("Second outcome") + verification() + [response("revise"), feedback("Handle empty input")] + implementation("Final outcome") + verification() + finish())]
     cases += [case("redesign", start + implementation() + verification() + [response("redesign"), feedback("Change the requirements")] + start + end)]
+    cases += [case("implementation-requests-redesign", start + phase({**IMPLEMENTATION,"status":"redesign","questions":["Approve the new external dependency"]}) + [feedback("Review the external work")] + start + end)]
     cases += [case("human-rejects-plan", planning() + [response("revise"), feedback()] + start + end)]
     for name, prefix in [
         ("design-needs-input", phase({**DESIGN, "status": "needs_input", "questions": ["Which behavior?"]})),

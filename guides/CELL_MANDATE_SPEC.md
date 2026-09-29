@@ -1,8 +1,8 @@
 # Cell mandate specification
 
 Status: repository authoring convention, version `c2.cell-mandate/v1`.
-The mandate file and instruction links can be adopted now. Structured assessment
-gates described here still require implementation in build/evolve and c2j tools.
+Build/evolve implement the assessment gate in `recipes/develop/design.yaml`;
+`mandate.yaml` reads and validates the accepted document at the initial job commit.
 
 ## Canonical location and discovery
 
@@ -77,7 +77,7 @@ cannot yet be determined, set `assessment_status` to `needs_clarification`, set
 A known external outcome may still have an unknown target owner without making
 the current cell's `partial` or `outside` verdict uncertain.
 
-Proposed artifact: `mandate-assessment.json`, validated before its design is
+Artifact: `mandate-assessment.json`, validated before its design is
 accepted. This example illustrates a partial request:
 
 ```json
@@ -117,14 +117,17 @@ accepted. This example illustrates a partial request:
 }
 ```
 
-Validation rules for the proposed gate:
+Validation rules for the gate:
 
 - Require the version, request identity/revision, cell, mandate provenance,
   status, fit, rationale, outcomes, questions, and consultation references.
   A missing mandate has null commit/hash as appropriate and requires clarification;
-  the gate must allow this diagnostic result without allowing implementation.
-- Every requested outcome appears exactly once; additions, removals, or splits
-  require an explicit request revision or decomposition mapping.
+  the gate allows a diagnostic assessment without allowing implementation.
+  Agents provide the judgment; the recipe stamps request/cell/provenance fields.
+- Outcome IDs are unique and local requirements exactly match the local outcome
+  IDs. Independent review checks complete request coverage and justified additions,
+  removals or splits; semantic completeness cannot be inferred from a schema.
+  The recipe stamps the request revision from the original prompt and feedback.
 - `ownership` is `local`, `external`, or `unresolved`. An assessed result has no
   unresolved outcomes. Its fit verdict must match the counts of local/external
   outcomes and the outcomes list must not be empty.

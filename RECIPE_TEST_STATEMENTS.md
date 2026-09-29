@@ -156,6 +156,16 @@ workflow adds a design/test-plan approval checkpoint before outcome acceptance.
 | TS-129 | The resumed session can submit corrected dependency work, retaining failed history and awaiting replacement results before advancing. | `recipes/develop/agent.yaml`, `recipe-tests/verify-dependencies.py` | Critical | Integration; separate temporary JobDB service | Positive |
 | TS-130 | Unresolved dependency problems reach human feedback only when the resumed session reports that it needs input. | `recipes/develop/agent.yaml`, `recipe-tests/verify-dependencies.py` | Critical | Integration; separate temporary JobDB service | Negative |
 
+| TS-131 | Both workflows assess every requested outcome against the canonical cell mandate before implementation. | `recipes/develop/design.yaml`, `recipes/develop/mandate.yaml` | Critical | Integration; c2j | Positive |
+| TS-132 | Missing, malformed, conflicting, or uncertain mandates cannot authorize implementation. | `recipes/develop/design.yaml`, `recipes/develop/mandate.yaml` | Critical | Integration; c2j | Negative |
+| TS-133 | Partial requests preserve local requirements and agreed external handoffs; outside requests produce routing without implementation or merge. | `recipes/develop/develop.yaml` | Critical | Integration; c2j | Positive |
+| TS-134 | Contradictory ownership, invented mandate references, duplicate outcomes, and unagreed handoffs cannot pass design validation. | `recipes/develop/design.yaml` | Critical | Integration; c2j | Negative |
+| TS-135 | Consultations run in the selected cell while retaining the originating job identity and returning to its repository. | `recipes/develop/consult.yaml` | Critical | Integration; temporary JobDB, git | Positive |
+| TS-136 | Follow-up consultations restore the same foreign session and pinned commit without preserving experimental repository changes. | `recipes/develop/design.yaml`, `recipes/develop/consult.yaml` | Critical | Integration; temporary JobDB, git | Positive |
+| TS-137 | Consultation threads cannot change cells or refs; bounded discussions request clarification instead of looping indefinitely. | `recipes/develop/design.yaml` | High | Integration; c2j | Negative |
+| TS-138 | Planning cannot submit child jobs; approved implementation requests carry the agreed foreign design and mandate provenance. | `recipes/develop/agent.yaml`, `recipes/develop/implement.yaml` | Critical | Integration; temporary JobDB | Positive and negative |
+| TS-139 | Invalid foreign responses, missing sessions, and unavailable repositories cannot silently become accepted designs. | `recipes/develop/consult.yaml`, `design.yaml` | Critical | Integration; c2j | Negative |
+
 ## Notes for Test Authoring
 
 - Prefer `recipe_case` with explicit op mocks for deterministic branch coverage under test-policy sandboxing.

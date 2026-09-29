@@ -1,0 +1,50 @@
+id: cell-mandate
+version: 0.3.0
+sequence:
+- id: read
+  op: command_execution
+  inputs:
+    timeout: 10s
+    env:
+      CELL_ROOT: '{{ context.environment.op.worktree_path }}'
+      CELL: '{{ context.workspace.cell }}'
+      OUTBOX: '{{ context.environment.op.outbox }}'
+      COMMIT: ${{ inputs.commit }}
+      REQUIRE_WORKSPACE: '${{ inputs.require_workspace ? "true" : "false" }}'
+    run: |
+      python3 - <<'PYCODE'
+      import hashlib, json, os, pathlib, re, subprocess
+      if os.environ.get('REQUIRE_WORKSPACE')=='true' and not os.environ.get('C2J_WORKSPACE_SCOPE_ID'): raise ValueError('Consultation requires a node workspace; upgrade c2j workers')
+      root=pathlib.Path(os.environ['CELL_ROOT']); path=root/'.c2j/mandate.md'
+      commit=subprocess.check_output(['git','-C',str(root),'rev-parse',os.environ['COMMIT'] or 'HEAD'],text=True).strip()
+      result={'cell':os.environ['CELL'],'path':'.c2j/mandate.md','commit':commit,'sha256':None,'valid':False,'text':'','clauses':[],'error':''}
+      try:
+          if path.is_symlink() or path.parent.is_symlink(): raise ValueError('Mandate must not be a symlink')
+          raw=subprocess.check_output(['git','-C',str(root),'show',commit+':.c2j/mandate.md'],stderr=subprocess.DEVNULL); text=raw.decode(); result.update(text=text,sha256=hashlib.sha256(raw).hexdigest())
+          if not re.match(r'\A---\r?\n(?:[^\n]*\n)*?schema: c2\.cell-mandate/v1\r?\n(?:[^\n]*\n)*?---(?:\r?\n|$)',text): raise ValueError('Expected c2.cell-mandate/v1 front matter')
+          if len(re.findall(r'^# [^#].+$',text,re.M))!=1: raise ValueError('Expected one mandate title')
+          sections=dict(re.findall(r'^## ([^\n]+)\n(.*?)(?=^## |\Z)',text,re.M|re.S))
+          for title in ['Purpose','Owns','Does not own','Interfaces','Boundary examples','Changing the mandate']:
+              if not sections.get(title,'').strip(): raise ValueError('Missing mandate section: '+title)
+          ids=re.findall(r'^- (OWN-[0-9]{2,}|EXCLUDE-[0-9]{2,}|INTERFACE-[0-9]{2,}):',text,re.M)
+          if len(ids)!=len(set(ids)) or any(int(i.split('-')[1])==0 for i in ids): raise ValueError('Invalid or duplicate mandate identifiers')
+          for title,prefix in [('Owns','OWN'),('Does not own','EXCLUDE'),('Interfaces','INTERFACE')]:
+              if not re.search(r'^- '+prefix+r'-[0-9]{2,}:',sections[title],re.M) and (title=='Owns' or 'None currently declared' not in sections[title]): raise ValueError('Missing clauses in '+title)
+          if not all(re.search(r'\b'+fit+r'\b',sections['Boundary examples']) for fit in ['fits','partial','outside']): raise ValueError('Missing boundary examples')
+          result.update(valid=True,clauses=ids+['Purpose','Owns'])
+      except (OSError,ValueError,UnicodeError,subprocess.CalledProcessError) as e: result['error']=str(e)
+      pathlib.Path(os.environ['OUTBOX'],'mandate.json').write_text(json.dumps(result))
+      print(json.dumps(result))
+      PYCODE
+outputs:
+  mandate: ${{ json_parse(sequence.read.outputs.stdout) }}
+input_schema:
+  commit:
+    type: string
+    default_value: ''
+  require_workspace:
+    type: boolean
+    default_value: false
+inputs:
+  commit: ${{ inputs.commit }}
+  require_workspace: ${{ inputs.require_workspace }}

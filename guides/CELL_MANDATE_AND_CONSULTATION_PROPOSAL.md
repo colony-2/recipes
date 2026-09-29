@@ -9,8 +9,10 @@ This overview is superseded by two focused documents:
   `.c2j/mandate.md` convention and the `fits`, `partial`, and `outside` assessment
   contract. [This cell's mandate](../.c2j/mandate.md) adopts the file convention.
 
-The session capability and structured recipe gates remain proposed. The mandate
-file and its root AGENTS link are present in this repository.
+The shared build/evolve recipes now implement these gates and hosted dialogues
+using c2j node workspaces. No new session operation is required. Actual work
+continues through separate jobs after design approval. The implementation design
+lists c2j broker/replay bugs that currently block reliable production handoffs.
 
 ## Architectural choice
 
@@ -32,6 +34,5 @@ checkout, provided repository changes are never carried into A, B's upstream,
 or subsequent turns. The conversation and explicitly selected evidence persist;
 the checkout does not. Read-only sandbox support is not a prerequisite.
 
-A handoff to real B work carries a brief, transcript, provenance, and optionally
-session state. It never carries an implicitly approved implementation or the
+A handoff to real B work carries a brief, transcript, and provenance. It never carries an implicitly approved implementation or the
 consultation's experimental repository changes.

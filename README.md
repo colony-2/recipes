@@ -7,9 +7,9 @@ their YAML files while authoring, then validated with the embedded c2j runtime.
 This cell's responsibility boundary is [.c2j/mandate.md](.c2j/mandate.md), using
 the [cell mandate specification](guides/CELL_MANDATE_SPEC.md). The
 [cross-cell repository sessions design](guides/CROSS_CELL_REPO_SESSIONS_DESIGN.md)
-proposes conversations against another cell's repository inside the current job,
-with disposable repository state. Session support and structured mandate gates
-are design contracts awaiting implementation, not current recipe features.
+describes implemented conversations against another cell's repository inside the
+current job, with disposable code and separate persistent sessions. Both defaults
+check mandate fit before implementation.
 
 ## Directory Layout
 
@@ -39,12 +39,25 @@ recipe family under `recipes/<family>/tests/`.
 `build.yaml` and `evolve.yaml` are thin entrypoints into
 [`recipes/develop/develop.yaml`](recipes/develop/develop.yaml). Both run:
 
-1. Design and independent design review.
+1. Mandate assessment, design, optional cross-cell design dialogue, and independent review.
 2. Test statements and executable test-plan authoring, followed by independent review.
 3. Human approval of the design and reviewed test plan.
 4. Implementation, independent specification review, and independent quality review.
 5. Fresh verification commands and retained evidence.
 6. Human satisfaction, then squash merge into the cell's upstream branch.
+
+Design classifies requested outcomes as `fits`, `partial`, or `outside` against
+`.c2j/mandate.md` at the job's initial commit. Missing or uncertain mandates require
+clarification. Partial requests retain local requirements and agreed external
+handoffs; outside requests return routing advice with `merged: false`. Before
+submission, A can host a separate session in B using node `workspace`, exchange
+design feedback, and return to A. B's commit and session are retained while
+experimental code is discarded with `const: true`. Human approval displays the
+ownership split and external briefs. Planning/review phases cannot submit jobs.
+
+These defaults require workspace-capable c2j compilers **and workers**; older
+versions can ignore the workspace declaration. The consultation also checks for
+an active workspace scope. The installed v0.0.53 predates this requirement.
 
 Feedback continues the same implementation Codex session. Reviewers use fresh
 sessions. Requirement changes return to design and require renewed plan approval.
@@ -53,7 +66,7 @@ prior artifacts and feedback. Incomplete implementation requests feedback; inval
 artifacts and missing continuation sessions fail without merging. Automatic c2j
 checkpoints preserve edits; only final acceptance publishes them.
 
-Any phase can request prerequisite work in another cell with asynchronous
+After design/test-plan approval, implementation can request agreed external work with asynchronous
 `c2j submit ... --cell <owner> --build` (or `--evolve`). The shared agent captures
 the submitting op's `jobs.job_ids`, waits for every child using
 `recipe.await_result_soft`, and resumes the same Codex session with child results
@@ -72,7 +85,13 @@ Cancelled parents may leave children running; operators must cancel those separa
 Cross-cell submission requires a JobDB service, available workers, and `c2j`
 installed in the op sandbox with `C2J_JOBDB` configured for that service and tenant.
 Embedded execution is suitable for local authoring without subprocess children.
-The inherited broker environment must reach Codex subprocesses. Child completion
+The inherited broker environment must reach Codex subprocesses. The tested c2j
+build rejects brokered child recipes with compiled includes; see the
+[bug report](guides/BUG_REPORT_CHILD_BROKER_COMPILED_INCLUDES.md). The handoff
+integration test uses an inline child fixture, and production paths with includes
+need the runtime fix. The combined workspace-dialogue/child-wait flow also
+has a [durable replay failure](guides/BUG_REPORT_WORKSPACE_DIALOGUE_CHILD_WAIT_REPLAY.md);
+the live regression remains failing until c2j fixes it. Child completion
 does not refresh the parent's repository snapshot: the resumed agent must consume
 the correct dependency version within its approved scope. An upstream advancement
 still requires a fresh verified candidate before merge.
@@ -147,6 +166,9 @@ c2j submit --recipe-file ./evolve.yaml --inputs-json '{"prompt":"Improve workflo
 ```
 
 Run `./recipe-tests/run-defaults.sh` for comprehensive default-recipe tests.
+Set `C2J_BINARY=/absolute/path/to/c2j` to test a workspace-capable binary without
+replacing the installed CLI. `C2OPS_REPOSITORY=/path/to/c2ops` uses committed local
+c2ops source for deterministic selector resolution without GitHub requests.
 It requires c2j, git, Python, uv/PyYAML, and Go/access to the c2ops selector for
 real gate checks. Codex and human replies are mocked; tests execute real scope
 checks, test-plan contracts, verification commands, schema gates and git merges
@@ -157,7 +179,9 @@ or Shai container run is not part of this deterministic suite.
 The suite also starts a separate temporary in-memory JobDB service and independent
 c2j workers to test brokered cross-cell submission, durable waits, worker replacement,
 session resumption, and dependency artifacts. The test server binds only to loopback
-and exits with the suite; it uses no persistent database.
+and exits with the suite; it uses no persistent database. The final combined
+workspace/handoff regression currently fails in c2j replay; it is retained as a
+failing test, not skipped or counted as passing.
 
 ## Authoring Loop
 
