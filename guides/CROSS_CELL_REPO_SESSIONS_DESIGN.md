@@ -1,6 +1,7 @@
-# Cross-cell design conversations within one job
+# Cross-cell conversations during design and implementation
 
-Status: implemented by `recipes/develop/design.yaml` and `consult.yaml`, using
+Status: implemented by `recipes/develop/design.yaml`, `implement.yaml`, and the
+shared `consultation-turn.yaml` / `consult.yaml` recipes, using
 c2j node workspaces. This replaces the earlier proposal for a new session op.
 Compilers and workers must both support `workspace` and its resolution task.
 Production handoffs also require the runtime fixes listed below.
@@ -43,7 +44,7 @@ During a consultation:
 | Conversation | Separate B session; never A's session ID or checkpoint |
 | Git propagation | No adoption of B's snapshot by A |
 
-The `consult` state declares `workspace: {cell: ..., ref: ...}`. Each state entry
+The shared turn’s `consult` node declares `workspace: {cell: ..., ref: ...}`. Each invocation
 creates a fresh logical workspace. The first ref is explicit (normally `main`);
 subsequent turns use the recorded full commit, even if B's upstream moves. Recipe
 includes retain their original source. The consultation checks for the runtime's
@@ -75,7 +76,7 @@ The recipe runs B, adds its response to the thread's history, and resumes A.
 A can answer questions, refine the proposal and request another turn using the
 same thread ID, cell selector and original ref. Changing a thread's cell/ref is
 rejected; use a new thread for a different context. Multiple threads can discuss
-different cells sequentially. Each design pass allows eight consultation turns;
+different cells sequentially. Each design or implementation pass allows eight consultation turns;
 exhaustion returns a clarification question. Human feedback starts another pass
 while retaining the earlier discussions and their pinned commits.
 
@@ -97,11 +98,36 @@ The recipe restores Codex's `codex-home-state` artifact at its expected inbox
 location. The ledger records each thread's session ID, checkpoint references,
 commit, mandate provenance and message/response pairs. Only session checkpoint
 artifacts are forwarded into later B turns; experimental diffs/thin packs are
-not. A's session artifacts are restored separately when its turn resumes.
+not. A's checkpoint is filtered to the same session-only artifact names and
+restored separately. Phase context and result bindings select their named JSON
+files so an incidental Git thin pack cannot become a duplicate workspace restore.
+A's candidate propagates through c2j's Git state, independently of checkpoints.
 
 The durable design artifacts are `mandate-assessment.json`, `design.md`,
 `consultations.json`, and `handoffs.json`. These capture the discussion and
 reviewed outcome; they are not implicitly approved implementation patches.
+
+## Discoveries during implementation
+
+Implementation uses the same structured `consultation` request and shared turn
+executor as design. A can describe a newly discovered dependency bug, provide
+reproduction evidence, ask about an existing interface, and answer B's questions
+without leaving its coding session. Its local candidate and dependency ledger
+survive each foreign turn. Threads from design are available immediately; human
+feedback and redesign merge the most advanced consistent history for each thread.
+Different cells/refs/sessions or divergent message histories cannot be merged.
+
+When advice resolves the problem within the approved plan, A resumes implementation.
+When B must change, A returns `proposed_handoffs` with B's exact latest agreed brief.
+The contract validates agreement and provenance and forces `status: redesign` for
+new or changed work, even if the model reported ready. The coordinator supplies
+that result and the updated ledger to design, then repeats design/test-plan review
+and human approval. A previously approved unchanged handoff may proceed without
+another approval. Discussions never authorize submission on their own.
+
+Implementation emits `proposed-handoffs.json` and `consultations.json`; approved
+work still uses design's `handoffs.json`. Failed or cancelled child outcomes remain
+in A's dependency context during any further consultation and recovery.
 
 ## Handoff to actual work
 
@@ -152,3 +178,14 @@ The combined dialogue/child-wait test additionally exposes a
 [workspace replay failure](BUG_REPORT_WORKSPACE_DIALOGUE_CHILD_WAIT_REPLAY.md)
 when a replacement worker resumes the parent. It remains a failing regression;
 the passing dialogue test alone does not establish durable end-to-end handoff.
+
+`recipe-tests/verify-implementation-consultations.py` adds live late-discovery
+coverage using the same separate ephemeral JobDB and real command/schema/workspace
+execution. Cases exercise advice, multi-turn bug refinement, evolve's `.c2j` scope,
+multiple foreign cells, design-session reuse, feedback resumption, failed dependency
+history, missing mandates, outside ownership, malformed replies, missing/replaced
+sessions, missing checkpoints, unavailable repositories, and the eight-turn limit.
+It also tests agreement/provenance gates and conflicting history merges directly.
+Only model invocations are replaced; model and sandbox quality require separate
+live evaluation. All suites and both known runtime regressions are attempted even
+when an earlier test fails.

@@ -14,7 +14,8 @@ C2J_BINARY=/path/to/c2j C2OPS_REPOSITORY=/path/to/c2ops \
   ./recipe-tests/run-defaults.sh
 ```
 
-The final case in `recipe-tests/verify-consultations.py` is the regression.
+The `handoff-replay` case in `recipe-tests/verify-consultations.py` is the regression.
+It runs independently of the `broker-includes` regression, so neither hides the other.
 It uses disposable Git repositories, deterministic command fixtures for Codex,
 a separate in-memory JobDB HTTP service, and real c2j workers. It requires no
 model credentials and never uses the home embedded database. Local c2ops

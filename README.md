@@ -66,6 +66,13 @@ prior artifacts and feedback. Incomplete implementation requests feedback; inval
 artifacts and missing continuation sessions fail without merging. Automatic c2j
 checkpoints preserve edits; only final acceptance publishes them.
 
+Implementation can also start or continue a cell-B conversation when it discovers
+a missing feature or dependency bug. It retains its coding session, local edits,
+and dependency history. Advice can lead directly back to implementation; a new
+or changed external handoff returns through design and test-plan approval before
+submission. Design and implementation share pinned conversation threads, including
+across human feedback rounds.
+
 After design/test-plan approval, implementation can request agreed external work with asynchronous
 `c2j submit ... --cell <owner> --build` (or `--evolve`). The shared agent captures
 the submitting op's `jobs.job_ids`, waits for every child using
@@ -179,9 +186,16 @@ or Shai container run is not part of this deterministic suite.
 The suite also starts a separate temporary in-memory JobDB service and independent
 c2j workers to test brokered cross-cell submission, durable waits, worker replacement,
 session resumption, and dependency artifacts. The test server binds only to loopback
-and exits with the suite; it uses no persistent database. The final combined
-workspace/handoff regression currently fails in c2j replay; it is retained as a
-failing test, not skipped or counted as passing.
+and exits with the suite; it uses no persistent database.
+`verify-implementation-consultations.py` runs actual implementation/foreign-cell
+loops with deterministic model turns, covering late bug discovery, advice, evolve
+scope, multiple cells, design-thread reuse, human feedback, dependency history,
+invalid replies/sessions/checkpoints, unavailable cells, mandate failures, and
+bounded discussions. Local edits are made before consultation and checked after
+resumption; B experiments and moving upstream refs test snapshot isolation.
+The broker/include and workspace/handoff replay regressions run independently.
+The runner attempts every suite and exits nonzero if any fails; known upstream
+failures are neither skipped nor counted as passing.
 
 ## Authoring Loop
 

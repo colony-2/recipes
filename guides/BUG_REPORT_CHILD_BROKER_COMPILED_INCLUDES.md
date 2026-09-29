@@ -54,3 +54,12 @@ files were changed in this cell. The deterministic handoff test inlines its smal
 fixture so it can independently verify refined-brief transport, real job
 attribution, captured `jobs.job_ids`, waiting, and session resumption. It does not
 claim that brokered submission of included production defaults is fixed.
+
+## Independent regression
+
+`recipe-tests/verify-consultations.py` now includes `broker-includes`, which submits
+and executes a child with a compiled include through the real broker using a
+separate ephemeral JobDB. It has no node workspace or child-wait dependency, so the
+workspace replay issue cannot mask this failure. Run it through
+`recipe-tests/run-defaults.sh`; the suite remains nonzero until this regression
+and the replay regression both pass.

@@ -31,6 +31,9 @@ input_schema:
   mandate_commit:
     type: string
     default_value: ''
+  additional_consultation_history_json:
+    type: string
+    default_value: '{}'
 inputs:
   prompt: ${{ inputs.prompt }}
   target_directory: ${{ inputs.target_directory }}
@@ -42,6 +45,7 @@ inputs:
   dependency_history_json: ${{ inputs.dependency_history_json }}
   consultation_history_json: ${{ inputs.consultation_history_json }}
   mandate_commit: ${{ inputs.mandate_commit }}
+  additional_consultation_history_json: ${{ inputs.additional_consultation_history_json }}
 vars:
   result_schema:
     type: object
@@ -185,9 +189,10 @@ outputs:
   session_id: ${{ state_output("agent", "session_id", "") }}
   completed: ${{ state_output("agent", "completed", false) }}
   dependencies: ${{ state_output("agent", "dependencies", {}) }}
-  consultations: ${{ json_parse(state_output("record", "stdout", inputs.consultation_history_json)) }}
+  consultations: ${{ json_parse(state_output("record", "stdout", json_stringify(states.history.outputs.history)))
+    }}
 state:
-  initial: mandate
+  initial: history
   states:
     mandate:
       include: ./mandate.yaml
@@ -208,7 +213,8 @@ state:
         session_id: ${{ state_output("agent", "session_id", inputs.session_id) }}
         session_artifacts_json: ${{ json_stringify(state_output("agent", "session_artifacts", {})) }}
         context_json: ${{ '{"previous":' + inputs.context_json + ',"mandate":' + json_stringify(states.mandate.outputs.mandate)
-          + ',"consultations":' + state_output("record", "stdout", inputs.consultation_history_json) + '}' }}
+          + ',"consultations":' + state_output("record", "stdout", json_stringify(states.history.outputs.history))
+          + '}' }}
         allow_child_jobs: false
         writable: false
         result_schema_json: ${{ json_stringify(vars.result_schema) }}
@@ -242,12 +248,12 @@ state:
         env:
           RESULT_JSON: ${{ json_stringify(states.agent.outputs.result) }}
           MANDATE_JSON: ${{ json_stringify(states.mandate.outputs.mandate) }}
-          HISTORY_JSON: ${{ state_output("record", "stdout", inputs.consultation_history_json) }}
+          HISTORY_JSON: ${{ state_output("record", "stdout", json_stringify(states.history.outputs.history)) }}
           PROMPT: ${{ inputs.prompt }}
           FEEDBACK: ${{ inputs.feedback }}
           SESSION: ${{ states.agent.outputs.session_id }}
           OUTBOX: '{{ context.environment.op.outbox }}'
-          INITIAL_HISTORY_JSON: ${{ inputs.consultation_history_json }}
+          INITIAL_HISTORY_JSON: ${{ json_stringify(states.history.outputs.history) }}
         run: |
           python3 - <<'PYCODE'
           import hashlib, json, os, pathlib
@@ -292,43 +298,21 @@ state:
           print(json.dumps({'result':r,'selection':selection}))
           PYCODE
       transitions:
-      - to: consult
-        when: size(json_parse(outputs.stdout).selection) > 0
-    consult:
-      workspace:
-        cell: ${{ json_parse(states.contract.outputs.stdout).selection.cell }}
-        ref: ${{ json_parse(states.contract.outputs.stdout).selection.workspace_ref }}
-      include: ./consult.yaml
-      inputs:
-        message: ${{ json_parse(states.contract.outputs.stdout).selection.message }}
-        session_id: ${{ json_parse(states.contract.outputs.stdout).selection.session_id }}
-        session_artifacts_json: ${{ json_stringify(json_parse(states.contract.outputs.stdout).selection.session_artifacts)
-          }}
-      transitions:
       - to: record
-        when: true
+        when: size(json_parse(outputs.stdout).selection) > 0
     record:
-      op: command_execution
+      include: ./consultation-turn.yaml
       inputs:
-        timeout: 10s
-        env:
-          HISTORY_JSON: ${{ state_output("record", "stdout", inputs.consultation_history_json) }}
-          SELECTION_JSON: ${{ json_stringify(json_parse(states.contract.outputs.stdout).selection) }}
-          TURN_JSON: ${{ json_stringify(states.consult.outputs) }}
-          OUTBOX: '{{ context.environment.op.outbox }}'
-        run: |
-          python3 - <<'PYCODE'
-          import json, os, pathlib
-          history=json.loads(os.environ['HISTORY_JSON']); q=json.loads(os.environ['SELECTION_JSON']); turn=json.loads(os.environ['TURN_JSON'])
-          if not turn['valid']: raise ValueError('Invalid consultation result or missing session')
-          t=history.setdefault(q['thread_id'],{'cell':q['cell'],'ref':q['ref'],'commit':turn['mandate']['commit'],'turns':[]})
-          if t['commit']!=turn['mandate']['commit']: raise ValueError('Consultation commit changed')
-          turn['session_artifacts']={k:v for k,v in turn['session_artifacts'].items() if k=='codex-home-state' or k.startswith('codex-home-state/')}
-          t.update(response=turn['result'],session_id=turn['session_id'],session_artifacts=turn['session_artifacts'],mandate=turn['mandate'])
-          t['turns'].append({'message':q['message'],'response':turn['result']})
-          pathlib.Path(os.environ['OUTBOX'],'consultations.json').write_text(json.dumps(history))
-          print(json.dumps(history))
-          PYCODE
+        selection_json: ${{ json_stringify(json_parse(states.contract.outputs.stdout).selection) }}
+        history_json: ${{ state_output("record", "stdout", json_stringify(states.history.outputs.history)) }}
       transitions:
       - to: agent
+        when: true
+    history:
+      include: ./consultation-history.yaml
+      inputs:
+        history_json: ${{ inputs.consultation_history_json }}
+        additional_json: ${{ inputs.additional_consultation_history_json }}
+      transitions:
+      - to: mandate
         when: true

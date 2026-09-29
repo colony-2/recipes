@@ -34,13 +34,16 @@ state:
         feedback: ${{ state_field("plan_feedback", "feedback", "") }}
         context_json: ${{ '{"design":' + json_stringify(state_output("design", "result", {})) + ',"design_review":'
           + json_stringify(state_output("design_review", "result", {})) + ',"test_plan":' + json_stringify(state_output("test_plan",
-          "result", {})) + ',"test_review":' + json_stringify(state_output("test_review", "result", {})) + '}' }}
+          "result", {})) + ',"test_review":' + json_stringify(state_output("test_review", "result", {})) + ',"implementation":'
+          + json_stringify(state_output("implementation", "result", {})) + '}' }}
         session_id: ${{ "" }}
         evidence_json: '${{ json_stringify(state_exists("verify") ? states.verify.artifacts : context.artifacts)
           }}'
         dependency_history_json: ${{ json_stringify(state_output("design", "dependencies", {})) }}
         consultation_history_json: ${{ json_stringify(state_output("design", "consultations", {})) }}
         mandate_commit: ${{ states.prepare.outputs.snapshot.head }}
+        additional_consultation_history_json: ${{ json_stringify(state_output("implementation", "consultations",
+          {})) }}
       transitions:
       - to: outside
         when: outputs.valid && outputs.completed && outputs.result.status == "ready" && outputs.result.assessment.fit
@@ -203,6 +206,9 @@ state:
           }}'
         dependency_history_json: ${{ json_stringify(state_output("implementation", "dependencies", {})) }}
         session_artifacts_json: ${{ json_stringify(state_output("implementation", "session_artifacts", {})) }}
+        consultation_history_json: ${{ json_stringify(state_output("design", "consultations", {})) }}
+        additional_consultation_history_json: ${{ json_stringify(state_output("implementation", "consultations",
+          {})) }}
       transitions:
       - to: failed
         when: outputs.session_id == "" || !outputs.valid
@@ -397,6 +403,7 @@ outputs:
     "dependencies", {}), "implementation": state_output("implementation", "dependencies", {}), "specification":
     state_output("specification", "dependencies", {}), "quality": state_output("quality", "dependencies", {})} }}'
   design: ${{ state_output("design", "result", {}) }}
-  consultations: ${{ state_output("design", "consultations", {}) }}
+  consultations: '${{ state_exists("implementation") && state_output("design", "result", {}).?assessment.orValue({}).?fit.orValue("") != "outside" ? states.implementation.outputs.consultations : state_output("design",
+    "consultations", {}) }}'
   disposition: '${{ state_output("finish", "merged", false) ? "implemented" : (state_output("design", "result",
     {}).?assessment.orValue({}).?fit.orValue("") == "outside" ? "outside" : "incomplete") }}'

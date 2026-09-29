@@ -1,5 +1,5 @@
 id: development-implement
-version: 0.2.0
+version: 0.3.0
 input_schema:
   prompt:
     type: string
@@ -28,6 +28,12 @@ input_schema:
   session_artifacts_json:
     type: string
     default_value: '{}'
+  consultation_history_json:
+    type: string
+    default_value: '{}'
+  additional_consultation_history_json:
+    type: string
+    default_value: '{}'
 inputs:
   prompt: ${{ inputs.prompt }}
   target_directory: ${{ inputs.target_directory }}
@@ -38,6 +44,8 @@ inputs:
   evidence_json: ${{ inputs.evidence_json }}
   dependency_history_json: ${{ inputs.dependency_history_json }}
   session_artifacts_json: ${{ inputs.session_artifacts_json }}
+  consultation_history_json: ${{ inputs.consultation_history_json }}
+  additional_consultation_history_json: ${{ inputs.additional_consultation_history_json }}
 vars:
   result_schema:
     type: object
@@ -49,6 +57,8 @@ vars:
     - questions
     - changes
     - statement_tests
+    - consultation
+    - proposed_handoffs
     properties:
       status:
         type: string
@@ -87,35 +97,149 @@ vars:
               items: *id001
               minItems: 1
         minItems: 1
-sequence:
-- id: agent
-  include: ./agent.yaml
-  inputs:
-    prompt: ${{ inputs.prompt }}
-    target_directory: ${{ inputs.target_directory }}
-    mode: ${{ inputs.mode }}
-    feedback: ${{ inputs.feedback }}
-    context_json: ${{ inputs.context_json }}
-    session_id: ${{ inputs.session_id }}
-    evidence_json: ${{ inputs.evidence_json }}
-    instructions: Implement the approved design and test plan provided in context_json. Write the tests and implementation.
-      Map every approved test statement to test files in statement_tests. Preserve approved expectations; changes
-      to existing expectations require the deprecation process. Address supplied review feedback. The current approved
-      design and test plan supersede prior feedback when requirements have changed. Remain in the same implementation
-      session on revision. Implement only locally owned requirements. Submit the approved design.handoffs to their
-      owning cells before declaring ready, carrying the refined design and consultation provenance as the child
-      request. Track each handoff against the dependency ledger to avoid duplicate submissions. Do not implement
-      external outcomes here. New or changed external work requires returning to design approval. Return status
-      redesign when a new dependency, changed handoff, or changed requirement needs design approval; explain the
-      necessary decision in questions.
-    result_schema_json: ${{ json_stringify(vars.result_schema) }}
-    writable: true
-    dependency_history_json: ${{ inputs.dependency_history_json }}
-    session_artifacts_json: ${{ inputs.session_artifacts_json }}
+      consultation:
+        anyOf:
+        - type: 'null'
+        - type: object
+          additionalProperties: false
+          required:
+          - thread_id
+          - cell
+          - ref
+          - message
+          properties:
+            thread_id: &id002
+              type: string
+              pattern: \S
+            cell: *id002
+            ref: *id002
+            message: *id002
+      proposed_handoffs:
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          required:
+          - thread_id
+          - cell
+          - mode
+          - outcome_ids
+          - design_markdown
+          properties:
+            thread_id: &id003
+              type: string
+              pattern: \S
+            cell: *id003
+            mode:
+              enum:
+              - build
+              - evolve
+            outcome_ids:
+              type: array
+              items: *id003
+            design_markdown: *id003
 outputs:
-  valid: ${{ sequence.agent.outputs.valid }}
-  result: ${{ sequence.agent.outputs.result }}
-  session_id: ${{ sequence.agent.outputs.session_id }}
-  completed: ${{ sequence.agent.outputs.completed }}
-  dependencies: ${{ sequence.agent.outputs.dependencies }}
-  session_artifacts: ${{ sequence.agent.outputs.session_artifacts }}
+  valid: ${{ state_output("agent", "valid", false) && state_exists("contract") }}
+  completed: ${{ state_output("agent", "completed", false) }}
+  session_id: ${{ state_output("agent", "session_id", "") }}
+  dependencies: ${{ state_output("agent", "dependencies", {}) }}
+  session_artifacts: ${{ state_output("agent", "session_artifacts", {}) }}
+  result: ${{ json_parse(state_output("contract", "stdout", "{}")).?result.orValue({}) }}
+  consultations: ${{ json_parse(state_output("record", "stdout", json_stringify(states.history.outputs.history)))
+    }}
+state:
+  initial: history
+  states:
+    history:
+      include: ./consultation-history.yaml
+      inputs:
+        history_json: ${{ inputs.consultation_history_json }}
+        additional_json: ${{ inputs.additional_consultation_history_json }}
+      transitions:
+      - to: agent
+        when: true
+    agent:
+      include: ./agent.yaml
+      inputs:
+        prompt: ${{ inputs.prompt }}
+        target_directory: ${{ inputs.target_directory }}
+        mode: ${{ inputs.mode }}
+        feedback: ${{ inputs.feedback }}
+        context_json: ${{ inputs.context_json }}
+        session_id: ${{ state_output("agent", "session_id", inputs.session_id) }}
+        evidence_json: ${{ inputs.evidence_json }}
+        instructions: |
+          Implement the approved design and test plan provided in context_json. Write the tests and implementation. Map every approved test statement to test files in statement_tests. Preserve approved expectations; changes to existing expectations require the deprecation process. Address supplied review feedback. The current approved design and test plan supersede prior feedback when requirements have changed. Remain in the same implementation session on revision. Implement only locally owned requirements. Submit the approved design.handoffs to their owning cells before declaring ready, carrying the refined design and consultation provenance as the child request. Track each handoff against the dependency ledger to avoid duplicate submissions. Do not implement external outcomes here. New or changed external work requires returning to design approval. Return status redesign when a new dependency, changed handoff, or changed requirement needs design approval; explain the necessary decision in questions.
+          At any time, including after discovering a dependency bug or missing feature, set consultation to
+          {thread_id,cell,ref,message} to discuss it with a separate agent in the owning cell. Supply reproduction
+          evidence and interface expectations in the message. You need not return to design merely to ask a question.
+          Consultations from earlier phases appear in context.consultations. Reuse the same thread ID, cell and original
+          ref to continue that pinned session, or use a new thread for another cell or a fresh revision. Your local edits,
+          implementation session and dependency ledger survive each consultation. Never send your session checkpoint to B.
+          Use a schema-valid needs_input result while requesting consultation; do not submit new work during that turn.
+          After feedback, set consultation null. If an existing interface or local fix meets the approved design, continue
+          implementation without redesign. If external code must change, return proposed_handoffs containing the exact
+          latest agreed B design, mode, thread ID, cell and outcome IDs (empty for newly discovered supporting work).
+          The recipe returns such new work to design approval before submission. Unresolved B questions may be answered
+          through another turn; disagreement may yield needs_input or redesign with an explanation. Do not hide missing
+          external work by returning ready. The consultation limit is eight foreign turns per implementation pass.
+        result_schema_json: ${{ json_stringify(vars.result_schema) }}
+        writable: true
+        dependency_history_json: ${{ json_stringify(state_output("agent", "dependencies", json_parse(inputs.dependency_history_json)))
+          }}
+        session_artifacts_json: '${{ state_exists("agent") ? json_stringify(states.agent.outputs.session_artifacts)
+          : inputs.session_artifacts_json }}'
+        consultation_history_json: ${{ state_output("record", "stdout", json_stringify(states.history.outputs.history))
+          }}
+      transitions:
+      - to: contract
+        when: outputs.valid
+    contract:
+      op: command_execution
+      inputs:
+        timeout: 10s
+        env:
+          RESULT_JSON: ${{ json_stringify(states.agent.outputs.result) }}
+          CONTEXT_JSON: ${{ inputs.context_json }}
+          HISTORY_JSON: ${{ state_output("record", "stdout", json_stringify(states.history.outputs.history)) }}
+          INITIAL_HISTORY_JSON: ${{ json_stringify(states.history.outputs.history) }}
+          SESSION: ${{ states.agent.outputs.session_id }}
+          OUTBOX: '{{ context.environment.op.outbox }}'
+        run: |
+          python3 - <<'PYCODE'
+          import json,os,pathlib
+          r=json.loads(os.environ['RESULT_JSON']); context=json.loads(os.environ['CONTEXT_JSON']); history=json.loads(os.environ['HISTORY_JSON'])
+          request=r['consultation']; selection={}
+          if request:
+              if not os.environ['SESSION']: raise ValueError('Consultation requires an originating session')
+              thread=history.get(request['thread_id'])
+              if thread and (thread['cell']!=request['cell'] or thread['ref']!=request['ref']): raise ValueError('Cannot retarget a consultation thread')
+              if sum(len(t['turns']) for t in history.values())-sum(len(t['turns']) for t in json.loads(os.environ['INITIAL_HISTORY_JSON']).values())>=8:
+                  r.update(status='needs_input',questions=r['questions']+['Consultation limit reached; resolve the open design decisions before continuing.'],consultation=None)
+              else:
+                  selection={**request,'workspace_ref':thread['commit'] if thread else request['ref'],'session_id':thread['session_id'] if thread else '', 'session_artifacts':thread['session_artifacts'] if thread else {}}
+          approved=context.get('design',{}).get('handoffs',[])
+          new_work=False
+          for handoff in r['proposed_handoffs']:
+              thread=history.get(handoff['thread_id']); reply=thread['response'] if thread else {}
+              if not thread or handoff['cell']!=thread['cell'] or reply.get('status')!='ready' or reply.get('fit')!='fits' or reply['questions'] or reply['blocking_issues'] or handoff['design_markdown']!=reply['design_markdown']: raise ValueError('Proposed handoff requires the latest agreed foreign design')
+              fields=['thread_id','cell','mode','outcome_ids','design_markdown']
+              if not any(all(handoff[k]==old[k] for k in fields) and old.get('provenance',{}).get('commit')==thread['commit'] for old in approved): new_work=True
+              handoff['provenance']={'cell':thread['mandate']['cell'],'commit':thread['commit'],'mandate_sha256':thread['mandate']['sha256']}
+          if new_work and not selection:
+              r.update(status='redesign',questions=r['questions']+['Review the newly discovered external work and update the design/test plan before submission.'])
+          if r['status']=='ready' and (r['questions'] or r['blocking_issues']): raise ValueError('Ready implementation has unresolved decisions')
+          out=pathlib.Path(os.environ['OUTBOX']);(out/'proposed-handoffs.json').write_text(json.dumps(r['proposed_handoffs']));(out/'consultations.json').write_text(json.dumps(history))
+          print(json.dumps({'result':r,'selection':selection}))
+          PYCODE
+      transitions:
+      - to: record
+        when: size(json_parse(outputs.stdout).selection) > 0
+    record:
+      include: ./consultation-turn.yaml
+      inputs:
+        selection_json: ${{ json_stringify(json_parse(states.contract.outputs.stdout).selection) }}
+        history_json: ${{ state_output("record", "stdout", json_stringify(states.history.outputs.history)) }}
+      transitions:
+      - to: agent
+        when: true

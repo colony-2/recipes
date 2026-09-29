@@ -1,0 +1,48 @@
+id: consultation-turn
+version: 0.3.0
+input_schema:
+  selection_json:
+    type: string
+    required: true
+  history_json:
+    type: string
+    required: true
+inputs:
+  selection_json: ${{ inputs.selection_json }}
+  history_json: ${{ inputs.history_json }}
+sequence:
+- workspace:
+    cell: ${{ json_parse(inputs.selection_json).cell }}
+    ref: ${{ json_parse(inputs.selection_json).workspace_ref }}
+  include: ./consult.yaml
+  inputs:
+    message: ${{ json_parse(inputs.selection_json).message }}
+    session_id: ${{ json_parse(inputs.selection_json).session_id }}
+    session_artifacts_json: ${{ json_stringify(json_parse(inputs.selection_json).session_artifacts) }}
+  id: consult
+- op: command_execution
+  inputs:
+    timeout: 10s
+    env:
+      HISTORY_JSON: ${{ inputs.history_json }}
+      SELECTION_JSON: ${{ inputs.selection_json }}
+      TURN_JSON: ${{ json_stringify(sequence.consult.outputs) }}
+      OUTBOX: '{{ context.environment.op.outbox }}'
+    run: |
+      python3 - <<'PYCODE'
+      import json, os, pathlib
+      history=json.loads(os.environ['HISTORY_JSON']); q=json.loads(os.environ['SELECTION_JSON']); turn=json.loads(os.environ['TURN_JSON'])
+      if not turn['valid']: raise ValueError('Invalid consultation result or missing session')
+      t=history.setdefault(q['thread_id'],{'cell':q['cell'],'ref':q['ref'],'commit':turn['mandate']['commit'],'turns':[]})
+      if q['session_id'] and q['session_id']!=turn['session_id']: raise ValueError('Consultation session changed')
+      if t['commit']!=turn['mandate']['commit']: raise ValueError('Consultation commit changed')
+      turn['session_artifacts']={k:v for k,v in turn['session_artifacts'].items() if k=='codex-home-state' or k.startswith('codex-home-state/')}
+      if not turn['session_artifacts']: raise ValueError('Missing consultation checkpoint')
+      t.update(response=turn['result'],session_id=turn['session_id'],session_artifacts=turn['session_artifacts'],mandate=turn['mandate'])
+      t['turns'].append({'message':q['message'],'response':turn['result']})
+      pathlib.Path(os.environ['OUTBOX'],'consultations.json').write_text(json.dumps(history))
+      print(json.dumps(history))
+      PYCODE
+  id: record
+outputs:
+  stdout: ${{ sequence.record.outputs.stdout }}

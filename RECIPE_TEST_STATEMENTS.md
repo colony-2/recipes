@@ -166,6 +166,14 @@ workflow adds a design/test-plan approval checkpoint before outcome acceptance.
 | TS-138 | Planning cannot submit child jobs; approved implementation requests carry the agreed foreign design and mandate provenance. | `recipes/develop/agent.yaml`, `recipes/develop/implement.yaml` | Critical | Integration; temporary JobDB | Positive and negative |
 | TS-139 | Invalid foreign responses, missing sessions, and unavailable repositories cannot silently become accepted designs. | `recipes/develop/consult.yaml`, `design.yaml` | Critical | Integration; c2j | Negative |
 
+| TS-140 | Implementation can consult a dependency cell after discovering a bug without first abandoning its coding session. | `recipes/develop/implement.yaml` | Critical | Integration; isolated JobDB, c2j | Positive |
+| TS-141 | Implementation edits and dependency history survive foreign discussions; foreign experiments never enter the local candidate. | `recipes/develop/implement.yaml`, `recipes/develop/consultation-turn.yaml` | Critical | Integration; git, isolated JobDB | Positive |
+| TS-142 | Design and implementation share consultation threads without changing their cell, pinned commit, or session. | `recipes/develop/consultation-history.yaml` | Critical | Integration; isolated JobDB | Positive |
+| TS-143 | Newly agreed external work returns to design approval before submission; advisory answers can continue approved implementation directly. | `recipes/develop/implement.yaml`, `recipes/develop/develop.yaml` | Critical | Integration; c2j | Positive and negative |
+| TS-144 | Multiple foreign threads retain separate checkpoints and identities; mismatched or missing continuation sessions cannot advance. | `recipes/develop/consult.yaml`, `recipes/develop/consultation-turn.yaml` | Critical | Integration; isolated JobDB | Positive and negative |
+| TS-145 | Missing repositories, invalid mandates, rejected ownership, and malformed foreign replies cannot become approved external work. | `recipes/develop/consult.yaml` | Critical | Integration; isolated JobDB | Negative |
+| TS-146 | Runtime blocker regressions execute independently so a broker or replay failure cannot hide other workspace coverage. | `recipe-tests/verify-consultations.py` | High | Integration; isolated JobDB | Negative |
+
 ## Notes for Test Authoring
 
 - Prefer `recipe_case` with explicit op mocks for deterministic branch coverage under test-policy sandboxing.

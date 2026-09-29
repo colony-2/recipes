@@ -1,0 +1,37 @@
+id: consultation-history
+version: 0.3.0
+input_schema:
+  history_json:
+    type: string
+    default_value: '{}'
+  additional_json:
+    type: string
+    default_value: '{}'
+inputs:
+  history_json: ${{ inputs.history_json }}
+  additional_json: ${{ inputs.additional_json }}
+sequence:
+- id: merge
+  op: command_execution
+  inputs:
+    timeout: 10s
+    env:
+      HISTORY_JSON: ${{ inputs.history_json }}
+      ADDITIONAL_JSON: ${{ inputs.additional_json }}
+    run: |
+      python3 - <<'PYCODE'
+      import json,os
+      history=json.loads(os.environ['HISTORY_JSON']); additional=json.loads(os.environ['ADDITIONAL_JSON'])
+      for key,other in additional.items():
+          if key not in history:
+              history[key]=other; continue
+          prior=history[key]
+          if any(prior[k]!=other[k] for k in ['cell','ref','commit','session_id']): raise ValueError('Conflicting consultation identity: '+key)
+          common=min(len(prior['turns']),len(other['turns']))
+          if prior['turns'][:common]!=other['turns'][:common]: raise ValueError('Divergent consultation history: '+key)
+          if len(other['turns'])>len(prior['turns']): history[key]=other
+          elif len(other['turns'])==len(prior['turns']) and prior['response']!=other['response']: raise ValueError('Conflicting consultation response: '+key)
+      print(json.dumps(history))
+      PYCODE
+outputs:
+  history: ${{ json_parse(sequence.merge.outputs.stdout) }}

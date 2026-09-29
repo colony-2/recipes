@@ -24,7 +24,7 @@ BASE = dict(status="ready", summary="Ready", blocking_issues=[], questions=[])
 DESIGN = {**BASE, "design_markdown": "Add the requested behavior", "requirements": [{"id": "R1", "statement": "Requested behavior works"}]}
 DESIGN.update(assessment={"assessment_status":"assessed","fit":"fits","rationale":"Owned behavior","outcomes":[{"id":"R1","statement":"Requested behavior works","ownership":"local","suggested_owner":"test","mandate_evidence":["OWN-01"],"reason":"Owned"}],"questions":[]},consultation=None,handoffs=[])
 PLAN = {**BASE, "statements": [{"id": "T1", "statement": "Requested behavior works", "requirement_ids": ["R1"], "files": ["test.sh"], "importance": "high", "level": "integration", "dependencies": [], "case": "positive"}], "commands": [{"id": "check", "run": "true", "statement_ids": ["T1"], "timeout_seconds": 10}]}
-IMPLEMENTATION = {**BASE, "summary": "Implemented behavior", "changes": ["Requested change"], "statement_tests": [{"statement_id": "T1", "files": ["test.sh"]}]}
+IMPLEMENTATION = {**BASE, "consultation": None, "proposed_handoffs": [], "summary": "Implemented behavior", "changes": ["Requested change"], "statement_tests": [{"statement_id": "T1", "files": ["test.sh"]}]}
 SNAPSHOT = {"head": HASH, "base_hash": HASH, "target_directory": ".", "files": [], "clean": True}
 
 
@@ -55,10 +55,14 @@ def prepared_context():
 def phase(result, *, valid=True, status="completed", session="implementation-session"):
     ops = [command(SNAPSHOT), prepared_context(), mock("extension_execution", {"status": status, "sessionId": session}, {"result.json": json.dumps(result)}), command(SNAPSHOT), mock("extension_execution", {"ok": valid})]
     if valid:
-        ops.append(command(result))
+        ops.append(command({"result":result,"session_artifacts":{}}))
     if "design_markdown" in result:
         ops.insert(0, command({"cell":"test","valid":True}))
         if valid: ops.append(command({"result":result,"selection":{}}))
+    if "design_markdown" in result or "statement_tests" in result:
+        ops.insert(0, command({}))
+    if "statement_tests" in result and valid and status in ("completed", "incomplete"):
+        ops.append(command({"result":result,"selection":{}}))
     return ops
 
 
@@ -211,7 +215,7 @@ def verify_routing(work):
                 accepts = [v for p, v in observed if p.endswith("/accept")]
                 assert len(accepts) == 3
                 assert [s in v["form"]["question"] for s, v in zip(["First outcome", "Second outcome", "Final outcome"], accepts)] == [True] * 3
-            if case_id == "redesign":
+            if case_id in ("redesign", "implementation-requests-redesign"):
                 approvals = [p for p, _ in observed if p.endswith("/approve_plan")]
                 assert len(approvals) == 2, (name, case_id, approvals)
             if case_id.startswith("invalid-") and case_id != "invalid-human-input" or case_id in ("missing-session", "agent-error"):
