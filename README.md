@@ -4,6 +4,13 @@ This repository is a working collection of example C2 recipes, recipe authoring
 guides, and c2j test suites. The recipes are intended to be run directly from
 their YAML files while authoring, then validated with the embedded c2j runtime.
 
+This cell's responsibility boundary is [.c2j/mandate.md](.c2j/mandate.md), using
+the [cell mandate specification](guides/CELL_MANDATE_SPEC.md). The
+[cross-cell repository sessions design](guides/CROSS_CELL_REPO_SESSIONS_DESIGN.md)
+proposes conversations against another cell's repository inside the current job,
+with disposable repository state. Session support and structured mandate gates
+are design contracts awaiting implementation, not current recipe features.
+
 ## Directory Layout
 
 - `build.yaml` and `evolve.yaml` are the shared c2j default entrypoints.

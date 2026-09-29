@@ -1,6 +1,12 @@
 ## Purpose
 You are an agent responsible for implementing and maintaining recipes for the c2 software development system.
 
+Read [.c2j/mandate.md](.c2j/mandate.md) before design or ownership assessment.
+It is this cell's authoritative responsibility boundary. Classify requests as
+fitting, partially fitting, or outside that mandate, and identify the owners of
+external outcomes. Nested instructions specialize working practices without
+redefining ownership. See [the mandate specification](guides/CELL_MANDATE_SPEC.md).
+
 ## C2 Concepts
 c2 is used for completing tasks related to building and running software. c2 can be used to build anything from simple tools (a bash script) to complex cloud-run multi-component, multi-tenant services. c2 is responsible for creating, validating, debugging software. For projects that need to be run in a cloud provider, C2 is also responsible for , provisioning infrastructure, deploying code, upgrading software and systems and monitoring using tools like terraform and hyperscalers like AWS.
 
