@@ -4,7 +4,7 @@ Status: implemented by `recipes/develop/design.yaml`, `implement.yaml`, and the
 shared `consultation-turn.yaml` / `consult.yaml` recipes, using
 c2j node workspaces. This replaces the earlier proposal for a new session op.
 Compilers and workers must both support `workspace` and its resolution task.
-Production handoffs also require the runtime fixes listed below.
+Production handoffs require the verified runtime fixes listed below.
 
 ## Execution model
 
@@ -169,15 +169,13 @@ child job.
 No model API or home-sourced database is used. Model judgment and explicit
 publishing restraint remain prompt/review responsibilities.
 
-The current runtime also has a [child-broker include decoding bug](BUG_REPORT_CHILD_BROKER_COMPILED_INCLUDES.md).
-The handoff integration fixture is inline; brokered production defaults with
-compiled includes require the c2j fix. The [nested JSON issue](BUG_REPORT_NESTED_CEL_JSON.md)
-has a recipe-side transport workaround.
-
-The combined dialogue/child-wait test additionally exposes a
-[workspace replay failure](BUG_REPORT_WORKSPACE_DIALOGUE_CHILD_WAIT_REPLAY.md)
-when a replacement worker resumes the parent. It remains a failing regression;
-the passing dialogue test alone does not establish durable end-to-end handoff.
+The [child-broker include decoding bug](BUG_REPORT_CHILD_BROKER_COMPILED_INCLUDES.md)
+and [workspace replay failure](BUG_REPORT_WORKSPACE_DIALOGUE_CHILD_WAIT_REPLAY.md)
+are fixed by c2j `d02c9cc` and `bfc97e3`. Both regressions pass on a clean build of
+`bfc97e35b72c2708de7dd7c474375abb0d805783`. The handoff fixture now uses a real
+include, and both independent regressions remain required passing checks. The
+[nested JSON issue](BUG_REPORT_NESTED_CEL_JSON.md) retains its recipe-side transport
+workaround; these two fixes do not establish that serialization issue is resolved.
 
 `recipe-tests/verify-implementation-consultations.py` adds live late-discovery
 coverage using the same separate ephemeral JobDB and real command/schema/workspace
@@ -189,3 +187,18 @@ It also tests agreement/provenance gates and conflicting history merges directly
 Only model invocations are replaced; model and sandbox quality require separate
 live evaluation. All suites and both known runtime regressions are attempted even
 when an earlier test fails.
+
+`recipe-tests/verify-development-lifecycle.py` covers the complete defaults for
+both build and evolve. It installs committed local specializations, submits with
+the named CLI flags, and exercises implementation discovery, consultation, redesign,
+renewed approval, actual brokered child execution, worker replacement, artifact
+consumption, verification, and squash merges to separate disposable bare upstreams.
+The child assesses its mandate in a fresh implementation job. Trace assertions
+reject repeated model turns, premature approval/merge, duplicate child submissions,
+lost candidate edits, and experiments leaking from B into A. Model/human decisions
+are scripted; the actual verification command runs locally instead of inside Shai.
+
+The full lifecycle cases currently fail at the parent's await after B successfully
+merges: [child snapshot collision](BUG_REPORT_CHILD_SNAPSHOT_COLLISION_AFTER_CONSULTATION.md).
+This is distinct from the two confirmed fixes above. The stronger tests stay
+failing until the parent can consume B's actual Git artifacts and finish.

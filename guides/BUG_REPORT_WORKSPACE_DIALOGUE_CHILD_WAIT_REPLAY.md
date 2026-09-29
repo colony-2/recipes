@@ -1,5 +1,10 @@
 # Workspace dialogue followed by child wait fails replay
 
+Status: fixed in c2j `bfc97e3`; verified 2026-09-29 against clean commit
+`bfc97e35b72c2708de7dd7c474375abb0d805783`. The original regression passes after
+worker replacement without duplicate turns or submissions. The historical failure
+below is retained for context.
+
 Owner: c2j/JobDB runtime. Reproduced 2026-09-29 against a clean build of c2j
 commit `9f9d9d0cfa78` (source extracted with `git archive HEAD`, excluding local
 uncommitted runtime edits). JobDB service version:
@@ -25,7 +30,7 @@ resolution removes repeated GitHub requests from the test.
 2. Run the A/B/A/B/A conversation. B runs under an explicit node workspace;
    its Codex fixture is const. Checkpoints restore each cell's separate session.
 3. A produces a partial assessment and an agreed external handoff.
-4. The implementation session asynchronously submits an inline B child through
+4. The implementation session asynchronously submits an included B child through
    the inherited broker. The production agent captures `jobs.job_ids` and waits.
 5. Observe the parent at `PENDING_JOBS`, terminate its worker, run B to completion,
    then start a replacement worker for A.
@@ -55,8 +60,10 @@ non-workspace dependency cases pass worker replacement with the same JobDB
 harness. The failure is therefore exposed by the combined workflow; the precise
 runtime root cause is not yet established.
 
-The child fixture is inline to isolate this from the separately reported
+The original child fixture was inline to isolate the separately reported
 [compiled-include broker failure](BUG_REPORT_CHILD_BROKER_COMPILED_INCLUDES.md).
+With both fixes verified, it now includes the real mandate recipe. Full build/evolve
+lifecycle tests also verify named child submission, actual verification and merges.
 The [nested JSON serialization issue](BUG_REPORT_NESTED_CEL_JSON.md) is already
 avoided by the recipe's transport expressions.
 
@@ -68,7 +75,7 @@ resolution pins and scoped snapshot forwarding when replaying nested includes
 and re-entered consultation states. Do not repair this by re-running submissions
 or silently creating new sessions/workspaces.
 
-The final live regression should pass without suppressing errors, resetting the
+The live regression must continue to pass without suppressing errors, resetting the
 JobDB, replaying Codex turns, or weakening the identity/provenance assertions.
 Keep the existing successful dependency-recovery tests passing. No c2j/runtime
 source files were changed in the recipes cell.

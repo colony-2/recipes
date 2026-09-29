@@ -1,5 +1,9 @@
 # Child broker rejects compiled includes as reserved metadata
 
+Status: fixed in c2j `d02c9cc`; verified 2026-09-29 against clean commit
+`bfc97e35b72c2708de7dd7c474375abb0d805783`. The independent broker regression passes.
+The handoff regression now uses an included mandate recipe instead of inlining it.
+
 Owner: c2j. Observed 2026-09-29 with the local workspace-capable build
 `v0.0.54-0.20260929012541-9f9d9d0cfa78+dirty`.
 
@@ -47,13 +51,10 @@ included child recipe, including workspace-bearing includes.
 
 ## Impact and test boundary
 
-The recipe dialogue and direct child submission work. Child recipes containing
-compiled includes need this runtime fix before their brokered submission can be
-relied on, including applicable local/shared default-recipe paths. No runtime
-files were changed in this cell. The deterministic handoff test inlines its small
-fixture so it can independently verify refined-brief transport, real job
-attribution, captured `jobs.job_ids`, waiting, and session resumption. It does not
-claim that brokered submission of included production defaults is fixed.
+Originally, brokered recipes with compiled includes required an inline fixture
+workaround. That workaround has been removed. The tests now exercise included
+child recipes and full named build/evolve jobs with nested phase includes. Runtime
+source remains owned by c2j; no runtime files were changed in this cell.
 
 ## Independent regression
 
@@ -61,5 +62,6 @@ claim that brokered submission of included production defaults is fixed.
 and executes a child with a compiled include through the real broker using a
 separate ephemeral JobDB. It has no node workspace or child-wait dependency, so the
 workspace replay issue cannot mask this failure. Run it through
-`recipe-tests/run-defaults.sh`; the suite remains nonzero until this regression
-and the replay regression both pass.
+`recipe-tests/run-defaults.sh`; both this regression and the replay regression must pass.
+`verify-development-lifecycle.py` additionally covers named default submissions
+and real child/parent verification and merges.

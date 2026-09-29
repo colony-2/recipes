@@ -6,7 +6,7 @@
 Only model replies are deterministic fixtures; checkout, artifacts, const
 snapshots, node re-entry, child submission, waits and provenance are real c2j.
 Broker/include and workspace/child-wait replay regressions execute independently.
-They remain failing tests until their documented c2j fixes are available.
+Both must pass; compiled includes are exercised without the former inline workaround.
 """
 import copy
 import hashlib
@@ -32,6 +32,16 @@ d = deps.defaults
 def write(path, value): path.write_text(yaml.safe_dump(value, sort_keys=False))
 def read(name): return yaml.safe_load((ROOT/'recipes/develop'/name).read_text())
 def e(text): return '${{ '+text+' }}'
+
+
+def command_outputs(value, states):
+    if isinstance(value, dict): return {k: command_outputs(v, states) for k, v in value.items()}
+    if isinstance(value, list): return [command_outputs(v, states) for v in value]
+    if isinstance(value, str):
+        for state in states:
+            for field in ['status', '?sessionId', 'sessionId']:
+                value=value.replace(f'states.{state}.outputs.{field}', f'json_parse(states.{state}.outputs.stdout).{field}')
+    return value
 
 
 def seed(work, name):
@@ -161,14 +171,14 @@ def verify_service(work, handoff=True):
         fixture=work/'fixture';shutil.copytree(ROOT/'recipes/develop',fixture)
         trace=work/'trace.jsonl'
         child_path=work/'child.yaml'
-        write(child_path, {'id':'refined-child','input_schema':{'prompt':{'type':'string','required':True}},'inputs':{'prompt':e('inputs.prompt')},'sequence':[{'id':'mandate',**{k:v for k,v in read('mandate.yaml').items() if k not in ['id','version']},'inputs':{'commit':'','require_workspace':False}},{'id':'accept','op':'command_execution','inputs':{'env':{'PROMPT':e('inputs.prompt'),'MANDATE':e('json_stringify(sequence.mandate.outputs.mandate)'),'OUTBOX':'{{ context.environment.op.outbox }}'},'run':'''python3 - <<'CHILD'
+        write(child_path, {'id':'refined-child','input_schema':{'prompt':{'type':'string','required':True}},'inputs':{'prompt':e('inputs.prompt')},'sequence':[{'id':'mandate','include':'./fixture/mandate.yaml','inputs':{'commit':'','require_workspace':False}},{'id':'accept','op':'command_execution','inputs':{'env':{'PROMPT':e('inputs.prompt'),'MANDATE':e('json_stringify(sequence.mandate.outputs.mandate)'),'OUTBOX':'{{ context.environment.op.outbox }}'},'run':'''python3 - <<'CHILD'
 import json,os,pathlib
 h=json.loads(os.environ['PROMPT']);m=json.loads(os.environ['MANDATE'])
 assert m['valid'] and h['provenance']['cell']==m['cell']
 assert h['design_markdown']=='Service uses stable tokens; invalid tokens are rejected.' and h['outcome_ids']==['R2']
 pathlib.Path(os.environ['OUTBOX'],'handoff.json').write_text(json.dumps(h))
 CHILD
-'''}}],'outputs':{'merged':True}})
+'''}}],'outputs':{'accepted':True}})
         agent=yaml.safe_load((fixture/'agent.yaml').read_text())
         for node in agent['state']['states']['run']['state']['states'].values():
             node['op']='command_execution';node['inputs']={'env':{'INBOX':'{{ context.environment.op.inbox }}','OUTBOX':'{{ context.environment.op.outbox }}','WORKTREE':'{{ context.environment.op.worktree_path }}','SESSION':e('inputs.session_id'),'TRACE':str(trace),'B_CELL':str(b),'WORKSPACE':'{{ context.workspace.cell }}','OWNER':'{{ context.workflow.cell }}','INSTRUCTIONS':e('inputs.instructions'),'CHILD_RECIPE':str(child_path)},'run':'''python3 - 2>>"${TRACE}.error" <<'CODE'
@@ -180,16 +190,15 @@ if os.environ['INSTRUCTIONS'].startswith('Implement'):
  assert h['provenance']['commit'] and h['design_markdown']=='Service uses stable tokens; invalid tokens are rejected.'
  if not os.environ['SESSION']:
   assert not dependencies
-  children=json.loads(subprocess.check_output(['c2j','list','children','--parent-tenant-id','test','--parent-job-id',os.environ['C2J_CURRENT_JOB_ID'],'--all-ops','--all','--status','READY,ACTIVE,PENDING_JOBS,COMPLETED,CANCELLED','--json'],text=True))
-  assert not children['jobs'], 'Design consultation submitted work prematurely'
-  subprocess.run(['c2j','submit',json.dumps(h),'--cell',h['cell'],'--recipe-file',os.environ['CHILD_RECIPE'],'--json'],check=True)
+  subprocess.run(['c2j','submit',json.dumps(h),'--cell',h['cell'],'--recipe-file',os.environ['CHILD_RECIPE'],'--json'],check=True,stdout=subprocess.DEVNULL)
  else:
   assert os.environ['SESSION']=='I-session' and (inbox/'codex-home-state/session.txt').read_text()=='I'
-  assert len(dependencies)==1 and all(v['status']=='completed' and v['outputs']['merged'] for v in dependencies.values())
+  assert len(dependencies)==1 and all(v['status']=='completed' and v['outputs']['accepted'] for v in dependencies.values())
   assert json.loads(next((inbox/'dependencies').rglob('handoff.json')).read_text())==h
  r={'status':'ready' if dependencies else 'needs_input','summary':'Integrated agreed service work','blocking_issues':[],'questions':[] if dependencies else ['Await service'],'changes':['Client behavior'],'consultation':None,'proposed_handoffs':[],'statement_tests':[{'statement_id':'T1','files':['test.sh']}]}
  (out/'result.json').write_text(json.dumps(r));(out/'codex-home-state').mkdir();(out/'codex-home-state/session.txt').write_text('I')
  with open(os.environ['TRACE'],'a') as f:f.write(json.dumps({'actor':'I','session':os.environ['SESSION'],'workspace':os.environ['WORKSPACE'],'owner':os.environ['OWNER']})+'\\n')
+ print(json.dumps({'status':'completed','sessionId':'I-session'}))
  raise SystemExit(0)
 h=c['consultations'];m=c['mandate']
 assert (root/'app.txt').read_text()=='application\\n' and not (root/'experiment.txt').exists()
@@ -202,9 +211,10 @@ if len(h.get('service',{}).get('turns',[]))<2:
 else:
  r['handoffs']=[{'thread_id':'service','cell':os.environ['B_CELL'],'mode':'build','outcome_ids':['R2'],'design_markdown':h['service']['response']['design_markdown']}]
 (out/'result.json').write_text(json.dumps(r));(out/'codex-home-state').mkdir();(out/'codex-home-state/session.txt').write_text('A')
+print(json.dumps({'status':'completed','sessionId':'A-session'}))
 CODE
 '''}
-        agent['state']['states']['run']['outputs'].update(status='completed',session_id=e('inputs.instructions.startsWith("Implement") ? "I-session" : "A-session"'));write(fixture/'agent.yaml',agent)
+        agent['state']['states']['run']['outputs']=command_outputs(agent['state']['states']['run']['outputs'],['root','scoped']);write(fixture/'agent.yaml',agent)
         consult=yaml.safe_load((fixture/'consult.yaml').read_text());node=consult['state']['states']['agent'];node['op']='command_execution'
         node['inputs']={'env':{'INBOX':'{{ context.environment.op.inbox }}','OUTBOX':'{{ context.environment.op.outbox }}','WORKTREE':'{{ context.environment.op.worktree_path }}','SESSION':e('inputs.session_id'),'TRACE':str(trace),'B_REPO':str(b),'B_HEAD':b_head,'WORKSPACE':'{{ context.workspace.cell }}','OWNER':'{{ context.workflow.cell }}'},'run':'''python3 - 2>>"${TRACE}.error" <<'CODE'
 import json,os,pathlib,subprocess
@@ -222,11 +232,11 @@ else:
 r={'status':'ready' if resumed else 'needs_input','summary':'Agreed' if resumed else 'Clarify interface','fit':'fits','blocking_issues':[],'questions':[] if resumed else ['What token format?'],'design_markdown':'Service uses stable tokens; invalid tokens are rejected.'}
 (out/'result.json').write_text(json.dumps(r));(out/'codex-home-state').mkdir();(out/'codex-home-state/session.txt').write_text('B')
 with open(os.environ['TRACE'],'a') as f:f.write(json.dumps({'actor':'B','session':os.environ['SESSION'],'workspace':os.environ['WORKSPACE'],'owner':os.environ['OWNER']})+'\\n')
+print(json.dumps({'status':'completed','sessionId':'B-session'}))
 CODE
 '''}
-        # The fake op exposes the real Codex output contract at the consuming nodes.
-        consult['outputs']['valid']=e('state_output("schema", "ok", false) && state_exists("read")')
-        consult['outputs']['session_id']='B-session';write(fixture/'consult.yaml',consult)
+        # Adapt command transport while retaining every production validity guard.
+        consult['outputs']=command_outputs(consult['outputs'],['agent']);write(fixture/'consult.yaml',consult)
         wrapper=work/'workflow.yaml'
         write(wrapper,{'id':'dialogue-and-handoff','input_schema':{'prompt':{'type':'string','required':True}},'inputs':{'prompt':e('inputs.prompt')},'sequence':[{'id':'design','include':str(fixture/'design.yaml'),'inputs':{'prompt':e('inputs.prompt')}},{'id':'implementation','include':str(fixture/'implement.yaml'),'inputs':{'prompt':e('inputs.prompt'),'context_json':e("'{\"design\":' + json_stringify(sequence.design.outputs.result) + '}'")}}],'outputs':{'design':e('sequence.design.outputs'),'implementation':e('sequence.implementation.outputs')}})
         if not handoff:

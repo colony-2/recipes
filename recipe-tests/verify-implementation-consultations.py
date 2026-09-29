@@ -32,14 +32,7 @@ def model_node(original, env, *, const=False):
             'artifacts': copy.deepcopy(original.get('artifacts', {}))}
 
 
-def command_outputs(value, states):
-    if isinstance(value, dict): return {k: command_outputs(v, states) for k, v in value.items()}
-    if isinstance(value, list): return [command_outputs(v, states) for v in value]
-    if isinstance(value, str):
-        for state in states:
-            for field in ['status', '?sessionId', 'sessionId']:
-                value=value.replace(f'states.{state}.outputs.{field}', f'json_parse(states.{state}.outputs.stdout).{field}')
-    return value
+command_outputs = c.command_outputs
 
 
 def verify_live(work, binary, scenario):

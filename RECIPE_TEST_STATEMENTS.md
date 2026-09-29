@@ -174,6 +174,10 @@ workflow adds a design/test-plan approval checkpoint before outcome acceptance.
 | TS-145 | Missing repositories, invalid mandates, rejected ownership, and malformed foreign replies cannot become approved external work. | `recipes/develop/consult.yaml` | Critical | Integration; isolated JobDB | Negative |
 | TS-146 | Runtime blocker regressions execute independently so a broker or replay failure cannot hide other workspace coverage. | `recipe-tests/verify-consultations.py` | High | Integration; isolated JobDB | Negative |
 
+| TS-147 | Named build and evolve handoffs execute committed child recipes with includes, reassess ownership, and merge verified work before the parent resumes. | `recipe-tests/verify-development-lifecycle.py` | Critical | Integration; isolated JobDB, c2j, git | Positive |
+| TS-148 | Late dependency discoveries require renewed design approval; parent restart preserves conversations and candidate edits without duplicating child submissions. | `recipe-tests/verify-development-lifecycle.py` | Critical | Integration; isolated JobDB, c2j workers | Positive and negative |
+| TS-149 | Parent acceptance and merge remain unreachable while an approved dependency is pending. | `recipe-tests/verify-development-lifecycle.py` | Critical | Integration; isolated JobDB, c2j workers | Negative |
+
 ## Notes for Test Authoring
 
 - Prefer `recipe_case` with explicit op mocks for deterministic branch coverage under test-policy sandboxing.

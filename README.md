@@ -92,13 +92,12 @@ Cancelled parents may leave children running; operators must cancel those separa
 Cross-cell submission requires a JobDB service, available workers, and `c2j`
 installed in the op sandbox with `C2J_JOBDB` configured for that service and tenant.
 Embedded execution is suitable for local authoring without subprocess children.
-The inherited broker environment must reach Codex subprocesses. The tested c2j
-build rejects brokered child recipes with compiled includes; see the
-[bug report](guides/BUG_REPORT_CHILD_BROKER_COMPILED_INCLUDES.md). The handoff
-integration test uses an inline child fixture, and production paths with includes
-need the runtime fix. The combined workspace-dialogue/child-wait flow also
-has a [durable replay failure](guides/BUG_REPORT_WORKSPACE_DIALOGUE_CHILD_WAIT_REPLAY.md);
-the live regression remains failing until c2j fixes it. Child completion
+The inherited broker environment must reach Codex subprocesses. Use c2j containing
+`d02c9cc` (compiled-include submission) and `bfc97e3` (workspace replay). Both fixes
+were verified against a clean build of `bfc97e35b72c2708de7dd7c474375abb0d805783`;
+the [broker report](guides/BUG_REPORT_CHILD_BROKER_COMPILED_INCLUDES.md) and
+[replay report](guides/BUG_REPORT_WORKSPACE_DIALOGUE_CHILD_WAIT_REPLAY.md) retain
+historical reproductions. Child completion
 does not refresh the parent's repository snapshot: the resumed agent must consume
 the correct dependency version within its approved scope. An upstream advancement
 still requires a fresh verified candidate before merge.
@@ -194,8 +193,19 @@ invalid replies/sessions/checkpoints, unavailable cells, mandate failures, and
 bounded discussions. Local edits are made before consultation and checked after
 resumption; B experiments and moving upstream refs test snapshot isolation.
 The broker/include and workspace/handoff replay regressions run independently.
-The runner attempts every suite and exits nonzero if any fails; known upstream
-failures are neither skipped nor counted as passing.
+`verify-development-lifecycle.py` runs the complete defaults in both cells through
+committed `.c2j/recipes/` specializations and named `--build`/`--evolve` submission.
+A discovers missing dependency behavior during implementation, consults B, repeats
+design/test-plan approval, and submits B. The test replaces A's worker while it
+waits, runs B through real verification and squash merge, then requires A to resume
+through its own verification and squash merge. It checks candidate/session preservation,
+no premature parent acceptance, and exactly one child submission and merge per cell.
+Only model/human decisions are scripted; verification runs on the host without Shai.
+These fuller cases currently expose a separate [child snapshot collision](guides/BUG_REPORT_CHILD_SNAPSHOT_COLLISION_AFTER_CONSULTATION.md):
+B verifies and merges, but A's await rejects the returned Git artifacts. Both cases
+remain failing regressions; the original two regressions pass.
+The runner attempts every suite and exits nonzero if any fails; neither regression
+has an expected-failure exemption.
 
 ## Authoring Loop
 

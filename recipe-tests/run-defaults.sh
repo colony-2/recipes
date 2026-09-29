@@ -18,9 +18,9 @@ if [[ -n "${C2OPS_REPOSITORY:-}" ]]; then
   export "GIT_CONFIG_VALUE_${config_index}=https://github.com/colony-2/c2ops.git"
   export GIT_CONFIG_COUNT="$((config_index + 1))"
 fi
-# Run every family even while upstream regressions fail; keep a nonzero exit.
+# Attempt every family and report any failure, including runtime regressions.
 failures=0
-for suite in verify-default-recipes.py verify-dependencies.py verify-implementation-consultations.py verify-consultations.py; do
+for suite in verify-default-recipes.py verify-dependencies.py verify-implementation-consultations.py verify-consultations.py verify-development-lifecycle.py; do
   if ! uv run "$ROOT_DIR/recipe-tests/$suite"; then
     failures=$((failures + 1))
   fi
