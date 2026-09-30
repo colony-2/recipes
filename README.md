@@ -119,6 +119,15 @@ a different cell-relative scope, for example `.` when editing shared defaults in
 this repository. Scope validation rejects traversal, symlink escapes, out-of-scope
 changes, and writes during design/review.
 
+Codex and `codex/run_skill` now use c2ops revision
+`ded76dfbd877d3d0749e509844ecdbc57197b572`. Workers and authoring tools need c2j
+immutable-object support (at least `e1334817a353d4868a97fa5452fe8fe3aee2fc13`)
+and Codex CLI **0.157.1** in the execution environment. Continuations forward the
+complete `session` object; `session_id` outputs are diagnostic only. Legacy
+ID/artifact sessions cannot be resumed with these recipes. Start fresh jobs when
+upgrading, carrying any useful summary as ordinary task context. See
+[the session migration guide](guides/CODEX_OBJECT_SESSION_MIGRATION.md).
+
 Codex and verification use `sandbox.type: shai`. Codex's artifact/runtime paths
 retain their defaults; evolve intentionally overrides only `worktree_path`.
 **Current upstream limitation:** Shai grants workspace-wide writes, and c2ops

@@ -14,7 +14,8 @@ consult = os.environ.get('CONSULT') == 'true'
 instructions = os.environ.get('INSTRUCTIONS', '')
 role = 'consult' if consult else 'design' if instructions.startswith('Assess') else 'implement' if instructions.startswith('Implement') else 'plan' if instructions.startswith('Write outcome') else 'review'
 identity = ('B' if consult else cell) + '-' + role
-checkpoint = inbox/'codex-home-state/session.json'
+session_home = Path(os.environ['SESSION_HOME'])
+checkpoint = session_home/'session.json'
 if session:
     assert session == identity and json.loads(checkpoint.read_text())['session'] == identity
 else:
@@ -107,6 +108,5 @@ else:
             if cell == 'A': assert len(dependencies) == 1
 
 (out/'result.json').write_text(json.dumps(result))
-(out/'codex-home-state').mkdir()
-(out/'codex-home-state/session.json').write_text(json.dumps(dict(session=identity)))
+(session_home/'session.json').write_text(json.dumps(dict(session=identity)))
 print(json.dumps(dict(status='completed',sessionId=identity)))

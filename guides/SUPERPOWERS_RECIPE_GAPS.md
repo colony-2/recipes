@@ -1,5 +1,11 @@
 # Superpowers Recipe Product Gaps
 
+Session migration update (2026-09-30): the session-ID routing descriptions in this
+historical design/validation analysis are superseded by
+[the object-session migration](CODEX_OBJECT_SESSION_MIGRATION.md). Current recipes
+route the complete `session` reference; `sessionId` is diagnostic only. Both Codex
+entrypoints are pinned together and legacy resume artifacts/inputs are rejected.
+
 Companion to `guides/SUPERPOWERS_RECIPE_MAPPING.md`.
 
 This review reflects the current product direction:
@@ -17,7 +23,7 @@ with a focused live smoke.
 
 | Need | Current coverage | Status |
 | --- | --- | --- |
-| Skill-first prompting and enforced skill execution | c2ops `codex/run_skill` | Covered. Latest c2ops exposes `git+https://github.com/colony-2/c2ops.git//codex/run_skill@main`; its manifest name is `skill.run`. |
+| Skill-first prompting and enforced skill execution | c2ops `codex/run_skill` | Covered. Latest c2ops exposes `git+https://github.com/colony-2/c2ops.git//codex/run_skill@ded76dfbd877d3d0749e509844ecdbc57197b572`; its manifest name is `skill.run`. |
 | Deterministic gates and schema checks | c2ops `rule_gate` with `json_schema` | Covered. Latest c2ops exposes `git+https://github.com/colony-2/c2ops.git//rule_gate@main`. This removes the need for a separate plan-update validation op. |
 | Failed child jobs as workflow data | `recipe.await_result_soft` | Covered for failed-child status and failure routing by TS-049. Child internals remain encapsulated; parent-visible artifacts must be exported as child job result artifacts. |
 | Parallel reviewer/adversarial fanout | `child_group` | Covered. TS-050 validates required/optional reviewer aggregation. |
@@ -275,7 +281,7 @@ include it.
 I checked out the latest c2ops repo at commit `63ba6ba` and found concrete docs
 and manifests for:
 
-- `git+https://github.com/colony-2/c2ops.git//codex/run_skill@main`
+- `git+https://github.com/colony-2/c2ops.git//codex/run_skill@ded76dfbd877d3d0749e509844ecdbc57197b572`
 - `git+https://github.com/colony-2/c2ops.git//rule_gate@main`
 
 The implemented `rule_gate` surface is intentionally smaller than the earlier

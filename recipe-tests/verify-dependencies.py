@@ -4,7 +4,7 @@
 """Dependency graph tests plus real broker submission against a separate JobDB.
 
 The server uses JobDB's in-memory runtime, never the user's embedded database.
-Codex is replaced by a deterministic command; all child submissions, captured
+Codex decisions come from an object-producing fixture; all child submissions, captured
 jobs metadata, awaits, artifacts and worker resumption use real c2j operations.
 """
 import importlib.util
@@ -125,12 +125,9 @@ def verify_service(work, scenario='success'):
             write_yaml(child_path, child)
             fixture = work / "fixture"; shutil.copytree(ROOT / "recipes/develop", fixture)
             agent = yaml.safe_load((fixture / "agent.yaml").read_text())
-            # Use a real deterministic command in place of Codex. Keep the actual
-            # nested states and jobs extraction unchanged. Outputs use the same contract.
-            for node in agent["state"]["states"]["run"]["state"]["states"].values():
-                node["op"] = "command_execution"
-                node["inputs"] = {"timeout": "60s", "env": {
-                    "SESSION": "${{ inputs.session_id }}", "INBOX": "{{ context.environment.op.inbox }}", "OUTBOX": "{{ context.environment.op.outbox }}",
+            # Only model decisions are substituted; session objects and child jobs are real.
+            model_inputs = {"timeout": "60s", "env": {
+                    "INBOX": "{{ context.environment.op.inbox }}", "OUTBOX": "{{ context.environment.op.outbox }}",
                     "CHILD_CELL": str(child_repo), "CHILD_RECIPE": str(child_path), "RELEASE": str(work / "release"),
                     "RECOVERY_RECIPE": str(recovery_path),
                     "C2J_JOBDB": uri, "TRACE": str(work / "agent-trace.jsonl"), "SCENARIO": scenario,
@@ -178,11 +175,9 @@ if os.environ['SCENARIO']=='invalid-result': del result['summary']
 (outbox/'result.json').write_text(json.dumps(result))
 PY
 '''}
-            # Command ops have no Codex session outputs. Supply those two fixture
-            # fields at their container; preserve the real jobs extraction.
-            agent['state']['states']['run']['outputs'].update(status='completed', session_id='fixture-session')
-            if scenario == 'missing-session':
-                agent['state']['states']['run']['outputs']['session_id'] = ''
+            code=model_inputs['run'].split("<<'PY'\n",1)[1].rsplit('\nPY',1)[0]
+            code+="\nprint(json.dumps({'status':'completed','sessionId':'fixture-session','_omit_session':os.environ['SCENARIO']=='missing-session'}))\n"
+            agent=defaults.objects.replace(yaml.safe_load((ROOT/'recipes/develop/agent.yaml').read_text()),fixture,model_inputs['env'],code)
             write_yaml(fixture / "agent.yaml", agent)
             submitted = json.loads(run(["c2j", "submit", "Dependency test", "--recipe-file", str(fixture / "agent.yaml"), "--cell", str(repo),
                 "--inputs-json", json.dumps({"instructions": "Fixture", "result_schema_json": json.dumps({"type":"object", "required":list(defaults.BASE)}),
@@ -238,7 +233,7 @@ PY
             result = final['Attempts'][-1]['Output']['Data']
             session_resumed = scenario not in ('missing-session', 'invalid-result')
             assert len(trace()) == (3 if scenario in ('rounds', 'failed') else 2 if session_resumed else 1), trace()
-            assert result['valid'] == (scenario != 'invalid-result'), result
+            assert result['valid'] == (scenario not in ('missing-session','invalid-result')), result
             assert result['completed'] == (scenario not in ('missing-session', 'invalid-result')), result
             assert set(result['dependencies']) == set(ids), result
             if session_resumed:
@@ -258,7 +253,7 @@ PY
             if scenario == 'feedback-history':
                 followup = json.loads(run(['c2j','submit','Revisit the phase after human feedback','--recipe-file',str(fixture / 'agent.yaml'),
                     '--cell',str(repo),'--inputs-json',json.dumps({'instructions':'Fixture','result_schema_json':'{}',
-                    'session_id':'fixture-session','dependency_history_json':json.dumps(result['dependencies']),
+                    'session':result['session'],'dependency_history_json':json.dumps(result['dependencies']),
                     'feedback':'Keep the completed dependency and revise this cell only'}),'--json'],env=env))
                 run(['c2j','run','one','--job-id',followup['job_id']],env=env,timeout=45)
                 assert len(trace()) == 3 and set(trace()[-1]['context']['dependencies']) == set(ids)

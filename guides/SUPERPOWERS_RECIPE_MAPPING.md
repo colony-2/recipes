@@ -1,5 +1,11 @@
 # Superpowers Recipe Mapping Proposal
 
+Session migration update (2026-09-30): the session-ID routing descriptions in this
+historical design/validation analysis are superseded by
+[the object-session migration](CODEX_OBJECT_SESSION_MIGRATION.md). Current recipes
+route the complete `session` reference; `sessionId` is diagnostic only. Both Codex
+entrypoints are pinned together and legacy resume artifacts/inputs are rejected.
+
 ## Purpose
 
 Recreate the current Superpowers software-development methodology as C2 recipes.
@@ -193,7 +199,7 @@ tasks.
    ready tasks, enforcing schema/policy, and sequencing phases. Do not invoke a
    skill for work that the recipe can decide mechanically.
 3. **Codex owns agentic work.** Each concrete authoring, implementation, review,
-   or debugging step uses `git+https://github.com/colony-2/c2ops.git//codex@main`
+   or debugging step uses `git+https://github.com/colony-2/c2ops.git//codex@ded76dfbd877d3d0749e509844ecdbc57197b572`
    or `codex/run_skill` when a role skill and artifact contract are the intended
    interface.
 4. **Separate role context from work boundaries.** Fresh Codex sessions provide
@@ -1177,7 +1183,7 @@ available if we want to maintain C2-specific Superpowers skill variants.
 Every Codex-backed recipe should follow the local convention:
 
 ```yaml
-op: git+https://github.com/colony-2/c2ops.git//codex@main
+op: git+https://github.com/colony-2/c2ops.git//codex@ded76dfbd877d3d0749e509844ecdbc57197b572
 inputs:
   worktree_path: "{{ context.environment.op.worktree_path }}"
   workdir_path: "{{ context.environment.op.workdir }}"

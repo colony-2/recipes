@@ -28,36 +28,24 @@ sequence:
       PLAN_JSON: ${{ inputs.plan_json }}
       IMPLEMENTATION_JSON: ${{ inputs.implementation_json }}
       OUTBOX: '{{ context.environment.op.outbox }}'
-    run: |
-      python3 - <<'PY'
-      import json, os, pathlib, subprocess, signal
-      root=pathlib.Path(os.environ['CELL_ROOT']).resolve()
-      target=(root/os.environ['TARGET_DIRECTORY']).resolve()
-      assert target.is_relative_to(root), 'Target escapes cell'
-      plan=json.loads(os.environ['PLAN_JSON']); implementation=json.loads(os.environ['IMPLEMENTATION_JSON'])
-      ids={s['id'] for s in plan['statements']}
-      assert ids and {s['statement_id'] for s in implementation['statement_tests']}==ids, 'Implementation does not map every test statement'
-      commands=plan['commands']; assert commands, 'No verification commands'
-      out=pathlib.Path(os.environ['OUTBOX']); evidence=[]
-      def git(*args): return subprocess.check_output(['git','-C',str(root),*args]).decode().strip()
-      head=git('rev-parse','HEAD')
-      assert not git('status','--porcelain'), 'Candidate must be clean before verification'
-      for i, command in enumerate(commands):
-          log=out/f'check-{i+1}.log'
-          with log.open('wb') as stream:
-              process=subprocess.Popen(['bash','-euo','pipefail','-c',command['run']],cwd=target,stdout=stream,stderr=subprocess.STDOUT,start_new_session=True)
-              timed_out=False
-              try: rc=process.wait(timeout=command['timeout_seconds'])
-              except subprocess.TimeoutExpired:
-                  timed_out=True; os.killpg(process.pid,signal.SIGKILL); process.wait(); rc=124
-          evidence.append({'id':command['id'],'statement_ids':command['statement_ids'],'exit_code':rc,'timed_out':timed_out,'log':log.name})
-      covered={sid for sid in ids if any(sid in c['statement_ids'] for c in evidence) and all(c['exit_code']==0 for c in evidence if sid in c['statement_ids'])}
-      clean=git('rev-parse','HEAD')==head and not git('status','--porcelain')
-      report='\n'.join('- '+s['id']+': '+s['statement']+' — '+('passed' if s['id'] in covered else 'FAILED') for s in plan['statements'])
-      result={'report_markdown':report,'ok':clean and covered==ids and all(c['exit_code']==0 for c in evidence),'candidate_hash':head,'checks':evidence,'candidate_unchanged':clean}
-      (out/'verification.json').write_text(json.dumps(result,indent=2)+'\n')
-      print(json.dumps(result))
-      PY
+    run: "python3 - <<'PY'\nimport json, os, pathlib, subprocess, signal\nroot=pathlib.Path(os.environ['CELL_ROOT']).resolve()\n\
+      target=(root/os.environ['TARGET_DIRECTORY']).resolve()\nassert target.is_relative_to(root), 'Target escapes\
+      \ cell'\nplan=json.loads(os.environ['PLAN_JSON']); implementation=json.loads(os.environ['IMPLEMENTATION_JSON'])\n\
+      ids={s['id'] for s in plan['statements']}\nassert ids and {s['statement_id'] for s in implementation['statement_tests']}==ids,\
+      \ 'Implementation does not map every test statement'\ncommands=plan['commands']; assert commands, 'No verification\
+      \ commands'\nout=pathlib.Path(os.environ['OUTBOX']); evidence=[]\ndef git(*args): return subprocess.check_output(['git','-C',str(root),*args]).decode().strip()\n\
+      head=git('rev-parse','HEAD')\nassert not git('status','--porcelain'), 'Candidate must be clean before verification'\n\
+      for i, command in enumerate(commands):\n    log=out/f'check-{i+1}.log'\n    with log.open('wb') as stream:\n\
+      \        process=subprocess.Popen(['bash','-euo','pipefail','-c',command['run']],cwd=target,stdout=stream,stderr=subprocess.STDOUT,start_new_session=True)\n\
+      \        timed_out=False\n        try: rc=process.wait(timeout=command['timeout_seconds'])\n        except\
+      \ subprocess.TimeoutExpired:\n            timed_out=True; os.killpg(process.pid,signal.SIGKILL); process.wait();\
+      \ rc=124\n    evidence.append({'id':command['id'],'statement_ids':command['statement_ids'],'exit_code':rc,'timed_out':timed_out,'log':log.name})\n\
+      covered={sid for sid in ids if any(sid in c['statement_ids'] for c in evidence) and all(c['exit_code']==0\
+      \ for c in evidence if sid in c['statement_ids'])}\nclean=git('rev-parse','HEAD')==head and not git('status','--porcelain')\n\
+      report='\\n'.join('- '+s['id']+': '+s['statement']+' \u2014 '+('passed' if s['id'] in covered else 'FAILED')\
+      \ for s in plan['statements'])\nresult={'report_markdown':report,'ok':clean and covered==ids and all(c['exit_code']==0\
+      \ for c in evidence),'candidate_hash':head,'checks':evidence,'candidate_unchanged':clean}\n(out/'verification.json').write_text(json.dumps(result,indent=2)+'\\\
+      n')\nprint(json.dumps(result))\nPY\n"
 outputs:
   result: '${{ sequence.execute.outputs.success ? json_parse(sequence.execute.outputs.stdout) : {"ok": false, "error":
     sequence.execute.outputs.stderr} }}'

@@ -26,6 +26,7 @@ cases:
             outputs: &standard_plan
               status: completed
               sessionId: sid-plan-1
+              session: {"$c2j_object": "v1", "type": "c2ops.codex.session/v1", "tenant_id": "test", "sha256": "fdb91bae4b31f3982ae0746bf2fb8c1cb3763883195be68426ae31114fb4e5b9", "artifact": {"jobId": "sid-plan-1", "taskOrdinal": 2, "name": "__c2j_objects__/fdb91bae4b31f3982ae0746bf2fb8c1cb3763883195be68426ae31114fb4e5b9.tar", "sizeBytes": 100}}
               assistantSummary: Plan is ready.
               incompleteReason: ""
               incompleteCategory: ""
@@ -137,6 +138,7 @@ cases:
             outputs:
               <<: *standard_plan
               sessionId: sid-plan-2
+              session: {"$c2j_object": "v1", "type": "c2ops.codex.session/v1", "tenant_id": "test", "sha256": "f4630877325704a60fc92cb8f9ea97a519b515993c0e60ae1234a4aa3c3df013", "artifact": {"jobId": "sid-plan-2", "taskOrdinal": 3, "name": "__c2j_objects__/f4630877325704a60fc92cb8f9ea97a519b515993c0e60ae1234a4aa3c3df013.tar", "sizeBytes": 100}}
               raw_output: '{"plan_id":"PLAN-2","summary":"Split cross-cell work at the C2 job boundary.","tasks":[{"id":"TASK-CELL","title":"Delegate reporting-cell update","status":"pending","dependencies":[],"target_ref":"main","requires_child_job":true,"child_job_reason":"cross-cell work","instructions":"Start a child job owned by the reporting cell.","validation_commands":[],"review_requirements":["spec"]}],"ready_task_ids":["TASK-CELL"],"validation_strategy":{"commands":[]},"child_job_boundaries":[{"task_id":"TASK-CELL","reason":"cross-cell work"}]}'
               parsed_output:
                 plan_id: PLAN-2
@@ -208,6 +210,7 @@ cases:
             outputs:
               <<: *standard_plan
               sessionId: sid-plan-3
+              session: {"$c2j_object": "v1", "type": "c2ops.codex.session/v1", "tenant_id": "test", "sha256": "6241a363146aeedc4352238bd5c668302674d2b10a313a05eeafcc0811090198", "artifact": {"jobId": "sid-plan-3", "taskOrdinal": 4, "name": "__c2j_objects__/6241a363146aeedc4352238bd5c668302674d2b10a313a05eeafcc0811090198.tar", "sizeBytes": 100}}
               raw_output: '{"plan_id":"PLAN-3","summary":"Add export authorization with recipe-enforced TDD.","tasks":[{"id":"TASK-TDD-1","title":"Add export authorization behavior","status":"pending","dependencies":[],"target_ref":"main","requires_child_job":false,"requires_tdd":true,"child_job_reason":"","instructions":"Use RED/GREEN/refactor for admin-only export authorization.","validation_commands":["printf green"],"review_requirements":["spec","quality"],"tdd":{"red_command":"printf red && exit 7","red_expected_failure":"authorization test fails before implementation","green_command":"printf green","refactor_verification_command":"printf refactor"}}],"ready_task_ids":["TASK-TDD-1"],"validation_strategy":{"commands":["printf green"]},"child_job_boundaries":[]}'
               parsed_output:
                 plan_id: PLAN-3
@@ -293,6 +296,7 @@ cases:
             outputs:
               <<: *standard_plan
               sessionId: sid-plan-4
+              session: {"$c2j_object": "v1", "type": "c2ops.codex.session/v1", "tenant_id": "test", "sha256": "bb87196c131ff0864ecee0cab363615b82504c08f3d0caa3eca74c777060e3fe", "artifact": {"jobId": "sid-plan-4", "taskOrdinal": 5, "name": "__c2j_objects__/bb87196c131ff0864ecee0cab363615b82504c08f3d0caa3eca74c777060e3fe.tar", "sizeBytes": 100}}
               raw_output: '{"plan_id":"PLAN-4","summary":"Invalid child boundary metadata.","tasks":[{"id":"TASK-CHILD-1","title":"Delegate reporting-cell update","status":"pending","dependencies":[],"target_ref":"main","requires_child_job":true,"child_job_reason":"cross-cell work","instructions":"Start a child job owned by the reporting cell.","validation_commands":[],"review_requirements":["spec"]}],"ready_task_ids":["TASK-CHILD-1"],"validation_strategy":{"commands":[]},"child_job_boundaries":[]}'
               parsed_output:
                 plan_id: PLAN-4

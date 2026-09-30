@@ -336,128 +336,180 @@ state:
               required: false
 
     implement:
-      op: git+https://github.com/colony-2/c2ops.git//codex@main
-      transitions:
-        - to: pre_implementation_followup_review
-          when: 'has(outputs.incompleteCategory) && outputs.incompleteCategory == "needs_user_input"'
-        - to: pre_implementation_followup_review
-          when: 'has(outputs.incompleteCategory) && outputs.incompleteCategory == "needs_test_statement_update"'
-        - to: pre_implementation_followup_review
-          when: 'has(outputs.incompleteCategory) && outputs.incompleteCategory == "blocked"'
-        - to: implement_bugs
-          when: 'has(outputs.incompleteCategory) && outputs.incompleteCategory == "needs_dependency_jobs"'
-        - to: implement_bugs
-          when: "has(outputs.pendingDependencies) && size(outputs.pendingDependencies) > 0"
-        - to: validate
-          when: "true"
-      artifacts:
-        submitted/: '${{ context.artifacts }}'
-        requirements/plan.json: '${{ states.requirements_planning.artifacts["requirements/plan.json"] }}'
-        requirements/index.md: '${{ states.requirements_planning.artifacts["requirements/index.md"] }}'
-        implementation/plan.json: '${{ states.implementation_planning.artifacts["implementation/plan.json"] }}'
-        implementation/index.md: '${{ states.implementation_planning.artifacts["implementation/index.md"] }}'
-        outcome/plan.json: '${{ states.outcome_determination.artifacts["outcome/plan.json"] }}'
-        outcome/tests-index.md: '${{ states.outcome_determination.artifacts["outcome/tests-index.md"] }}'
-        outcome/validation-commands.txt: '${{ states.outcome_determination.artifacts["outcome/validation-commands.txt"] }}'
       inputs:
-        sessionId: >-
+        session: |-
           ${{
             state_exists("implement")
-              ? state_output("implement", "sessionId", "")
-              : ""
+              ? state_output("implement", "session", null)
+              : null
           }}
-        worktree_path: "{{ context.environment.op.worktree_path }}"
-        workdir_path: "{{ context.environment.op.workdir }}"
-        artifact_inbox_path: "{{ context.environment.op.inbox }}"
-        artifact_outbox_path: "{{ context.environment.op.outbox }}"
-        skill: "c2-implementation-loop"
-        skill_mode: "enforce"
-        skills:
-          - "gitl.colony2.com/jnadeau/skills/.agents/skills@1362438426e25c733174ea85f248db11af99a8a7"
-        return_on:
-          - needs_user_input
-          - needs_test_statement_update
-          - needs_dependency_jobs
-          - ready_for_validation
-          - blocked
-        status_contract:
-          path: implementation/latest-status.json
-        prompt: |
-          Follow the `c2-implementation-loop` skill contract.
-          You are implementing a software job in the c2 system.
-
-          Ticket prompt:
-          ${{ vars.prompt }}
-
-          Submitted artifacts directory:
-          `{{ context.environment.op.inbox }}/submitted`
-
-          Do not expect submitted file contents to be embedded in this prompt. If
-          submitted artifacts are present, read them from the submitted artifacts
-          directory.
-
-          Requirements plan artifact path:
-          `{{ context.environment.op.inbox }}/requirements/plan.json`
-
-          Requirements index artifact path:
-          `{{ context.environment.op.inbox }}/requirements/index.md`
-
-          Implementation plan artifact path:
-          `{{ context.environment.op.inbox }}/implementation/plan.json`
-
-          Implementation index artifact path:
-          `{{ context.environment.op.inbox }}/implementation/index.md`
-
-          Outcome plan artifact path:
-          `{{ context.environment.op.inbox }}/outcome/plan.json`
-
-          Outcome tests index artifact path:
-          `{{ context.environment.op.inbox }}/outcome/tests-index.md`
-
-          Authoritative test statement files (repo path):
-          `.c2/tests/*.md`
-
-          Outcome validation commands artifact path:
-          `{{ context.environment.op.inbox }}/outcome/validation-commands.txt`
-
-          Validation feedback from the last attempt (if any):
-          ${{ 'validate' in states ? 'See validation artifacts: validation/output-tail.txt and validation/output.txt' : '' }}
-
-          Prior clarification request (if any):
-          ${{
-            first_nonempty(state_output("implement", "incompleteReason", ""), "")
-          }}
-
-          User clarification answers (if provided):
-          ${{
-            first_nonempty(state_field("pre_implementation_review", "implementation_answers", ""), "")
-          }}
-
-          Constraints:
-          - Keep changes scoped to the current cell’s code.
-          - Never introduce backwards-incompatible changes.
-          - Do NOT write requirements/plan/review docs into the git repo.
-          - If notes are needed, write artifacts under `{{ context.environment.op.outbox }}/implementation/`.
-          - Input artifacts are available under `{{ context.environment.op.inbox }}`.
-          - If you discover bugs in other cells, write `implementation/dependency-job-specs.json` and add one entry per bug to `pendingDependencies`:
-            - `component`: exact target cell name.
-            - `requestedChanges`: bug summary, impact, and concrete repro/fix guidance.
-          - If you need user clarification before continuing, write `implementation/questions.json` and set:
-            - `incompleteCategory`: `needs_user_input`
-            - `incompleteReason`: numbered list of questions for the user.
-          - Align implementation with `.c2/tests/*.md` in the cell repo.
-          - Do NOT modify `.c2/tests/*.md` during implementation.
-          - If test statements appear incorrect/incomplete, write `implementation/test-statement-change-request.md` and set:
-            - `incompleteCategory`: `needs_test_statement_update`
-            - `incompleteReason`: concrete requested changes for the test statement writer.
-          - Set `incompleteCategory` to `ready_for_validation` only when code is ready for validation.
-          - Set `incompleteCategory` to `blocked` when work cannot proceed safely.
-          - Update/add tests if appropriate.
-          - Prefer small, safe changes.
-
-          Deliverables:
-          - Make the code changes in-repo.
-          - Leave the workspace in a state where validation commands are likely to pass.
+        review_artifacts:
+          submitted/: ${{ context.artifacts }}
+          requirements/plan.json: ${{ states.requirements_planning.artifacts["requirements/plan.json"] }}
+          requirements/index.md: ${{ states.requirements_planning.artifacts["requirements/index.md"] }}
+          implementation/plan.json: ${{ states.implementation_planning.artifacts["implementation/plan.json"] }}
+          implementation/index.md: ${{ states.implementation_planning.artifacts["implementation/index.md"] }}
+          outcome/plan.json: ${{ states.outcome_determination.artifacts["outcome/plan.json"] }}
+          outcome/tests-index.md: ${{ states.outcome_determination.artifacts["outcome/tests-index.md"] }}
+          outcome/validation-commands.txt: ${{ states.outcome_determination.artifacts["outcome/validation-commands.txt"]
+            }}
+        ticket_prompt: ${{ vars.prompt }}
+        had_validate: ${{ state_exists("validate") }}
+        previous_reason: ${{ state_output("implement", "incompleteReason", "") }}
+        answers: ${{ first_nonempty(transition.?payload.implementation_answers, state_field("pre_implementation_review",
+          "implementation_answers", ""), "") }}
+        guidance: ${{ first_nonempty(transition.?payload.guidance, state_field("pre_implementation_followup_review",
+          "feedback", ""), "") }}
+      state:
+        initial:
+        - to: resume
+          when: inputs.session != null
+        - to: fresh
+          when: true
+        states:
+          fresh:
+            op: git+https://github.com/colony-2/c2ops.git//codex/run_skill@ded76dfbd877d3d0749e509844ecdbc57197b572
+            artifacts:
+              submitted/: ${{ inputs.review_artifacts["submitted/"] }}
+              requirements/plan.json: ${{ inputs.review_artifacts["requirements/plan.json"] }}
+              requirements/index.md: ${{ inputs.review_artifacts["requirements/index.md"] }}
+              implementation/plan.json: ${{ inputs.review_artifacts["implementation/plan.json"] }}
+              implementation/index.md: ${{ inputs.review_artifacts["implementation/index.md"] }}
+              outcome/plan.json: ${{ inputs.review_artifacts["outcome/plan.json"] }}
+              outcome/tests-index.md: ${{ inputs.review_artifacts["outcome/tests-index.md"] }}
+              outcome/validation-commands.txt: ${{ inputs.review_artifacts["outcome/validation-commands.txt"] }}
+            inputs:
+              worktree_path: '{{ context.environment.op.worktree_path }}'
+              workdir_path: '{{ context.environment.op.workdir }}'
+              artifact_inbox_path: '{{ context.environment.op.inbox }}'
+              artifact_outbox_path: '{{ context.environment.op.outbox }}'
+              skill: c2-implementation-loop
+              skills:
+              - gitl.colony2.com/jnadeau/skills/.agents/skills@1362438426e25c733174ea85f248db11af99a8a7
+              return_on:
+              - needs_user_input
+              - needs_test_statement_update
+              - needs_dependency_jobs
+              - ready_for_validation
+              - blocked
+              status_contract:
+                path: implementation/latest-status.json
+              prompt: "Follow the `c2-implementation-loop` skill contract.\nYou are implementing a software job in the\
+                \ c2 system.\n\nTicket prompt:\n${{ inputs.ticket_prompt }}\n\nSubmitted artifacts directory:\n`{{ context.environment.op.inbox\
+                \ }}/submitted`\n\nDo not expect submitted file contents to be embedded in this prompt. If\nsubmitted\
+                \ artifacts are present, read them from the submitted artifacts\ndirectory.\n\nRequirements plan artifact\
+                \ path:\n`{{ context.environment.op.inbox }}/requirements/plan.json`\n\nRequirements index artifact\
+                \ path:\n`{{ context.environment.op.inbox }}/requirements/index.md`\n\nImplementation plan artifact\
+                \ path:\n`{{ context.environment.op.inbox }}/implementation/plan.json`\n\nImplementation index artifact\
+                \ path:\n`{{ context.environment.op.inbox }}/implementation/index.md`\n\nOutcome plan artifact path:\n\
+                `{{ context.environment.op.inbox }}/outcome/plan.json`\n\nOutcome tests index artifact path:\n`{{ context.environment.op.inbox\
+                \ }}/outcome/tests-index.md`\n\nAuthoritative test statement files (repo path):\n`.c2/tests/*.md`\n\n\
+                Outcome validation commands artifact path:\n`{{ context.environment.op.inbox }}/outcome/validation-commands.txt`\n\
+                \nValidation feedback from the last attempt (if any):\n${{ inputs.had_validate ? 'See validation artifacts:\
+                \ validation/output-tail.txt and validation/output.txt' : '' }}\n\nPrior clarification request (if any):\n\
+                ${{ inputs.previous_reason }}\n\nUser clarification answers (if provided):\n${{ inputs.answers }}\n\n\
+                Constraints:\n- Keep changes scoped to the current cell\u2019s code.\n- Never introduce backwards-incompatible\
+                \ changes.\n- Do NOT write requirements/plan/review docs into the git repo.\n- If notes are needed,\
+                \ write artifacts under `{{ context.environment.op.outbox }}/implementation/`.\n- Input artifacts are\
+                \ available under `{{ context.environment.op.inbox }}`.\n- If you discover bugs in other cells, write\
+                \ `implementation/dependency-job-specs.json` and add one entry per bug to `pendingDependencies`:\n \
+                \ - `component`: exact target cell name.\n  - `requestedChanges`: bug summary, impact, and concrete\
+                \ repro/fix guidance.\n- If you need user clarification before continuing, write `implementation/questions.json`\
+                \ and set:\n  - `incompleteCategory`: `needs_user_input`\n  - `incompleteReason`: numbered list of questions\
+                \ for the user.\n- Align implementation with `.c2/tests/*.md` in the cell repo.\n- Do NOT modify `.c2/tests/*.md`\
+                \ during implementation.\n- If test statements appear incorrect/incomplete, write `implementation/test-statement-change-request.md`\
+                \ and set:\n  - `incompleteCategory`: `needs_test_statement_update`\n  - `incompleteReason`: concrete\
+                \ requested changes for the test statement writer.\n- Set `incompleteCategory` to `ready_for_validation`\
+                \ only when code is ready for validation.\n- Set `incompleteCategory` to `blocked` when work cannot\
+                \ proceed safely.\n- Update/add tests if appropriate.\n- Prefer small, safe changes.\n\nDeliverables:\n\
+                - Make the code changes in-repo.\n- Leave the workspace in a state where validation commands are likely\
+                \ to pass.\n"
+          resume:
+            op: git+https://github.com/colony-2/c2ops.git//codex/run_skill@ded76dfbd877d3d0749e509844ecdbc57197b572
+            artifacts:
+              submitted/: ${{ inputs.review_artifacts["submitted/"] }}
+              requirements/plan.json: ${{ inputs.review_artifacts["requirements/plan.json"] }}
+              requirements/index.md: ${{ inputs.review_artifacts["requirements/index.md"] }}
+              implementation/plan.json: ${{ inputs.review_artifacts["implementation/plan.json"] }}
+              implementation/index.md: ${{ inputs.review_artifacts["implementation/index.md"] }}
+              outcome/plan.json: ${{ inputs.review_artifacts["outcome/plan.json"] }}
+              outcome/tests-index.md: ${{ inputs.review_artifacts["outcome/tests-index.md"] }}
+              outcome/validation-commands.txt: ${{ inputs.review_artifacts["outcome/validation-commands.txt"] }}
+            inputs:
+              worktree_path: '{{ context.environment.op.worktree_path }}'
+              workdir_path: '{{ context.environment.op.workdir }}'
+              artifact_inbox_path: '{{ context.environment.op.inbox }}'
+              artifact_outbox_path: '{{ context.environment.op.outbox }}'
+              skill: c2-implementation-loop
+              skills:
+              - gitl.colony2.com/jnadeau/skills/.agents/skills@1362438426e25c733174ea85f248db11af99a8a7
+              return_on:
+              - needs_user_input
+              - needs_test_statement_update
+              - needs_dependency_jobs
+              - ready_for_validation
+              - blocked
+              status_contract:
+                path: implementation/latest-status.json
+              prompt: "Follow the `c2-implementation-loop` skill contract.\nYou are implementing a software job in the\
+                \ c2 system.\n\nTicket prompt:\n${{ inputs.ticket_prompt }}\n\nSubmitted artifacts directory:\n`{{ context.environment.op.inbox\
+                \ }}/submitted`\n\nDo not expect submitted file contents to be embedded in this prompt. If\nsubmitted\
+                \ artifacts are present, read them from the submitted artifacts\ndirectory.\n\nRequirements plan artifact\
+                \ path:\n`{{ context.environment.op.inbox }}/requirements/plan.json`\n\nRequirements index artifact\
+                \ path:\n`{{ context.environment.op.inbox }}/requirements/index.md`\n\nImplementation plan artifact\
+                \ path:\n`{{ context.environment.op.inbox }}/implementation/plan.json`\n\nImplementation index artifact\
+                \ path:\n`{{ context.environment.op.inbox }}/implementation/index.md`\n\nOutcome plan artifact path:\n\
+                `{{ context.environment.op.inbox }}/outcome/plan.json`\n\nOutcome tests index artifact path:\n`{{ context.environment.op.inbox\
+                \ }}/outcome/tests-index.md`\n\nAuthoritative test statement files (repo path):\n`.c2/tests/*.md`\n\n\
+                Outcome validation commands artifact path:\n`{{ context.environment.op.inbox }}/outcome/validation-commands.txt`\n\
+                \nValidation feedback from the last attempt (if any):\n${{ inputs.had_validate ? 'See validation artifacts:\
+                \ validation/output-tail.txt and validation/output.txt' : '' }}\n\nPrior clarification request (if any):\n\
+                ${{ inputs.previous_reason }}\n\nUser clarification answers (if provided):\n${{ inputs.answers }}\n\n\
+                Constraints:\n- Keep changes scoped to the current cell\u2019s code.\n- Never introduce backwards-incompatible\
+                \ changes.\n- Do NOT write requirements/plan/review docs into the git repo.\n- If notes are needed,\
+                \ write artifacts under `{{ context.environment.op.outbox }}/implementation/`.\n- Input artifacts are\
+                \ available under `{{ context.environment.op.inbox }}`.\n- If you discover bugs in other cells, write\
+                \ `implementation/dependency-job-specs.json` and add one entry per bug to `pendingDependencies`:\n \
+                \ - `component`: exact target cell name.\n  - `requestedChanges`: bug summary, impact, and concrete\
+                \ repro/fix guidance.\n- If you need user clarification before continuing, write `implementation/questions.json`\
+                \ and set:\n  - `incompleteCategory`: `needs_user_input`\n  - `incompleteReason`: numbered list of questions\
+                \ for the user.\n- Align implementation with `.c2/tests/*.md` in the cell repo.\n- Do NOT modify `.c2/tests/*.md`\
+                \ during implementation.\n- If test statements appear incorrect/incomplete, write `implementation/test-statement-change-request.md`\
+                \ and set:\n  - `incompleteCategory`: `needs_test_statement_update`\n  - `incompleteReason`: concrete\
+                \ requested changes for the test statement writer.\n- Set `incompleteCategory` to `ready_for_validation`\
+                \ only when code is ready for validation.\n- Set `incompleteCategory` to `blocked` when work cannot\
+                \ proceed safely.\n- Update/add tests if appropriate.\n- Prefer small, safe changes.\n\nDeliverables:\n\
+                - Make the code changes in-repo.\n- Leave the workspace in a state where validation commands are likely\
+                \ to pass.\n"
+              session: ${{ inputs.session }}
+      outputs:
+        status: '${{ state_exists("resume") ? states.resume.outputs.?status.orValue("error") : states.fresh.outputs.?status.orValue("error")
+          }}'
+        session: '${{ state_exists("resume") ? states.resume.outputs.?session.orValue(null) : states.fresh.outputs.?session.orValue(null)
+          }}'
+        sessionId: '${{ state_exists("resume") ? states.resume.outputs.?sessionId.orValue("") : states.fresh.outputs.?sessionId.orValue("")
+          }}'
+        assistantSummary: '${{ state_exists("resume") ? states.resume.outputs.?assistantSummary.orValue("") : states.fresh.outputs.?assistantSummary.orValue("")
+          }}'
+        incompleteReason: '${{ state_exists("resume") ? states.resume.outputs.?incompleteReason.orValue("") : states.fresh.outputs.?incompleteReason.orValue("")
+          }}'
+        incompleteCategory: '${{ state_exists("resume") ? states.resume.outputs.?incompleteCategory.orValue("") : states.fresh.outputs.?incompleteCategory.orValue("")
+          }}'
+        pendingDependencies: '${{ state_exists("resume") ? states.resume.outputs.?pendingDependencies.orValue([]) :
+          states.fresh.outputs.?pendingDependencies.orValue([]) }}'
+      transitions:
+      - to: pre_implementation_followup_review
+        when: has(outputs.incompleteCategory) && outputs.incompleteCategory == "needs_user_input"
+      - to: pre_implementation_followup_review
+        when: has(outputs.incompleteCategory) && outputs.incompleteCategory == "needs_test_statement_update"
+      - to: pre_implementation_followup_review
+        when: has(outputs.incompleteCategory) && outputs.incompleteCategory == "blocked"
+      - to: implement_bugs
+        when: has(outputs.incompleteCategory) && outputs.incompleteCategory == "needs_dependency_jobs"
+      - to: implement_bugs
+        when: has(outputs.pendingDependencies) && size(outputs.pendingDependencies) > 0
+      - to: validate
+        when: 'true'
 
     implement_bugs:
       op: recipes.run
@@ -481,82 +533,156 @@ state:
           }}
 
     implement_resume:
-      op: git+https://github.com/colony-2/c2ops.git//codex@main
-      transitions:
-        - to: pre_implementation_followup_review
-          when: 'has(outputs.incompleteCategory) && outputs.incompleteCategory == "needs_user_input"'
-        - to: pre_implementation_followup_review
-          when: 'has(outputs.incompleteCategory) && outputs.incompleteCategory == "needs_test_statement_update"'
-        - to: pre_implementation_followup_review
-          when: 'has(outputs.incompleteCategory) && outputs.incompleteCategory == "blocked"'
-        - to: implement_resume_bugs
-          when: 'has(outputs.incompleteCategory) && outputs.incompleteCategory == "needs_dependency_jobs"'
-        - to: implement_resume_bugs
-          when: "has(outputs.pendingDependencies) && size(outputs.pendingDependencies) > 0"
-        - to: validate
-          when: "true"
-      artifacts:
-        submitted/: '${{ context.artifacts }}'
-        requirements/plan.json: '${{ states.requirements_planning.artifacts["requirements/plan.json"] }}'
-        requirements/index.md: '${{ states.requirements_planning.artifacts["requirements/index.md"] }}'
-        implementation/plan.json: '${{ states.implementation_planning.artifacts["implementation/plan.json"] }}'
-        implementation/index.md: '${{ states.implementation_planning.artifacts["implementation/index.md"] }}'
-        outcome/plan.json: '${{ states.outcome_determination.artifacts["outcome/plan.json"] }}'
-        outcome/tests-index.md: '${{ states.outcome_determination.artifacts["outcome/tests-index.md"] }}'
-        outcome/validation-commands.txt: '${{ states.outcome_determination.artifacts["outcome/validation-commands.txt"] }}'
       inputs:
-        sessionId: >-
+        session: |-
           ${{
             state_exists("implement_resume")
-              ? state_output("implement_resume", "sessionId", "")
-              : (state_exists("implement") ? state_output("implement", "sessionId", "") : "")
+              ? state_output("implement_resume", "session", null)
+              : (state_exists("implement") ? state_output("implement", "session", null) : null)
           }}
-        worktree_path: "{{ context.environment.op.worktree_path }}"
-        workdir_path: "{{ context.environment.op.workdir }}"
-        artifact_inbox_path: "{{ context.environment.op.inbox }}"
-        artifact_outbox_path: "{{ context.environment.op.outbox }}"
-        skill: "c2-implementation-loop"
-        skill_mode: "enforce"
-        skills:
-          - "gitl.colony2.com/jnadeau/skills/.agents/skills@1362438426e25c733174ea85f248db11af99a8a7"
-        return_on:
-          - needs_user_input
-          - needs_test_statement_update
-          - needs_dependency_jobs
-          - ready_for_validation
-          - blocked
-        status_contract:
-          path: implementation/latest-status.json
-        prompt: |
-          Continue implementation using the same c2 skill contract and previous session context.
+        review_artifacts:
+          submitted/: ${{ context.artifacts }}
+          requirements/plan.json: ${{ states.requirements_planning.artifacts["requirements/plan.json"] }}
+          requirements/index.md: ${{ states.requirements_planning.artifacts["requirements/index.md"] }}
+          implementation/plan.json: ${{ states.implementation_planning.artifacts["implementation/plan.json"] }}
+          implementation/index.md: ${{ states.implementation_planning.artifacts["implementation/index.md"] }}
+          outcome/plan.json: ${{ states.outcome_determination.artifacts["outcome/plan.json"] }}
+          outcome/tests-index.md: ${{ states.outcome_determination.artifacts["outcome/tests-index.md"] }}
+          outcome/validation-commands.txt: ${{ states.outcome_determination.artifacts["outcome/validation-commands.txt"]
+            }}
+        ticket_prompt: ${{ vars.prompt }}
+        had_validate: ${{ state_exists("validate") }}
+        previous_reason: ${{ state_output("implement", "incompleteReason", "") }}
+        answers: ${{ first_nonempty(transition.?payload.implementation_answers, state_field("pre_implementation_followup_review",
+          "implementation_answers", ""), "") }}
+        guidance: ${{ first_nonempty(transition.?payload.guidance, state_field("pre_implementation_followup_review",
+          "feedback", ""), "") }}
+      state:
+        initial:
+        - to: resume
+          when: inputs.session != null
+        - to: fresh
+          when: true
+        states:
+          fresh:
+            op: git+https://github.com/colony-2/c2ops.git//codex/run_skill@ded76dfbd877d3d0749e509844ecdbc57197b572
+            artifacts:
+              submitted/: ${{ inputs.review_artifacts["submitted/"] }}
+              requirements/plan.json: ${{ inputs.review_artifacts["requirements/plan.json"] }}
+              requirements/index.md: ${{ inputs.review_artifacts["requirements/index.md"] }}
+              implementation/plan.json: ${{ inputs.review_artifacts["implementation/plan.json"] }}
+              implementation/index.md: ${{ inputs.review_artifacts["implementation/index.md"] }}
+              outcome/plan.json: ${{ inputs.review_artifacts["outcome/plan.json"] }}
+              outcome/tests-index.md: ${{ inputs.review_artifacts["outcome/tests-index.md"] }}
+              outcome/validation-commands.txt: ${{ inputs.review_artifacts["outcome/validation-commands.txt"] }}
+            inputs:
+              worktree_path: '{{ context.environment.op.worktree_path }}'
+              workdir_path: '{{ context.environment.op.workdir }}'
+              artifact_inbox_path: '{{ context.environment.op.inbox }}'
+              artifact_outbox_path: '{{ context.environment.op.outbox }}'
+              skill: c2-implementation-loop
+              skills:
+              - gitl.colony2.com/jnadeau/skills/.agents/skills@1362438426e25c733174ea85f248db11af99a8a7
+              return_on:
+              - needs_user_input
+              - needs_test_statement_update
+              - needs_dependency_jobs
+              - ready_for_validation
+              - blocked
+              status_contract:
+                path: implementation/latest-status.json
+              prompt: |
+                Continue implementation using the same c2 skill contract and previous session context.
 
-          Ticket prompt:
-          ${{ vars.prompt }}
+                Ticket prompt:
+                ${{ inputs.ticket_prompt }}
 
-          Submitted artifacts directory:
-          `{{ context.environment.op.inbox }}/submitted`
+                Submitted artifacts directory:
+                `{{ context.environment.op.inbox }}/submitted`
 
-          Do not expect submitted file contents to be embedded in this prompt. If
-          submitted artifacts are present, read them from the submitted artifacts
-          directory.
+                Do not expect submitted file contents to be embedded in this prompt. If
+                submitted artifacts are present, read them from the submitted artifacts
+                directory.
 
-          User clarification answers:
-          ${{
-            first_nonempty(
-              transition.?payload.implementation_answers,
-              state_field("pre_implementation_followup_review", "implementation_answers", ""),
-              ""
-            )
-          }}
+                User clarification answers:
+                ${{ inputs.answers }}
 
-          Guidance:
-          ${{
-            first_nonempty(
-              transition.?payload.guidance,
-              state_field("pre_implementation_followup_review", "feedback", ""),
-              ""
-            )
-          }}
+                Guidance:
+                ${{ inputs.guidance }}
+          resume:
+            op: git+https://github.com/colony-2/c2ops.git//codex/run_skill@ded76dfbd877d3d0749e509844ecdbc57197b572
+            artifacts:
+              submitted/: ${{ inputs.review_artifacts["submitted/"] }}
+              requirements/plan.json: ${{ inputs.review_artifacts["requirements/plan.json"] }}
+              requirements/index.md: ${{ inputs.review_artifacts["requirements/index.md"] }}
+              implementation/plan.json: ${{ inputs.review_artifacts["implementation/plan.json"] }}
+              implementation/index.md: ${{ inputs.review_artifacts["implementation/index.md"] }}
+              outcome/plan.json: ${{ inputs.review_artifacts["outcome/plan.json"] }}
+              outcome/tests-index.md: ${{ inputs.review_artifacts["outcome/tests-index.md"] }}
+              outcome/validation-commands.txt: ${{ inputs.review_artifacts["outcome/validation-commands.txt"] }}
+            inputs:
+              worktree_path: '{{ context.environment.op.worktree_path }}'
+              workdir_path: '{{ context.environment.op.workdir }}'
+              artifact_inbox_path: '{{ context.environment.op.inbox }}'
+              artifact_outbox_path: '{{ context.environment.op.outbox }}'
+              skill: c2-implementation-loop
+              skills:
+              - gitl.colony2.com/jnadeau/skills/.agents/skills@1362438426e25c733174ea85f248db11af99a8a7
+              return_on:
+              - needs_user_input
+              - needs_test_statement_update
+              - needs_dependency_jobs
+              - ready_for_validation
+              - blocked
+              status_contract:
+                path: implementation/latest-status.json
+              prompt: |
+                Continue implementation using the same c2 skill contract and previous session context.
+
+                Ticket prompt:
+                ${{ inputs.ticket_prompt }}
+
+                Submitted artifacts directory:
+                `{{ context.environment.op.inbox }}/submitted`
+
+                Do not expect submitted file contents to be embedded in this prompt. If
+                submitted artifacts are present, read them from the submitted artifacts
+                directory.
+
+                User clarification answers:
+                ${{ inputs.answers }}
+
+                Guidance:
+                ${{ inputs.guidance }}
+              session: ${{ inputs.session }}
+      outputs:
+        status: '${{ state_exists("resume") ? states.resume.outputs.?status.orValue("error") : states.fresh.outputs.?status.orValue("error")
+          }}'
+        session: '${{ state_exists("resume") ? states.resume.outputs.?session.orValue(null) : states.fresh.outputs.?session.orValue(null)
+          }}'
+        sessionId: '${{ state_exists("resume") ? states.resume.outputs.?sessionId.orValue("") : states.fresh.outputs.?sessionId.orValue("")
+          }}'
+        assistantSummary: '${{ state_exists("resume") ? states.resume.outputs.?assistantSummary.orValue("") : states.fresh.outputs.?assistantSummary.orValue("")
+          }}'
+        incompleteReason: '${{ state_exists("resume") ? states.resume.outputs.?incompleteReason.orValue("") : states.fresh.outputs.?incompleteReason.orValue("")
+          }}'
+        incompleteCategory: '${{ state_exists("resume") ? states.resume.outputs.?incompleteCategory.orValue("") : states.fresh.outputs.?incompleteCategory.orValue("")
+          }}'
+        pendingDependencies: '${{ state_exists("resume") ? states.resume.outputs.?pendingDependencies.orValue([]) :
+          states.fresh.outputs.?pendingDependencies.orValue([]) }}'
+      transitions:
+      - to: pre_implementation_followup_review
+        when: has(outputs.incompleteCategory) && outputs.incompleteCategory == "needs_user_input"
+      - to: pre_implementation_followup_review
+        when: has(outputs.incompleteCategory) && outputs.incompleteCategory == "needs_test_statement_update"
+      - to: pre_implementation_followup_review
+        when: has(outputs.incompleteCategory) && outputs.incompleteCategory == "blocked"
+      - to: implement_resume_bugs
+        when: has(outputs.incompleteCategory) && outputs.incompleteCategory == "needs_dependency_jobs"
+      - to: implement_resume_bugs
+        when: has(outputs.pendingDependencies) && size(outputs.pendingDependencies) > 0
+      - to: validate
+        when: 'true'
 
     implement_resume_bugs:
       op: recipes.run

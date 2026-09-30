@@ -238,12 +238,13 @@ cases:
                 feedback: ""
                 implementation_answers: ""
         - match:
-            node_path: "new-ticket/implement/git+https://github.com/colony-2/c2ops.git//codex@main"
+            op: extension_execution
           behavior:
             mode: return
             outputs:
               status: completed
               sessionId: sid-1
+              session: {"$c2j_object": "v1", "type": "c2ops.codex.session/v1", "tenant_id": "test", "sha256": "721d9e7ec81772137cea562354d9dcff7d73367149f1a58fd5d05e00cb291348", "artifact": {"jobId": "sid-1", "taskOrdinal": 2, "name": "__c2j_objects__/721d9e7ec81772137cea562354d9dcff7d73367149f1a58fd5d05e00cb291348.tar", "sizeBytes": 100}}
               assistantSummary: Implemented changes
               incompleteReason: ""
               incompleteCategory: ""
@@ -413,12 +414,13 @@ cases:
                 feedback: ""
                 implementation_answers: "Proceed to merge check."
         - match:
-            node_path: "new-ticket/implement/git+https://github.com/colony-2/c2ops.git//codex@main"
+            op: extension_execution
           behavior:
             mode: return
             outputs:
               status: completed
               sessionId: sid-h0
+              session: {"$c2j_object": "v1", "type": "c2ops.codex.session/v1", "tenant_id": "test", "sha256": "01fd446391e2c95ebf4f971f08654443ebefa9cc50acc6d7ad0d33c252e5fce1", "artifact": {"jobId": "sid-h0", "taskOrdinal": 3, "name": "__c2j_objects__/01fd446391e2c95ebf4f971f08654443ebefa9cc50acc6d7ad0d33c252e5fce1.tar", "sizeBytes": 100}}
               assistantSummary: Pre-merge implementation completed
               incompleteReason: ""
               incompleteCategory: ""
@@ -446,12 +448,13 @@ cases:
                 upstream_branch: ""
                 commit_message: ""
         - match:
-            node_path: "new-ticket/implement_resume/git+https://github.com/colony-2/c2ops.git//codex@main"
+            op: extension_execution
           behavior:
             mode: return
             outputs:
               status: incomplete
               sessionId: sid-h1
+              session: {"$c2j_object": "v1", "type": "c2ops.codex.session/v1", "tenant_id": "test", "sha256": "7a26263b98eee3b67581a82add62f7d7ca83faff46b9535e3cb16c1b1269113c", "artifact": {"jobId": "sid-h1", "taskOrdinal": 4, "name": "__c2j_objects__/7a26263b98eee3b67581a82add62f7d7ca83faff46b9535e3cb16c1b1269113c.tar", "sizeBytes": 100}}
               assistantSummary: Need clarification before merge
               incompleteReason: "1. Confirm expected merge behavior with no local hash."
               incompleteCategory: needs_user_input
@@ -612,12 +615,13 @@ cases:
                 feedback: ""
                 implementation_answers: ""
         - match:
-            node_path: "new-ticket/implement/git+https://github.com/colony-2/c2ops.git//codex@main"
+            op: extension_execution
           behavior:
             mode: return
             outputs:
               status: completed
               sessionId: sid-merge
+              session: {"$c2j_object": "v1", "type": "c2ops.codex.session/v1", "tenant_id": "test", "sha256": "d7b02801dc5f0274745c9ea1b34127293310f450f63b71279ed04e81748ea440", "artifact": {"jobId": "sid-merge", "taskOrdinal": 5, "name": "__c2j_objects__/d7b02801dc5f0274745c9ea1b34127293310f450f63b71279ed04e81748ea440.tar", "sizeBytes": 100}}
               assistantSummary: Implemented changes
               incompleteReason: ""
               incompleteCategory: ""
@@ -798,12 +802,13 @@ cases:
                 feedback: ""
                 implementation_answers: ""
         - match:
-            node_path: "new-ticket/implement/git+https://github.com/colony-2/c2ops.git//codex@main"
+            op: extension_execution
           behavior:
             mode: return
             outputs:
               status: completed
               sessionId: sid-bug
+              session: {"$c2j_object": "v1", "type": "c2ops.codex.session/v1", "tenant_id": "test", "sha256": "9bcc388eff8a647357eec2bd679ce3cda54c061780ea9e17139fe8eb8ef6ca2b", "artifact": {"jobId": "sid-bug", "taskOrdinal": 6, "name": "__c2j_objects__/9bcc388eff8a647357eec2bd679ce3cda54c061780ea9e17139fe8eb8ef6ca2b.tar", "sizeBytes": 100}}
               assistantSummary: Found bug in api cell
               incompleteReason: ""
               incompleteCategory: ""
@@ -982,12 +987,13 @@ cases:
                 feedback: ""
                 implementation_answers: ""
         - match:
-            node_path: "new-ticket/implement/git+https://github.com/colony-2/c2ops.git//codex@main"
+            op: extension_execution
           behavior:
             mode: return
             outputs:
               status: incomplete
               sessionId: sid-q1
+              session: {"$c2j_object": "v1", "type": "c2ops.codex.session/v1", "tenant_id": "test", "sha256": "1bebed5c95decaffbda1fc7e206654aa41447ef40c4fa0d9d9a45f6bdce5b411", "artifact": {"jobId": "sid-q1", "taskOrdinal": 7, "name": "__c2j_objects__/1bebed5c95decaffbda1fc7e206654aa41447ef40c4fa0d9d9a45f6bdce5b411.tar", "sizeBytes": 100}}
               assistantSummary: Needs clarification
               incompleteReason: "1. Should retries be enabled globally or endpoint-specific?"
               incompleteCategory: needs_user_input
@@ -1002,12 +1008,13 @@ cases:
                 feedback: ""
                 implementation_answers: "1) Endpoint-specific retries only."
         - match:
-            node_path: "new-ticket/implement_resume/git+https://github.com/colony-2/c2ops.git//codex@main"
+            op: extension_execution
           behavior:
             mode: return
             outputs:
               status: completed
               sessionId: sid-q1
+              session: {"$c2j_object": "v1", "type": "c2ops.codex.session/v1", "tenant_id": "test", "sha256": "a6a99e130030d7b6e8dabb620227d60b0acfe29ebdebede4184616e8eaf166b5", "artifact": {"jobId": "sid-q1", "taskOrdinal": 8, "name": "__c2j_objects__/a6a99e130030d7b6e8dabb620227d60b0acfe29ebdebede4184616e8eaf166b5.tar", "sizeBytes": 100}}
               assistantSummary: Clarification applied and implementation completed
               incompleteReason: ""
               incompleteCategory: ""
@@ -1065,7 +1072,7 @@ cases:
       - type: node_executed
         node_path: new-ticket/pre_implementation_review/input
       - type: node_executed
-        node_path: "new-ticket/implement/git+https://github.com/colony-2/c2ops.git//codex@main"
+        node_path: "new-ticket/implement/state_machine/fresh/git+https://github.com/colony-2/c2ops.git//codex/run_skill@ded76dfbd877d3d0749e509844ecdbc57197b572"
       - type: output_equals
         path: implementation_user_questions_requested
         value: true
@@ -1179,12 +1186,13 @@ cases:
                 feedback: ""
                 implementation_answers: ""
         - match:
-            node_path: "new-ticket/implement/git+https://github.com/colony-2/c2ops.git//codex@main"
+            op: extension_execution
           behavior:
             mode: return
             outputs:
               status: completed
               sessionId: sid-validation
+              session: {"$c2j_object": "v1", "type": "c2ops.codex.session/v1", "tenant_id": "test", "sha256": "47b12cb79816904591bdb8930513c945ae862b6e3adcd44276e227b624ed3ff4", "artifact": {"jobId": "sid-validation", "taskOrdinal": 9, "name": "__c2j_objects__/47b12cb79816904591bdb8930513c945ae862b6e3adcd44276e227b624ed3ff4.tar", "sizeBytes": 100}}
               assistantSummary: Implemented changes
               incompleteReason: ""
               incompleteCategory: ""
@@ -1354,12 +1362,13 @@ cases:
                 feedback: ""
                 implementation_answers: ""
         - match:
-            node_path: "new-ticket/implement/git+https://github.com/colony-2/c2ops.git//codex@main"
+            op: extension_execution
           behavior:
             mode: return
             outputs:
               status: incomplete
               sessionId: sid-ts-update
+              session: {"$c2j_object": "v1", "type": "c2ops.codex.session/v1", "tenant_id": "test", "sha256": "1467eff3781684d1e0cbbec12cce8c89d19d072a14aee0b229d50a1347246ecf", "artifact": {"jobId": "sid-ts-update", "taskOrdinal": 10, "name": "__c2j_objects__/1467eff3781684d1e0cbbec12cce8c89d19d072a14aee0b229d50a1347246ecf.tar", "sizeBytes": 100}}
               assistantSummary: Needs test statement update
               incompleteReason: "Add negative case for retries exhausted path in .c2/tests/service.md."
               incompleteCategory: needs_test_statement_update

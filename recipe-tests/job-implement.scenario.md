@@ -9,7 +9,7 @@ cases:
         Continue work
 
         Resume prior coding session
-      session_id: sid-existing
+      session: {"$c2j_object": "v1", "type": "c2ops.codex.session/v1", "tenant_id": "test", "sha256": "24d762edfea6056e74ee9841aff4c86e81336d6347ad153586af9037460fa73c", "artifact": {"jobId": "sid-existing", "taskOrdinal": 1, "name": "__c2j_objects__/24d762edfea6056e74ee9841aff4c86e81336d6347ad153586af9037460fa73c.tar", "sizeBytes": 100}}
       include_prior_summary: false
     mocks:
       ops:
@@ -34,12 +34,13 @@ cases:
               feedback/prior-session-summary.md: ""
               feedback/extra-instructions.md: ""
         - match:
-            node_path: "job-implement/continue_session/git+https://github.com/colony-2/c2ops.git//codex@main"
+            node_path: "job-implement/continue_session/git+https://github.com/colony-2/c2ops.git//codex@ded76dfbd877d3d0749e509844ecdbc57197b572"
           behavior:
             mode: return
             outputs:
               status: completed
               sessionId: sid-existing
+              session: {"$c2j_object": "v1", "type": "c2ops.codex.session/v1", "tenant_id": "test", "sha256": "43e7d0dc6efcac5af48fa5c5dcf99348d510448c02cfcc2587c0da212e9e9d08", "artifact": {"jobId": "sid-existing", "taskOrdinal": 2, "name": "__c2j_objects__/43e7d0dc6efcac5af48fa5c5dcf99348d510448c02cfcc2587c0da212e9e9d08.tar", "sizeBytes": 100}}
               assistantSummary: Continued implementation session
               incompleteReason: ""
               incompleteCategory: ""
@@ -84,12 +85,13 @@ cases:
               feedback/prior-session-summary.md: ""
               feedback/extra-instructions.md: ""
         - match:
-            node_path: "job-implement/new_session/git+https://github.com/colony-2/c2ops.git//codex@main"
+            node_path: "job-implement/new_session/git+https://github.com/colony-2/c2ops.git//codex@ded76dfbd877d3d0749e509844ecdbc57197b572"
           behavior:
             mode: return
             outputs:
               status: completed
               sessionId: sid-new
+              session: {"$c2j_object": "v1", "type": "c2ops.codex.session/v1", "tenant_id": "test", "sha256": "135b6c6310d317b6d14ae26282e905829ccbe62c882e602eb7c828b3c73c9f4e", "artifact": {"jobId": "sid-new", "taskOrdinal": 3, "name": "__c2j_objects__/135b6c6310d317b6d14ae26282e905829ccbe62c882e602eb7c828b3c73c9f4e.tar", "sizeBytes": 100}}
               assistantSummary: Started new session with provided context
               incompleteReason: ""
               incompleteCategory: ""
@@ -132,12 +134,13 @@ cases:
               feedback/prior-session-summary.md: ""
               feedback/extra-instructions.md: ""
         - match:
-            node_path: "job-implement/new_session/git+https://github.com/colony-2/c2ops.git//codex@main"
+            node_path: "job-implement/new_session/git+https://github.com/colony-2/c2ops.git//codex@ded76dfbd877d3d0749e509844ecdbc57197b572"
           behavior:
             mode: return
             outputs:
               status: completed
               sessionId: sid-summary
+              session: {"$c2j_object": "v1", "type": "c2ops.codex.session/v1", "tenant_id": "test", "sha256": "c0cc9aec155d12f863d5d9f37308656b86bc097831e8b6fce97903b3cf4adc3f", "artifact": {"jobId": "sid-summary", "taskOrdinal": 4, "name": "__c2j_objects__/c0cc9aec155d12f863d5d9f37308656b86bc097831e8b6fce97903b3cf4adc3f.tar", "sizeBytes": 100}}
               assistantSummary: Non-empty summary for reviewer context
               incompleteReason: ""
               incompleteCategory: ""

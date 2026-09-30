@@ -43,6 +43,7 @@ cases:
             outputs: &verify_ok
               status: completed
               sessionId: sid-verify-1
+              session: {"$c2j_object": "v1", "type": "c2ops.codex.session/v1", "tenant_id": "test", "sha256": "8409e7cfcc67eb6e868e2af6c5a8d5f1d97f910868d6135df3100fbfd07f6732", "artifact": {"jobId": "sid-verify-1", "taskOrdinal": 2, "name": "__c2j_objects__/8409e7cfcc67eb6e868e2af6c5a8d5f1d97f910868d6135df3100fbfd07f6732.tar", "sizeBytes": 100}}
               assistantSummary: Verification passed.
               incompleteReason: ""
               incompleteCategory: ""
@@ -148,6 +149,7 @@ cases:
             outputs:
               <<: *verify_ok
               sessionId: sid-verify-2
+              session: {"$c2j_object": "v1", "type": "c2ops.codex.session/v1", "tenant_id": "test", "sha256": "09f5ac680d045aa52acc6e9650d96be24d6200aad83603b37d04ea14b3742377", "artifact": {"jobId": "sid-verify-2", "taskOrdinal": 3, "name": "__c2j_objects__/09f5ac680d045aa52acc6e9650d96be24d6200aad83603b37d04ea14b3742377.tar", "sizeBytes": 100}}
               assistantSummary: Verification failed.
               raw_summary: Verification failed.
               raw_output: '{"ok":false,"commands_required":["printf failing && exit 7"],"commands_observed":[{"command":"printf failing && exit 7","exit_code":7}],"evidence_summary":"Required verification command failed.","blocking_issues":["Validation command exited 7."]}'

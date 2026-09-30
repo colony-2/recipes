@@ -51,6 +51,7 @@ cases:
             outputs: &finish_merge_ready
               status: completed
               sessionId: sid-finish-1
+              session: {"$c2j_object": "v1", "type": "c2ops.codex.session/v1", "tenant_id": "test", "sha256": "7e2b358eb6930b260bcc2e87317f6a0cbbeffb6a9b1708134a1a72f73040c366", "artifact": {"jobId": "sid-finish-1", "taskOrdinal": 2, "name": "__c2j_objects__/7e2b358eb6930b260bcc2e87317f6a0cbbeffb6a9b1708134a1a72f73040c366.tar", "sizeBytes": 100}}
               assistantSummary: Finish is merge-ready.
               incompleteReason: ""
               incompleteCategory: ""
@@ -151,6 +152,7 @@ cases:
             outputs:
               <<: *finish_merge_ready
               sessionId: sid-finish-2
+              session: {"$c2j_object": "v1", "type": "c2ops.codex.session/v1", "tenant_id": "test", "sha256": "947675b4085a1d01cb2cdbd94f997f67dc764c5cabd6e1d73d992f7e1b7b2eed", "artifact": {"jobId": "sid-finish-2", "taskOrdinal": 3, "name": "__c2j_objects__/947675b4085a1d01cb2cdbd94f997f67dc764c5cabd6e1d73d992f7e1b7b2eed.tar", "sizeBytes": 100}}
               assistantSummary: Finish needs revision.
               raw_summary: Finish needs revision.
               raw_output: '{"decision":"needs_revision","summary":"Verification failed, so this cannot merge.","completed_tasks":["TASK-1"],"verification_summary":"Required verification failed.","remaining_risks":["Validation command exited 7."],"merge_ready":false}'
@@ -225,6 +227,7 @@ cases:
             outputs:
               <<: *finish_merge_ready
               sessionId: sid-finish-3
+              session: {"$c2j_object": "v1", "type": "c2ops.codex.session/v1", "tenant_id": "test", "sha256": "0a60d681441a490d21f562f0d2bff709f38597742666a4f22cbeef6101377de1", "artifact": {"jobId": "sid-finish-3", "taskOrdinal": 4, "name": "__c2j_objects__/0a60d681441a490d21f562f0d2bff709f38597742666a4f22cbeef6101377de1.tar", "sizeBytes": 100}}
         - match:
             node_path: superpowers-finish/summarize_finish/sequence/finish_gate
           behavior:

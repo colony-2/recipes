@@ -49,6 +49,7 @@ cases:
             outputs: &plan_review_ok
               status: completed
               sessionId: sid-plan-review-1
+              session: {"$c2j_object": "v1", "type": "c2ops.codex.session/v1", "tenant_id": "test", "sha256": "a506803576f2640ff6b7b2732f03997fef6446074668664cb2cf52d5fd08840c", "artifact": {"jobId": "sid-plan-review-1", "taskOrdinal": 2, "name": "__c2j_objects__/a506803576f2640ff6b7b2732f03997fef6446074668664cb2cf52d5fd08840c.tar", "sizeBytes": 100}}
               assistantSummary: Plan review approved.
               incompleteReason: ""
               incompleteCategory: ""
@@ -153,6 +154,7 @@ cases:
             outputs:
               <<: *plan_review_ok
               sessionId: sid-plan-review-2
+              session: {"$c2j_object": "v1", "type": "c2ops.codex.session/v1", "tenant_id": "test", "sha256": "fd94e93915781a0d332cb55b80866fd02693035fec415b7b1e64c468baecb1af", "artifact": {"jobId": "sid-plan-review-2", "taskOrdinal": 3, "name": "__c2j_objects__/fd94e93915781a0d332cb55b80866fd02693035fec415b7b1e64c468baecb1af.tar", "sizeBytes": 100}}
               assistantSummary: Plan review blocked.
               raw_summary: Plan review blocked.
               raw_output: '{"ok":false,"issues":["Plan omits admin-only authorization and has no validation command."],"recommendations":["Add an authorization task before the export job."],"blocking_feedback":"Replan to cover admin authorization and validation evidence.","requires_replan":true}'

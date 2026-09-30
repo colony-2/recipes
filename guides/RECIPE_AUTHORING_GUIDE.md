@@ -117,7 +117,7 @@ Write recipes with these rules:
 - use `json_parse(...)` when consuming `llm2` responses produced under `response_schema`
 - guard optional values with `has(...)` before indexing or dereferencing
 
-For c2ops `codex`, use `git+https://github.com/colony-2/c2ops.git//codex@main` so the op tracks the latest c2ops changes. Its manifest supplies these op-visible path defaults automatically; omit them from recipe inputs unless intentionally overriding a path:
+For c2ops `codex`, use `git+https://github.com/colony-2/c2ops.git//codex@ded76dfbd877d3d0749e509844ecdbc57197b572` to use the validated object-session contract. Pin `codex/run_skill` to the same revision. Its manifest supplies these op-visible path defaults automatically; omit them from recipe inputs unless intentionally overriding a path:
 
 - `worktree_path: "{{ context.environment.op.worktree_path }}"`
 - `workdir_path: "{{ context.environment.op.workdir }}"`
@@ -133,7 +133,7 @@ sandbox:
   type: none
 ```
 
-Current c2ops `codex@main` invokes Codex directly when the extension sandbox is disabled and uses c2j's op-visible path context when sandboxing is enabled.
+The pinned c2ops Codex adapter invokes Codex directly when the extension sandbox is disabled and uses c2j's op-visible path context when sandboxing is enabled.
 
 Do not hard-code `/src/inbox` or `/src/outbox` in Codex prompts. Recipes should reference:
 

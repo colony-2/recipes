@@ -34,21 +34,13 @@ def install(repo, cell, mode, work, child):
     common = dict(CELL_KIND=cell, MODE=mode, B_CELL=str(child), TRACE=str(work/'trace.jsonl'),
                   DECISIONS=str(work/'decisions.jsonl'), INBOX='{{ context.environment.op.inbox }}',
                   OUTBOX='{{ context.environment.op.outbox }}', WORKTREE='{{ context.environment.op.worktree_path }}',
-                  OWNER='{{ context.workflow.cell }}', WORKSPACE='{{ context.workspace.cell }}', SESSION=e('inputs.session_id'))
-    def model(original, foreign=False):
-        return dict(op='command_execution', const=foreign, artifacts=copy.deepcopy(original['artifacts']),
-                    inputs=dict(timeout='30s',env={**common,'CONSULT':str(foreign).lower(),
-                        **({} if foreign else {'INSTRUCTIONS':e('inputs.instructions'),'PROMPT':e('inputs.prompt')})},
-                        run='python3 - 2>>"${TRACE}.errors" <<\'MODEL\'\n'+(ROOT/'recipe-tests/fixtures/development-lifecycle-model.py').read_text()+'\nMODEL\n'))
+                  OWNER='{{ context.workflow.cell }}', WORKSPACE='{{ context.workspace.cell }}')
     agent = c.read('agent.yaml')
-    run = agent['state']['states']['run']
-    for name, node in list(run['state']['states'].items()): run['state']['states'][name] = model(node)
-    run['outputs'] = late.command_outputs(run['outputs'], ['root','scoped'])
-    c.write(folder/'develop/agent.yaml', agent)
-    consult = c.read('consult.yaml'); node = consult['state']['states']['agent']
-    consult['state']['states']['agent'] = {**model(node, True),'transitions':node['transitions']}
-    consult['outputs'] = late.command_outputs(consult['outputs'], ['agent'])
-    c.write(folder/'develop/consult.yaml', consult)
+    code=(ROOT/'recipe-tests/fixtures/development-lifecycle-model.py').read_text()
+    agent=d.objects.replace(agent,folder/'develop',{**common,'CONSULT':'false','INSTRUCTIONS':e('inputs.instructions'),'PROMPT':e('inputs.prompt')},code)
+    c.write(folder/'develop/agent.yaml',agent)
+    consult=d.objects.replace(c.read('consult.yaml'),folder/'develop',{**common,'CONSULT':'true'},code)
+    c.write(folder/'develop/consult.yaml',consult)
     coordinator = c.read('develop.yaml')
     for name, node in list(coordinator['state']['states'].items()):
         if node.get('op') != 'input': continue
@@ -148,7 +140,7 @@ def verify_lifecycle(work, binary, mode):
             assert git('show','main:app.txt')=='application'
             files=git('diff','--name-only',heads[cell],'main').splitlines()
             assert set(files)=={relative+f for f in (['feature.txt','test_feature.py','candidate.txt'] if cell=='A' else ['feature.txt','test_feature.py'])},files
-        assert not (work/'trace.jsonl.errors').read_text(),(work/'trace.jsonl.errors').read_text()
+        assert not (work/'trace.jsonl.errors').exists() or not (work/'trace.jsonl.errors').read_text()
         print('lifecycle: '+mode+' late consultation, named child, restart, verification and both squash merges passed',flush=True)
     except Exception:
         for log in logs:log.flush()

@@ -10,7 +10,8 @@ root = Path(os.environ['WORKTREE'])
 scenario = os.environ['SCENARIO']
 role = os.environ['ROLE']
 session = os.environ['SESSION']
-checkpoint = inbox / 'codex-home-state/session.json'
+session_home = Path(os.environ['SESSION_HOME'])
+checkpoint = session_home / 'session.json'
 prior = json.loads(checkpoint.read_text()) if checkpoint.exists() else None
 if session:
     assert prior and prior['session'] == session, ('checkpoint isolation', session, prior)
@@ -117,6 +118,5 @@ else:
 if scenario != 'malformed' or role not in ('B', 'C'):
     (outbox / 'result.json').write_text(json.dumps(result))
 if not (scenario == 'missing-checkpoint' and role in ('B', 'C')):
-    (outbox / 'codex-home-state').mkdir()
-    (outbox / 'codex-home-state/session.json').write_text(json.dumps(dict(session=identity, turn=turn)))
-print(json.dumps(dict(status='completed', sessionId=identity)))
+    (session_home / 'session.json').write_text(json.dumps(dict(session=identity, turn=turn)))
+print(json.dumps(dict(status='completed', sessionId=identity, _omit_session=scenario=='missing-checkpoint' and role in ('B','C'))))

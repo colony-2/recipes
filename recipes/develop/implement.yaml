@@ -16,16 +16,10 @@ input_schema:
   context_json:
     type: string
     default_value: '{}'
-  session_id:
-    type: string
-    default_value: ''
   evidence_json:
     type: string
     default_value: '{}'
   dependency_history_json:
-    type: string
-    default_value: '{}'
-  session_artifacts_json:
     type: string
     default_value: '{}'
   consultation_history_json:
@@ -34,18 +28,21 @@ input_schema:
   additional_consultation_history_json:
     type: string
     default_value: '{}'
+  session:
+    type: object
+    object_type: c2ops.codex.session/v1
+    required: false
 inputs:
   prompt: ${{ inputs.prompt }}
   target_directory: ${{ inputs.target_directory }}
   mode: ${{ inputs.mode }}
   feedback: ${{ inputs.feedback }}
   context_json: ${{ inputs.context_json }}
-  session_id: ${{ inputs.session_id }}
   evidence_json: ${{ inputs.evidence_json }}
   dependency_history_json: ${{ inputs.dependency_history_json }}
-  session_artifacts_json: ${{ inputs.session_artifacts_json }}
   consultation_history_json: ${{ inputs.consultation_history_json }}
   additional_consultation_history_json: ${{ inputs.additional_consultation_history_json }}
+  session: ${{ inputs.?session.orValue(null) }}
 vars:
   result_schema:
     type: object
@@ -143,10 +140,10 @@ outputs:
   completed: ${{ state_output("agent", "completed", false) }}
   session_id: ${{ state_output("agent", "session_id", "") }}
   dependencies: ${{ state_output("agent", "dependencies", {}) }}
-  session_artifacts: ${{ state_output("agent", "session_artifacts", {}) }}
   result: ${{ json_parse(state_output("contract", "stdout", "{}")).?result.orValue({}) }}
   consultations: ${{ json_parse(state_output("record", "stdout", json_stringify(states.history.outputs.history)))
     }}
+  session: ${{ state_output("agent", "session", null) }}
 state:
   initial: history
   states:
@@ -159,14 +156,12 @@ state:
       - to: agent
         when: true
     agent:
-      include: ./agent.yaml
       inputs:
         prompt: ${{ inputs.prompt }}
         target_directory: ${{ inputs.target_directory }}
         mode: ${{ inputs.mode }}
         feedback: ${{ inputs.feedback }}
         context_json: ${{ inputs.context_json }}
-        session_id: ${{ state_output("agent", "session_id", inputs.session_id) }}
         evidence_json: ${{ inputs.evidence_json }}
         instructions: |
           Implement the approved design and test plan provided in context_json. Write the tests and implementation. Map every approved test statement to test files in statement_tests. Preserve approved expectations; changes to existing expectations require the deprecation process. Address supplied review feedback. The current approved design and test plan supersede prior feedback when requirements have changed. Remain in the same implementation session on revision. Implement only locally owned requirements. Submit the approved design.handoffs to their owning cells before declaring ready, carrying the refined design and consultation provenance as the child request. Track each handoff against the dependency ledger to avoid duplicate submissions. Do not implement external outcomes here. New or changed external work requires returning to design approval. Return status redesign when a new dependency, changed handoff, or changed requirement needs design approval; explain the necessary decision in questions.
@@ -187,10 +182,45 @@ state:
         writable: true
         dependency_history_json: ${{ json_stringify(state_output("agent", "dependencies", json_parse(inputs.dependency_history_json)))
           }}
-        session_artifacts_json: '${{ state_exists("agent") ? json_stringify(states.agent.outputs.session_artifacts)
-          : inputs.session_artifacts_json }}'
         consultation_history_json: ${{ state_output("record", "stdout", json_stringify(states.history.outputs.history))
           }}
+        session: ${{ state_output("agent", "session", inputs.session) }}
+      state:
+        initial:
+        - to: resume
+          when: inputs.session != null
+        - to: fresh
+          when: true
+        states:
+          fresh:
+            include: ./agent.yaml
+            inputs: &id004
+              prompt: ${{ inputs.prompt }}
+              target_directory: ${{ inputs.target_directory }}
+              mode: ${{ inputs.mode }}
+              feedback: ${{ inputs.feedback }}
+              context_json: ${{ inputs.context_json }}
+              evidence_json: ${{ inputs.evidence_json }}
+              instructions: ${{ inputs.instructions }}
+              result_schema_json: ${{ inputs.result_schema_json }}
+              writable: ${{ inputs.writable }}
+              dependency_history_json: ${{ inputs.dependency_history_json }}
+              consultation_history_json: ${{ inputs.consultation_history_json }}
+          resume:
+            include: ./agent.yaml
+            inputs:
+              <<: *id004
+              session: ${{ inputs.session }}
+      outputs:
+        valid: '${{ state_exists("resume") ? states.resume.outputs.valid : states.fresh.outputs.valid }}'
+        result: '${{ state_exists("resume") ? states.resume.outputs.result : states.fresh.outputs.result }}'
+        session_id: '${{ state_exists("resume") ? states.resume.outputs.session_id : states.fresh.outputs.session_id
+          }}'
+        completed: '${{ state_exists("resume") ? states.resume.outputs.completed : states.fresh.outputs.completed
+          }}'
+        dependencies: '${{ state_exists("resume") ? states.resume.outputs.dependencies : states.fresh.outputs.dependencies
+          }}'
+        session: '${{ state_exists("resume") ? states.resume.outputs.session : states.fresh.outputs.session }}'
       transitions:
       - to: contract
         when: outputs.valid
@@ -203,7 +233,7 @@ state:
           CONTEXT_JSON: ${{ inputs.context_json }}
           HISTORY_JSON: ${{ state_output("record", "stdout", json_stringify(states.history.outputs.history)) }}
           INITIAL_HISTORY_JSON: ${{ json_stringify(states.history.outputs.history) }}
-          SESSION: ${{ states.agent.outputs.session_id }}
+          SESSION: ${{ json_stringify(states.agent.outputs.session) }}
           OUTBOX: '{{ context.environment.op.outbox }}'
         run: |
           python3 - <<'PYCODE'
@@ -211,13 +241,13 @@ state:
           r=json.loads(os.environ['RESULT_JSON']); context=json.loads(os.environ['CONTEXT_JSON']); history=json.loads(os.environ['HISTORY_JSON'])
           request=r['consultation']; selection={}
           if request:
-              if not os.environ['SESSION']: raise ValueError('Consultation requires an originating session')
+              if not json.loads(os.environ['SESSION']): raise ValueError('Consultation requires an originating session')
               thread=history.get(request['thread_id'])
               if thread and (thread['cell']!=request['cell'] or thread['ref']!=request['ref']): raise ValueError('Cannot retarget a consultation thread')
               if sum(len(t['turns']) for t in history.values())-sum(len(t['turns']) for t in json.loads(os.environ['INITIAL_HISTORY_JSON']).values())>=8:
                   r.update(status='needs_input',questions=r['questions']+['Consultation limit reached; resolve the open design decisions before continuing.'],consultation=None)
               else:
-                  selection={**request,'workspace_ref':thread['commit'] if thread else request['ref'],'session_id':thread['session_id'] if thread else '', 'session_artifacts':thread['session_artifacts'] if thread else {}}
+                  selection={**request,'workspace_ref':thread['commit'] if thread else request['ref'],'session':thread['session'] if thread else None,'session_id':thread['session_id'] if thread else ''}
           approved=context.get('design',{}).get('handoffs',[])
           new_work=False
           for handoff in r['proposed_handoffs']:

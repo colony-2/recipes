@@ -20,12 +20,13 @@ cases:
             outputs:
               resolved_selectors: {}
         - match:
-            node_path: "superpowers-route/heuristic_route/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
+            node_path: "superpowers-route/heuristic_route/git+https://github.com/colony-2/c2ops.git//codex/run_skill@ded76dfbd877d3d0749e509844ecdbc57197b572"
           behavior:
             mode: return
             outputs: &route_brainstorm
               status: completed
               sessionId: sid-route-1
+              session: {"$c2j_object": "v1", "type": "c2ops.codex.session/v1", "tenant_id": "test", "sha256": "a1bf852b313a78b087ebe9201e01f1a6b37bd4b2232f5b50d384fba53b32f8b1", "artifact": {"jobId": "sid-route-1", "taskOrdinal": 2, "name": "__c2j_objects__/a1bf852b313a78b087ebe9201e01f1a6b37bd4b2232f5b50d384fba53b32f8b1.tar", "sizeBytes": 100}}
               assistantSummary: Route selected brainstorming.
               incompleteReason: ""
               incompleteCategory: ""
@@ -113,12 +114,13 @@ cases:
             outputs:
               resolved_selectors: {}
         - match:
-            node_path: "superpowers-route/heuristic_route/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
+            node_path: "superpowers-route/heuristic_route/git+https://github.com/colony-2/c2ops.git//codex/run_skill@ded76dfbd877d3d0749e509844ecdbc57197b572"
           behavior:
             mode: return
             outputs:
               <<: *route_brainstorm
               sessionId: sid-route-2
+              session: {"$c2j_object": "v1", "type": "c2ops.codex.session/v1", "tenant_id": "test", "sha256": "7ea7122e54aec89a8bfc078f59448c8aaece81c4fdffd0e24192844aa6b93d1b", "artifact": {"jobId": "sid-route-2", "taskOrdinal": 3, "name": "__c2j_objects__/7ea7122e54aec89a8bfc078f59448c8aaece81c4fdffd0e24192844aa6b93d1b.tar", "sizeBytes": 100}}
               raw_output: '{"recommended_mode":"needs_user_input","selected_skill":"c2-superpowers-route","required_skills":["c2-superpowers-route"],"rationale":"The requested prior work is ambiguous.","needs_user_input":true,"user_question":"Which prior request should this continue?","required_artifacts":[],"human_review_required":false}'
               parsed_output:
                 recommended_mode: needs_user_input
@@ -190,7 +192,7 @@ cases:
             outputs:
               resolved_selectors: {}
         - match:
-            node_path: "superpowers-route/heuristic_route/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
+            node_path: "superpowers-route/heuristic_route/git+https://github.com/colony-2/c2ops.git//codex/run_skill@ded76dfbd877d3d0749e509844ecdbc57197b572"
           behavior:
             mode: return
             outputs: *route_brainstorm
@@ -251,7 +253,7 @@ cases:
             outputs:
               resolved_selectors: {}
         - match:
-            node_path: "superpowers-route/heuristic_route/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
+            node_path: "superpowers-route/heuristic_route/git+https://github.com/colony-2/c2ops.git//codex/run_skill@ded76dfbd877d3d0749e509844ecdbc57197b572"
           behavior:
             mode: return
             outputs: *route_brainstorm

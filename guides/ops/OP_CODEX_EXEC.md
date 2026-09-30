@@ -5,10 +5,10 @@ Runs Codex CLI non-interactively through the selector-backed c2ops extension and
 Use this selector form in recipes:
 
 ```yaml
-op: git+https://github.com/colony-2/c2ops.git//codex@main
+op: git+https://github.com/colony-2/c2ops.git//codex@ded76dfbd877d3d0749e509844ecdbc57197b572
 ```
 
-This repo uses `@main` for c2ops selectors so recipes automatically pick up c2ops fixes. In deterministic tests, mock `recipe_within_resolution` once per case and mock the Codex node path reported by c2j diagnostics, or by op `extension_execution` when there is no ambiguity.
+Codex and `codex/run_skill` are pinned together to this object-session revision. See [the migration guide](../CODEX_OBJECT_SESSION_MIGRATION.md) for required worker and CLI versions. In deterministic tests, mock `recipe_within_resolution` once per case and mock the Codex node path reported by c2j diagnostics, or by op `extension_execution` when there is no ambiguity.
 
 This op also emits output artifacts:
 - `stdout.jsonl`
@@ -18,9 +18,9 @@ This op also emits output artifacts:
 
 Common fields:
 - `prompt` (required): prompt sent to Codex.
-- `sessionId`: resume an existing Codex session. When omitted, the op starts a
-  fully isolated new Codex session. When present, the op continues that session
-  and carries conversational context forward for that session ID.
+- `session`: the complete `c2ops.codex.session/v1` object from a prior invocation.
+  Omit it to start fresh; pass a complete `${{ ... }}` value to resume that exact
+  checkpoint. Null, legacy `sessionId`, and `resume_context` inputs are rejected.
 - `model`: Codex model override.
 - `env`: extra environment variables.
 - `sandbox`: reserved c2j extension sandbox config. Use `sandbox.type: none` to run the extension process without the c2j wrapper sandbox.
@@ -34,10 +34,8 @@ inputs unless they need an explicit override. The resolved worktree is required
 by the Codex implementation, but callers do not need to supply it themselves.
 
 Skill-related fields:
-- `skill`: optional top-level skill to enforce for this invocation.
+- `skill`: required only by `codex/run_skill`, selecting the requested skill.
 - `skills`: list of skill source refs in format `<host>/<org>/<repo>/<skills-root-path>@<git-ref>`.
-- `skill_mode`: currently supports `enforce`.
-- `skill_selection_mode`: `adaptive` or `ordered` (default `adaptive`).
 - `return_on`: checkpoint statuses that should cause `incomplete` return.
 - `status_contract.path`: outbox-relative status JSON path (for example `implementation/latest-status.json`).
 
@@ -45,7 +43,7 @@ Notes:
 - `skills` is for installing skill bundles.
 - `skill` is for selecting/enforcing one top-level skill segment.
 - `skill_artifacts` and `skill_blobs` are not supported.
-- `sandbox.type: none` controls the c2j extension wrapper. Current c2ops `codex@main` invokes the Codex CLI directly and does not create an additional Shai/Docker sandbox.
+- `sandbox.type: none` controls the c2j extension wrapper. The pinned c2ops adapter invokes the Codex CLI directly and does not create an additional Shai/Docker sandbox.
 - Use `context.environment.op.*` for paths passed to Codex prompts or path inputs. c2j maps these to host paths for direct execution and sandbox-visible paths for `sandbox.type: shai`.
 - c2j no longer exposes a separate cell path. The current cell is rooted at `context.environment.op.worktree_path`; repo-relative paths in prompts should be relative to that root.
 - For the sandbox-agnostic path contract, see `../../OP_VISIBLE_PATHS_USER_GUIDE.md`.
@@ -58,15 +56,15 @@ When `skills` refs are provided, c2ops `codex`:
 3. Copies all subdirectories under the referenced skills root into the invocation skill staging area.
 4. Emits resolved refs in `skills_installed` output.
 
-Merged precedence during execution:
-- repo `.c2/skills` overrides configured ref sources
-- configured ref sources override codex-home copied from inbox
+Skills and credentials are invocation configuration, not session contents.
+Supply needed skill sources on every call. Local skills reside in `.agents/skills`.
+Session objects exclude credentials, config.toml, and installed skills.
 
 ## Example: Basic
 
 ```yaml
 - id: run_codex
-  op: git+https://github.com/colony-2/c2ops.git//codex@main
+  op: git+https://github.com/colony-2/c2ops.git//codex@ded76dfbd877d3d0749e509844ecdbc57197b572
   inputs:
     prompt: "Summarize the changes in this repo."
 ```
@@ -75,13 +73,12 @@ Merged precedence during execution:
 
 ```yaml
 - id: run_codex_skill
-  op: git+https://github.com/colony-2/c2ops.git//codex@main
+  op: git+https://github.com/colony-2/c2ops.git//codex/run_skill@ded76dfbd877d3d0749e509844ecdbc57197b572
   inputs:
     sandbox:
       type: none
     prompt: "Use my-skill."
     skill: "my-skill"
-    skill_mode: "enforce"
     skills:
       - "github.com/acme/codex-platform-skills/.agents/skills@platform-v12"
       - "github.com/acme/payments-cell-skills/.agents/skills@main"
@@ -101,7 +98,7 @@ that artifact to c2ops `rule_gate` with a `json_schema` rule before consuming it
 State-machine selector-backed ops appear in c2j mock diagnostics with the selector in the node path:
 
 ```yaml
-node_path: "job-implement/new_session/git+https://github.com/colony-2/c2ops.git//codex@main"
+node_path: "job-implement/new_session/git+https://github.com/colony-2/c2ops.git//codex@ded76dfbd877d3d0749e509844ecdbc57197b572"
 ```
 
 Sequence selector-backed ops generally use the authored node id, for example `new-ticket-triage/assess_cell`.
@@ -123,7 +120,8 @@ If a test matches by op name instead of node path, the runtime op name is `exten
 
 Top-level output:
 - `status`: `completed | incomplete | error`
-- `sessionId`
+- `session`: immutable continuation object; absent on failed ops.
+- `sessionId`: diagnostic conversation ID; never a checkpoint key.
 - `assistantSummary`
 - `incompleteReason`
 - `incompleteCategory`
@@ -131,7 +129,7 @@ Top-level output:
 - `skills_installed`: resolved refs in input-compatible format (`...@<resolved-commit>`)
 - `outcome` (structured checkpoint/skill/routing metadata)
 
-Example:
+Execution metadata example (the full op output also includes its opaque `session` object):
 
 ```json
 {

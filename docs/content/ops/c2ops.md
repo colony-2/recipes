@@ -3,7 +3,9 @@ title: "c2ops Catalog"
 weight: 53
 ---
 
-Use `git+https://github.com/colony-2/c2ops.git//<op>@main` for the current shared extension ops.
+Use `git+https://github.com/colony-2/c2ops.git//<op>@main` for shared extension ops,
+except `codex` and `codex/run_skill`: pin both to
+`ded76dfbd877d3d0749e509844ecdbc57197b572` for the object-session contract.
 
 Current catalog from `github.com/colony-2/c2ops`:
 
@@ -28,7 +30,7 @@ Codex skill pattern:
 
 ```yaml
 - id: implement
-  op: git+https://github.com/colony-2/c2ops.git//codex/run_skill@main
+  op: git+https://github.com/colony-2/c2ops.git//codex/run_skill@ded76dfbd877d3d0749e509844ecdbc57197b572
   inputs:
     skill: c2-superpowers-task-implementer
     skills:
@@ -54,4 +56,3 @@ Codex skill pattern:
 ```
 
 Mock selector-backed ops in `c2j test` by node path when possible. If matching the lowered extension operation, use `extension_execution`.
-

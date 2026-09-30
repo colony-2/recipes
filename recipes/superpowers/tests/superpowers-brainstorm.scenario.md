@@ -26,6 +26,7 @@ cases:
             outputs: &plan_ready_brainstorm
               status: completed
               sessionId: sid-brainstorm-1
+              session: {"$c2j_object": "v1", "type": "c2ops.codex.session/v1", "tenant_id": "test", "sha256": "97bf7825a65c37e610d5d0c4a6f452a952af8f60e013e32071a4006a5bd43057", "artifact": {"jobId": "sid-brainstorm-1", "taskOrdinal": 2, "name": "__c2j_objects__/97bf7825a65c37e610d5d0c4a6f452a952af8f60e013e32071a4006a5bd43057.tar", "sizeBytes": 100}}
               assistantSummary: Design is ready for planning.
               incompleteReason: ""
               incompleteCategory: ""
@@ -117,6 +118,7 @@ cases:
             outputs:
               <<: *plan_ready_brainstorm
               sessionId: sid-brainstorm-2
+              session: {"$c2j_object": "v1", "type": "c2ops.codex.session/v1", "tenant_id": "test", "sha256": "3b76bc6d3db8ea858bc16ba34591fd1f91c4462b53aee27c2458329367168ed0", "artifact": {"jobId": "sid-brainstorm-2", "taskOrdinal": 3, "name": "__c2j_objects__/3b76bc6d3db8ea858bc16ba34591fd1f91c4462b53aee27c2458329367168ed0.tar", "sizeBytes": 100}}
               raw_output: '{"summary":"Analytics export source is ambiguous.","recommended_approach":"","alternatives":[],"open_questions":["Which analytics source should be exported?"],"approved_for_planning":false,"plan_inputs":{}}'
               parsed_output:
                 summary: Analytics export source is ambiguous.

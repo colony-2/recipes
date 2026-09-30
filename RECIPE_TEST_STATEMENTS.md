@@ -194,6 +194,24 @@ and remains the c2j team's implementation responsibility.
 | TS-155 | Recipe review specifications cannot supply runtime review identities or client download locations. | `contracts/review/v1.schema.json`, `recipe-tests/verify-review-contract.py` | High | Contract integration; Python, jsonschema | Negative |
 | TS-156 | Review receipts retain the submitted feedback and durable request and response artifacts for downstream consumers. | `contracts/review/v1.schema.json`, `recipe-tests/verify-review-contract.py` | High | Contract integration; Python, jsonschema | Positive |
 
+## Immutable Codex session migration
+
+The upstream object-session release replaces legacy ID/artifact resumption.
+Existing conversation-continuation expectations remain; legacy checkpoints require
+a fresh job and cannot be imported by the new op revision.
+
+| ID | Test statement | Relevant files | Importance | Level / dependencies | Case |
+|---|---|---|---|---|---|
+| TS-157 | New conversations omit session inputs; later turns receive the complete checkpoint produced by the selected predecessor. | `recipes/develop/agent.yaml`, `recipe-tests/verify-default-recipes.py` | Critical | Integration; c2j, pinned c2ops | Positive |
+| TS-158 | Human feedback and dependency recovery resume the latest successful checkpoint without session-state artifact bindings. | `recipes/develop/develop.yaml`, `recipe-tests/verify-dependencies.py` | Critical | Integration; ephemeral JobDB, object fixture | Positive |
+| TS-159 | Foreign conversations preserve independent checkpoints across worker replacement while repository experiments remain disposable. | `recipes/develop/consult.yaml`, `recipe-tests/verify-consultations.py` | Critical | Integration; ephemeral JobDB, git, object fixture | Positive |
+| TS-160 | Equal diagnostic session IDs cannot hide divergent checkpoints or conflicting consultation histories. | `recipes/develop/consultation-history.yaml`, `recipe-tests/verify-implementation-consultations.py` | Critical | Integration; c2j | Negative |
+| TS-161 | Missing or invalid successor checkpoints cannot authorize continuation, acceptance, or merge. | `recipes/develop/agent.yaml`, `recipes/develop/consult.yaml` | Critical | Integration; c2j, object fixture | Negative |
+| TS-162 | Codex and skill calls share the pinned session contract and reject legacy resume inputs. | `recipes/`, `recipe-tests/verify-object-sessions.py` | Critical | Integration; pinned c2ops, deterministic Codex CLI | Positive and negative |
+| TS-163 | Session branches restore independent agent histories even when their diagnostic conversation IDs match. | `recipe-tests/verify-object-sessions.py` | Critical | Integration; ephemeral JobDB, pinned c2ops | Positive |
+| TS-164 | Session objects forwarded across job boundaries remain usable after worker replacement without appearing among deliverable artifacts. | `recipe-tests/verify-object-sessions.py` | Critical | Integration; ephemeral JobDB, pinned c2ops | Positive |
+| TS-165 | Unavailable, corrupted, wrong-type, or foreign-tenant checkpoints fail instead of starting a fresh conversation. | `recipe-tests/verify-object-sessions.py` | Critical | Integration; ephemeral JobDB, pinned c2ops | Negative |
+
 ## Notes for Test Authoring
 
 - Prefer `recipe_case` with explicit op mocks for deterministic branch coverage under test-policy sandboxing.

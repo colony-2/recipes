@@ -26,6 +26,7 @@ cases:
             outputs: &live_run_skill_output
               status: completed
               sessionId: sid-live-run-skill
+              session: {"$c2j_object": "v1", "type": "c2ops.codex.session/v1", "tenant_id": "test", "sha256": "7cc446d3ab5ac40875dd64daee4cd674eb218c06e6747efdac54a0fd2ccc0700", "artifact": {"jobId": "sid-live-run-skill", "taskOrdinal": 2, "name": "__c2j_objects__/7cc446d3ab5ac40875dd64daee4cd674eb218c06e6747efdac54a0fd2ccc0700.tar", "sizeBytes": 100}}
               assistantSummary: Live run_skill smoke completed.
               incompleteReason: ""
               incompleteCategory: ""

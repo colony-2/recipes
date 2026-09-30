@@ -32,6 +32,7 @@ cases:
             outputs: &debug_fix_ready
               status: completed
               sessionId: sid-debug-1
+              session: {"$c2j_object": "v1", "type": "c2ops.codex.session/v1", "tenant_id": "test", "sha256": "e035e1f5bef9dd39c42479547aeadc4aa148c2d782d29c1b63f55fbecbbfe042", "artifact": {"jobId": "sid-debug-1", "taskOrdinal": 2, "name": "__c2j_objects__/e035e1f5bef9dd39c42479547aeadc4aa148c2d782d29c1b63f55fbecbbfe042.tar", "sizeBytes": 100}}
               assistantSummary: Failure reproduced and root cause identified.
               incompleteReason: ""
               incompleteCategory: ""
@@ -186,6 +187,7 @@ cases:
             outputs:
               <<: *debug_fix_ready
               sessionId: sid-debug-2
+              session: {"$c2j_object": "v1", "type": "c2ops.codex.session/v1", "tenant_id": "test", "sha256": "15f846a04b4934066208ee784cc80ebd2deebd25dac7198e5e590b2b5282c451", "artifact": {"jobId": "sid-debug-2", "taskOrdinal": 3, "name": "__c2j_objects__/15f846a04b4934066208ee784cc80ebd2deebd25dac7198e5e590b2b5282c451.tar", "sizeBytes": 100}}
               raw_output: '{"reproduced":true,"root_cause":"The plan omits the compatibility requirement.","evidence":["Reproduction command exited 9."],"recommended_fix":"Update the task plan before implementation.","requires_plan_update":true,"validation_commands":[]}'
               parsed_output:
                 reproduced: true
@@ -247,6 +249,7 @@ cases:
             outputs:
               <<: *debug_fix_ready
               sessionId: sid-debug-3
+              session: {"$c2j_object": "v1", "type": "c2ops.codex.session/v1", "tenant_id": "test", "sha256": "c1e23c0948c31f6b39defc7183fd5e50f619987aea514f1b26cf4fbfcbae7eb0", "artifact": {"jobId": "sid-debug-3", "taskOrdinal": 4, "name": "__c2j_objects__/c1e23c0948c31f6b39defc7183fd5e50f619987aea514f1b26cf4fbfcbae7eb0.tar", "sizeBytes": 100}}
               raw_output: '{"reproduced":true,"root_cause":"The current architecture cannot preserve both invariants.","evidence":["Reproduction command exited 8."],"recommended_fix":"Discuss architecture before another fix attempt.","requires_plan_update":false,"validation_commands":["printf review"]}'
               parsed_output:
                 reproduced: true

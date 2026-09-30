@@ -11,15 +11,36 @@ inputs:
   selection_json: ${{ inputs.selection_json }}
   history_json: ${{ inputs.history_json }}
 sequence:
-- workspace:
+- id: consult
+  workspace:
     cell: ${{ json_parse(inputs.selection_json).cell }}
     ref: ${{ json_parse(inputs.selection_json).workspace_ref }}
-  include: ./consult.yaml
   inputs:
     message: ${{ json_parse(inputs.selection_json).message }}
-    session_id: ${{ json_parse(inputs.selection_json).session_id }}
-    session_artifacts_json: ${{ json_stringify(json_parse(inputs.selection_json).session_artifacts) }}
-  id: consult
+    session: ${{ json_parse(inputs.selection_json).session }}
+  state:
+    initial:
+    - to: resume
+      when: inputs.session != null
+    - to: fresh
+      when: true
+    states:
+      fresh:
+        include: ./consult.yaml
+        inputs: &id001
+          message: ${{ inputs.message }}
+      resume:
+        include: ./consult.yaml
+        inputs:
+          <<: *id001
+          session: ${{ inputs.session }}
+  outputs:
+    valid: '${{ state_exists("resume") ? states.resume.outputs.valid : states.fresh.outputs.valid }}'
+    result: '${{ state_exists("resume") ? states.resume.outputs.result : states.fresh.outputs.result }}'
+    mandate: '${{ state_exists("resume") ? states.resume.outputs.mandate : states.fresh.outputs.mandate }}'
+    session_id: '${{ state_exists("resume") ? states.resume.outputs.session_id : states.fresh.outputs.session_id
+      }}'
+    session: '${{ state_exists("resume") ? states.resume.outputs.session : states.fresh.outputs.session }}'
 - op: command_execution
   inputs:
     timeout: 10s
@@ -32,14 +53,14 @@ sequence:
       python3 - <<'PYCODE'
       import json, os, pathlib
       history=json.loads(os.environ['HISTORY_JSON']); q=json.loads(os.environ['SELECTION_JSON']); turn=json.loads(os.environ['TURN_JSON'])
+      if q.get('session_id') and q['session_id']!=turn['session_id']: raise ValueError('Consultation session changed')
       if not turn['valid']: raise ValueError('Invalid consultation result or missing session')
       t=history.setdefault(q['thread_id'],{'cell':q['cell'],'ref':q['ref'],'commit':turn['mandate']['commit'],'turns':[]})
-      if q['session_id'] and q['session_id']!=turn['session_id']: raise ValueError('Consultation session changed')
       if t['commit']!=turn['mandate']['commit']: raise ValueError('Consultation commit changed')
-      turn['session_artifacts']={k:v for k,v in turn['session_artifacts'].items() if k=='codex-home-state' or k.startswith('codex-home-state/')}
-      if not turn['session_artifacts']: raise ValueError('Missing consultation checkpoint')
-      t.update(response=turn['result'],session_id=turn['session_id'],session_artifacts=turn['session_artifacts'],mandate=turn['mandate'])
-      t['turns'].append({'message':q['message'],'response':turn['result']})
+      if not turn['session']: raise ValueError('Missing consultation checkpoint')
+      if t.get('session') != q['session']: raise ValueError('Consultation did not resume latest checkpoint')
+      t.update(response=turn['result'],session_id=turn['session_id'],session=turn['session'],mandate=turn['mandate'])
+      t['turns'].append({'message':q['message'],'response':turn['result'],'input_session':q['session'],'session':turn['session']})
       pathlib.Path(os.environ['OUTBOX'],'consultations.json').write_text(json.dumps(history))
       print(json.dumps(history))
       PYCODE

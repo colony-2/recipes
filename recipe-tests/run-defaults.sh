@@ -20,7 +20,7 @@ if [[ -n "${C2OPS_REPOSITORY:-}" ]]; then
 fi
 # Attempt every family and report any failure, including runtime regressions.
 failures=0
-for suite in verify-review-contract.py verify-default-recipes.py verify-dependencies.py verify-implementation-consultations.py verify-consultations.py verify-development-lifecycle.py; do
+for suite in verify-review-contract.py verify-object-sessions.py verify-default-recipes.py verify-dependencies.py verify-implementation-consultations.py verify-consultations.py verify-development-lifecycle.py; do
   if ! uv run "$ROOT_DIR/recipe-tests/$suite"; then
     failures=$((failures + 1))
   fi

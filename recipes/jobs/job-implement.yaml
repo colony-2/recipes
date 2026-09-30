@@ -11,9 +11,6 @@ input_schema:
   validation_feedback:
     type: string
     required: false
-  session_id:
-    type: string
-    required: false
   prior_session_summary:
     type: string
     required: false
@@ -23,33 +20,37 @@ input_schema:
   extra_instructions:
     type: string
     required: false
+  session:
+    type: object
+    object_type: c2ops.codex.session/v1
 inputs:
-  prompt: '${{ first_nonempty(inputs.?prompt, "") }}'
-  requirements_plan_json: '${{ first_nonempty(inputs.?requirements_plan_json, "") }}'
-  validation_feedback: '${{ first_nonempty(inputs.?validation_feedback, "") }}'
-  session_id: '${{ first_nonempty(inputs.?session_id, "") }}'
-  prior_session_summary: '${{ first_nonempty(inputs.?prior_session_summary, "") }}'
-  include_prior_summary: '${{ inputs.?include_prior_summary.orValue(false) }}'
-  extra_instructions: '${{ first_nonempty(inputs.?extra_instructions, "") }}'
+  prompt: ${{ first_nonempty(inputs.?prompt, "") }}
+  requirements_plan_json: ${{ first_nonempty(inputs.?requirements_plan_json, "") }}
+  validation_feedback: ${{ first_nonempty(inputs.?validation_feedback, "") }}
+  prior_session_summary: ${{ first_nonempty(inputs.?prior_session_summary, "") }}
+  include_prior_summary: ${{ inputs.?include_prior_summary.orValue(false) }}
+  extra_instructions: ${{ first_nonempty(inputs.?extra_instructions, "") }}
+  session: ${{ inputs.?session.orValue(null) }}
 vars:
-  prior_session_summary: '${{ inputs.?include_prior_summary.orValue(false) ? inputs.?prior_session_summary.orValue("") : "" }}'
+  prior_session_summary: '${{ inputs.?include_prior_summary.orValue(false) ? inputs.?prior_session_summary.orValue("")
+    : "" }}'
 state:
   initial: prepare_context
   states:
     prepare_context:
       op: command_execution
       transitions:
-        - to: continue_session
-          when: 'nonempty(inputs.?session_id.orValue(""))'
-        - to: new_session
-          when: "true"
+      - to: continue_session
+        when: inputs.session != null
+      - to: new_session
+        when: 'true'
       inputs:
         timeout: 30s
         env:
-          C2_REQUIREMENTS_PLAN_JSON: "{{ inputs.requirements_plan_json }}"
-          C2_VALIDATION_FEEDBACK: "{{ inputs.validation_feedback }}"
-          C2_PRIOR_SESSION_SUMMARY: "${{ vars.prior_session_summary }}"
-          C2_EXTRA_INSTRUCTIONS: "{{ inputs.extra_instructions }}"
+          C2_REQUIREMENTS_PLAN_JSON: '{{ inputs.requirements_plan_json }}'
+          C2_VALIDATION_FEEDBACK: '{{ inputs.validation_feedback }}'
+          C2_PRIOR_SESSION_SUMMARY: ${{ vars.prior_session_summary }}
+          C2_EXTRA_INSTRUCTIONS: '{{ inputs.extra_instructions }}'
         run: |
           set -euo pipefail
           mkdir -p "{{ context.environment.op.outbox }}/requirements" "{{ context.environment.op.outbox }}/feedback"
@@ -57,112 +58,75 @@ state:
           printf '%s' "$C2_VALIDATION_FEEDBACK" > "{{ context.environment.op.outbox }}/feedback/validation-feedback.md"
           printf '%s' "$C2_PRIOR_SESSION_SUMMARY" > "{{ context.environment.op.outbox }}/feedback/prior-session-summary.md"
           printf '%s' "$C2_EXTRA_INSTRUCTIONS" > "{{ context.environment.op.outbox }}/feedback/extra-instructions.md"
-
     continue_session:
-      op: git+https://github.com/colony-2/c2ops.git//codex@main
+      op: git+https://github.com/colony-2/c2ops.git//codex@ded76dfbd877d3d0749e509844ecdbc57197b572
       transitions: []
       artifacts:
-        submitted/: '${{ context.artifacts }}'
-        requirements/plan.json: '${{ states.prepare_context.artifacts["requirements/plan.json"] }}'
-        feedback/validation-feedback.md: '${{ states.prepare_context.artifacts["feedback/validation-feedback.md"] }}'
-        feedback/prior-session-summary.md: '${{ states.prepare_context.artifacts["feedback/prior-session-summary.md"] }}'
-        feedback/extra-instructions.md: '${{ states.prepare_context.artifacts["feedback/extra-instructions.md"] }}'
+        submitted/: ${{ context.artifacts }}
+        requirements/plan.json: ${{ states.prepare_context.artifacts["requirements/plan.json"] }}
+        feedback/validation-feedback.md: ${{ states.prepare_context.artifacts["feedback/validation-feedback.md"]
+          }}
+        feedback/prior-session-summary.md: ${{ states.prepare_context.artifacts["feedback/prior-session-summary.md"]
+          }}
+        feedback/extra-instructions.md: ${{ states.prepare_context.artifacts["feedback/extra-instructions.md"] }}
       inputs:
-        sessionId: "{{ inputs.session_id }}"
-        worktree_path: "{{ context.environment.op.worktree_path }}"
-        workdir_path: "{{ context.environment.op.workdir }}"
-        artifact_inbox_path: "{{ context.environment.op.inbox }}"
-        artifact_outbox_path: "{{ context.environment.op.outbox }}"
-        prompt: |
-          You are implementing a software job in the c2 system.
-
-          Ticket prompt:
-          {{ inputs.prompt }}
-
-          Submitted artifacts directory:
-          `{{ context.environment.op.inbox }}/submitted`
-
-          If submitted artifacts are present, read them from the submitted
-          artifacts directory.
-
-          Requirements plan artifact path:
-          `{{ context.environment.op.inbox }}/requirements/plan.json`
-
-          Validation feedback artifact path:
-          `{{ context.environment.op.inbox }}/feedback/validation-feedback.md`
-
-          Previous session summary artifact path:
-          `{{ context.environment.op.inbox }}/feedback/prior-session-summary.md`
-
-          Extra instructions artifact path:
-          `{{ context.environment.op.inbox }}/feedback/extra-instructions.md`
-
-          Constraints:
-          - Keep changes scoped to the current cell’s code.
-          - Do NOT write requirements/plan/review docs into the git repo.
-          - If notes are needed, write artifacts under `{{ context.environment.op.outbox }}/implementation/`.
-          - Input artifacts are available under `{{ context.environment.op.inbox }}`.
-          - Update/add tests if appropriate.
-          - Prefer small, safe changes and keep backwards compatibility.
-
-          Deliverables:
-          - Make the code changes in-repo.
-          - Leave the workspace in a state where validation commands are likely to pass.
-
+        worktree_path: '{{ context.environment.op.worktree_path }}'
+        workdir_path: '{{ context.environment.op.workdir }}'
+        artifact_inbox_path: '{{ context.environment.op.inbox }}'
+        artifact_outbox_path: '{{ context.environment.op.outbox }}'
+        prompt: "You are implementing a software job in the c2 system.\n\nTicket prompt:\n{{ inputs.prompt }}\n\n\
+          Submitted artifacts directory:\n`{{ context.environment.op.inbox }}/submitted`\n\nIf submitted artifacts\
+          \ are present, read them from the submitted\nartifacts directory.\n\nRequirements plan artifact path:\n\
+          `{{ context.environment.op.inbox }}/requirements/plan.json`\n\nValidation feedback artifact path:\n`{{\
+          \ context.environment.op.inbox }}/feedback/validation-feedback.md`\n\nPrevious session summary artifact\
+          \ path:\n`{{ context.environment.op.inbox }}/feedback/prior-session-summary.md`\n\nExtra instructions\
+          \ artifact path:\n`{{ context.environment.op.inbox }}/feedback/extra-instructions.md`\n\nConstraints:\n\
+          - Keep changes scoped to the current cell\u2019s code.\n- Do NOT write requirements/plan/review docs into\
+          \ the git repo.\n- If notes are needed, write artifacts under `{{ context.environment.op.outbox }}/implementation/`.\n\
+          - Input artifacts are available under `{{ context.environment.op.inbox }}`.\n- Update/add tests if appropriate.\n\
+          - Prefer small, safe changes and keep backwards compatibility.\n\nDeliverables:\n- Make the code changes\
+          \ in-repo.\n- Leave the workspace in a state where validation commands are likely to pass.\n"
+        session: ${{ inputs.session }}
     new_session:
-      op: git+https://github.com/colony-2/c2ops.git//codex@main
+      op: git+https://github.com/colony-2/c2ops.git//codex@ded76dfbd877d3d0749e509844ecdbc57197b572
       transitions: []
       artifacts:
-        submitted/: '${{ context.artifacts }}'
-        requirements/plan.json: '${{ states.prepare_context.artifacts["requirements/plan.json"] }}'
-        feedback/validation-feedback.md: '${{ states.prepare_context.artifacts["feedback/validation-feedback.md"] }}'
-        feedback/prior-session-summary.md: '${{ states.prepare_context.artifacts["feedback/prior-session-summary.md"] }}'
-        feedback/extra-instructions.md: '${{ states.prepare_context.artifacts["feedback/extra-instructions.md"] }}'
+        submitted/: ${{ context.artifacts }}
+        requirements/plan.json: ${{ states.prepare_context.artifacts["requirements/plan.json"] }}
+        feedback/validation-feedback.md: ${{ states.prepare_context.artifacts["feedback/validation-feedback.md"]
+          }}
+        feedback/prior-session-summary.md: ${{ states.prepare_context.artifacts["feedback/prior-session-summary.md"]
+          }}
+        feedback/extra-instructions.md: ${{ states.prepare_context.artifacts["feedback/extra-instructions.md"] }}
       inputs:
-        worktree_path: "{{ context.environment.op.worktree_path }}"
-        workdir_path: "{{ context.environment.op.workdir }}"
-        artifact_inbox_path: "{{ context.environment.op.inbox }}"
-        artifact_outbox_path: "{{ context.environment.op.outbox }}"
-        prompt: |
-          You are implementing a software job in the c2 system.
-
-          Ticket prompt:
-          {{ inputs.prompt }}
-
-          Submitted artifacts directory:
-          `{{ context.environment.op.inbox }}/submitted`
-
-          If submitted artifacts are present, read them from the submitted
-          artifacts directory.
-
-          Requirements plan artifact path:
-          `{{ context.environment.op.inbox }}/requirements/plan.json`
-
-          Validation feedback artifact path:
-          `{{ context.environment.op.inbox }}/feedback/validation-feedback.md`
-
-          Previous session summary artifact path:
-          `{{ context.environment.op.inbox }}/feedback/prior-session-summary.md`
-
-          Extra instructions artifact path:
-          `{{ context.environment.op.inbox }}/feedback/extra-instructions.md`
-
-          Constraints:
-          - Keep changes scoped to the current cell’s code.
-          - Do NOT write requirements/plan/review docs into the git repo.
-          - If notes are needed, write artifacts under `{{ context.environment.op.outbox }}/implementation/`.
-          - Input artifacts are available under `{{ context.environment.op.inbox }}`.
-          - Update/add tests if appropriate.
-          - Prefer small, safe changes and keep backwards compatibility.
-
-          Deliverables:
-          - Make the code changes in-repo.
-          - Leave the workspace in a state where validation commands are likely to pass.
-
+        worktree_path: '{{ context.environment.op.worktree_path }}'
+        workdir_path: '{{ context.environment.op.workdir }}'
+        artifact_inbox_path: '{{ context.environment.op.inbox }}'
+        artifact_outbox_path: '{{ context.environment.op.outbox }}'
+        prompt: "You are implementing a software job in the c2 system.\n\nTicket prompt:\n{{ inputs.prompt }}\n\n\
+          Submitted artifacts directory:\n`{{ context.environment.op.inbox }}/submitted`\n\nIf submitted artifacts\
+          \ are present, read them from the submitted\nartifacts directory.\n\nRequirements plan artifact path:\n\
+          `{{ context.environment.op.inbox }}/requirements/plan.json`\n\nValidation feedback artifact path:\n`{{\
+          \ context.environment.op.inbox }}/feedback/validation-feedback.md`\n\nPrevious session summary artifact\
+          \ path:\n`{{ context.environment.op.inbox }}/feedback/prior-session-summary.md`\n\nExtra instructions\
+          \ artifact path:\n`{{ context.environment.op.inbox }}/feedback/extra-instructions.md`\n\nConstraints:\n\
+          - Keep changes scoped to the current cell\u2019s code.\n- Do NOT write requirements/plan/review docs into\
+          \ the git repo.\n- If notes are needed, write artifacts under `{{ context.environment.op.outbox }}/implementation/`.\n\
+          - Input artifacts are available under `{{ context.environment.op.inbox }}`.\n- Update/add tests if appropriate.\n\
+          - Prefer small, safe changes and keep backwards compatibility.\n\nDeliverables:\n- Make the code changes\
+          \ in-repo.\n- Leave the workspace in a state where validation commands are likely to pass.\n"
 outputs:
-  status: "${{ first_nonempty(state_output('continue_session', 'status', ''), state_output('new_session', 'status', ''), '') }}"
-  assistant_summary: "${{ first_nonempty(state_output('continue_session', 'assistantSummary', ''), state_output('new_session', 'assistantSummary', ''), '') }}"
-  session_id: "${{ first_nonempty(state_output('continue_session', 'sessionId', ''), state_output('new_session', 'sessionId', ''), '') }}"
-  incomplete_reason: "${{ first_nonempty(state_output('continue_session', 'incompleteReason', ''), state_output('new_session', 'incompleteReason', ''), '') }}"
-  incomplete_category: "${{ first_nonempty(state_output('continue_session', 'incompleteCategory', ''), state_output('new_session', 'incompleteCategory', ''), '') }}"
-  pending_dependencies: "${{ state_exists('continue_session') ? state_output('continue_session', 'pendingDependencies', []) : state_output('new_session', 'pendingDependencies', []) }}"
+  status: ${{ first_nonempty(state_output('continue_session', 'status', ''), state_output('new_session', 'status',
+    ''), '') }}
+  assistant_summary: ${{ first_nonempty(state_output('continue_session', 'assistantSummary', ''), state_output('new_session',
+    'assistantSummary', ''), '') }}
+  session_id: ${{ first_nonempty(state_output('continue_session', 'sessionId', ''), state_output('new_session',
+    'sessionId', ''), '') }}
+  incomplete_reason: ${{ first_nonempty(state_output('continue_session', 'incompleteReason', ''), state_output('new_session',
+    'incompleteReason', ''), '') }}
+  incomplete_category: ${{ first_nonempty(state_output('continue_session', 'incompleteCategory', ''), state_output('new_session',
+    'incompleteCategory', ''), '') }}
+  pending_dependencies: '${{ state_exists(''continue_session'') ? state_output(''continue_session'', ''pendingDependencies'',
+    []) : state_output(''new_session'', ''pendingDependencies'', []) }}'
+  session: '${{ state_exists("continue_session") ? states.continue_session.outputs.session : states.new_session.outputs.session
+    }}'

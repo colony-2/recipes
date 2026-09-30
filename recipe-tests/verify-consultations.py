@@ -34,16 +34,6 @@ def read(name): return yaml.safe_load((ROOT/'recipes/develop'/name).read_text())
 def e(text): return '${{ '+text+' }}'
 
 
-def command_outputs(value, states):
-    if isinstance(value, dict): return {k: command_outputs(v, states) for k, v in value.items()}
-    if isinstance(value, list): return [command_outputs(v, states) for v in value]
-    if isinstance(value, str):
-        for state in states:
-            for field in ['status', '?sessionId', 'sessionId']:
-                value=value.replace(f'states.{state}.outputs.{field}', f'json_parse(states.{state}.outputs.stdout).{field}')
-    return value
-
-
 def seed(work, name):
     repo = d.repository(work, name)
     (repo/'.c2j/mandate.md').write_text((ROOT/'.c2j/mandate.md').read_text())
@@ -79,7 +69,7 @@ def data():
     m={'cell':'test','valid':True,'path':'.c2j/mandate.md','commit':d.HASH,'sha256':'b'*64,'clauses':['OWN-01','EXCLUDE-01','Purpose','Owns']}
     r=copy.deepcopy(d.DESIGN)
     b={**d.BASE,'fit':'fits','design_markdown':'Agreed service change'}
-    history={'service':{'cell':'service','ref':'main','commit':d.HASH,'session_id':'B-session','session_artifacts':{},'mandate':{**m,'cell':'service'},'turns':[{'message':'Design?','response':b}],'response':b}}
+    history={'service':{'cell':'service','ref':'main','commit':d.HASH,'session_id':'B-session','session':d.session_ref('B-session'),'mandate':{**m,'cell':'service'},'turns':[{'message':'Design?','response':b}],'response':b}}
     return m,r,history
 
 
@@ -114,8 +104,8 @@ def verify_contract(work):
         if case=='duplicate-handoff':r['handoffs']*=2
         if case=='false-ready':r['questions']=['Undecided']
         out=work/('contract-'+case);out.mkdir()
-        result=d.command_test(code,{'RESULT_JSON':json.dumps(r),'MANDATE_JSON':json.dumps(m),'HISTORY_JSON':json.dumps(h),'INITIAL_HISTORY_JSON':json.dumps(initial),'PROMPT':'Improve behavior','FEEDBACK':'','SESSION':session,'OUTBOX':str(out)},ok=case in positive)
-        if case=='repeat':assert result['selection']['workspace_ref']==d.HASH and result['selection']['session_id']=='B-session'
+        result=d.command_test(code,{'RESULT_JSON':json.dumps(r),'MANDATE_JSON':json.dumps(m),'HISTORY_JSON':json.dumps(h),'INITIAL_HISTORY_JSON':json.dumps(initial),'PROMPT':'Improve behavior','FEEDBACK':'','SESSION':json.dumps(d.session_ref(session) if session else None),'OUTBOX':str(out)},ok=case in positive)
+        if case=='repeat':assert result['selection']['workspace_ref']==d.HASH and result['selection']['session']==d.session_ref('B-session')
         if case=='limit':assert not result['selection'] and result['result']['status']=='needs_input'
         if case=='partial':assert result['result']['handoffs'][0]['provenance']['commit']==d.HASH
     print(f'design: {len(cases)} ownership/consultation contract cases passed',flush=True)
@@ -146,7 +136,7 @@ def verify_foreign_gates(work):
         if name in ['partial','outside']:response['fit']=name
         if name=='missing-field':del response['fit']
         raw='not-json' if name=='malformed' else json.dumps(response)
-        ops=[d.mock('recipe_within_resolution',{'resolved_selectors':{}}),d.command({'valid':True}),d.mock('extension_execution',{'status':name if name in ['incomplete','error'] else 'completed','sessionId':'' if name=='missing-session' else 'B-session'},{'result.json':raw}),deps.passthrough('extension_execution')]
+        ops=[d.mock('recipe_within_resolution',{'resolved_selectors':{}}),d.command({'valid':True}),d.mock('extension_execution',{'status':name if name in ['incomplete','error'] else 'completed','sessionId':'B-session',**({} if name=='missing-session' else {'session':d.session_ref('B-session')})},{'result.json':raw}),deps.passthrough('extension_execution')]
         if name not in ['malformed','missing-field']:ops.append(deps.passthrough('command_execution'))
         cases.append({'id':name,'type':'recipe_case','inputs':{'message':'Assess this request'},'mocks':{'ops':ops},'assertions':[{'type':'output_equals','path':'valid','value':name in ['ready','needs-input','partial','outside']}]})
     d.run_suite(ROOT/'recipes/develop/consult.yaml',cases,work/'foreign-gates',parallelism=4)
@@ -179,9 +169,7 @@ assert h['design_markdown']=='Service uses stable tokens; invalid tokens are rej
 pathlib.Path(os.environ['OUTBOX'],'handoff.json').write_text(json.dumps(h))
 CHILD
 '''}}],'outputs':{'accepted':True}})
-        agent=yaml.safe_load((fixture/'agent.yaml').read_text())
-        for node in agent['state']['states']['run']['state']['states'].values():
-            node['op']='command_execution';node['inputs']={'env':{'INBOX':'{{ context.environment.op.inbox }}','OUTBOX':'{{ context.environment.op.outbox }}','WORKTREE':'{{ context.environment.op.worktree_path }}','SESSION':e('inputs.session_id'),'TRACE':str(trace),'B_CELL':str(b),'WORKSPACE':'{{ context.workspace.cell }}','OWNER':'{{ context.workflow.cell }}','INSTRUCTIONS':e('inputs.instructions'),'CHILD_RECIPE':str(child_path)},'run':'''python3 - 2>>"${TRACE}.error" <<'CODE'
+        model_inputs={'env':{'INBOX':'{{ context.environment.op.inbox }}','OUTBOX':'{{ context.environment.op.outbox }}','WORKTREE':'{{ context.environment.op.worktree_path }}','TRACE':str(trace),'B_CELL':str(b),'WORKSPACE':'{{ context.workspace.cell }}','OWNER':'{{ context.workflow.cell }}','INSTRUCTIONS':e('inputs.instructions'),'CHILD_RECIPE':str(child_path)},'run':'''python3 - 2>>"${TRACE}.error" <<'CODE'
 import json,os,pathlib,subprocess
 inbox=pathlib.Path(os.environ['INBOX']);out=pathlib.Path(os.environ['OUTBOX']);root=pathlib.Path(os.environ['WORKTREE'])
 c=json.loads((inbox/'phase/context.json').read_text())
@@ -192,17 +180,17 @@ if os.environ['INSTRUCTIONS'].startswith('Implement'):
   assert not dependencies
   subprocess.run(['c2j','submit',json.dumps(h),'--cell',h['cell'],'--recipe-file',os.environ['CHILD_RECIPE'],'--json'],check=True,stdout=subprocess.DEVNULL)
  else:
-  assert os.environ['SESSION']=='I-session' and (inbox/'codex-home-state/session.txt').read_text()=='I'
+  assert os.environ['SESSION']=='I-session' and (pathlib.Path(os.environ['SESSION_HOME'])/'session.txt').read_text()=='I'
   assert len(dependencies)==1 and all(v['status']=='completed' and v['outputs']['accepted'] for v in dependencies.values())
   assert json.loads(next((inbox/'dependencies').rglob('handoff.json')).read_text())==h
  r={'status':'ready' if dependencies else 'needs_input','summary':'Integrated agreed service work','blocking_issues':[],'questions':[] if dependencies else ['Await service'],'changes':['Client behavior'],'consultation':None,'proposed_handoffs':[],'statement_tests':[{'statement_id':'T1','files':['test.sh']}]}
- (out/'result.json').write_text(json.dumps(r));(out/'codex-home-state').mkdir();(out/'codex-home-state/session.txt').write_text('I')
+ (out/'result.json').write_text(json.dumps(r));(pathlib.Path(os.environ['SESSION_HOME'])/'session.txt').write_text('I')
  with open(os.environ['TRACE'],'a') as f:f.write(json.dumps({'actor':'I','session':os.environ['SESSION'],'workspace':os.environ['WORKSPACE'],'owner':os.environ['OWNER']})+'\\n')
  print(json.dumps({'status':'completed','sessionId':'I-session'}))
  raise SystemExit(0)
 h=c['consultations'];m=c['mandate']
 assert (root/'app.txt').read_text()=='application\\n' and not (root/'experiment.txt').exists()
-if h: assert os.environ['SESSION']=='A-session' and (inbox/'codex-home-state/session.txt').read_text()=='A', {'session':os.environ['SESSION'],'inbox':str(inbox),'context':c}
+if h: assert os.environ['SESSION']=='A-session' and (pathlib.Path(os.environ['SESSION_HOME'])/'session.txt').read_text()=='A', {'session':os.environ['SESSION'],'inbox':str(inbox),'context':c}
 else: assert not os.environ['SESSION']
 with open(os.environ['TRACE'],'a') as f:f.write(json.dumps({'actor':'A','session':os.environ['SESSION'],'workspace':os.environ['WORKSPACE'],'owner':os.environ['OWNER'],'turns':len(h.get('service',{}).get('turns',[]))})+'\\n')
 r={'status':'ready','summary':'Reviewed mixed request','blocking_issues':[],'questions':[],'design_markdown':'Local client plus external service','requirements':[{'id':'R1','statement':'Client behavior'}], 'assessment':{'assessment_status':'assessed','fit':'partial','rationale':'Split ownership','questions':[],'outcomes':[{'id':'R1','statement':'Client behavior','ownership':'local','suggested_owner':m['cell'],'mandate_evidence':['OWN-01'],'reason':'Client owns this'},{'id':'R2','statement':'Service behavior','ownership':'external','suggested_owner':h['service']['mandate']['cell'] if h else 'cell-b','mandate_evidence':['EXCLUDE-01'],'reason':'Service owns this'}]},'consultation':None,'handoffs':[]}
@@ -210,33 +198,36 @@ if len(h.get('service',{}).get('turns',[]))<2:
  r.update(status='needs_input',questions=['Refine service design'],consultation={'thread_id':'service','cell':os.environ['B_CELL'],'ref':'main','message':'Use stable tokens and cover invalid tokens' if h else 'Discuss pagination design'})
 else:
  r['handoffs']=[{'thread_id':'service','cell':os.environ['B_CELL'],'mode':'build','outcome_ids':['R2'],'design_markdown':h['service']['response']['design_markdown']}]
-(out/'result.json').write_text(json.dumps(r));(out/'codex-home-state').mkdir();(out/'codex-home-state/session.txt').write_text('A')
+(out/'result.json').write_text(json.dumps(r));(pathlib.Path(os.environ['SESSION_HOME'])/'session.txt').write_text('A')
 print(json.dumps({'status':'completed','sessionId':'A-session'}))
 CODE
 '''}
-        agent['state']['states']['run']['outputs']=command_outputs(agent['state']['states']['run']['outputs'],['root','scoped']);write(fixture/'agent.yaml',agent)
-        consult=yaml.safe_load((fixture/'consult.yaml').read_text());node=consult['state']['states']['agent'];node['op']='command_execution'
-        node['inputs']={'env':{'INBOX':'{{ context.environment.op.inbox }}','OUTBOX':'{{ context.environment.op.outbox }}','WORKTREE':'{{ context.environment.op.worktree_path }}','SESSION':e('inputs.session_id'),'TRACE':str(trace),'B_REPO':str(b),'B_HEAD':b_head,'WORKSPACE':'{{ context.workspace.cell }}','OWNER':'{{ context.workflow.cell }}'},'run':'''python3 - 2>>"${TRACE}.error" <<'CODE'
+        code=model_inputs['run'].split("<<'CODE'\n",1)[1].rsplit('\nCODE',1)[0]
+        agent=d.objects.replace(read('agent.yaml'),fixture,model_inputs['env'],code)
+        write(fixture/'agent.yaml',agent)
+        model_inputs={'env':{'INBOX':'{{ context.environment.op.inbox }}','OUTBOX':'{{ context.environment.op.outbox }}','WORKTREE':'{{ context.environment.op.worktree_path }}','TRACE':str(trace),'B_REPO':str(b),'B_HEAD':b_head,'WORKSPACE':'{{ context.workspace.cell }}','OWNER':'{{ context.workflow.cell }}'},'run':'''python3 - 2>>"${TRACE}.error" <<'CODE'
 import json,os,pathlib,subprocess
 root=pathlib.Path(os.environ['WORKTREE']);inbox=pathlib.Path(os.environ['INBOX']);out=pathlib.Path(os.environ['OUTBOX']);resumed=bool(os.environ['SESSION'])
 assert (root/'app.txt').read_text()=='application\\n' and not (root/'experiment.txt').exists()
 assert subprocess.check_output(['git','-C',str(root),'rev-parse','HEAD'],text=True).strip()==os.environ['B_HEAD'], {'actual':subprocess.check_output(['git','-C',str(root),'log','-3','--oneline'],text=True),'expected':os.environ['B_HEAD'],'session':os.environ['SESSION']}
 assert os.environ['WORKSPACE']!=os.environ['OWNER']
-if resumed: assert os.environ['SESSION']=='B-session' and (inbox/'codex-home-state/session.txt').read_text()=='B'
+if resumed: assert os.environ['SESSION']=='B-session' and (pathlib.Path(os.environ['SESSION_HOME'])/'session.txt').read_text()=='B'
 else:
- assert not (inbox/'codex-home-state/session.txt').exists()
+ assert not (pathlib.Path(os.environ['SESSION_HOME'])/'session.txt').exists()
  # Advance the source branch between turns. The recipe must use the original pin.
  source=pathlib.Path(os.environ['B_REPO']);(source/'unrelated.txt').write_text('new upstream commit')
  subprocess.run(['git','-C',str(source),'add','.'],check=True);subprocess.run(['git','-C',str(source),'commit','-qm','Unrelated advancement'],check=True)
 (root/'experiment.txt').write_text('discard me');(root/'app.txt').write_text('experimental service')
 r={'status':'ready' if resumed else 'needs_input','summary':'Agreed' if resumed else 'Clarify interface','fit':'fits','blocking_issues':[],'questions':[] if resumed else ['What token format?'],'design_markdown':'Service uses stable tokens; invalid tokens are rejected.'}
-(out/'result.json').write_text(json.dumps(r));(out/'codex-home-state').mkdir();(out/'codex-home-state/session.txt').write_text('B')
+(out/'result.json').write_text(json.dumps(r));(pathlib.Path(os.environ['SESSION_HOME'])/'session.txt').write_text('B')
 with open(os.environ['TRACE'],'a') as f:f.write(json.dumps({'actor':'B','session':os.environ['SESSION'],'workspace':os.environ['WORKSPACE'],'owner':os.environ['OWNER']})+'\\n')
 print(json.dumps({'status':'completed','sessionId':'B-session'}))
 CODE
 '''}
-        # Adapt command transport while retaining every production validity guard.
-        consult['outputs']=command_outputs(consult['outputs'],['agent']);write(fixture/'consult.yaml',consult)
+        # Keep the production graph and let c2j handle the fixture session objects.
+        code=model_inputs['run'].split("<<'CODE'\n",1)[1].rsplit('\nCODE',1)[0]
+        consult=d.objects.replace(read('consult.yaml'),fixture,model_inputs['env'],code)
+        write(fixture/'consult.yaml',consult)
         wrapper=work/'workflow.yaml'
         write(wrapper,{'id':'dialogue-and-handoff','input_schema':{'prompt':{'type':'string','required':True}},'inputs':{'prompt':e('inputs.prompt')},'sequence':[{'id':'design','include':str(fixture/'design.yaml'),'inputs':{'prompt':e('inputs.prompt')}},{'id':'implementation','include':str(fixture/'implement.yaml'),'inputs':{'prompt':e('inputs.prompt'),'context_json':e("'{\"design\":' + json_stringify(sequence.design.outputs.result) + '}'")}}],'outputs':{'design':e('sequence.design.outputs'),'implementation':e('sequence.implementation.outputs')}})
         if not handoff:
@@ -269,7 +260,7 @@ CODE
         assert rows[3]['session']=='B-session' and rows[4]['session']=='A-session'
         assert result['consultations']['service']['commit']==b_head
         assert result['result']['handoffs'][0]['provenance']['commit']==b_head
-        assert all(k=='codex-home-state' or k.startswith('codex-home-state/') for k in result['consultations']['service']['session_artifacts'])
+        assert result['consultations']['service']['session']['type']=='c2ops.codex.session/v1'
         children=json.loads(d.run(['c2j','list','children','--parent-tenant-id','test','--parent-job-id',parent,'--all-ops','--all','--status','READY,ACTIVE,PENDING_JOBS,COMPLETED,CANCELLED','--json'],env=env))
         assert len(children['jobs'])==(1 if handoff else 0),'Expected only approved implementation dependencies'
         assert d.git(a,'rev-parse','HEAD')==a_head and d.git(a,'status','--porcelain')==''

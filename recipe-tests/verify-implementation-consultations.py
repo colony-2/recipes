@@ -22,19 +22,6 @@ c = importlib.util.module_from_spec(spec); spec.loader.exec_module(c)
 d, deps, e = c.d, c.deps, c.e
 
 
-def model_node(original, env, *, const=False):
-    # Only substitute the model invocation. Callers adapt its command stdout
-    # into Codex output fields without replacing any production gate conditions.
-    return {'op': 'command_execution', 'const': const,
-            'inputs': {'env': env, 'timeout': '20s',
-                       'run': "python3 - 2>>\"${TRACE}.errors\" <<'MODEL'\n" +
-                              (ROOT/'recipe-tests/fixtures/implementation-conversation-model.py').read_text() + '\nMODEL\n'},
-            'artifacts': copy.deepcopy(original.get('artifacts', {}))}
-
-
-command_outputs = c.command_outputs
-
-
 def verify_live(work, binary, scenario):
     work.mkdir()
     server = subprocess.Popen([str(binary)], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
@@ -56,23 +43,16 @@ def verify_live(work, binary, scenario):
         target = '.c2j' if scenario == 'evolve' else '.'
         common = {'INBOX': '{{ context.environment.op.inbox }}', 'OUTBOX': '{{ context.environment.op.outbox }}',
                   'WORKTREE': '{{ context.environment.op.worktree_path }}', 'WORKSPACE': '{{ context.workspace.cell }}',
-                  'OWNER': '{{ context.workflow.cell }}', 'SESSION': e('inputs.session_id'),
+                  'OWNER': '{{ context.workflow.cell }}',
                   'SCENARIO': scenario, 'TRACE': str(work/'trace.jsonl'), 'TARGET': target,
                   'DEPENDENCIES_JSON': json.dumps(history), 'MISSING_CELL': (work/'missing-repository').as_uri(),
                   **{role+'_CELL': str(repo) for role, repo in cells.items()},
                   **{role+'_HEAD': value for role, value in heads.items()}}
-        agent = c.read('agent.yaml')
-        for name, original in list(agent['state']['states']['run']['state']['states'].items()):
-            agent['state']['states']['run']['state']['states'][name] = model_node(original, {
-                **common, 'ROLE': e('inputs.instructions.startsWith("Implement") ? "I" : "D"')})
-        agent['state']['states']['run']['outputs'] = command_outputs(agent['state']['states']['run']['outputs'], ['root', 'scoped'])
-        c.write(fixture/'agent.yaml', agent)
-        foreign = c.read('consult.yaml'); original = foreign['state']['states']['agent']
-        foreign['state']['states']['agent'] = {**model_node(original, {
-            **common, 'ROLE': e('context.workspace.cell == "cell-c" ? "C" : "B"')}, const=True),
-            'transitions': original['transitions']}
-        foreign['outputs'] = command_outputs(foreign['outputs'], ['agent'])
-        c.write(fixture/'consult.yaml', foreign)
+        code=(ROOT/'recipe-tests/fixtures/implementation-conversation-model.py').read_text()
+        agent=d.objects.replace(c.read('agent.yaml'),fixture,{**common,'ROLE':e('inputs.instructions.startsWith("Implement") ? "I" : "D"')},code)
+        c.write(fixture/'agent.yaml',agent)
+        foreign=d.objects.replace(c.read('consult.yaml'),fixture,{**common,'ROLE':e('context.workspace.cell == "cell-c" ? "C" : "B"')},code)
+        c.write(fixture/'consult.yaml',foreign)
         impl_inputs = {'prompt': 'Implement client behavior', 'target_directory': target,
                        'mode': 'evolve' if scenario == 'evolve' else 'build',
                        'context_json': json.dumps({'design': d.DESIGN, 'test_plan': d.PLAN}),
@@ -87,8 +67,7 @@ def verify_live(work, binary, scenario):
         if scenario == 'feedback':
             nodes.append({'id': 'revision', 'include': str(fixture/'implement.yaml'), 'inputs': {
                 **impl_inputs, 'feedback': 'Ask the dependency owner a follow-up question',
-                'session_id': e('sequence.implementation.outputs.session_id'),
-                'session_artifacts_json': e('json_stringify(sequence.implementation.outputs.session_artifacts)'),
+                'session': e('sequence.implementation.outputs.session'),
                 'additional_consultation_history_json': e('json_stringify(sequence.implementation.outputs.consultations)'),
                 'dependency_history_json': e('json_stringify(sequence.implementation.outputs.dependencies)')}})
             output_node = 'revision'
@@ -139,7 +118,7 @@ def verify_live(work, binary, scenario):
                 assert len([r for r in rows if r['role'] == 'B']) == 8
             for key, thread in result['consultations'].items():
                 assert thread['commit'] == heads[key]
-                assert all(k == 'codex-home-state' or k.startswith('codex-home-state/') for k in thread['session_artifacts'])
+                assert thread['session']['type']=='c2ops.codex.session/v1' and 'session_artifacts' not in thread
         children = json.loads(d.run(['c2j','list','children','--parent-tenant-id','test','--parent-job-id',job,
                                      '--all-ops','--all','--status','READY,ACTIVE,PENDING_JOBS,COMPLETED,CANCELLED','--json'], env=env))['jobs']
         assert children == [], 'Discussion submitted unapproved external work'
@@ -186,14 +165,14 @@ def verify_contracts(work):
         rejected = name in ['disagreement','changed-brief','missing-thread','retarget','missing-session','false-ready']
         actual = d.command_test(d.script('implement.yaml','contract'), {'RESULT_JSON':json.dumps(result),
             'CONTEXT_JSON':json.dumps(context),'HISTORY_JSON':json.dumps(history),'INITIAL_HISTORY_JSON':json.dumps(initial),
-            'SESSION':session,'OUTBOX':str(out)},ok=not rejected)
+            'SESSION':json.dumps(d.session_ref(session) if session else None),'OUTBOX':str(out)},ok=not rejected)
         if actual:
             expected = 'redesign' if name in ['new-work','changed-mode','changed-pin'] else 'needs_input' if name in ['budget','renewed-budget','pending','missing-question'] else 'ready'
             assert actual['result']['status']==expected, (name,actual)
             assert bool(actual['selection']) == (name in ['pending','renewed-budget'])
             if expected=='redesign': assert actual['result']['proposed_handoffs'][0]['provenance']['commit']==d.HASH
     code = c.read('consultation-history.yaml')['sequence'][0]['inputs']['run']
-    for name in ['empty','retain','advance','reverse','different-cell','different-ref','different-session','divergent','conflicting-response']:
+    for name in ['empty','retain','advance','reverse','different-cell','different-ref','different-session','divergent','conflicting-response','same-id-different-checkpoint']:
         _,_,history=c.data(); additional=copy.deepcopy(history)
         if name=='empty': history={};additional={}
         if name=='retain': additional={}
@@ -202,10 +181,11 @@ def verify_contracts(work):
         if name in ['different-cell','different-ref','different-session']:
             additional['service'][{'different-cell':'cell','different-ref':'ref','different-session':'session_id'}[name]]='other'
         if name=='divergent': additional['service']['turns'][0]['message']='Conflicting branch'
+        if name=='same-id-different-checkpoint': additional['service']['session']=d.session_ref('B-session',1)
         if name=='conflicting-response': additional['service']['response']['summary']='Conflicting answer'
         result=d.command_test(code,{'HISTORY_JSON':json.dumps(history),'ADDITIONAL_JSON':json.dumps(additional)},ok=name in ['empty','retain','advance','reverse'])
         if name in ['advance','reverse']: assert len(result['service']['turns'])==2
-    print('implementation: 15 contract and 9 history merge cases passed',flush=True)
+    print('implementation: 15 contract and 10 history merge cases passed',flush=True)
 
 
 def main():

@@ -36,7 +36,6 @@ state:
           + json_stringify(state_output("design_review", "result", {})) + ',"test_plan":' + json_stringify(state_output("test_plan",
           "result", {})) + ',"test_review":' + json_stringify(state_output("test_review", "result", {})) + ',"implementation":'
           + json_stringify(state_output("implementation", "result", {})) + '}' }}
-        session_id: ${{ "" }}
         evidence_json: '${{ json_stringify(state_exists("verify") ? states.verify.artifacts : context.artifacts)
           }}'
         dependency_history_json: ${{ json_stringify(state_output("design", "dependencies", {})) }}
@@ -63,7 +62,6 @@ state:
         mode: ${{ inputs.mode }}
         feedback: ${{ state_field("plan_feedback", "feedback", "") }}
         context_json: ${{ '{"design":' + json_stringify(state_output("design", "result", {})) + '}' }}
-        session_id: ${{ "" }}
         evidence_json: '${{ json_stringify(state_exists("verify") ? states.verify.artifacts : context.artifacts)
           }}'
         dependency_history_json: ${{ json_stringify(state_output("design_review", "dependencies", {})) }}
@@ -83,7 +81,6 @@ state:
         mode: ${{ inputs.mode }}
         feedback: ${{ state_field("plan_feedback", "feedback", "") }}
         context_json: ${{ '{"design":' + json_stringify(state_output("design", "result", {})) + '}' }}
-        session_id: ${{ "" }}
         evidence_json: '${{ json_stringify(state_exists("verify") ? states.verify.artifacts : context.artifacts)
           }}'
         dependency_history_json: ${{ json_stringify(state_output("test_plan", "dependencies", {})) }}
@@ -102,7 +99,6 @@ state:
         feedback: ${{ state_field("plan_feedback", "feedback", "") }}
         context_json: ${{ '{"design":' + json_stringify(state_output("design", "result", {})) + ',"test_plan":'
           + json_stringify(state_output("test_plan", "result", {})) + '}' }}
-        session_id: ${{ "" }}
         evidence_json: '${{ json_stringify(state_exists("verify") ? states.verify.artifacts : context.artifacts)
           }}'
         dependency_history_json: ${{ json_stringify(state_output("test_review", "dependencies", {})) }}
@@ -190,7 +186,6 @@ state:
       - to: plan_feedback
         when: true
     implementation:
-      include: ./implement.yaml
       inputs:
         prompt: ${{ inputs.prompt }}
         target_directory: ${{ inputs.target_directory }}
@@ -201,17 +196,52 @@ state:
           "result", {})) + ',"specification":' + json_stringify(state_output("specification", "result", {})) + ',"quality":'
           + json_stringify(state_output("quality", "result", {})) + ',"verify":' + json_stringify(state_output("verify",
           "result", {})) + '}' }}
-        session_id: ${{ state_output("implementation", "session_id", "") }}
         evidence_json: '${{ json_stringify(state_exists("verify") ? states.verify.artifacts : context.artifacts)
           }}'
         dependency_history_json: ${{ json_stringify(state_output("implementation", "dependencies", {})) }}
-        session_artifacts_json: ${{ json_stringify(state_output("implementation", "session_artifacts", {})) }}
         consultation_history_json: ${{ json_stringify(state_output("design", "consultations", {})) }}
         additional_consultation_history_json: ${{ json_stringify(state_output("implementation", "consultations",
           {})) }}
+        session: ${{ state_output("implementation", "session", null) }}
+      state:
+        initial:
+        - to: resume
+          when: inputs.session != null
+        - to: fresh
+          when: true
+        states:
+          fresh:
+            include: ./implement.yaml
+            inputs: &id001
+              prompt: ${{ inputs.prompt }}
+              target_directory: ${{ inputs.target_directory }}
+              mode: ${{ inputs.mode }}
+              feedback: ${{ inputs.feedback }}
+              context_json: ${{ inputs.context_json }}
+              evidence_json: ${{ inputs.evidence_json }}
+              dependency_history_json: ${{ inputs.dependency_history_json }}
+              consultation_history_json: ${{ inputs.consultation_history_json }}
+              additional_consultation_history_json: ${{ inputs.additional_consultation_history_json }}
+          resume:
+            include: ./implement.yaml
+            inputs:
+              <<: *id001
+              session: ${{ inputs.session }}
+      outputs:
+        valid: '${{ state_exists("resume") ? states.resume.outputs.valid : states.fresh.outputs.valid }}'
+        completed: '${{ state_exists("resume") ? states.resume.outputs.completed : states.fresh.outputs.completed
+          }}'
+        session_id: '${{ state_exists("resume") ? states.resume.outputs.session_id : states.fresh.outputs.session_id
+          }}'
+        dependencies: '${{ state_exists("resume") ? states.resume.outputs.dependencies : states.fresh.outputs.dependencies
+          }}'
+        result: '${{ state_exists("resume") ? states.resume.outputs.result : states.fresh.outputs.result }}'
+        consultations: '${{ state_exists("resume") ? states.resume.outputs.consultations : states.fresh.outputs.consultations
+          }}'
+        session: '${{ state_exists("resume") ? states.resume.outputs.session : states.fresh.outputs.session }}'
       transitions:
       - to: failed
-        when: outputs.session_id == "" || !outputs.valid
+        when: outputs.session == null || !outputs.valid
       - to: plan_feedback
         when: outputs.result.status == "redesign"
       - to: specification
@@ -229,7 +259,6 @@ state:
         context_json: ${{ '{"design":' + json_stringify(state_output("design", "result", {})) + ',"test_plan":'
           + json_stringify(state_output("test_plan", "result", {})) + ',"implementation":' + json_stringify(state_output("implementation",
           "result", {})) + '}' }}
-        session_id: ${{ "" }}
         evidence_json: '${{ json_stringify(state_exists("verify") ? states.verify.artifacts : context.artifacts)
           }}'
         dependency_history_json: ${{ json_stringify(state_output("implementation", "dependencies", {})) }}
@@ -251,7 +280,6 @@ state:
         context_json: ${{ '{"design":' + json_stringify(state_output("design", "result", {})) + ',"test_plan":'
           + json_stringify(state_output("test_plan", "result", {})) + ',"implementation":' + json_stringify(state_output("implementation",
           "result", {})) + '}' }}
-        session_id: ${{ "" }}
         evidence_json: '${{ json_stringify(state_exists("verify") ? states.verify.artifacts : context.artifacts)
           }}'
         dependency_history_json: ${{ json_stringify(state_output("implementation", "dependencies", {})) }}
@@ -339,7 +367,7 @@ state:
       transitions:
       - to: implementation
         when: has(outputs.fields.feedback) && outputs.fields.feedback.matches("[^[:space:]]") && state_output("implementation",
-          "session_id", "") != ""
+          "session", null) != null
       - to: implementation_feedback
         when: true
     finish:
@@ -406,7 +434,8 @@ outputs:
     "dependencies", {}), "implementation": state_output("implementation", "dependencies", {}), "specification":
     state_output("specification", "dependencies", {}), "quality": state_output("quality", "dependencies", {})} }}'
   design: ${{ state_output("design", "result", {}) }}
-  consultations: '${{ state_exists("implementation") && state_output("design", "result", {}).?assessment.orValue({}).?fit.orValue("") != "outside" ? states.implementation.outputs.consultations : state_output("design",
-    "consultations", {}) }}'
+  consultations: '${{ state_exists("implementation") && state_output("design", "result", {}).?assessment.orValue({}).?fit.orValue("")
+    != "outside" ? states.implementation.outputs.consultations : state_output("design", "consultations", {}) }}'
   disposition: '${{ state_output("finish", "merged", false) ? "implemented" : (state_output("design", "result",
     {}).?assessment.orValue({}).?fit.orValue("") == "outside" ? "outside" : "incomplete") }}'
+  session: ${{ state_output("implementation", "session", null) }}

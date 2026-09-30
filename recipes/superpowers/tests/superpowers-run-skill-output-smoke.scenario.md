@@ -13,12 +13,13 @@ cases:
             outputs:
               resolved_selectors: {}
         - match:
-            node_path: "superpowers-run-skill-output-smoke/run_skill/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
+            node_path: "superpowers-run-skill-output-smoke/run_skill/git+https://github.com/colony-2/c2ops.git//codex/run_skill@ded76dfbd877d3d0749e509844ecdbc57197b572"
           behavior:
             mode: return
             outputs: &run_skill_output
               status: completed
               sessionId: sid-run-skill
+              session: {"$c2j_object": "v1", "type": "c2ops.codex.session/v1", "tenant_id": "test", "sha256": "d77f1e08c56cac7bef92d44aa03614777d52eae429e1a328c3dfbfb3fef810e5", "artifact": {"jobId": "sid-run-skill", "taskOrdinal": 2, "name": "__c2j_objects__/d77f1e08c56cac7bef92d44aa03614777d52eae429e1a328c3dfbfb3fef810e5.tar", "sizeBytes": 100}}
               assistantSummary: Run skill output artifact validated.
               incompleteReason: ""
               incompleteCategory: ""

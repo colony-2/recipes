@@ -75,7 +75,7 @@ Run a selector-backed extension op directly:
 
 ```yaml
 - id: run_codex
-  op: git+https://github.com/colony-2/c2ops.git//codex@main
+  op: git+https://github.com/colony-2/c2ops.git//codex@ded76dfbd877d3d0749e509844ecdbc57197b572
   inputs:
     sandbox:
       type: none

@@ -17,7 +17,7 @@ cases:
           behavior:
             mode: passthrough
         - match:
-            op: git+https://github.com/colony-2/c2ops.git//codex@main
+            op: git+https://github.com/colony-2/c2ops.git//codex@ded76dfbd877d3d0749e509844ecdbc57197b572
           behavior:
             mode: passthrough
         - match:

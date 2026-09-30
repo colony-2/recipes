@@ -1,5 +1,11 @@
 # Superpowers Recipe Validation Test Plan
 
+Session migration update (2026-09-30): the session-ID routing descriptions in this
+historical design/validation analysis are superseded by
+[the object-session migration](CODEX_OBJECT_SESSION_MIGRATION.md). Current recipes
+route the complete `session` reference; `sessionId` is diagnostic only. Both Codex
+entrypoints are pinned together and legacy resume artifacts/inputs are rejected.
+
 ## Purpose
 
 Validate that current c2j core and c2ops features are sufficient to implement
@@ -182,9 +188,9 @@ Local c2ops checkout:
 
 Relevant selectors:
 
-- `git+https://github.com/colony-2/c2ops.git//codex/run_skill@main`
+- `git+https://github.com/colony-2/c2ops.git//codex/run_skill@ded76dfbd877d3d0749e509844ecdbc57197b572`
 - `git+https://github.com/colony-2/c2ops.git//rule_gate@main`
-- `git+https://github.com/colony-2/c2ops.git//codex@main`
+- `git+https://github.com/colony-2/c2ops.git//codex@ded76dfbd877d3d0749e509844ecdbc57197b572`
 
 Relevant c2j/core docs:
 

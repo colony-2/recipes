@@ -66,10 +66,10 @@ Most formerly named ops in this area are now selector-backed extension ops from 
 Use git selectors in committed recipes:
 
 ```yaml
-op: git+https://github.com/colony-2/c2ops.git//codex@main
+op: git+https://github.com/colony-2/c2ops.git//codex@ded76dfbd877d3d0749e509844ecdbc57197b572
 ```
 
-This repo intentionally points c2ops selectors at `@main` so recipe runs pick up c2ops fixes and improvements. Deterministic `c2j test` suites should mock `recipe_within_resolution` once per case and mock selector-backed ops by the node path reported by c2j diagnostics, or by op `extension_execution` when there is no ambiguity.
+Codex and `codex/run_skill` are pinned together to `ded76dfbd877d3d0749e509844ecdbc57197b572`, the object-session migration. Other c2ops selectors continue to use `@main`. Upgrade both Codex entrypoints together and validate their session contract. Deterministic `c2j test` suites should mock `recipe_within_resolution` once per case and mock selector-backed ops by the node path reported by c2j diagnostics, or by op `extension_execution` when there is no ambiguity.
 
 ## Authoring Loop
 

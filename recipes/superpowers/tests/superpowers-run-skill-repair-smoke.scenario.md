@@ -13,12 +13,13 @@ cases:
             outputs:
               resolved_selectors: {}
         - match:
-            node_path: "superpowers-run-skill-repair-smoke/run_skill/git+https://github.com/colony-2/c2ops.git//codex/run_skill@main"
+            node_path: "superpowers-run-skill-repair-smoke/run_skill/git+https://github.com/colony-2/c2ops.git//codex/run_skill@ded76dfbd877d3d0749e509844ecdbc57197b572"
           behavior:
             mode: return
             outputs: &run_skill_repair_output
               status: completed
               sessionId: sid-run-skill-repair
+              session: {"$c2j_object": "v1", "type": "c2ops.codex.session/v1", "tenant_id": "test", "sha256": "11283f00a77a6a086f86c39483e06411ccfe9e01709dc4da4712323c441de7ec", "artifact": {"jobId": "sid-run-skill-repair", "taskOrdinal": 2, "name": "__c2j_objects__/11283f00a77a6a086f86c39483e06411ccfe9e01709dc4da4712323c441de7ec.tar", "sizeBytes": 100}}
               assistantSummary: Repaired output artifact.
               incompleteReason: ""
               incompleteCategory: ""

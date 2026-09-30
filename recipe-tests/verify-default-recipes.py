@@ -7,6 +7,7 @@ Codex and human replies are fixtures. No model API, persistent job database, or
 project upstream is used. Tests do not substitute a Python state-machine model.
 """
 import copy
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -17,8 +18,13 @@ import tempfile
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
-CODEX = "git+https://github.com/colony-2/c2ops.git//codex@main"
+CODEX = "git+https://github.com/colony-2/c2ops.git//codex@ded76dfbd877d3d0749e509844ecdbc57197b572"
 GATE = "git+https://github.com/colony-2/c2ops.git//rule_gate@main"
+import importlib.util
+import sys
+sys.dont_write_bytecode = True
+_object_spec = importlib.util.spec_from_file_location('object_fixture', ROOT/'recipe-tests/object-session-fixture.py')
+objects = importlib.util.module_from_spec(_object_spec); _object_spec.loader.exec_module(objects)
 HASH = "a" * 40
 BASE = dict(status="ready", summary="Ready", blocking_issues=[], questions=[])
 DESIGN = {**BASE, "design_markdown": "Add the requested behavior", "requirements": [{"id": "R1", "statement": "Requested behavior works"}]}
@@ -26,6 +32,12 @@ DESIGN.update(assessment={"assessment_status":"assessed","fit":"fits","rationale
 PLAN = {**BASE, "statements": [{"id": "T1", "statement": "Requested behavior works", "requirement_ids": ["R1"], "files": ["test.sh"], "importance": "high", "level": "integration", "dependencies": [], "case": "positive"}], "commands": [{"id": "check", "run": "true", "statement_ids": ["T1"], "timeout_seconds": 10}]}
 IMPLEMENTATION = {**BASE, "consultation": None, "proposed_handoffs": [], "summary": "Implemented behavior", "changes": ["Requested change"], "statement_tests": [{"statement_id": "T1", "files": ["test.sh"]}]}
 SNAPSHOT = {"head": HASH, "base_hash": HASH, "target_directory": ".", "files": [], "clean": True}
+
+
+def session_ref(identity="session", turn=0):
+    digest = hashlib.sha256(f"{identity}:{turn}".encode()).hexdigest()
+    return {"$c2j_object":"v1","type":"c2ops.codex.session/v1","tenant_id":"test", "sha256":digest,
+            "artifact":{"jobId":identity,"taskOrdinal":turn+1,"name":"__c2j_objects__/"+digest+".tar","sizeBytes":100}}
 
 
 def run(args, **kwargs):
@@ -53,9 +65,9 @@ def prepared_context():
 
 
 def phase(result, *, valid=True, status="completed", session="implementation-session"):
-    ops = [command(SNAPSHOT), prepared_context(), mock("extension_execution", {"status": status, "sessionId": session}, {"result.json": json.dumps(result)}), command(SNAPSHOT), mock("extension_execution", {"ok": valid})]
+    ops = [command(SNAPSHOT), prepared_context(), mock("extension_execution", {"status": status, "sessionId": session, **({"session": session_ref(session)} if session else {})}, {"result.json": json.dumps(result)}), command(SNAPSHOT), mock("extension_execution", {"ok": valid})]
     if valid:
-        ops.append(command({"result":result,"session_artifacts":{}}))
+        ops.append(command({"result":result}))
     if "design_markdown" in result:
         ops.insert(0, command({"cell":"test","valid":True}))
         if valid: ops.append(command({"result":result,"selection":{}}))
@@ -203,12 +215,12 @@ def verify_routing(work):
                 else:
                     assert "worktree_path" not in value
                 if "/implementation/" not in path:
-                    assert value["sessionId"] == "", (name, case_id, path)
+                    assert "session" not in value and "sessionId" not in value, (name, case_id, path)
             if case_id in ("repeat-feedback", "redesign", "invalid-human-input"):
                 implementers = [v for p, v in agents if "/implementation/" in p]
                 assert len(implementers) >= 2, (name, case_id, [p for p, _ in agents])
-                assert implementers[0]["sessionId"] == ""
-                assert all(v["sessionId"] == "implementation-session" for v in implementers[1:])
+                assert "session" not in implementers[0]
+                assert all(v["session"] == {**session_ref("implementation-session"), "artifact": {**session_ref("implementation-session")["artifact"], "name": "[REDACTED]"}} for v in implementers[1:]), (case_id, [v.get("session") for v in implementers])
             if case_id == "repeat-feedback":
                 assert "Add coverage" in implementers[1]["prompt"]
                 assert "Handle empty input" in implementers[2]["prompt"]
@@ -337,13 +349,13 @@ def verify_real_gates(work):
     for resumed in (False, True):
         for name, raw in {"valid": json.dumps(IMPLEMENTATION), **invalid}.items():
             ops = [mock("recipe_within_resolution", {"resolved_selectors": {}}), command(SNAPSHOT), {"match": {"op": "command_execution"}, "behavior": {"mode": "passthrough"}},
-                   mock("extension_execution", {"status": "completed", "sessionId": "session"}, {} if raw is None else {"result.json": raw}),
+                   mock("extension_execution", {"status": "completed", "sessionId": "session", "session": session_ref()}, {} if raw is None else {"result.json": raw}),
                    command(SNAPSHOT), {"match": {"op": "extension_execution"}, "behavior": {"mode": "passthrough"}}]
             if name == "valid":
                 ops.append({"match": {"op": "command_execution"}, "behavior": {"mode": "passthrough"}})
             cases.append({"id": f"{name}-{'resume' if resumed else 'initial'}", "type": "recipe_case",
                           "inputs": {"prompt": "Improve behavior", "instructions": "Implement", "result_schema_json": schema_json,
-                                     "session_id": "session" if resumed else "", "writable": True},
+                                     **({"session": session_ref()} if resumed else {}), "writable": True},
                           "mocks": {"ops": ops}, "assertions": [{"type": "output_equals", "path": "valid", "value": name == "valid"}]})
     run_suite(ROOT / "recipes/develop/agent.yaml", cases, work / "real-gates")
     print("agent: 14 real artifact/schema gate cases passed", flush=True)

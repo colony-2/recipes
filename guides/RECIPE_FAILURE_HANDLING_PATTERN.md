@@ -261,7 +261,7 @@ is attached to a state-machine node and should route to one of its states.
 
 ```yaml
 implement:
-  op: git+https://github.com/colony-2/c2ops.git//codex@main
+  op: git+https://github.com/colony-2/c2ops.git//codex@ded76dfbd877d3d0749e509844ecdbc57197b572
   transitions:
     - to: validate
       when: "true"
@@ -438,7 +438,7 @@ This pattern fits the existing `recipes/new-ticket/new-ticket.yaml` implementati
 
 ```yaml
 implement:
-  op: git+https://github.com/colony-2/c2ops.git//codex@main
+  op: git+https://github.com/colony-2/c2ops.git//codex@ded76dfbd877d3d0749e509844ecdbc57197b572
   transitions:
     - to: pre_implementation_followup_review
       when: 'has(outputs.incompleteCategory) && outputs.incompleteCategory == "needs_user_input"'
@@ -470,7 +470,7 @@ state:
   initial: implement
   states:
     implement:
-      op: git+https://github.com/colony-2/c2ops.git//codex@main
+      op: git+https://github.com/colony-2/c2ops.git//codex@ded76dfbd877d3d0749e509844ecdbc57197b572
       transitions:
         - to: validate
           when: "true"

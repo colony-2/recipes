@@ -94,14 +94,20 @@ no experimental checkout is reused or merged. Explicit pushing/merging is
 forbidden by the consultation instructions, not by a new filesystem security
 boundary. Workspace isolation does not itself revoke Git publishing credentials.
 
-The recipe restores Codex's `codex-home-state` artifact at its expected inbox
-location. The ledger records each thread's session ID, checkpoint references,
-commit, mandate provenance and message/response pairs. Only session checkpoint
-artifacts are forwarded into later B turns; experimental diffs/thin packs are
-not. A's checkpoint is filtered to the same session-only artifact names and
-restored separately. Phase context and result bindings select their named JSON
-files so an incidental Git thin pack cannot become a duplicate workspace restore.
-A's candidate propagates through c2j's Git state, independently of checkpoints.
+The recipe forwards the complete `c2ops.codex.session/v1` object returned by each
+Codex turn. c2j persists and hydrates its private agent state; no session files are
+bound through the ordinary artifact inbox. Each thread records its latest object,
+diagnostic session ID, pinned commit, mandate provenance, and message/response
+pairs with their input and successor checkpoints. Equal diagnostic IDs do not make
+two checkpoints interchangeable. Equal-length histories with different checkpoint
+references are rejected, as are divergent turn histories.
+
+A's implementation checkpoint is routed separately from B's consultation object.
+Task documents and dependency evidence continue through ordinary artifact bindings.
+A's candidate propagates through c2j Git state independently of its agent checkpoint.
+The backing artifacts of referenced objects must remain retained for as long as
+those conversations are needed. Missing or corrupt objects fail; they do not
+silently start a new conversation.
 
 The durable design artifacts are `mandate-assessment.json`, `design.md`,
 `consultations.json`, and `handoffs.json`. These capture the discussion and
