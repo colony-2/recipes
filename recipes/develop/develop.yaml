@@ -31,18 +31,21 @@ state:
         prompt: ${{ inputs.prompt }}
         target_directory: ${{ inputs.target_directory }}
         mode: ${{ inputs.mode }}
-        feedback: ${{ state_field("plan_feedback", "feedback", "") }}
+        feedback: ${{ transition.payload.?review.orValue({}).?fields.orValue({}).?feedback.orValue("") }}
         context_json: ${{ '{"design":' + json_stringify(state_output("design", "result", {})) + ',"design_review":'
           + json_stringify(state_output("design_review", "result", {})) + ',"test_plan":' + json_stringify(state_output("test_plan",
           "result", {})) + ',"test_review":' + json_stringify(state_output("test_review", "result", {})) + ',"implementation":'
           + json_stringify(state_output("implementation", "result", {})) + '}' }}
-        evidence_json: '${{ json_stringify(state_exists("verify") ? states.verify.artifacts : context.artifacts)
+        evidence_json: '${{ json_stringify(jq(json_parse(''['' + json_stringify(state_exists("verify") ? states.verify.artifacts
+          : context.artifacts) + "," + json_stringify((transition.payload.?review.orValue({})).?artifact_refs.orValue({}))
+          + '']''), ".[0] + (.[1] | with_entries(.value.name = (\"review/\" + .key) | .key = (\"review/\" + .key)))"))
           }}'
         dependency_history_json: ${{ json_stringify(state_output("design", "dependencies", {})) }}
         consultation_history_json: ${{ json_stringify(state_output("design", "consultations", {})) }}
         mandate_commit: ${{ states.prepare.outputs.snapshot.head }}
         additional_consultation_history_json: ${{ json_stringify(state_output("implementation", "consultations",
           {})) }}
+        review_response_json: ${{ json_stringify(transition.payload.?review.orValue({})) }}
       transitions:
       - to: outside
         when: outputs.valid && outputs.completed && outputs.result.status == "ready" && outputs.result.assessment.fit
@@ -60,9 +63,11 @@ state:
         prompt: ${{ inputs.prompt }}
         target_directory: ${{ inputs.target_directory }}
         mode: ${{ inputs.mode }}
-        feedback: ${{ state_field("plan_feedback", "feedback", "") }}
+        feedback: ${{ states.design.outputs.review_response.?fields.orValue({}).?feedback.orValue("") }}
         context_json: ${{ '{"design":' + json_stringify(state_output("design", "result", {})) + '}' }}
-        evidence_json: '${{ json_stringify(state_exists("verify") ? states.verify.artifacts : context.artifacts)
+        evidence_json: '${{ json_stringify(jq(json_parse(''['' + json_stringify(state_exists("verify") ? states.verify.artifacts
+          : context.artifacts) + "," + json_stringify((states.design.outputs.review_response).?artifact_refs.orValue({}))
+          + '']''), ".[0] + (.[1] | with_entries(.value.name = (\"review/\" + .key) | .key = (\"review/\" + .key)))"))
           }}'
         dependency_history_json: ${{ json_stringify(state_output("design_review", "dependencies", {})) }}
       transitions:
@@ -79,9 +84,11 @@ state:
         prompt: ${{ inputs.prompt }}
         target_directory: ${{ inputs.target_directory }}
         mode: ${{ inputs.mode }}
-        feedback: ${{ state_field("plan_feedback", "feedback", "") }}
+        feedback: ${{ states.design.outputs.review_response.?fields.orValue({}).?feedback.orValue("") }}
         context_json: ${{ '{"design":' + json_stringify(state_output("design", "result", {})) + '}' }}
-        evidence_json: '${{ json_stringify(state_exists("verify") ? states.verify.artifacts : context.artifacts)
+        evidence_json: '${{ json_stringify(jq(json_parse(''['' + json_stringify(state_exists("verify") ? states.verify.artifacts
+          : context.artifacts) + "," + json_stringify((states.design.outputs.review_response).?artifact_refs.orValue({}))
+          + '']''), ".[0] + (.[1] | with_entries(.value.name = (\"review/\" + .key) | .key = (\"review/\" + .key)))"))
           }}'
         dependency_history_json: ${{ json_stringify(state_output("test_plan", "dependencies", {})) }}
       transitions:
@@ -96,10 +103,12 @@ state:
         prompt: ${{ inputs.prompt }}
         target_directory: ${{ inputs.target_directory }}
         mode: ${{ inputs.mode }}
-        feedback: ${{ state_field("plan_feedback", "feedback", "") }}
+        feedback: ${{ states.design.outputs.review_response.?fields.orValue({}).?feedback.orValue("") }}
         context_json: ${{ '{"design":' + json_stringify(state_output("design", "result", {})) + ',"test_plan":'
           + json_stringify(state_output("test_plan", "result", {})) + '}' }}
-        evidence_json: '${{ json_stringify(state_exists("verify") ? states.verify.artifacts : context.artifacts)
+        evidence_json: '${{ json_stringify(jq(json_parse(''['' + json_stringify(state_exists("verify") ? states.verify.artifacts
+          : context.artifacts) + "," + json_stringify((states.design.outputs.review_response).?artifact_refs.orValue({}))
+          + '']''), ".[0] + (.[1] | with_entries(.value.name = (\"review/\" + .key) | .key = (\"review/\" + .key)))"))
           }}'
         dependency_history_json: ${{ json_stringify(state_output("test_review", "dependencies", {})) }}
       transitions:
@@ -114,49 +123,70 @@ state:
       op: input
       inputs:
         form:
+          kind: review
           title: Approve design and test plan
-          question: |-
-            {{ vars.scope_explanation }}
+          documents: ${{ jq(json_parse('[' + json_stringify(state_output("design", "review_documents", {})) + ","
+            + json_stringify(state_output("test_plan", "review_documents", {})) + ']'), "add") }}
+          fields:
+          - id: decision
+            type: multiple_choice
+            question: |-
+              {{ vars.scope_explanation }}
 
-            Mode: {{ inputs.mode }}; target: {{ inputs.target_directory }}
+              Mode: {{ inputs.mode }}; target: {{ inputs.target_directory }}
 
-            Design:
-            ${{ states.design.outputs.result.design_markdown }}
+              ${{ states.design.outputs.result.summary }}
 
-            Reviewed test statements and commands:
-            ${{ states.test_plan.outputs.markdown }}
+              Review the attached design and test statements before implementation.
 
-            Approve these outcomes before implementation?
+              Mandate assessment and external work:
+              ${{ json_stringify(states.design.outputs.result.assessment) }}
+              ${{ json_stringify(states.design.outputs.result.handoffs) }}
 
-            Mandate assessment (local/external split):
-            ${{ json_stringify(states.design.outputs.result.assessment) }}
-
-            Agreed external work to submit during implementation:
-            ${{ json_stringify(states.design.outputs.result.handoffs) }}
-          type: multiple_choice
-          options:
-          - value: approve
-            label: Approve design and test plan
-          - value: revise
-            label: Revise the plan
+              How should we proceed? Uploaded edits require another revision and review.
+            required: true
+            options:
+            - value: approve
+              label: Approve design and test plan
+            - value: revise
+              label: Revise the plan
+          - &review_feedback
+            id: feedback
+            type: paragraph_text
+            question: Feedback or answers to open questions. Select a revision decision to request changes.
+          - &annotated_design
+            id: annotated_design
+            type: file_upload
+            question: Optional annotated design (Markdown may include CriticMarkup).
+          - &annotated_test_statements
+            id: annotated_test_statements
+            type: file_upload
+            question: Optional annotated test statements.
       transitions:
       - to: implementation
-        when: outputs.response == "approve"
+        when: outputs.fields.decision == "approve" && size(outputs.?artifact_refs.orValue({})) == 0
+        payload:
+          review: ${{ outputs }}
+      - to: design
+        when: outputs.fields.decision in ["approve", "revise"] && (outputs.fields.?feedback.orValue("").matches("[^[:space:]]")
+          || size(outputs.?artifact_refs.orValue({})) > 0)
+        payload:
+          review: ${{ outputs }}
       - to: plan_feedback
-        when: outputs.response == "revise"
+        when: outputs.fields.decision == "revise"
       - to: approve_plan
         when: true
     plan_feedback:
       op: input
       inputs:
         form:
+          kind: review
           title: Design or test-plan feedback
+          documents: ${{ jq(json_parse('[' + json_stringify(state_output("design", "review_documents", {})) + ","
+            + json_stringify(state_output("test_plan", "review_documents", {})) + ']'), "add") }}
           fields:
-          - id: feedback
-            type: paragraph_text
-            required: true
-            validation:
-              pattern: \S
+          - id: decision
+            type: multiple_choice
             question: |-
               {{ vars.scope_explanation }}
 
@@ -180,9 +210,21 @@ state:
               Test-plan contract error: ${{ state_output("test_plan", "contract_error", "") }}
 
               What should change or what is the answer to the open questions?
+
+              How should we proceed? Uploaded edits require another revision and review.
+            required: true
+            options:
+            - value: revise
+              label: Revise the plan
+          - *review_feedback
+          - *annotated_design
+          - *annotated_test_statements
       transitions:
       - to: design
-        when: has(outputs.fields.feedback) && outputs.fields.feedback.matches("[^[:space:]]")
+        when: outputs.fields.decision == "revise" && (outputs.fields.?feedback.orValue("").matches("[^[:space:]]")
+          || size(outputs.?artifact_refs.orValue({})) > 0)
+        payload:
+          review: ${{ outputs }}
       - to: plan_feedback
         when: true
     implementation:
@@ -190,19 +232,22 @@ state:
         prompt: ${{ inputs.prompt }}
         target_directory: ${{ inputs.target_directory }}
         mode: ${{ inputs.mode }}
-        feedback: ${{ state_field("implementation_feedback", "feedback", "") }}
+        feedback: ${{ transition.payload.?review.orValue({}).?fields.orValue({}).?feedback.orValue("") }}
         context_json: ${{ '{"previous_implementation":' + json_stringify(state_output("implementation", "result",
           {})) + ',"design":' + json_stringify(state_output("design", "result", {})) + ',"test_plan":' + json_stringify(state_output("test_plan",
           "result", {})) + ',"specification":' + json_stringify(state_output("specification", "result", {})) + ',"quality":'
           + json_stringify(state_output("quality", "result", {})) + ',"verify":' + json_stringify(state_output("verify",
           "result", {})) + '}' }}
-        evidence_json: '${{ json_stringify(state_exists("verify") ? states.verify.artifacts : context.artifacts)
+        evidence_json: '${{ json_stringify(jq(json_parse(''['' + json_stringify(state_exists("verify") ? states.verify.artifacts
+          : context.artifacts) + "," + json_stringify((transition.payload.?review.orValue({})).?artifact_refs.orValue({}))
+          + '']''), ".[0] + (.[1] | with_entries(.value.name = (\"review/\" + .key) | .key = (\"review/\" + .key)))"))
           }}'
         dependency_history_json: ${{ json_stringify(state_output("implementation", "dependencies", {})) }}
         consultation_history_json: ${{ json_stringify(state_output("design", "consultations", {})) }}
         additional_consultation_history_json: ${{ json_stringify(state_output("implementation", "consultations",
           {})) }}
         session: ${{ state_output("implementation", "session", null) }}
+        review_response_json: ${{ json_stringify(transition.payload.?review.orValue({})) }}
       state:
         initial:
         - to: resume
@@ -212,7 +257,7 @@ state:
         states:
           fresh:
             include: ./implement.yaml
-            inputs: &id001
+            inputs:
               prompt: ${{ inputs.prompt }}
               target_directory: ${{ inputs.target_directory }}
               mode: ${{ inputs.mode }}
@@ -222,11 +267,21 @@ state:
               dependency_history_json: ${{ inputs.dependency_history_json }}
               consultation_history_json: ${{ inputs.consultation_history_json }}
               additional_consultation_history_json: ${{ inputs.additional_consultation_history_json }}
+              review_response_json: ${{ inputs.review_response_json }}
           resume:
             include: ./implement.yaml
             inputs:
-              <<: *id001
+              prompt: ${{ inputs.prompt }}
+              target_directory: ${{ inputs.target_directory }}
+              mode: ${{ inputs.mode }}
+              feedback: ${{ inputs.feedback }}
+              context_json: ${{ inputs.context_json }}
+              evidence_json: ${{ inputs.evidence_json }}
+              dependency_history_json: ${{ inputs.dependency_history_json }}
+              consultation_history_json: ${{ inputs.consultation_history_json }}
+              additional_consultation_history_json: ${{ inputs.additional_consultation_history_json }}
               session: ${{ inputs.session }}
+              review_response_json: ${{ inputs.review_response_json }}
       outputs:
         valid: '${{ state_exists("resume") ? states.resume.outputs.valid : states.fresh.outputs.valid }}'
         completed: '${{ state_exists("resume") ? states.resume.outputs.completed : states.fresh.outputs.completed
@@ -239,6 +294,10 @@ state:
         consultations: '${{ state_exists("resume") ? states.resume.outputs.consultations : states.fresh.outputs.consultations
           }}'
         session: '${{ state_exists("resume") ? states.resume.outputs.session : states.fresh.outputs.session }}'
+        review_response: '${{ state_exists("resume") ? states.resume.outputs.review_response : states.fresh.outputs.review_response
+          }}'
+        review_documents: '${{ state_exists("resume") ? states.resume.outputs.review_documents : states.fresh.outputs.review_documents
+          }}'
       transitions:
       - to: failed
         when: outputs.session == null || !outputs.valid
@@ -306,47 +365,71 @@ state:
       op: input
       inputs:
         form:
+          kind: review
           title: Review verified outcome
-          question: |-
-            {{ vars.scope_explanation }}
+          documents: ${{ jq(json_parse('[' + json_stringify(state_output("design", "review_documents", {})) + ","
+            + json_stringify(state_output("test_plan", "review_documents", {})) + "," + json_stringify(state_output("implementation",
+            "review_documents", {})) + "," + json_stringify(state_output("verify", "review_documents", {})) + ']'),
+            "add") }}
+          fields:
+          - id: decision
+            type: multiple_choice
+            question: |-
+              {{ vars.scope_explanation }}
 
-            Mode: {{ inputs.mode }}; target: {{ inputs.target_directory }}
+              Mode: {{ inputs.mode }}; target: {{ inputs.target_directory }}
 
-            Outcome:
-            ${{ states.implementation.outputs.result.summary }}
+              ${{ states.implementation.outputs.result.summary }}
 
-            Verification evidence:
-            ${{ states.verify.outputs.evidence.?report_markdown.orValue(json_stringify(states.verify.outputs.evidence)) }}
+              Review the attached outcome and verification evidence. Satisfied approval squashes and merges this verified candidate into upstream.
 
-            Are you satisfied? Approval squashes and merges this verified candidate into upstream.
-          type: multiple_choice
-          options:
-          - value: satisfied
-            label: 'Satisfied: squash and merge'
-          - value: revise
-            label: Revise implementation
-          - value: redesign
-            label: Change requirements or design
+              How should we proceed? Uploaded edits require another revision and review.
+            required: true
+            options:
+            - value: satisfied
+              label: 'Satisfied: squash and merge'
+            - value: revise
+              label: Revise implementation
+            - value: redesign
+              label: Change requirements or design
+          - *review_feedback
+          - *annotated_design
+          - *annotated_test_statements
+          - id: annotated_outcome
+            type: file_upload
+            question: Optional annotated implementation summary or verification report.
       transitions:
       - to: finish
-        when: outputs.response == "satisfied"
-      - to: implementation_feedback
-        when: outputs.response == "revise"
+        when: outputs.fields.decision == "satisfied" && size(outputs.?artifact_refs.orValue({})) == 0
+      - to: design
+        when: outputs.fields.decision == "redesign" && (outputs.fields.?feedback.orValue("").matches("[^[:space:]]")
+          || size(outputs.?artifact_refs.orValue({})) > 0)
+        payload:
+          review: ${{ outputs }}
       - to: plan_feedback
-        when: outputs.response == "redesign"
+        when: outputs.fields.decision == "redesign"
+      - to: implementation
+        when: outputs.fields.decision in ["satisfied", "revise"] && (outputs.fields.?feedback.orValue("").matches("[^[:space:]]")
+          || size(outputs.?artifact_refs.orValue({})) > 0)
+        payload:
+          review: ${{ outputs }}
+      - to: implementation_feedback
+        when: outputs.fields.decision == "revise"
       - to: accept
         when: true
     implementation_feedback:
       op: input
       inputs:
         form:
+          kind: review
           title: Implementation feedback
+          documents: ${{ jq(json_parse('[' + json_stringify(state_output("design", "review_documents", {})) + ","
+            + json_stringify(state_output("test_plan", "review_documents", {})) + "," + json_stringify(state_output("implementation",
+            "review_documents", {})) + "," + json_stringify(state_output("verify", "review_documents", {})) + ']'),
+            "add") }}
           fields:
-          - id: feedback
-            type: paragraph_text
-            required: true
-            validation:
-              pattern: \S
+          - id: decision
+            type: multiple_choice
             question: |-
               {{ vars.scope_explanation }}
 
@@ -364,10 +447,32 @@ state:
               Verification: ${{ json_stringify(state_output("verify", "evidence", {})) }}
 
               Provide feedback or answer the outstanding questions. New external scope requires design approval.
+
+              How should we proceed? Uploaded edits require another revision and review.
+            required: true
+            options:
+            - value: revise
+              label: Revise implementation
+            - value: redesign
+              label: Change requirements or design
+          - *review_feedback
+          - *annotated_design
+          - *annotated_test_statements
+          - id: annotated_outcome
+            type: file_upload
+            question: Optional annotated implementation summary or verification report.
       transitions:
+      - to: design
+        when: outputs.fields.decision == "redesign" && (outputs.fields.?feedback.orValue("").matches("[^[:space:]]")
+          || size(outputs.?artifact_refs.orValue({})) > 0)
+        payload:
+          review: ${{ outputs }}
       - to: implementation
-        when: has(outputs.fields.feedback) && outputs.fields.feedback.matches("[^[:space:]]") && state_output("implementation",
-          "session", null) != null
+        when: outputs.fields.decision == "revise" && (outputs.fields.?feedback.orValue("").matches("[^[:space:]]")
+          || size(outputs.?artifact_refs.orValue({})) > 0) && state_output("implementation", "session", null) !=
+          null
+        payload:
+          review: ${{ outputs }}
       - to: implementation_feedback
         when: true
     finish:
@@ -377,7 +482,8 @@ state:
         base_hash: ${{ states.prepare.outputs.snapshot.head }}
         candidate_hash: ${{ states.verify.outputs.evidence.candidate_hash }}
         summary: ${{ states.implementation.outputs.result.summary }}
-        approved: ${{ states.accept.outputs.response == "satisfied" }}
+        approved: ${{ states.accept.outputs.fields.decision == "satisfied" && size(states.accept.outputs.?artifact_refs.orValue({}))
+          == 0 }}
         verified: ${{ states.verify.outputs.ok }}
       transitions:
       - to: failed
@@ -393,25 +499,44 @@ state:
       op: input
       inputs:
         form:
+          kind: review
           title: Request belongs outside this cell
-          question: |-
-            ${{ states.design.outputs.result.design_markdown }}
+          documents: ${{ state_output("design", "review_documents", {}) }}
+          fields:
+          - id: decision
+            type: multiple_choice
+            question: '${{ states.design.outputs.result.summary }}
 
-            Mandate assessment and suggested routing:
-            ${{ json_stringify(states.design.outputs.result.assessment) }}
 
-            No local implementation or merge will be performed.
-          type: multiple_choice
-          options:
-          - value: acknowledge
-            label: Acknowledge routing result
-          - value: revise
-            label: Revise the request
+              Mandate assessment and suggested routing:
+
+              ${{ json_stringify(states.design.outputs.result.assessment) }}
+
+
+              No local implementation or merge will be performed.
+
+
+              How should we proceed? Uploaded edits require another revision and review.'
+            required: true
+            options:
+            - value: acknowledge
+              label: Acknowledge routing result
+            - value: revise
+              label: Revise the request
+          - *review_feedback
+          - *annotated_design
+          - *annotated_test_statements
       transitions:
+      - to: design
+        when: (outputs.fields.decision == "revise" || (outputs.fields.decision == "acknowledge" && size(outputs.?artifact_refs.orValue({}))
+          > 0)) && (outputs.fields.?feedback.orValue("").matches("[^[:space:]]") || size(outputs.?artifact_refs.orValue({}))
+          > 0)
+        payload:
+          review: ${{ outputs }}
       - to: plan_feedback
-        when: outputs.response == "revise"
+        when: outputs.fields.decision == "revise"
       - to: outside
-        when: outputs.response != "acknowledge"
+        when: outputs.fields.decision != "acknowledge"
 vars:
   scope_explanation: '${{ inputs.mode == "evolve" ? "Evolve improves workflow recipes and instructions in the selected
     directory. Shared defaults live at github.com/colony-2/recipes; committed local specializations live at .c2j/recipes/build.yaml
@@ -426,8 +551,7 @@ outputs:
     : state_output("design", "result", {}).?summary.orValue("") }}'
   result: ${{ state_output("implementation", "result", {}) }}
   verification: ${{ state_output("verify", "evidence", {}) }}
-  # Export durable evidence explicitly; the final merge's artifacts do not
-  # include earlier verification artifacts.
+  # Export durable evidence explicitly; the final merge artifacts do not include it.
   artifact_refs: '${{ state_exists("verify") ? states.verify.artifacts : {} }}'
   dependencies: '${{ {"design": state_output("design", "dependencies", {}), "design_review": state_output("design_review",
     "dependencies", {}), "test_plan": state_output("test_plan", "dependencies", {}), "test_review": state_output("test_review",
@@ -439,3 +563,10 @@ outputs:
   disposition: '${{ state_output("finish", "merged", false) ? "implemented" : (state_output("design", "result",
     {}).?assessment.orValue({}).?fit.orValue("") == "outside" ? "outside" : "incomplete") }}'
   session: ${{ state_output("implementation", "session", null) }}
+  reviews: '${{ {"plan": state_output("approve_plan", "receipt", {}), "outcome": state_output("accept", "receipt",
+    {}), "plan_feedback": state_output("plan_feedback", "receipt", {}), "implementation_feedback": state_output("implementation_feedback",
+    "receipt", {}), "outside": state_output("outside", "receipt", {})} }}'
+  review_documents: ${{ jq(json_parse('[' + json_stringify(state_output("design", "review_documents", {})) + ","
+    + json_stringify(state_output("test_plan", "review_documents", {})) + "," + json_stringify(state_output("implementation",
+    "review_documents", {})) + "," + json_stringify(state_output("verify", "review_documents", {})) + ']'), "add")
+    }}

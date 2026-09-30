@@ -51,9 +51,9 @@ import json,os
 state=os.environ['STATE'];form=json.loads(os.environ['FORM'])
 assert state in ['approve_plan','plan_feedback','accept'], ('Unexpected feedback',state,form)
 with open(os.environ['DECISIONS'],'a') as log:log.write(json.dumps({'cell':os.environ['CELL'],'state':state,'form':form})+'\\n')
-print(json.dumps({'response':'approve' if state=='approve_plan' else 'satisfied' if state=='accept' else '', 'fields':{'feedback':'Incorporate the agreed external dependency into the design and test plan.'}}))
+print(json.dumps({'response':'approve' if state=='approve_plan' else 'satisfied' if state=='accept' else '', 'fields':{'decision':'approve' if state=='approve_plan' else 'satisfied' if state=='accept' else 'revise','feedback':'Incorporate the agreed external dependency into the design and test plan.'}}))
 HUMAN
-"""))], outputs=dict(response=e('json_parse(sequence.decision.outputs.stdout).response'),fields=e('json_parse(sequence.decision.outputs.stdout).fields')))
+"""))], outputs=dict(response=e('json_parse(sequence.decision.outputs.stdout).response'),fields=e('json_parse(sequence.decision.outputs.stdout).fields'),receipt={},artifact_refs={}))
     c.write(folder/'develop/develop.yaml',coordinator)
     verify = c.read('verify.yaml'); del verify['sequence'][0]['inputs']['sandbox']
     c.write(folder/'develop/verify.yaml',verify)
@@ -100,7 +100,7 @@ def verify_lifecycle(work, binary, mode):
         child=submitted[0]['job_id']
         decisions=[json.loads(line) for line in (work/'decisions.jsonl').read_text().splitlines()]
         assert [x['state'] for x in decisions]==['approve_plan','plan_feedback','approve_plan'],decisions
-        assert 'Provide token validation: valid tokens succeed and invalid tokens return an error.' in decisions[-1]['form']['question']
+        assert 'Provide token validation: valid tokens succeed and invalid tokens return an error.' in decisions[-1]['form']['fields'][0]['question']
         for cell in ['A','B']:assert d.run(['git','--git-dir',str(upstreams[cell]),'rev-parse','main']).strip()==heads[cell]
         first.terminate();first.wait(timeout=10)
         assert start(child,'child').wait(timeout=180)==0,(work/'child.log').read_text()[-8000:]

@@ -32,6 +32,9 @@ input_schema:
     type: object
     object_type: c2ops.codex.session/v1
     required: false
+  review_response_json:
+    type: string
+    default_value: '{}'
 inputs:
   prompt: ${{ inputs.prompt }}
   target_directory: ${{ inputs.target_directory }}
@@ -43,6 +46,7 @@ inputs:
   consultation_history_json: ${{ inputs.consultation_history_json }}
   additional_consultation_history_json: ${{ inputs.additional_consultation_history_json }}
   session: ${{ inputs.?session.orValue(null) }}
+  review_response_json: ${{ inputs.review_response_json }}
 vars:
   result_schema:
     type: object
@@ -144,6 +148,8 @@ outputs:
   consultations: ${{ json_parse(state_output("record", "stdout", json_stringify(states.history.outputs.history)))
     }}
   session: ${{ state_output("agent", "session", null) }}
+  review_response: ${{ json_parse(inputs.review_response_json) }}
+  review_documents: '${{ state_exists("contract") ? {"implement": states.contract.artifacts["implementation.md"]} : {} }}'
 state:
   initial: history
   states:
@@ -260,6 +266,7 @@ state:
               r.update(status='redesign',questions=r['questions']+['Review the newly discovered external work and update the design/test plan before submission.'])
           if r['status']=='ready' and (r['questions'] or r['blocking_issues']): raise ValueError('Ready implementation has unresolved decisions')
           out=pathlib.Path(os.environ['OUTBOX']);(out/'proposed-handoffs.json').write_text(json.dumps(r['proposed_handoffs']));(out/'consultations.json').write_text(json.dumps(history))
+          (out/'implementation.md').write_text('# Implementation\n\n'+r['summary']+'\n\n'+'\n'.join('- '+change for change in r['changes'])+'\n')
           print(json.dumps({'result':r,'selection':selection}))
           PYCODE
       transitions:

@@ -212,6 +212,18 @@ a fresh job and cannot be imported by the new op revision.
 | TS-164 | Session objects forwarded across job boundaries remain usable after worker replacement without appearing among deliverable artifacts. | `recipe-tests/verify-object-sessions.py` | Critical | Integration; ephemeral JobDB, pinned c2ops | Positive |
 | TS-165 | Unavailable, corrupted, wrong-type, or foreign-tenant checkpoints fail instead of starting a fresh conversation. | `recipe-tests/verify-object-sessions.py` | Critical | Integration; ephemeral JobDB, pinned c2ops | Negative |
 
+## Native document reviews
+
+| ID | Test statement | Relevant files | Importance | Level / dependencies | Case |
+|---|---|---|---|---|---|
+| TS-166 | Build and evolve present stored design and test-statement documents before implementation, then implementation and verification documents before merge. | `recipes/develop/develop.yaml`, `recipe-tests/verify-native-reviews.py` | Critical | Integration; c2j, ephemeral JobDB | Positive |
+| TS-167 | Revision feedback and annotated files reach the intended agent together, preserving CriticMarkup and the latest implementation session. | `recipes/develop/develop.yaml`, `recipe-tests/verify-native-reviews.py` | Critical | Integration; c2j, ephemeral JobDB | Positive |
+| TS-168 | Missing decisions, invalid answers, stale requests, and unavailable uploads leave reviews pending without advancing implementation or merge. | `recipe-tests/verify-native-reviews.py` | Critical | Integration; native input library, ephemeral JobDB | Negative |
+| TS-169 | Text-only and attachment-only revisions work without a second feedback prompt; each revised candidate requires a new review. | `recipes/develop/develop.yaml`, `recipe-tests/verify-native-reviews.py` | Critical | Integration; c2j, ephemeral JobDB | Positive |
+| TS-170 | Returned files cannot silently change approved documents or authorize merging an unreviewed candidate. | `recipes/develop/develop.yaml`, `recipe-tests/verify-native-reviews.py` | Critical | Integration; c2j, git | Negative |
+| TS-171 | Review receipts and original document references remain available after worker replacement and at recipe completion. | `build.yaml`, `evolve.yaml`, `recipe-tests/verify-native-reviews.py` | High | Integration; c2j, ephemeral JobDB | Positive |
+| TS-172 | Feedback from earlier review rounds cannot replace a later response or leak into an unrelated revision. | `recipes/develop/develop.yaml`, `recipe-tests/verify-default-recipes.py` | Critical | Integration; c2j | Negative |
+
 ## Notes for Test Authoring
 
 - Prefer `recipe_case` with explicit op mocks for deterministic branch coverage under test-policy sandboxing.

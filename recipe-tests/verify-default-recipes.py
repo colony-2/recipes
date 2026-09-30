@@ -54,8 +54,8 @@ def mock(op, output, artifacts=None):
     return value
 
 
-def command(value, success=True):
-    return mock("command_execution", {"success": success, "exit_code": 0 if success else 1, "stdout": json.dumps(value), "stderr": "" if success else "Check failed"})
+def command(value, success=True, artifacts=None):
+    return mock("command_execution", {"success": success, "exit_code": 0 if success else 1, "stdout": json.dumps(value), "stderr": "" if success else "Check failed"}, artifacts)
 
 
 def prepared_context():
@@ -70,24 +70,24 @@ def phase(result, *, valid=True, status="completed", session="implementation-ses
         ops.append(command({"result":result}))
     if "design_markdown" in result:
         ops.insert(0, command({"cell":"test","valid":True}))
-        if valid: ops.append(command({"result":result,"selection":{}}))
+        if valid: ops.append(command({"result":result,"selection":{}}, artifacts={"design.md": result["design_markdown"]}))
     if "design_markdown" in result or "statement_tests" in result:
         ops.insert(0, command({}))
     if "statement_tests" in result and valid and status in ("completed", "incomplete"):
-        ops.append(command({"result":result,"selection":{}}))
+        ops.append(command({"result":result,"selection":{}}, artifacts={"implementation.md": result["summary"]}))
     return ops
 
 
-def response(choice):
-    return mock("input", {"response": choice})
+def response(choice, text=None):
+    return mock("input", {"fields": {"decision": choice, **({"feedback": text} if text is not None else {})}, "artifact_refs": {}, "receipt": {}})
 
 
 def feedback(text="Fix the reported issue"):
-    return mock("input", {"fields": {"feedback": text}})
+    return mock("input", {"fields": {"decision": "revise", "feedback": text}, "artifact_refs": {}, "receipt": {}})
 
 
 def planning():
-    return phase(DESIGN) + phase(BASE) + phase(PLAN) + [command({"ok": True})] + phase(BASE)
+    return phase(DESIGN) + phase(BASE) + phase(PLAN) + [command({"ok": True}, artifacts={"test-statements.md": "# Test statements"})] + phase(BASE)
 
 
 def implementation(summary="Implemented behavior"):
@@ -96,7 +96,7 @@ def implementation(summary="Implemented behavior"):
 
 def verification(ok=True):
     item = command({"ok": ok, "candidate_hash": HASH, "checks": [{"id": "check", "exit_code": 0 if ok else 1}], "candidate_unchanged": True})
-    item["behavior"]["artifacts"] = {"check-1.log": "Executed verification evidence"}
+    item["behavior"]["artifacts"] = {"check-1.log": "Executed verification evidence", "verification.md": "# Verification"}
     return [item]
 
 
@@ -112,6 +112,9 @@ def routing_cases():
     start = planning() + [response("approve")]
     end = implementation() + verification() + finish()
     cases = [case("happy", start + end)]
+    cases += [case("direct-plan-feedback", planning() + [response("revise", "Clarify outcomes")] + start + end)]
+    cases += [case("direct-implementation-feedback", start + implementation() + verification() + [response("revise", "Direct revision")] + end)]
+    cases += [case("direct-redesign", start + implementation() + verification() + [response("redesign", "Change scope")] + start + end)]
     cases += [case("repeat-feedback", start + implementation("First outcome") + verification() + [response("revise"), feedback("Add coverage")] + implementation("Second outcome") + verification() + [response("revise"), feedback("Handle empty input")] + implementation("Final outcome") + verification() + finish())]
     cases += [case("redesign", start + implementation() + verification() + [response("redesign"), feedback("Change the requirements")] + start + end)]
     cases += [case("implementation-requests-redesign", start + phase({**IMPLEMENTATION,"status":"redesign","questions":["Approve the new external dependency"]}) + [feedback("Review the external work")] + start + end)]
@@ -119,7 +122,7 @@ def routing_cases():
     for name, prefix in [
         ("design-needs-input", phase({**DESIGN, "status": "needs_input", "questions": ["Which behavior?"]})),
         ("design-review-rejects", phase(DESIGN) + phase({**BASE, "status": "revise", "blocking_issues": ["Missing requirement"]})),
-        ("test-review-rejects", phase(DESIGN) + phase(BASE) + phase(PLAN) + [command({"ok": True})] + phase({**BASE, "status": "revise", "blocking_issues": ["Missing coverage"]})),
+        ("test-review-rejects", phase(DESIGN) + phase(BASE) + phase(PLAN) + [command({"ok": True}, artifacts={"test-statements.md": "# Test statements"})] + phase({**BASE, "status": "revise", "blocking_issues": ["Missing coverage"]})),
         ("test-contract-rejects", phase(DESIGN) + phase(BASE) + phase(PLAN) + [command({}, False)]),
         ("contradictory-review", phase(DESIGN) + phase({**BASE, "blocking_issues": ["Still blocked"]})),
     ]:
@@ -221,12 +224,20 @@ def verify_routing(work):
                 assert len(implementers) >= 2, (name, case_id, [p for p, _ in agents])
                 assert "session" not in implementers[0]
                 assert all(v["session"] == {**session_ref("implementation-session"), "artifact": {**session_ref("implementation-session")["artifact"], "name": "[REDACTED]"}} for v in implementers[1:]), (case_id, [v.get("session") for v in implementers])
+            if case_id == "direct-implementation-feedback":
+                implementers = [v for p, v in agents if "/implementation/" in p]
+                assert "Direct revision" in implementers[-1]["prompt"]
+                assert not any(p.endswith("/implementation_feedback") for p, _ in observed)
+            if case_id in ("direct-plan-feedback", "direct-redesign"):
+                designs = [v for p, v in agents if "/design/" in p]
+                assert ("Clarify outcomes" if case_id == "direct-plan-feedback" else "Change scope") in designs[-1]["prompt"]
+                assert not any(p.endswith("/plan_feedback") for p, _ in observed)
             if case_id == "repeat-feedback":
                 assert "Add coverage" in implementers[1]["prompt"]
                 assert "Handle empty input" in implementers[2]["prompt"]
                 accepts = [v for p, v in observed if p.endswith("/accept")]
                 assert len(accepts) == 3
-                assert [s in v["form"]["question"] for s, v in zip(["First outcome", "Second outcome", "Final outcome"], accepts)] == [True] * 3
+                assert [s in v["form"]["fields"][0]["question"] for s, v in zip(["First outcome", "Second outcome", "Final outcome"], accepts)] == [True] * 3
             if case_id in ("redesign", "implementation-requests-redesign"):
                 approvals = [p for p, _ in observed if p.endswith("/approve_plan")]
                 assert len(approvals) == 2, (name, case_id, approvals)

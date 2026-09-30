@@ -2,11 +2,19 @@
 
 Collects user input either as a single question or as a multi-field form; returns the response and user metadata.
 
-For the proposed native review-file and CriticMarkup submission contract, see
-[Native review handoffs](../NATIVE_REVIEW_HANDOFF_PROPOSAL.md). It requires c2j
-support and is not part of the currently supported inputs below. In particular,
-do not rely on op `metadata` as a public HTTP submission channel: the inspected
-input API accepts `response` and `fields`, but does not declare response metadata.
+Document reviews use `form.kind: review`, named stored artifact references in
+`form.documents`, and ordinary fields. Optional `file_upload` fields accept
+annotated documents, including Markdown with CriticMarkup. See
+[the build/evolve review pattern](../REVIEW_CHECKPOINTS.md) for runtime requirements,
+revision behavior, and client integration. The older native-review proposal is
+historical and does not define the implemented protocol.
+
+For multi-field reviews, place the summary in a field's `question`; a top-level
+`question` cannot be combined with `fields`. Read decisions from
+`outputs.fields.decision`, uploaded files from their optional field or
+`outputs.artifact_refs`, and acceptance provenance from `outputs.receipt`.
+Original review documents stay on the frozen form. No custom schema or preparation
+recipe is required. Production review forms must omit `autofill`.
 
 ## What you can ask for
 

@@ -119,6 +119,12 @@ a different cell-relative scope, for example `.` when editing shared defaults in
 this repository. Scope validation rejects traversal, symlink escapes, out-of-scope
 changes, and writes during design/review.
 
+Build/evolve use native document reviews for plan approval, outcome acceptance,
+and feedback. Reviewers can submit text or annotated files, including Markdown
+with CriticMarkup. Revisions return to the appropriate agent and require another
+review before merge. Workers and authoring tools require c2j `614bfac82f15` or
+later. See [review checkpoints and client usage](guides/REVIEW_CHECKPOINTS.md).
+
 Codex and `codex/run_skill` now use c2ops revision
 `ded76dfbd877d3d0749e509844ecdbc57197b572`. Workers and authoring tools need c2j
 immutable-object support (at least `e1334817a353d4868a97fa5452fe8fe3aee2fc13`)

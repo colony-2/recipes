@@ -1,5 +1,9 @@
 # Implementation handoff for c2j: native review protocol
 
+> Historical proposal: c2j adopted the simpler `form.kind: review` model.
+> See [the implemented build/evolve review pattern](REVIEW_CHECKPOINTS.md).
+> The schemas and transport below are not the current runtime contract.
+
 To: the c2j team. Requested outcome: extend the existing `input` op so a recipe
 can present a summary and named review files, then receive a structured decision,
 feedback, and optional CriticMarkup documents.
