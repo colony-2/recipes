@@ -93,3 +93,9 @@ and runtime histories that the validation-only compiler replaces with placeholde
 Preflight checks syntax, case declarations and dependencies, and reports that
 execution validation is deferred. `run` executes these data-dependent paths and
 all assertions; a structural preflight alone is not a passing behavior test.
+
+Use `runtime.observe_files` to select cell-relative files to record before each
+op. Assert on `calls[].worktree` for retained candidates or absent foreign edits.
+Compare `calls[].inputs.inputs.session` to the preceding model call's
+`outputs.session` when exact checkpoint routing matters. A matching object type
+alone does not prove that the intended checkpoint was used.

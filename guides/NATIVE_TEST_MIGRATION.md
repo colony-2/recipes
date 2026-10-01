@@ -41,7 +41,7 @@ checkout. The native runner has its own Go integration tests as well.
 | Child status and required/optional group policy; TS-049–050 | `pkg/ops/recipe/await_result_soft_test.go`, `child_group_test.go`, `child_job_id_test.go` |
 | Submitted and bound artifacts, child evidence forwarding | `pkg/child/test-fixtures`, `pkg/worker/compiler/child_snapshot_integration_test.go`, `artifact_bindings_test.go` |
 | Broker compiled includes and lineage; TS-146 | `pkg/childbroker/compiled_recipe_test.go` and broker integration tests |
-| Local/default selectors, nested/git includes, no sibling-copy requirement | `pkg/worker/compiler/inline_resolution_test.go`, `recipe_source_resolver_test.go`; CLI submit tests |
+| Local/default selectors, nested/git includes, no sibling-copy requirement | `pkg/worker/compiler/inline_resolution_test.go`, `root_source_test.go`; CLI submit tests |
 | Explicit workspace isolation and fresh experiments | `pkg/worker/compiler/workspace_integration_test.go`, `workspace_replay_test.go` |
 | Parent resumes after child merge without snapshot collision, duplicate submission, or changed evidence keys; runtime portions of TS-147–151, TS-159 | `TestAwaitMergedChildPreservesParentSnapshotAndChildEvidence`, `TestReplayLegacyArtifactOrderWithRealJobDB` |
 | Immutable checkpoints, parallel branches, failed attempts, later jobs, hidden state and invalid refs; TS-163–165 | `pkg/objects/store_test.go`, `pkg/worker/compiler/objects_integration_test.go`, `objects_input_test.go` |
@@ -74,25 +74,37 @@ not the implemented questions/documents input model. TS-152–156 and
 schema tests are retired. TS-166–172 and native review declarations exercise the
 supported model. Runtime API validation belongs to c2j as listed above.
 
-## CI handoff
+## Native compatibility CI
 
-Commit and publish this recipes revision before advancing c2j's compatibility
-pin. The native compatibility command is:
+c2j's `.github/workflows/test.yaml` now runs native directory discovery against
+pinned recipes and c2ops checkouts. The Python runner, external server setup and
+both transitional patch files are removed. There is no migration patch to apply.
+Publish the pinned companion recipes commit before running the coupled c2j CI
+revision, so GitHub can fetch it.
 
 ```sh
 c2j test run --directory test-repos/recipes --case-timeout 5m --out-dir "$RUNNER_TEMP/recipe-results"
 ```
 
-Pin extension sources as well. After the published recipes commit is pinned,
-remove c2j's transitional Python-runner setup, fixture-server module alignment,
-and verification-export patch. Do not point a required checkout at an
-unpublished local commit. A local commit alone does not complete this CI handoff.
+## Assertion audit follow-up
 
+The initial 220-case run did not by itself establish equivalence. The follow-up
+adds exact checkpoint comparisons, consultation worktree observations and cell
+order, dependency evidence/history delivery, all-failed recovery, a separate
+feedback continuation, and absence of stale review attachments. The runtime
+runner captures selected files before each op and successful op outputs so these
+assertions can inspect actual execution.
+
+c2j now has dedicated `TestChildWaitSurvivesWorkerReplacementAndCancellation`,
+`TestAwaitAlreadyFinishedChildAfterWorkerReplacement`, and
+`TestFreshConsultationSeesAdvancedUpstreamWithoutLosingCandidate` regressions.
+Its `testdata/recipe-compatibility/MIGRATION.md` records concrete destinations
+and explicitly distinguishes retired proposal tests and excluded live work.
 
 ## Verification for this migration
 
 - Clean c2j `go test ./...` and focused race tests for the runner passed.
-- Repository discovery ran 220 cases in 50 suites successfully. Three live suites
+- Initial repository discovery ran 220 cases in 50 suites successfully. Three live suites
   were reported as excluded, not passed; live model work was not run.
 - Preflight validation passed for every suite, including live declarations.
 - Added commit/file assertions passed for both complete lifecycles, both review
@@ -100,3 +112,10 @@ unpublished local commit. A local commit alone does not complete this CI handoff
   passed for both entrypoints.
 - An intentionally broken verification recipe reported success for a failed
   hook; the declared case rejected that policy defect with an assertion failure.
+
+Follow-up audit: a fresh checkout and empty selector cache passed **222 cases in
+51 suites** through the compatibility CI command; three live suites were
+excluded. Later strengthened lifecycle assertions passed for both build and
+evolve. c2j's full integration-tagged suite and focused race tests passed,
+including three repeated runs of the new restart/upstream regressions. The
+pinned c2ops Codex/session and extension-command tests also passed.
