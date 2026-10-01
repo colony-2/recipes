@@ -119,7 +119,7 @@ Validated on 2026-06-08/09 UTC:
   routes the full same-job design-to-finish path by including the phase recipes
   and keeping only primary orchestration glue. TS-094 validates embedded runtime
   resolution with `c2j submit --run --embed`.
-- `recipes/superpowers/tests/run-all.sh` passed end to end on 2026-06-12 with
+- `c2j test run --directory recipes/superpowers/tests --case-timeout 5m` passed end to end on 2026-06-12 with
   TS-058..TS-095 included in the default compile/validate/run path, the primary
   inline scenario suite validated and ran, and TS-094 covering embedded inline
   primary execution. Required live checks now include TS-092/TS-093 live
@@ -722,7 +722,7 @@ through revision and re-review, including that the initial task gate is not
 invoked before quality review passes. TS-087 validates TDD spec-review revision
 with GREEN/REFACTOR command reruns. TS-095 validates no-task stop behavior
 without invoking implementation. The execute-plan suite is wired into
-`recipes/superpowers/tests/run-all.sh` and passes focused compile/validate/run.
+`c2j test run --directory recipes/superpowers/tests --case-timeout 5m` and passes focused compile/validate/run.
 
 Maps `subagent-driven-development` first, with `executing-plans` as a sequential
 recipe-state implementation loop.

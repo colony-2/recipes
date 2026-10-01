@@ -1,6 +1,7 @@
 # superpowers-run-skill-live-smoke test suite
 
 ```yaml
+recipe: superpowers-run-skill-live-smoke.yaml
 cases:
   - id: ts-092-live-run-skill-artifact-status-contract-shape
     type: recipe_case

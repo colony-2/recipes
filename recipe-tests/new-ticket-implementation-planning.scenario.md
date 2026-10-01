@@ -1,6 +1,7 @@
 # new-ticket-implementation-planning test suite
 
 ```yaml
+recipe: ../recipes/new-ticket/new-ticket-implementation-planning.yaml
 cases:
   - id: ts-028-implementation-plan-artifacts
     type: recipe_case

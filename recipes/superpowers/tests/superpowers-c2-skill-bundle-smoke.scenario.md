@@ -1,11 +1,16 @@
 # superpowers-c2-skill-bundle-smoke test suite
 
 ```yaml
+recipe: superpowers-c2-skill-bundle-smoke.yaml
 cases:
   - id: ts-058-c2-superpowers-skill-bundle-contract
     type: recipe_case
-    inputs:
-      repo_root: /src
+    runtime:
+      cells:
+        root:
+          file_sources:
+            skills-bundle: ../../../skills-bundle
+            recipes/superpowers: ..
     mocks:
       ops:
         - match:
@@ -34,8 +39,12 @@ cases:
 
   - id: ts-091-superpowers-run-skill-installs-skill-bundle-ref
     type: recipe_case
-    inputs:
-      repo_root: /src
+    runtime:
+      cells:
+        root:
+          file_sources:
+            skills-bundle: ../../../skills-bundle
+            recipes/superpowers: ..
     mocks:
       ops:
         - match:

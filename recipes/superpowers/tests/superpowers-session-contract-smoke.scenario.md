@@ -1,6 +1,7 @@
 # superpowers-session-contract-smoke test suite
 
 ```yaml
+recipe: superpowers-session-contract-smoke.yaml
 cases:
   - id: ts-054-session-id-controls-isolation-and-resume
     type: recipe_case

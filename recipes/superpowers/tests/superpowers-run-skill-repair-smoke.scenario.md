@@ -1,6 +1,7 @@
 # superpowers-run-skill-repair-smoke test suite
 
 ```yaml
+recipe: superpowers-run-skill-repair-smoke.yaml
 cases:
   - id: ts-057-run-skill-repair-attempt-is-visible-to-recipes
     type: recipe_case

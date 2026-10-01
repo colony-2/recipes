@@ -12,8 +12,8 @@ their authoring guidance so projects can use and specialize these workflows.
   human review, dependency coordination, and integration decisions.
 - Recipe-owned input/output and artifact contracts, design and test-plan
   requirements, mandate-assessment conventions, and workflow instructions.
-- Tests, fixtures, and disposable runtime harnesses that establish recipe
-  behavior and integration with supported C2 operations.
+- Declarative recipe tests and static fixtures that establish recipe behavior
+  through the native c2j test runner. Reusable test infrastructure belongs to c2j.
 - Recipe authoring documentation, examples, and proposals describing
   workflow needs and the contracts required from neighboring components.
 

@@ -1,6 +1,7 @@
 # superpowers-debug test suite
 
 ```yaml
+recipe: ../superpowers-debug.yaml
 cases:
   - id: ts-074-debug-routes-reproduced-failure-to-fix-ready
     type: recipe_case

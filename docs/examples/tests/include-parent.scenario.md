@@ -1,6 +1,7 @@
 # include-parent example
 
 ```yaml
+recipe: ../recipes/include-parent.yaml
 cases:
   - id: include-parent
     type: recipe_case

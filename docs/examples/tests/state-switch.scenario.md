@@ -1,6 +1,7 @@
 # state-switch example
 
 ```yaml
+recipe: ../recipes/state-switch.yaml
 cases:
   - id: state-switch-fast
     type: recipe_case

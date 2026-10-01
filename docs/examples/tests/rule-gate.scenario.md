@@ -1,6 +1,7 @@
 # rule-gate example
 
 ```yaml
+recipe: ../recipes/rule-gate.yaml
 cases:
   - id: rule-gate
     type: recipe_case

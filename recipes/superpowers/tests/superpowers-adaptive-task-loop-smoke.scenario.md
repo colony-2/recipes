@@ -1,6 +1,7 @@
 # superpowers-adaptive-task-loop-smoke test suite
 
 ```yaml
+recipe: superpowers-adaptive-task-loop-smoke.yaml
 cases:
   - id: ts-055-adaptive-task-loop-updates-plan-before-next-task
     type: recipe_case

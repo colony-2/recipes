@@ -1,6 +1,7 @@
 # superpowers-brainstorm test suite
 
 ```yaml
+recipe: ../superpowers-brainstorm.yaml
 cases:
   - id: ts-061-brainstorm-produces-plan-ready-design
     type: recipe_case

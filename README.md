@@ -168,42 +168,23 @@ c2j submit --recipe-file ./build.yaml --inputs-json '{"prompt":"Add retry handli
 c2j submit --recipe-file ./evolve.yaml --inputs-json '{"prompt":"Improve workflow feedback","target_directory":"."}' --run --embed
 ```
 
-Run `./recipe-tests/run-defaults.sh` for comprehensive default-recipe tests.
-Set `C2J_BINARY=/absolute/path/to/c2j` to test a workspace-capable binary without
-replacing the installed CLI. `C2OPS_REPOSITORY=/path/to/c2ops` uses committed local
-c2ops source for deterministic selector resolution without GitHub requests.
-It requires c2j, git, Python, uv/PyYAML, and Go/access to the c2ops selector for
-real gate checks. Codex and human replies are mocked; tests execute Markdown publication, verification hooks, schema gates and Git merges
-against disposable repositories. c2j passthrough runtimes use temporary databases,
-with scratch files under a per-run `TMPDIR`; tests never submit to the home
-embedded database. Rendered sandbox configuration is covered, but a live Codex
-or Shai container run is not part of this deterministic suite.
-The suite also starts a separate temporary in-memory JobDB service and independent
-c2j workers to test brokered cross-cell submission, durable waits, worker replacement,
-session resumption, and dependency artifacts. The test server binds only to loopback
-and exits with the suite; it uses no persistent database. Its JobDB version is
-pinned to `6da2fab0502e`, matching c2j `f82bdd2`; use a compatible CLI when
-running the multi-worker tests.
-`verify-implementation-consultations.py` runs actual implementation/foreign-cell
-loops with deterministic model turns, covering late bug discovery, advice, evolve
-scope, multiple cells, design-thread reuse, human feedback, dependency history,
-invalid replies/sessions/checkpoints, unavailable cells, and mandate clarification. Local edits are made before consultation and checked after
-resumption; B experiments and moving upstream refs test snapshot isolation.
-The broker/include and workspace/handoff replay regressions run independently.
-`verify-development-lifecycle.py` runs the complete defaults in both cells through
-committed `.c2j/recipes/` specializations and named `--build`/`--evolve` submission.
-A discovers missing dependency behavior during implementation, consults B, repeats
-design/test-plan approval, and submits B. The test replaces A's worker while it
-waits, runs B through real verification and squash merge, then requires A to resume
-through its own verification and squash merge. It checks candidate/session preservation,
-no premature parent acceptance, and exactly one child submission and merge per cell.
-Only model/human decisions are scripted; verification runs on the host without Shai.
-Both full lifecycle cases guard the resolved child snapshot collision and verify
-that `artifact_refs` exports the verification report and command logs. The parent
-receives identical child-owned artifact references after worker replacement;
-evidence is available even though the child's last operation was its merge.
-The runner attempts every suite and exits nonzero if any fails; neither regression
-has an expected-failure exemption.
+Run the declared tests with a c2j binary containing native directory and runtime
+fixture support (c2j commit `9e34b70` or later):
+
+```bash
+c2j test run --directory recipe-tests --case-timeout 5m --out-dir .c2j/test-results
+```
+
+Model replies and human answers are declared fixtures. c2j owns isolated JobDB,
+cell repositories, workers, child submission, reviews, snapshots, and cleanup.
+Verification commands, schema gates, dependency waits, and merges execute normally.
+The deterministic cases explicitly run verification on the host. There is no
+separate test server, generated suite, Python driver, or JobDB module pin here.
+External gate ops still require their normal execution dependencies, including
+Go for the current c2ops `rule_gate`; this is not test orchestration.
+
+See [native testing](guides/NATIVE_RECIPE_TESTING.md) for authoring, live suites,
+and [coverage ownership](guides/NATIVE_TEST_MIGRATION.md) for the migration map.
 
 ## Authoring Loop
 
@@ -235,14 +216,15 @@ c2j test validate \
 Run the repository recipe suites:
 
 ```bash
-./recipe-tests/run-all.sh
+c2j test run --directory . --case-timeout 5m --out-dir .c2j/test-results
 ```
 
-The full runner includes live smoke tests that require the relevant c2ops,
-Codex, git, and `jq` environment to be available. For docs examples only, use:
+Live suites require explicit `--include-live`, Codex credentials, and the tools
+required by their recipes. They are reported as excluded by default. For docs
+examples only, use:
 
 ```bash
-./docs/scripts/validate-docs.sh
+c2j test run --directory docs/examples/tests
 ```
 
 ## Authoring Notes

@@ -1,6 +1,7 @@
 # superpowers-verify test suite
 
 ```yaml
+recipe: ../superpowers-verify.yaml
 cases:
   - id: ts-069-verify-runs-required-commands-before-success
     type: recipe_case

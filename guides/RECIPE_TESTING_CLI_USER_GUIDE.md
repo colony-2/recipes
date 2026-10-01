@@ -163,9 +163,18 @@ Default output directory:
 Run the repo suite with:
 
 ```bash
-./recipe-tests/run-all.sh
+c2j test run --directory . --case-timeout 5m
 ```
 
 That script compiles, validates, and runs all recipe cases with c2j `v0.0.6` or newer. Any failed case should make the script fail.
 
 The repo runner executes the live c2j smoke checks (TS-042..TS-045) and should fail if they fail.
+
+
+## Native directory and runtime suites
+
+Use [Native recipe testing](NATIVE_RECIPE_TESTING.md) for the current repository
+workflow. Suites declare their recipe and are discovered recursively; no
+manifest, generated YAML, or shell runner is required. `runtime: {}` opts into
+normal JobDB/worker execution. The older single-file and mock-only examples
+above remain supported.

@@ -1,6 +1,7 @@
 # artifact-handoff example
 
 ```yaml
+recipe: ../recipes/artifact-handoff.yaml
 cases:
   - id: artifact-handoff
     type: recipe_case

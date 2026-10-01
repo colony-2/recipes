@@ -1,6 +1,7 @@
 # superpowers-plan-review test suite
 
 ```yaml
+recipe: ../superpowers-plan-review.yaml
 cases:
   - id: ts-078-plan-review-approves-aligned-plan
     type: recipe_case

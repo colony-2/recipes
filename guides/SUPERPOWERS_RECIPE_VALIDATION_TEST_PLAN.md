@@ -6,6 +6,11 @@ historical design/validation analysis are superseded by
 route the complete `session` reference; `sessionId` is diagnostic only. Both Codex
 entrypoints are pinned together and legacy resume artifacts/inputs are rejected.
 
+Native test migration update (2026-10-01): commands and shell-runner results
+below are historical. Current execution uses self-contained declarations via
+`c2j test run --directory .`; live suites require `--include-live`. See
+[NATIVE_RECIPE_TESTING.md](NATIVE_RECIPE_TESTING.md) and the coverage map there.
+
 ## Purpose
 
 Validate that current c2j core and c2ops features are sufficient to implement
@@ -123,7 +128,7 @@ Validated:
 - focused plan-review smokes TS-078/TS-079 passed compile/validate/run.
 - focused primary-orchestrator smokes TS-080/TS-081/TS-085/TS-086/TS-088
   compile, validate, and run against the inline production recipe.
-- `recipes/superpowers/tests/run-all.sh` passed end to end on 2026-06-12 with
+- `c2j test run --directory recipes/superpowers/tests --case-timeout 5m` passed end to end on 2026-06-12 with
   TS-058..TS-095 included in the default compile/validate/run path, the primary
   inline scenario suite validated and ran, and TS-094 validating embedded inline
   primary runtime. Required live checks also include TS-092/TS-093 live

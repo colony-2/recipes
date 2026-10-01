@@ -1,6 +1,7 @@
 # new-ticket-triage test suite
 
 ```yaml
+recipe: ../recipes/new-ticket/new-ticket-triage.yaml
 cases:
   - id: ts-001-appropriate-cell
     type: recipe_case

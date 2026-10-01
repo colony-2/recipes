@@ -1,6 +1,7 @@
 # new-ticket-requirements-planning test suite
 
 ```yaml
+recipe: ../recipes/new-ticket/new-ticket-requirements-planning.yaml
 cases:
   - id: ts-005-plan-bundle-artifacts
     type: recipe_case

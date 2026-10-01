@@ -1,6 +1,7 @@
 # hello-command example
 
 ```yaml
+recipe: ../recipes/hello-command.yaml
 cases:
   - id: hello-command-default
     type: recipe_case

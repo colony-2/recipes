@@ -66,14 +66,12 @@ node workspaces still determine the code seen by each invocation.
 
 ## Validation
 
-`recipe-tests/run-defaults.sh` uses disposable runtime storage. Its conversation
-fixtures publish and hydrate real c2j objects against a separate ephemeral JobDB;
-they script agent decisions while retaining real scopes, artifacts, jobs, worker
-replacement, and Git merges.
+Run `c2j test run --directory recipe-tests --case-timeout 5m`. Native declarations
+publish real session objects and verify which checkpoint each recipe forwards;
+Git state, child work, reviews, and merges run through c2j's normal workers.
 
-`recipe-tests/verify-object-sessions.py` additionally exercises the pinned Codex
-and skill adapters with a deterministic CLI implementing the required checkpoint
-layout. It checks branching with identical diagnostic IDs, cross-entrypoint and
-cross-job continuation, independent private homes, retry from a successful
-checkpoint after failure, and rejection of legacy or invalid references. It does
-not call a live model or claim live Codex/sandbox behavior is covered.
+Generic object replay, immutable branches, private state visibility and invalid
+references are tested in c2j. The Codex adapter's private homes, rollout/database
+format, failure cleanup and skill continuation are tested in c2ops. See the
+[coverage map](NATIVE_TEST_MIGRATION.md) for exact destinations and verified tests.
+The recipe repository no longer emulates the Codex CLI or starts a separate JobDB.

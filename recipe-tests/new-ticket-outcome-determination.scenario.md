@@ -1,6 +1,7 @@
 # new-ticket-outcome-determination test suite
 
 ```yaml
+recipe: ../recipes/new-ticket/new-ticket-outcome-determination.yaml
 cases:
   - id: ts-037-outcome-bundle-artifacts
     type: recipe_case

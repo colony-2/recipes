@@ -1,6 +1,7 @@
 # superpowers-run-skill-output-smoke test suite
 
 ```yaml
+recipe: superpowers-run-skill-output-smoke.yaml
 cases:
   - id: ts-056-run-skill-validates-output-artifact-and-status-contract
     type: recipe_case

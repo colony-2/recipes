@@ -1,6 +1,7 @@
 # superpowers-write-plan test suite
 
 ```yaml
+recipe: ../superpowers-write-plan.yaml
 cases:
   - id: ts-063-write-plan-produces-ready-task-chain
     type: recipe_case

@@ -1,6 +1,7 @@
 # superpowers-rule-gate-schema-smoke test suite
 
 ```yaml
+recipe: superpowers-rule-gate-schema-smoke.yaml
 cases:
   - id: ts-047-rule-gate-validates-plan-and-routeable-policy-failures
     type: recipe_case

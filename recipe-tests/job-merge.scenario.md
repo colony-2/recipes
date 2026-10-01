@@ -1,6 +1,7 @@
 # job-merge test suite
 
 ```yaml
+recipe: ../recipes/jobs/job-merge.yaml
 cases:
   - id: ts-019-prompts-when-details-missing
     type: recipe_case

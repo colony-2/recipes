@@ -1,6 +1,7 @@
 # job-validate test suite
 
 ```yaml
+recipe: ../recipes/new-ticket/job-validate.yaml
 cases:
   - id: ts-014-run-provided-commands
     type: recipe_case

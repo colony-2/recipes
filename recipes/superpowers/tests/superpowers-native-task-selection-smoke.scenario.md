@@ -1,6 +1,7 @@
 # superpowers-native-task-selection-smoke test suite
 
 ```yaml
+recipe: superpowers-native-task-selection-smoke.yaml
 cases:
   - id: ts-051-native-task-selection-picks-first-ready-task
     type: recipe_case

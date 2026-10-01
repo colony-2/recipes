@@ -1,9 +1,11 @@
 # superpowers-rule-gate-invalid-input-smoke test suite
 
 ```yaml
+recipe: superpowers-rule-gate-invalid-input-smoke.yaml
 cases:
   - id: ts-048-rule-gate-invalid-input-is-rejected
     type: recipe_case
+    expect_error: "missing property 'type'"
     mocks:
       ops:
         - match:
@@ -20,8 +22,4 @@ cases:
             op: extension_execution
           behavior:
             mode: passthrough
-    assertions:
-      - type: output_equals
-        path: should_not_reach
-        value: true
 ```

@@ -1,6 +1,7 @@
 # superpowers-execute-plan test suite
 
 ```yaml
+recipe: ../superpowers-execute-plan.yaml
 cases:
   - id: ts-067-execute-plan-runs-same-job-task-boundary
     type: recipe_case

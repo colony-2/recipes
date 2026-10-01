@@ -1,6 +1,7 @@
 # superpowers-task-session-smoke test suite
 
 ```yaml
+recipe: superpowers-task-session-smoke.yaml
 cases:
   - id: ts-053-same-job-task-boundary-uses-distinct-role-sessions
     type: recipe_case

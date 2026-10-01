@@ -1,6 +1,7 @@
 # input-autofill example
 
 ```yaml
+recipe: ../recipes/input-autofill.yaml
 cases:
   - id: input-autofill
     type: recipe_case
@@ -9,6 +10,10 @@ cases:
       ops:
         - match:
             op: input
+          behavior:
+            mode: passthrough
+        - match:
+            op: auto-fill-input
           behavior:
             mode: passthrough
         - match:

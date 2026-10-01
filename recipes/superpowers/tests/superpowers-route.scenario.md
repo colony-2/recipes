@@ -1,6 +1,7 @@
 # superpowers-route test suite
 
 ```yaml
+recipe: ../superpowers-route.yaml
 cases:
   - id: ts-059-route-feature-request-to-brainstorm
     type: recipe_case

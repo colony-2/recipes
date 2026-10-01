@@ -1,6 +1,7 @@
 # superpowers primary orchestrator test suite
 
 ```yaml
+recipe: ../superpowers.yaml
 cases:
   - id: ts-080-superpowers-orchestrates-same-job-happy-path
     type: recipe_case

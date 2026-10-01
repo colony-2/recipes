@@ -1,6 +1,7 @@
 # superpowers-finish test suite
 
 ```yaml
+recipe: ../superpowers-finish.yaml
 cases:
   - id: ts-071-finish-recommends-merge-ready-from-verified-evidence
     type: recipe_case
