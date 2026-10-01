@@ -119,3 +119,8 @@ excluded. Later strengthened lifecycle assertions passed for both build and
 evolve. c2j's full integration-tagged suite and focused race tests passed,
 including three repeated runs of the new restart/upstream regressions. The
 pinned c2ops Codex/session and extension-command tests also passed.
+
+An additional mutation check removed dependency history from the delivered agent
+prompt in a disposable checkout. Previous assertions still passed; the new exact
+context assertion rejected it. All 12 consultation cases pass without that
+mutation. Final directory preflight also passed, including live declarations.
