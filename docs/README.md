@@ -6,17 +6,17 @@ Relearn documentation theme through Hugo Modules.
 Useful commands from the repository root:
 
 ```bash
-docs/scripts/validate-docs.sh
+c2j test run --directory docs/examples/tests
 ```
 
 ```bash
 hugo --source docs --destination public
 ```
 
-If `hugo` is not on `PATH`, set `HUGO_BIN`:
+If `hugo` is not on `PATH`, invoke its installed path directly:
 
 ```bash
-HUGO_BIN=/tmp/c2j-docs-bin/hugo docs/scripts/validate-docs.sh
+/tmp/c2j-docs-bin/hugo --source docs --destination public
 ```
 
 When changing theme dependencies, run Hugo from this directory once to refresh

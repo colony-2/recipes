@@ -72,9 +72,9 @@ Supported suite formats:
 - `compact_yaml`
 - `scenario_md`
 
-The docs validation script runs all example tests:
+Run all example tests directly:
 
 ```bash
-docs/scripts/validate-docs.sh
+c2j test run --directory docs/examples/tests
 ```
 

@@ -17,6 +17,6 @@ Complete examples live under `docs/examples/`.
 Validate all examples:
 
 ```bash
-docs/scripts/validate-docs.sh
+c2j test run --directory docs/examples/tests
 ```
 
