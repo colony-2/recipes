@@ -47,86 +47,25 @@ with trace.open("a") as f:
         )
         + "\n"
     )
-base = dict(
-    status="ready",
-    summary=f"{role} outcome {round_number}",
-    questions=[],
-    blocking_issues=[],
-)
-context = json.loads(os.environ['CONTEXT_JSON'])
-context = context.get("phase", context)
+base = dict(next="done" if role=="review" else "review", summary=f"{role} outcome {round_number}")
+assert (root / ".c2j/mandate.md").exists()
 if role == "design":
-    mandate = context["mandate"]
-    assert mandate["valid"]
-    result = dict(
-        base,
-        design_markdown=f"# Design {round_number}\n\nRequested behavior works.\n",
-        requirements=[dict(id="R1", statement="Requested behavior works")],
-        assessment=dict(
-            assessment_status="assessed",
-            fit="fits",
-            rationale="Local responsibility",
-            questions=[],
-            outcomes=[
-                dict(
-                    id="R1",
-                    statement="Requested behavior works",
-                    ownership="local",
-                    suggested_owner=mandate["cell"],
-                    mandate_evidence=["OWN-01"],
-                    reason="Owned behavior",
-                )
-            ],
-        ),
-        consultation=None,
-        handoffs=[],
-    )
+    (out / "design.md").write_text(f"# Design {round_number}\n\nRequested behavior works.\n")
 elif role == "plan":
-    result = dict(
-        base,
-        statements=[
-            dict(
-                id=key,
-                statement=statement,
-                requirement_ids=["R1"],
-                files=["test_feature.py"],
-                importance="critical",
-                level="integration",
-                dependencies=[],
-                case=case,
-            )
-            for key, statement, case in [
-                ("T1", "Requested behavior works.", "positive"),
-                ("T2", "Invalid behavior is rejected.", "negative"),
-            ]
-        ],
-        commands=[
-            dict(
-                id="behavior",
-                run="python3 test_feature.py",
-                statement_ids=["T1", "T2"],
-                timeout_seconds=10,
-            )
-        ],
-    )
+    assert (inbox / "prior/design.md").exists(), list(inbox.rglob("*"))
+    (root / ".c2j/test-plan.md").write_text("# Test plan\n\n- Requested behavior works. Files: test_feature.py; critical; integration; dependencies: none.\n- Invalid behavior is rejected. Files: test_feature.py; critical; integration; dependencies: none.\n")
 elif role == "implement":
+    assert (inbox / "prior/design.md").exists()
+    assert (root / ".c2j/test-plan.md").exists()
     target = root / (".c2j" if os.environ["MODE"] == "evolve" else ".")
     target.mkdir(exist_ok=True)
     (target / "feature.txt").write_text("behavior-" + str(turn))
-    (target / "test_feature.py").write_text(
-        "from pathlib import Path\nv=Path('feature.txt').read_text()\nassert v.startswith('behavior-')\nassert not v.startswith('invalid-')\n"
-    )
-    result = dict(
-        base,
-        changes=["Requested behavior works"],
-        statement_tests=[
-            dict(statement_id=key, files=["test_feature.py"]) for key in ["T1", "T2"]
-        ],
-        consultation=None,
-        proposed_handoffs=[],
-    )
+    (target / "test_feature.py").write_text("from pathlib import Path\nv=Path('feature.txt').read_text()\nassert v.startswith('behavior-')\nassert not v.startswith('invalid-')\n")
+    (target / "build.sh").write_text("python3 test_feature.py\n")
+    (out / "implementation.md").write_text("# Implementation\n\n"+base['summary'])
 else:
-    result = base
+    assert (inbox / "prior/design.md").exists(), list(inbox.rglob("*"))
+result = base
 (out / "result.json").write_text(json.dumps(result))
 (home / "session.json").write_text(json.dumps({"round": turn}))
 print(json.dumps(dict(status="completed", sessionId="review-fixture-" + role)))

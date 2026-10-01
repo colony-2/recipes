@@ -1,5 +1,5 @@
 id: development-design
-version: 0.3.0
+version: 0.4.0
 input_schema:
   prompt:
     type: string
@@ -25,13 +25,6 @@ input_schema:
   consultation_history_json:
     type: string
     default_value: '{}'
-  mandate_commit:
-    type: string
-    default_value: ''
-  session:
-    type: object
-    object_type: c2ops.codex.session/v1
-    required: false
   review_response_json:
     type: string
     default_value: '{}'
@@ -44,305 +37,83 @@ inputs:
   evidence_json: ${{ inputs.evidence_json }}
   dependency_history_json: ${{ inputs.dependency_history_json }}
   consultation_history_json: ${{ inputs.consultation_history_json }}
-  mandate_commit: ${{ inputs.mandate_commit }}
-  session: ${{ inputs.?session.orValue(null) }}
   review_response_json: ${{ inputs.review_response_json }}
 vars:
   result_schema:
     type: object
     additionalProperties: false
     required:
-    - status
     - summary
-    - blocking_issues
-    - questions
-    - design_markdown
-    - requirements
-    - assessment
-    - consultation
-    - handoffs
+    - next
     properties:
-      status:
-        type: string
-        enum:
-        - ready
-        - revise
-        - needs_input
-      summary: &id001
+      summary:
         type: string
         pattern: \S
-      blocking_issues:
-        type: array
-        items: *id001
-        minItems: 0
-      questions:
-        type: array
-        items: *id001
-        minItems: 0
-      design_markdown: *id001
-      requirements:
-        type: array
-        items:
-          type: object
-          additionalProperties: false
-          required:
-          - id
-          - statement
-          properties:
-            id: *id001
-            statement: *id001
-        minItems: 0
-      assessment:
+      next:
+        enum:
+        - review
+        - continue
+        - consult
+        - ask_user
+        - outside
+      consultation:
         type: object
         additionalProperties: false
         required:
-        - assessment_status
-        - fit
-        - rationale
-        - outcomes
-        - questions
+        - cell
+        - message
         properties:
-          assessment_status:
-            enum:
-            - assessed
-            - needs_clarification
-          fit:
-            enum:
-            - fits
-            - partial
-            - outside
-            - null
-          rationale: &id002
+          cell:
             type: string
             pattern: \S
-          outcomes:
-            type: array
-            minItems: 1
-            items:
-              type: object
-              additionalProperties: false
-              required:
-              - id
-              - statement
-              - ownership
-              - suggested_owner
-              - mandate_evidence
-              - reason
-              properties:
-                id: *id002
-                statement: *id002
-                ownership:
-                  enum:
-                  - local
-                  - external
-                  - unresolved
-                suggested_owner:
-                  type:
-                  - string
-                  - 'null'
-                  pattern: \S
-                mandate_evidence:
-                  type: array
-                  items: *id002
-                  minItems: 1
-                reason: *id002
-          questions: &id003
-            type: array
-            items: *id002
-      consultation:
-        anyOf:
-        - type: 'null'
-        - type: object
-          additionalProperties: false
+          message:
+            type: string
+            pattern: \S
+          ref:
+            type: string
+            pattern: \S
+    allOf:
+    - if:
+        properties:
+          next:
+            const: consult
+      then:
+        required:
+        - consultation
+      else:
+        not:
           required:
-          - thread_id
-          - cell
-          - ref
-          - message
-          properties:
-            thread_id: *id002
-            cell: *id002
-            ref: *id002
-            message: *id002
-      handoffs:
-        type: array
-        items:
-          type: object
-          additionalProperties: false
-          required:
-          - thread_id
-          - cell
-          - mode
-          - outcome_ids
-          - design_markdown
-          properties:
-            thread_id: *id002
-            cell: *id002
-            mode:
-              enum:
-              - build
-              - evolve
-            outcome_ids: *id003
-            design_markdown: *id002
+          - consultation
+sequence:
+- id: agent
+  include: ./phase.yaml
+  inputs:
+    prompt: ${{ inputs.prompt }}
+    target_directory: ${{ inputs.target_directory }}
+    mode: ${{ inputs.mode }}
+    feedback: ${{ inputs.feedback }}
+    context_json: ${{ inputs.context_json }}
+    evidence_json: ${{ inputs.evidence_json }}
+    dependency_history_json: ${{ inputs.dependency_history_json }}
+    consultation_history_json: ${{ inputs.consultation_history_json }}
+    review_response_json: ${{ inputs.review_response_json }}
+    instructions: |-
+      Assess the request against this cell's .c2j/mandate.md before designing. Read it as a human description of ownership. Explain in your summary and design whether the request fits, partially fits, or belongs outside, including the owners of external work. Ask for clarification if the mandate is missing or ambiguous. Do not silently broaden it.
+      Write design.md in the outbox: goals, scope, interfaces, compatibility, acceptance outcomes, and any agreed external work. Keep design documents out of the repository. Read prior documents and review attachments from the inbox when revising; your earlier phase drafts are under prior/draft.
+      Use next=consult with consultation {cell,message,ref?} to talk to an agent in another cell. The recipe resumes you with its response and retains separate session objects. Follow up as needed; express the agreed brief in ordinary Markdown. No job submission during design.
+      Use next=review for a human-reviewable local or partial design, outside for wholly external requests, ask_user for unresolved questions, or continue to keep working in this session. Do not implement.
+    result_schema_json: ${{ json_stringify(vars.result_schema) }}
+    allow_child_jobs: false
+    document: design.md
+    document_key: design
 outputs:
-  valid: ${{ state_output("agent", "valid", false) && state_exists("contract") && state_output("consult", "valid",
-    true) }}
-  result: ${{ json_parse(state_output("contract", "stdout", "{}")).?result.orValue({}) }}
-  session_id: ${{ state_output("agent", "session_id", "") }}
-  completed: ${{ state_output("agent", "completed", false) }}
-  dependencies: ${{ state_output("agent", "dependencies", {}) }}
-  consultations: ${{ state_output("consult", "consultations", json_parse(inputs.consultation_history_json)) }}
-  session: ${{ state_output("agent", "session", null) }}
-  review_response: ${{ json_parse(inputs.review_response_json) }}
-  review_documents: '${{ state_exists("contract") ? {"design": states.contract.artifacts["design.md"]} : {} }}'
-state:
-  initial: mandate
-  states:
-    mandate:
-      include: ./mandate.yaml
-      transitions:
-      - to: agent
-        when: true
-      inputs:
-        commit: ${{ inputs.mandate_commit }}
-    agent:
-      inputs:
-        prompt: ${{ inputs.prompt }}
-        target_directory: ${{ inputs.target_directory }}
-        mode: ${{ inputs.mode }}
-        feedback: ${{ inputs.feedback }}
-        evidence_json: ${{ inputs.evidence_json }}
-        dependency_history_json: ${{ inputs.dependency_history_json }}
-        context_json: ${{ '{"previous":' + inputs.context_json + ',"mandate":' + json_stringify(states.mandate.outputs.mandate)
-          + ',"consultations":' + json_stringify(state_output("consult", "consultations", json_parse(inputs.consultation_history_json)))
-          + '}' }}
-        allow_child_jobs: false
-        result_schema_json: ${{ json_stringify(vars.result_schema) }}
-        instructions: |-
-          Assess every requested outcome against the supplied pinned .c2j/mandate.md before designing.
-          Return assessment with stable outcome IDs, reasons and mandate clause references. Use fits for all local,
-          partial for mixed local/external, outside for all external. Uncertainty or missing/invalid/conflicting mandate
-          requires needs_clarification, null fit and questions, never inferred ownership. Requirements contain exactly
-          local outcome IDs; supporting dependencies are separate from the requested outcomes. Do not broaden the mandate.
-          Define design_markdown with scope, compatibility, interfaces, deprecation and acceptance outcomes.
-          To ask another cell for ownership or design feedback, set consultation to {thread_id,cell,ref,message}.
-          Use a resolvable cell selector, an explicit ref (normally main), and a detailed proposed design/question.
-          Reuse the thread ID, cell and original ref for follow-up questions; its session and pinned commit are retained.
-          You may inspect cell catalogs to choose an existing owner or recommend a new cell. Do not create cells or jobs.
-          The recipe runs a separate agent in that cell's workspace, then resumes this session with its response.
-          Answer its questions, refine the design and consult again when necessary. There are at most eight turns per design pass.
-          When agreement is reached set consultation null. For each actual external change, provide a handoff using the
-          thread ID, target cell, build/evolve mode, owned outcome IDs (empty for supporting work), and the exact final
-          agreed design_markdown from that cell. A ready handoff requires its latest response ready with fit fits.
-          Include all external outcomes for partial requests; outside requests explain routing without local implementation.
-          Never submit work during design. Human review of the design/test plan precedes actual child job submission.
-          Use needs_input for unresolved decisions; ready requires an assessed mandate and no open questions/issues.
-          Do not implement.
-        session: ${{ state_output("agent", "session", inputs.session) }}
-      state:
-        initial:
-        - to: resume
-          when: inputs.session != null
-        - to: fresh
-          when: true
-        states:
-          fresh:
-            include: ./agent.yaml
-            inputs: &id004
-              prompt: ${{ inputs.prompt }}
-              target_directory: ${{ inputs.target_directory }}
-              mode: ${{ inputs.mode }}
-              feedback: ${{ inputs.feedback }}
-              evidence_json: ${{ inputs.evidence_json }}
-              dependency_history_json: ${{ inputs.dependency_history_json }}
-              context_json: ${{ inputs.context_json }}
-              allow_child_jobs: ${{ inputs.allow_child_jobs }}
-              result_schema_json: ${{ inputs.result_schema_json }}
-              instructions: ${{ inputs.instructions }}
-          resume:
-            include: ./agent.yaml
-            inputs:
-              <<: *id004
-              session: ${{ inputs.session }}
-      outputs:
-        valid: '${{ state_exists("resume") ? states.resume.outputs.valid : states.fresh.outputs.valid }}'
-        result: '${{ state_exists("resume") ? states.resume.outputs.result : states.fresh.outputs.result }}'
-        session_id: '${{ state_exists("resume") ? states.resume.outputs.session_id : states.fresh.outputs.session_id
-          }}'
-        completed: '${{ state_exists("resume") ? states.resume.outputs.completed : states.fresh.outputs.completed
-          }}'
-        dependencies: '${{ state_exists("resume") ? states.resume.outputs.dependencies : states.fresh.outputs.dependencies
-          }}'
-        session: '${{ state_exists("resume") ? states.resume.outputs.session : states.fresh.outputs.session }}'
-      transitions:
-      - to: contract
-        when: outputs.valid
-    contract:
-      op: command_execution
-      inputs:
-        timeout: 10s
-        env:
-          RESULT_JSON: ${{ json_stringify(states.agent.outputs.result) }}
-          MANDATE_JSON: ${{ json_stringify(states.mandate.outputs.mandate) }}
-          HISTORY_JSON: ${{ json_stringify(state_output("consult", "consultations", json_parse(inputs.consultation_history_json)))
-            }}
-          PROMPT: ${{ inputs.prompt }}
-          FEEDBACK: ${{ inputs.feedback }}
-          SESSION: ${{ json_stringify(states.agent.outputs.session) }}
-          OUTBOX: '{{ context.environment.op.outbox }}'
-          INITIAL_HISTORY_JSON: ${{ inputs.consultation_history_json }}
-        run: |
-          python3 - <<'PYCODE'
-          import hashlib, json, os, pathlib
-          r=json.loads(os.environ['RESULT_JSON']); m=json.loads(os.environ['MANDATE_JSON']); history=json.loads(os.environ['HISTORY_JSON'])
-          a=r['assessment']; outcomes=a['outcomes']; ids=[o['id'] for o in outcomes]
-          if len(ids)!=len(set(ids)): raise ValueError('Duplicate requested outcomes')
-          for o in outcomes:
-              if m['valid'] and not set(o['mandate_evidence'])<=set(m['clauses']): raise ValueError('Unknown mandate clause')
-              if o['ownership']=='local' and o['suggested_owner']!=m['cell']: raise ValueError('Local outcome names another owner')
-          local={o['id'] for o in outcomes if o['ownership']=='local'}; external={o['id'] for o in outcomes if o['ownership']=='external'}
-          if a['assessment_status']=='assessed':
-              expected='partial' if local and external else 'fits' if local else 'outside'
-              if not m['valid'] or a['fit']!=expected or len(local|external)!=len(ids) or a['questions']: raise ValueError('Invalid mandate assessment')
-          else:
-              if a['fit'] is not None or not a['questions'] or r['status']=='ready': raise ValueError('Clarification cannot authorize implementation')
-          requirements=[v['id'] for v in r['requirements']]
-          if len(requirements)!=len(set(requirements)) or set(requirements)!=local: raise ValueError('Requirements must match locally owned outcomes')
-          if r['status']=='ready' and (a['assessment_status']!='assessed' or r['questions'] or r['blocking_issues']): raise ValueError('Ready design has unresolved decisions')
-          request=r['consultation']; selection={}
-          if request:
-              if not json.loads(os.environ['SESSION']): raise ValueError('Consultation requires an originating session')
-              thread=history.get(request['thread_id'])
-              if thread and (thread['cell']!=request['cell'] or thread['ref']!=request['ref']): raise ValueError('Cannot retarget a consultation thread')
-              if sum(t.get('turn_count',0) for t in history.values())-sum(t.get('turn_count',0) for t in json.loads(os.environ['INITIAL_HISTORY_JSON']).values())>=8:
-                  r.update(status='needs_input',questions=r['questions']+['Consultation limit reached; resolve the open design decisions before continuing.'],consultation=None)
-              else:
-                  selection={**request,'workspace_ref':thread['commit'] if thread else request['ref'],'session':thread['session'] if thread else None,'turn_count':thread.get('turn_count',0)+1 if thread else 1}
-          covered=[]
-          for h in r['handoffs']:
-              t=history.get(h['thread_id']); b=t['response'] if t else {}
-              if not t or h['cell']!=t['cell'] or b.get('status')!='ready' or b.get('fit')!='fits' or b['questions'] or b['blocking_issues'] or h['design_markdown']!=b['design_markdown']: raise ValueError('Handoff requires the latest agreed foreign design')
-              if not set(h['outcome_ids'])<=external: raise ValueError('Handoff cannot transfer local or unknown outcomes')
-              if any(o['suggested_owner']!=t['mandate']['cell'] for o in outcomes if o['id'] in h['outcome_ids']): raise ValueError('Handoff owner differs from assessment')
-              covered+=h['outcome_ids']
-              h['provenance']={'cell':t['mandate']['cell'],'commit':t['commit'],'mandate_sha256':t['mandate']['sha256']}
-          if len(covered)!=len(set(covered)): raise ValueError('External outcome assigned twice')
-          if r['status']=='ready' and a['fit']=='partial' and not selection and set(covered)!=external: raise ValueError('Partial request needs agreed handoffs for every external outcome')
-          revision=hashlib.sha256((os.environ['PROMPT']+'\n'+os.environ['FEEDBACK']).encode()).hexdigest()
-          assessment={'version':'c2.mandate-assessment/v1','request_id':hashlib.sha256(os.environ['PROMPT'].encode()).hexdigest(),'request_revision':revision,'cell':m['cell'],'mandate':{k:m[k] for k in ['path','commit','sha256']},**a,'consultations':list(history)}
-          r['assessment']=assessment
-          out=pathlib.Path(os.environ['OUTBOX']); (out/'mandate-assessment.json').write_text(json.dumps(assessment)); (out/'design.md').write_text(r['design_markdown']); (out/'handoffs.json').write_text(json.dumps(r['handoffs']))
-          print(json.dumps({'result':r,'selection':selection}))
-          PYCODE
-      transitions:
-      - to: consult
-        when: size(json_parse(outputs.stdout).selection) > 0
-    consult:
-      include: ./consultation-turn.yaml
-      inputs:
-        selection_json: ${{ json_stringify(json_parse(states.contract.outputs.stdout).selection) }}
-        history_json: ${{ json_stringify(state_output("consult", "consultations", json_parse(inputs.consultation_history_json)))
-          }}
-      transitions:
-      - to: agent
-        when: outputs.valid
+  result: ${{ sequence.agent.outputs.result }}
+  session_id: ${{ sequence.agent.outputs.session_id }}
+  completed: ${{ sequence.agent.outputs.completed }}
+  dependencies: ${{ sequence.agent.outputs.dependencies }}
+  session: ${{ sequence.agent.outputs.session }}
+  artifact_refs: ${{ sequence.agent.outputs.artifact_refs }}
+  valid: ${{ sequence.agent.outputs.valid }}
+  consultations: ${{ sequence.agent.outputs.consultations }}
+  review_response: ${{ sequence.agent.outputs.review_response }}
+  review_documents: ${{ sequence.agent.outputs.review_documents }}

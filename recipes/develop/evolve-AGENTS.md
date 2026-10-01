@@ -13,6 +13,8 @@ a recipe is absent, it falls back to root defaults in `colony-2/recipes` on main
 Use a git selector to share the development workflow rather than copying its
 entire implementation. Do not edit a different repository implicitly.
 
+Keep designs and summaries in outbox/inbox artifacts. Maintain the test plan in
+`.c2j/test-plan.md`; use Git history when reviewing changes to expectations.
 Before implementation, describe workflow behavior and write test statements:
 short outcome assertions, relevant filenames, importance, unit/integration level,
 dependencies, and positive/negative cases for critical behavior. Cover routing,

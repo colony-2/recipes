@@ -40,9 +40,10 @@ Superpowers exports object references alongside its diagnostic role IDs.
 Skill-enforcing calls use `codex/run_skill`; plain `codex` accepts skill sources
 but no longer accepts the old top-level skill-selection inputs.
 
-Consultation histories retain the input and successor objects for each turn.
-The exact latest object, pinned repository commit, and thread identity travel
-independently. Matching diagnostic IDs do not permit merging divergent checkpoints.
+Consultations retain the latest object and reply for each destination cell.
+The runtime story preserves earlier executions; recipes do not reconstruct a
+transcript or pin a custom commit ledger. Matching diagnostic IDs do not permit
+merging divergent checkpoints.
 The ordinary evidence and user-deliverable artifact contracts remain separate.
 
 ## Upgrade boundary

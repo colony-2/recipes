@@ -1,57 +1,58 @@
 id: development-verify
-version: 0.2.0
+version: 0.4.0
 input_schema:
   target_directory:
     type: string
     default_value: .
-  plan_json:
+  timeout:
     type: string
-    required: true
-  implementation_json:
-    type: string
-    required: true
+    default_value: 10m
 inputs:
   target_directory: ${{ inputs.target_directory }}
-  plan_json: ${{ inputs.plan_json }}
-  implementation_json: ${{ inputs.implementation_json }}
+  timeout: ${{ inputs.timeout }}
 sequence:
 - id: execute
   op: command_execution
   inputs:
-    timeout: 60m
+    timeout: ${{ inputs.timeout }}
     continue_on_error: true
     sandbox:
       type: shai
     env:
-      CELL_ROOT: '{{ context.environment.op.worktree_path }}'
-      TARGET_DIRECTORY: ${{ inputs.target_directory }}
-      PLAN_JSON: ${{ inputs.plan_json }}
-      IMPLEMENTATION_JSON: ${{ inputs.implementation_json }}
+      TARGET: '{{ context.environment.op.worktree_path }}/{{ inputs.target_directory }}'
       OUTBOX: '{{ context.environment.op.outbox }}'
-    run: "python3 - <<'PY'\nimport json, os, pathlib, subprocess, signal\nroot=pathlib.Path(os.environ['CELL_ROOT']).resolve()\n\
-      target=(root/os.environ['TARGET_DIRECTORY']).resolve()\nassert target.is_relative_to(root), 'Target escapes\
-      \ cell'\nplan=json.loads(os.environ['PLAN_JSON']); implementation=json.loads(os.environ['IMPLEMENTATION_JSON'])\n\
-      ids={s['id'] for s in plan['statements']}\nassert ids and {s['statement_id'] for s in implementation['statement_tests']}==ids,\
-      \ 'Implementation does not map every test statement'\ncommands=plan['commands']; assert commands, 'No verification\
-      \ commands'\nout=pathlib.Path(os.environ['OUTBOX']); evidence=[]\ndef git(*args): return subprocess.check_output(['git','-C',str(root),*args]).decode().strip()\n\
-      head=git('rev-parse','HEAD')\nassert not git('status','--porcelain'), 'Candidate must be clean before verification'\n\
-      for i, command in enumerate(commands):\n    log=out/f'check-{i+1}.log'\n    with log.open('wb') as stream:\n\
-      \        process=subprocess.Popen(['bash','-euo','pipefail','-c',command['run']],cwd=target,stdout=stream,stderr=subprocess.STDOUT,start_new_session=True)\n\
-      \        timed_out=False\n        try: rc=process.wait(timeout=command['timeout_seconds'])\n        except\
-      \ subprocess.TimeoutExpired:\n            timed_out=True; os.killpg(process.pid,signal.SIGKILL); process.wait();\
-      \ rc=124\n    evidence.append({'id':command['id'],'statement_ids':command['statement_ids'],'exit_code':rc,'timed_out':timed_out,'log':log.name})\n\
-      covered={sid for sid in ids if any(sid in c['statement_ids'] for c in evidence) and all(c['exit_code']==0\
-      \ for c in evidence if sid in c['statement_ids'])}\nclean=git('rev-parse','HEAD')==head and not git('status','--porcelain')\n\
-      report='\\n'.join('- '+s['id']+': '+s['statement']+' \u2014 '+('passed' if s['id'] in covered else 'FAILED')\
-      \ for s in plan['statements'])\nresult={'report_markdown':report,'ok':clean and covered==ids and all(c['exit_code']==0\
-      \ for c in evidence),'candidate_hash':head,'checks':evidence,'candidate_unchanged':clean}\n(out/'verification.json').write_text(json.dumps(result,indent=2)+'\\\
-      n')\n(out/'verification.md').write_text('# Verification\\n\\nCandidate: `'+head+'`\\n\\n'+report+'\\n')\n\
-      print(json.dumps(result))\nPY\n"
+    run: |
+      cd "$TARGET"
+      if [ ! -f build.sh ]; then
+        printf skipped
+        exit 0
+      fi
+      printf ran
+      bash ./build.sh > "$OUTBOX/build.log" 2>&1
+- id: report
+  op: command_execution
+  inputs:
+    timeout: 10s
+    env:
+      OUTBOX: '{{ context.environment.op.outbox }}'
+      RAN: ${{ sequence.execute.outputs.stdout }}
+      OK: ${{ string(sequence.execute.outputs.success) }}
+      CODE: ${{ string(sequence.execute.outputs.exit_code) }}
+      TIMED_OUT: ${{ string(sequence.execute.outputs.timed_out) }}
+    run: |
+      if [ "$RAN" = skipped ]; then
+        printf '# Verification\n\nSkipped: no build.sh in the target directory. No automated verification was performed.\n'
+      else
+        printf '# Verification\n\nbuild.sh success: %s; exit code: %s; timed out: %s. See build.log.\n' "$OK" "$CODE" "$TIMED_OUT"
+      fi > "$OUTBOX/verification.md"
 outputs:
-  result: '${{ sequence.execute.outputs.success ? json_parse(sequence.execute.outputs.stdout) : {"ok": false, "error":
-    sequence.execute.outputs.stderr} }}'
-  ok: ${{ sequence.execute.outputs.success && json_parse(sequence.execute.outputs.stdout).ok }}
-  evidence: '${{ sequence.execute.outputs.success ? json_parse(sequence.execute.outputs.stdout) : {"ok": false,
-    "error": sequence.execute.outputs.stderr} }}'
-  review_documents: '${{ sequence.execute.outputs.success ? {"verification": sequence.execute.artifacts["verification.md"]}
-    : {} }}'
+  ok: ${{ sequence.execute.outputs.success }}
+  result: '${{ {"ok": sequence.execute.outputs.success, "status": sequence.execute.outputs.stdout == "skipped" ?
+    "skipped" : (sequence.execute.outputs.success ? "passed" : "failed"), "exit_code": sequence.execute.outputs.exit_code,
+    "timed_out": sequence.execute.outputs.timed_out} }}'
+  review_documents: '${{ {"verification": sequence.report.artifacts["verification.md"]} }}'
+  artifact_refs: ${{ jq(json_parse('[' + json_stringify(sequence.execute.artifacts) + "," + json_stringify(sequence.report.artifacts)
+    + ']'), "add | with_entries(select(.key == \"verification.md\" or .key == \"build.log\"))") }}
+  evidence: '${{ {"ok": sequence.execute.outputs.success, "status": sequence.execute.outputs.stdout == "skipped"
+    ? "skipped" : (sequence.execute.outputs.success ? "passed" : "failed"), "exit_code": sequence.execute.outputs.exit_code,
+    "timed_out": sequence.execute.outputs.timed_out} }}'

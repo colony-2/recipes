@@ -40,81 +40,59 @@ recipe family under `recipes/<family>/tests/`.
 [`recipes/develop/develop.yaml`](recipes/develop/develop.yaml). Both run:
 
 1. Mandate assessment, design, optional cross-cell design dialogue, and independent review.
-2. Test statements and executable test-plan authoring, followed by independent review.
+2. Test-plan authoring, followed by independent review.
 3. Human approval of the design and reviewed test plan.
 4. Implementation, independent specification review, and independent quality review.
-5. Fresh verification commands and retained evidence.
+5. The optional verification hook and retained execution evidence.
 6. Human satisfaction, then squash merge into the cell's upstream branch.
 
-Design classifies requested outcomes as `fits`, `partial`, or `outside` against
-`.c2j/mandate.md` at the job's initial commit. Missing or uncertain mandates require
-clarification. Partial requests retain local requirements and agreed external
-handoffs; outside requests return routing advice with `merged: false`. Before
-submission, A can host a separate session in B using node `workspace`, exchange
-design feedback, and return to A. B's commit and session are retained while
-experimental code is discarded with `const: true`. Human approval displays the
-ownership split and external briefs. Planning/review phases cannot submit jobs.
+Design assesses whether the request fits, partially fits, or belongs outside the
+plain Markdown `.c2j/mandate.md`. The design explains the ownership split and any
+agreed external work. Missing or ambiguous mandates require clarification; outside
+requests return routing advice without implementation or merge. These are agent
+and human judgments, not machine-validated ownership certificates.
 
-These defaults require workspace-capable c2j compilers **and workers**; older
-versions can ignore the workspace declaration. The consultation also checks for
-an active workspace scope. The installed v0.0.53 predates this requirement.
+Designs and implementation summaries live in outbox/inbox artifacts. The maintained
+test plan lives in `.c2j/test-plan.md` in Git, alongside the mandate. The recipe
+copies the exact plan to a review artifact. Agents compare changes through c2j's
+existing Git history; no requirement IDs, statement catalogs, or hash ledgers are
+required. Test statements retain the Markdown, word-count, annotation, and coverage
+conventions, assessed by an independent test-plan reviewer.
 
-Feedback continues the same implementation Codex session. Reviewers use fresh
-sessions. Requirement changes return to design and require renewed plan approval.
-Rejected planning results also return to the design/test-plan cycle, preserving
-prior artifacts and feedback. Incomplete implementation requests feedback; invalid
-artifacts and missing continuation sessions fail without merging. Automatic c2j
-checkpoints preserve edits; only final acceptance publishes them.
+Each phase writes a small schema-validated `result.json` containing `summary` and
+`next`. Design and implementation can request `consult` with a destination cell
+and message. The recipe starts or resumes a separate session in that workspace,
+then resumes the originating agent. Foreign experiments are discarded through
+`const: true`; session objects and the latest replies survive. This works during
+design, late dependency discovery, and human revision rounds. New external work
+returns through design approval. See [cross-cell conversations](guides/CROSS_CELL_REPO_SESSIONS_DESIGN.md).
 
-Implementation can also start or continue a cell-B conversation when it discovers
-a missing feature or dependency bug. It retains its coding session, local edits,
-and dependency history. Advice can lead directly back to implementation; a new
-or changed external handoff returns through design and test-plan approval before
-submission. Design and implementation share pinned conversation threads, including
-across human feedback rounds. Each thread keeps its latest reply and session object;
-the coordinator passes that map between phases. Conversation history lives in the
-session objects and c2j execution story, without transcript artifacts or history merging.
-See [remaining custom logic](guides/BUILD_EVOLVE_REMAINING_LOGIC.md) for the next review.
+Implementation submits approved prerequisite work asynchronously using `c2j submit
+--cell <owner> --build` or `--evolve`. Native `jobs.job_ids` supplies dependencies;
+`recipe.await_result_soft` waits for all children and resumes the same session with
+results and namespaced artifacts. Failed, cancelled, or unmerged dependencies also
+return to that session for diagnosis and recovery. The agent must incorporate the
+correct dependency version before proceeding. A cancelled parent does not
+necessarily cancel its children.
 
-After design/test-plan approval, implementation can request agreed external work with asynchronous
-`c2j submit ... --cell <owner> --build` (or `--evolve`). The shared agent captures
-the submitting op's `jobs.job_ids`, waits for every child using
-`recipe.await_result_soft`, and resumes the same Codex session with child results
-and namespaced artifacts. It deduplicates by job ID and retains results across
-dependency rounds. A successful child cannot approve the parent's earlier result:
-Codex must incorporate the dependency before reviews and verification continue.
-Failed, cancelled, or explicitly unmerged children also resume the requesting
-session with failure details, partial outputs, and available artifacts. The
-session diagnoses the issue and can submit corrected prerequisite work or use
-another valid approach within scope. Only unresolved blockers or decisions
-requiring input go to human feedback. The phase must produce a fresh result
-explaining the resolution before it can advance. The workflow does not blindly
-retry submissions or cancel children automatically.
-Cancelled parents may leave children running; operators must cancel those separately.
-
-Cross-cell submission requires a JobDB service, available workers, and `c2j`
-installed in the op sandbox with `C2J_JOBDB` configured for that service and tenant.
-Embedded execution is suitable for local authoring without subprocess children.
-The inherited broker environment must reach Codex subprocesses. Use c2j containing
-`0a48289` (child snapshot isolation), which also includes the earlier broker and
-workspace replay fixes. The full lifecycle is verified against clean commit
-`0a482892458ebf5c319b0700ad5b7fabd5c97ed2`. The
+Cross-cell work requires a shared JobDB service, available workers, and inherited
+broker environment in the op sandbox. Tests use clean workspace/object/review-capable
+c2j commit `f82bdd2` and a matching disposable JobDB. The historical
 [broker](guides/BUG_REPORT_CHILD_BROKER_COMPILED_INCLUDES.md),
 [replay](guides/BUG_REPORT_WORKSPACE_DIALOGUE_CHILD_WAIT_REPLAY.md), and
 [snapshot collision](guides/BUG_REPORT_CHILD_SNAPSHOT_COLLISION_AFTER_CONSULTATION.md)
-reports retain historical reproductions. Child completion
-does not refresh the parent's repository snapshot: the resumed agent must consume
-the correct dependency version within its approved scope. An upstream advancement
-still requires a fresh verified candidate before merge.
+regressions remain covered. An older installed CLI is not sufficient.
 
-Each phase writes a schema-validated `result.json` artifact. Test statements are
-also rendered as Markdown, with requirement IDs, filenames, importance, test
-level and dependencies. The contract rejects uncovered requirements, duplicate
-IDs, missing critical negative cases, and statements without verification commands.
-Verification runs the approved commands, saves logs and exit codes, and rejects
-changes to the candidate during checks. Merge gates require the accepted, clean,
-verified candidate. The merge op uses `rebase: false`: upstream advancement stops
-integration rather than silently publishing an unverified rebased tree.
+Verification runs `bash ./build.sh` in the target directory when present, saves
+`build.log` and `verification.md`, and uses the native command status and timeout.
+A missing hook is explicitly **skipped**, and human acceptance remains available.
+Failure returns to implementation with evidence. Projects can specialize the phase
+with a real verification op, such as an existing GitHub Actions workflow.
+
+Human satisfaction authorizes squash merge into upstream. The merge uses c2j's
+current Git candidate and `rebase: false`; upstream advancement stops integration.
+Feedback preserves the implementation session. Reviewers have independent sessions,
+and changed requirements require renewed design/test-plan approval.
 
 Build starts at the cell root. Evolve starts in `.c2j` and reads the applicable
 root and `.c2j/AGENTS.md` instructions. The optional `target_directory` input sets
@@ -195,8 +173,7 @@ Set `C2J_BINARY=/absolute/path/to/c2j` to test a workspace-capable binary withou
 replacing the installed CLI. `C2OPS_REPOSITORY=/path/to/c2ops` uses committed local
 c2ops source for deterministic selector resolution without GitHub requests.
 It requires c2j, git, Python, uv/PyYAML, and Go/access to the c2ops selector for
-real gate checks. Codex and human replies are mocked; tests execute test-plan
-contracts, verification commands, schema gates and git merges
+real gate checks. Codex and human replies are mocked; tests execute Markdown publication, verification hooks, schema gates and Git merges
 against disposable repositories. c2j passthrough runtimes use temporary databases,
 with scratch files under a per-run `TMPDIR`; tests never submit to the home
 embedded database. Rendered sandbox configuration is covered, but a live Codex
@@ -210,8 +187,7 @@ running the multi-worker tests.
 `verify-implementation-consultations.py` runs actual implementation/foreign-cell
 loops with deterministic model turns, covering late bug discovery, advice, evolve
 scope, multiple cells, design-thread reuse, human feedback, dependency history,
-invalid replies/sessions/checkpoints, unavailable cells, mandate failures, and
-bounded discussions. Local edits are made before consultation and checked after
+invalid replies/sessions/checkpoints, unavailable cells, and mandate clarification. Local edits are made before consultation and checked after
 resumption; B experiments and moving upstream refs test snapshot isolation.
 The broker/include and workspace/handoff replay regressions run independently.
 `verify-development-lifecycle.py` runs the complete defaults in both cells through

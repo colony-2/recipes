@@ -22,7 +22,7 @@ else:
 identity = f'{role}-session'
 assert not session or session == identity
 assert (root / 'AGENTS.md').read_text() == f'Instructions for {os.environ["WORKSPACE"]}\n'
-base = dict(status='ready', summary='Answered', questions=[], blocking_issues=[])
+base = dict(next='done' if role in ('B','C') else 'review', summary='Answered')
 with open(os.environ['TRACE'], 'a') as trace:
     trace.write(json.dumps(dict(role=role, session=session, turn=turn,
                                workspace=os.environ['WORKSPACE'], owner=os.environ['OWNER'])) + '\n')
@@ -31,9 +31,6 @@ if role in ('B', 'C'):
     assert os.environ['WORKSPACE'] != os.environ['OWNER']
     assert (root / 'app.txt').read_text() == 'application\n'
     assert not (root / 'experiment.txt').exists()
-    mandate = json.loads((inbox / 'mandate/mandate.json').read_text())
-    assert mandate['commit'] == os.environ[role + '_HEAD'], (mandate['commit'], os.environ[role + '_HEAD'], mandate['cell'], role, subprocess.check_output(['git','-C',str(root),'log','-3','--oneline'],text=True))
-    assert subprocess.check_output(['git', '-C', str(root), 'rev-parse', 'HEAD'], text=True).strip() == mandate['commit']
     if turn == 0 and scenario in ('advice', 'bug', 'evolve', 'multiple', 'reuse', 'feedback'):
         source = Path(os.environ[role + '_CELL'])
         (source / 'upstream.txt').write_text('unrelated upstream movement')
@@ -41,14 +38,14 @@ if role in ('B', 'C'):
         subprocess.run(['git', '-C', str(source), 'commit', '-qm', 'Unrelated upstream change'], check=True)
     (root / 'experiment.txt').write_text('must be discarded')
     (root / 'app.txt').write_text('foreign experiment')
-    result = dict(base, fit='fits', design_markdown=f'{role}: reject invalid tokens and preserve valid requests.')
+    result = dict(base, summary=f'{role}: This fits. Reject invalid tokens and preserve valid requests.')
     if scenario in ('bug', 'evolve') and turn == 0:
-        result.update(status='needs_input', questions=['What input reproduces the bug?'])
+        result.update(summary='What input reproduces the bug?')
     if scenario == 'missing-mandate':
-        assert not mandate['valid']
-        result.update(status='needs_input', fit=None, questions=['Accept a mandate for this cell.'])
+        assert not (root / '.c2j/mandate.md').exists()
+        result.update(next='ask_user', summary='Accept a mandate for this cell.')
     if scenario == 'outside':
-        result.update(fit='outside', summary='Another owner is needed')
+        result.update(summary='This is outside our mandate; another owner is needed')
     if scenario == 'illegal-children':
         subprocess.run(['c2j', 'submit', 'Unauthorized consultation work', '--cell', os.environ['B_CELL'],
                         '--recipe-file', os.environ['ILLEGAL_RECIPE'], '--json'], check=True, stdout=subprocess.DEVNULL)
@@ -64,16 +61,13 @@ else:
         context = context['phase']
     history = context['consultations']
     if role == 'D':
-        mandate = context['mandate']
-        result = dict(base, design_markdown='Use the existing service API.',
-                      requirements=[dict(id='R1', statement='Client behavior works')],
-                      assessment=dict(assessment_status='assessed', fit='fits', rationale='Client ownership', questions=[],
-                                      outcomes=[dict(id='R1', statement='Client behavior works', ownership='local',
-                                                     suggested_owner=mandate['cell'], mandate_evidence=['OWN-01'], reason='Local behavior')]),
-                      consultation=None, handoffs=[])
-        if turn == 0:
-            result.update(status='needs_input', questions=['Clarify service interface'],
-                          consultation=dict(thread_id='B', cell=os.environ['B_CELL'], ref='main', message='Existing interface?'))
+        if turn > 0:
+            assert 'Partially fits' in (inbox/'prior/draft/design.md').read_text()
+        assert (root / '.c2j/mandate.md').exists()
+        result = dict(base, summary='Partially fits: this cell owns the client, B owns the service.')
+        if turn < (2 if scenario == 'design' else 1):
+            result.update(next='consult', consultation=dict(cell=os.environ['B_CELL'],ref='main',message='Existing interface?' if turn==0 else 'Clarify error handling.'))
+        (outbox/'design.md').write_text('# Design\n\n'+result['summary'])
     else:
         target = root / os.environ['TARGET']
         target.mkdir(exist_ok=True)
@@ -84,35 +78,31 @@ else:
             assert marker.read_text() == 'A implementation in progress\n', 'A candidate was lost'
         assert not (root / 'experiment.txt').exists(), 'B edits contaminated A'
         assert (root / 'app.txt').read_text() == 'application\n'
-        result = dict(base, changes=['Local candidate'], statement_tests=[dict(statement_id='T1', files=['test.sh'])],
-                      consultation=None, proposed_handoffs=[])
+        result = dict(base)
+        (outbox/'implementation.md').write_text('# Implementation\n\nLocal candidate.')
         target_role = None
         if scenario == 'multiple':
             target_role = ['B', 'C', 'B'][turn] if turn < 3 else None
         elif scenario == 'feedback':
             target_role = 'B' if turn in (0, 2) else None
-        elif scenario == 'limit':
-            target_role = 'B'
         elif turn == 0 or scenario in ('bug', 'evolve') and turn == 1:
             target_role = 'B'
         if target_role:
             cell = os.environ[target_role + '_CELL']
             if scenario == 'unavailable':
                 cell = os.environ['MISSING_CELL']
-            result.update(status='needs_input', questions=['Discuss dependency behavior'],
-                          consultation=dict(thread_id=target_role, cell=cell, ref='main',
+            result.update(next='consult',
+                          consultation=dict(cell=cell, ref='main',
                                             message='Repro: invalid token crashes; should return a validation error.'))
         elif scenario in ('bug', 'evolve', 'reuse'):
-            reply = history['B']['response']
-            # Deliberately report ready: the real contract must force redesign.
-            result['proposed_handoffs'] = [dict(thread_id='B', cell=os.environ['B_CELL'], mode='build',
-                                              outcome_ids=[], design_markdown=reply['design_markdown'])]
+            reply = history[os.environ['B_CELL']]['response']
+            result.update(next='redesign', summary='Please approve external work: '+reply['summary'])
         elif scenario in ('missing-mandate', 'outside'):
-            result.update(status='needs_input', questions=['Resolve dependency ownership'])
+            result.update(next='ask_user', summary='Resolve dependency ownership')
         if scenario == 'multiple' and not target_role:
-            assert history['B']['turn_count'] == 2 and history['C']['turn_count'] == 1
+            assert set(history) == {os.environ['B_CELL'],os.environ['C_CELL']}
         if scenario == 'reuse':
-            assert history['B']['turn_count'] == turn + 1, 'Design conversation was lost or restarted'
+            assert os.environ['B_CELL'] in history, 'Design conversation was lost'
 
 if scenario != 'malformed' or role not in ('B', 'C'):
     (outbox / 'result.json').write_text(json.dumps(result))

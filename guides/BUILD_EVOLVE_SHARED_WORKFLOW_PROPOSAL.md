@@ -1,172 +1,86 @@
-# Shared build and evolve workflow proposal
+# Shared build and evolve workflow
 
-Status: implemented in the root entrypoints and `recipes/develop/`; see the README for invocation and runtime limitations.
+Build and evolve use one workflow. Build starts at the cell root; evolve starts
+in `.c2j` and explains that the requested changes concern workflows and their
+instructions. Applicable `AGENTS.md` files provide domain guidance. Both read
+`.c2j/mandate.md` at the cell root. `target_directory` can specialize the working
+directory without introducing a custom changed-file enforcement system.
 
-## Decision
+The primary recipe orchestrates these phases:
 
-Use one development workflow, with two thin entrypoints. Both separate design,
-test-plan authoring, independent test-plan review, implementation, implementation
-review, verification, and human acceptance. Directory instructions supply domain
-knowledge; recipes enforce the process and its gates.
+1. Assess mandate fit and author a design, consulting other cells when helpful.
+2. Independently review the design.
+3. Maintain the Markdown test plan, then independently review its coverage.
+4. Obtain human approval of the design and test plan through native document review.
+5. Implement, with independent specification and quality reviews.
+6. Execute the verification hook and present its actual outcome.
+7. Obtain human satisfaction, then squash merge into the upstream branch.
 
-| Entrypoint | Default target directory, relative to the cell root | Domain instructions |
+Feedback continues implementation in the same Codex session. Requirement changes
+return to design and renewed plan approval. Reviewers have independent sessions.
+Invalid structured responses or missing sessions stop the run. Failed verification
+returns directly to implementation with evidence; unresolved questions go to human
+feedback. Uploaded edits, including CriticMarkup, require revision and another
+review even if the submitted decision was approve or satisfied.
+
+## Documents and routing
+
+| Content | Location | Why |
 |---|---|---|
-| `build.yaml` | `.` | Applicable root and nested `AGENTS.md` files |
-| `evolve.yaml` | `.c2j` | Applicable root instructions plus `.c2j/AGENTS.md` |
+| Cell mandate | `.c2j/mandate.md` in Git | Maintained responsibility boundary |
+| Test plan | `.c2j/test-plan.md` in Git | Maintained behavioral expectations |
+| Design | `outbox/design.md`, then downstream inboxes | Job-specific design and review handoff |
+| Implementation summary | `outbox/implementation.md`, then downstream inboxes | Job-specific outcome review |
+| Verification report and logs | `outbox/verification.md`, `outbox/build.log` | Execution evidence |
+| Phase routing | `outbox/result.json` | Small schema-validated decisions |
 
-The target directory is resolved once per run and passed to every phase. Evolve
-explains automatically that it changes the development workflows, not application
-features. A missing local specialization means creating one in the target cell;
-it does not mean silently switching repositories to edit the shared defaults.
+Designs and summaries do not accumulate in the repository. The test-plan review
+artifact `test-statements.md` is an exact copy of the maintained plan. c2j stores
+reviewed revisions and receipts. Agents read documents from their inbox, and use
+Git history for mandate, test-plan, and implementation changes. No custom hashes,
+requirement IDs, statement catalogs, or semantic validation certificates are needed.
 
-c2j resolves committed `.c2j/recipes/build.yaml` and `evolve.yaml` at the target
-cell's configured ref. Missing files fall back to root `build.yaml` and
-`evolve.yaml` in `github.com/colony-2/recipes`. Errors do not trigger fallback.
-See `/c2j/README.md`, “build and evolve”. The shared recipes repository is a
-deliberate exception to the `.c2j` default: its workflow sources live at the root
-and under `recipes/`. Work on those defaults uses an explicitly configured scope
-in that cell.
+A phase response has `summary` and `next`. Authors use `review`, `continue`, or
+`ask_user`; design also supports `outside`, and implementation supports `redesign`.
+Design and implementation can use `consult` with `{cell, message, ref?}`. Independent
+reviewers return `done`, `revise`, or `ask_user`. Schemas check these routing fields;
+agents and humans judge whether the content is sound.
 
-## Recipe set
+Test statements remain Markdown, at most 30 words per statement, with relevant
+filenames, importance, unit/integration classification, and dependencies. Include
+positive and negative cases for critical behavior. Independent review assesses
+coverage, meaningful assertions, and feasibility. Existing expectations must not
+be weakened to make implementation pass; describe proposed changes and their
+deprecation plan for human review.
 
-Phase files live under `recipes/develop/`:
+## Verification and integration
 
-| Recipe | Responsibility | Durable result |
-|---|---|---|
-| `develop.yaml` | Own lifecycle, phase routing, revision loops, and human checkpoints | Current phase, artifact revisions, session identifiers, completion status |
-| `design.yaml`, `review-design.yaml` | Inspect scope, clarify requirements, author and independently review the design | `design.md`, requirements with stable IDs, scope and unresolved questions |
-| `test-plan.yaml` | Define observable outcomes before implementation | `test-statements.md`, structured statement index, commands and acceptance mapping |
-| `review-test-plan.yaml` | Independently assess coverage and whether tests establish the requested outcomes | Structured verdict, uncovered requirement IDs, blocking feedback |
-| `implement.yaml` | Implement the approved design and tests, continuing the same implementation session on revision | Changes, statement-to-test mapping, implementation session ID |
-| `review-specification.yaml`, `review-quality.yaml` | Separate specification review from quality review | Two independent structured verdicts with actionable issues |
-| `verify.yaml` | Execute approved checks against the candidate revision and preserve candidate identity | Command logs, exit codes, per-statement evidence, candidate hash |
-| `finish.yaml` | Check acceptance and candidate freshness, then squash merge upstream | Merge hash; human review and feedback are owned by `develop.yaml` |
-| `agent.yaml`, `wait-children.yaml` | Capture children created by a phase, await required outcomes, and resume the same session | Child results keyed by job ID, namespaced artifact references, dependency history |
+`verify.yaml` uses native `command_execution` to run `bash ./build.sh` in the
+selected target directory, with a ten-minute default timeout. It preserves the
+log and inspects the native success, exit-code, and timeout outputs. An absent
+hook is explicitly reported as **skipped**, with no claim that automated checks
+passed; the human can still accept the outcome. Failure returns to implementation.
 
-Use includes for normal same-job phase composition, keeping git state and session
-continuation explicit. Use child jobs for actual cross-cell or lifecycle
-boundaries. Local entrypoint specializations reference the shared workflow by
-selector; they should not need copies of every phase. Shared relative includes
-must resolve from their source repository and pinned commit.
+A project can specialize this phase with its own verification op, including a
+GitHub Actions op for an existing workflow. Keep the `ok`, `result`, `evidence`,
+`review_documents`, and `artifact_refs` outputs used by the coordinator. There is
+no per-statement command executor in the default recipe.
 
-Cross-cell prerequisites are submitted asynchronously from Codex using `c2j
-submit --cell ...`. Each phase captures the op's `jobs.job_ids` and awaits all
-children through `recipe.await_result_soft`. Every terminal outcome resumes the
-requesting session with outputs, failure details, and available artifacts.
-The session handles failure, cancellation, or an explicit `merged: false` by
-diagnosing the issue and submitting corrected work or choosing another valid
-approach. It requests human input only when recovery needs a decision or remains
-blocked. The requesting phase must produce a fresh result explaining how it
-resolved dependencies. Phase history survives human revision loops and is
-exported by both entrypoints. Runtime services and workers
-must support brokered submission; tests run a separate disposable JobDB service.
+c2j supplies the current Git candidate and checkpoints changes automatically.
+`finish.yaml` requires acceptance and a successful verification step, then calls
+`squashrebasemerge` with the native current hash and `rebase: false`. Upstream
+advancement stops integration; it does not silently rebase an accepted outcome.
 
-## Review and revision flow
+## External work
 
-1. Establish the target scope and read applicable instructions. Clarifications
-   feed back into design; waiting for an answer does not complete the job.
-2. Write the design, including requirements, boundaries, compatibility, and any
-   deprecation plan. An independent design review returns issues to the author.
-3. Author test statements and the executable test plan from that design.
-4. Independently review the test plan. Rejected planning results return to the design/test-plan cycle with the prior
-   results and feedback. No implementation starts through a failed gate.
-5. Present the design and reviewed test statements together for human approval.
-   This is one pre-implementation checkpoint, with approve/revise choices.
-6. Implement and run implementation-time checks. Keep the implementation Codex
-   session across review fixes and user feedback; reviewers use separate sessions.
-7. Run specification and quality reviews, then independently execute verification.
-   Failures return actionable evidence to implementation and trigger re-review
-   and re-verification after changes. A durable human feedback step controls each retry, avoiding an unbounded
-   automatic revision loop.
-8. Present an outcome summary and statement-by-statement evidence. Satisfaction
-   authorizes squash merge into the cell's upstream branch. Rejection collects
-   feedback and continues the loop.
+[Cross-cell sessions](CROSS_CELL_REPO_SESSIONS_DESIGN.md) apply during both design
+and implementation. Consultation retains separate session objects and the latest
+reply for each destination cell. Actual prerequisite work is submitted only after
+human design approval. The runtime's `jobs.job_ids` supplies dependencies, and
+`recipe.await_result_soft` waits for all of them. All terminal results, including
+failed and cancelled work, return to the requesting session for diagnosis.
 
-Feedback that changes requirements returns to design and invalidates dependent
-plan approval and verification. An implementation defect continues the same
-implementation session without rewriting the agreed expectations. Changed
-design/test-plan revisions require renewed plan review and human approval.
-Changed code invalidates evidence for the prior candidate. The merge op disables automatic rebasing; upstream advancement stops
-integration so a resulting candidate cannot bypass verification.
-Cancellation propagates through active work; a blocked job cannot report success.
-
-## Test statements and contracts
-
-Test statements are Markdown artifacts, with stable IDs and requirement links.
-Each statement is at most 30 words, uses outcome language, and records relevant
-filenames, importance, unit/integration level, and dependencies. Critical behavior
-needs positive and negative cases. The structured index references the same
-statements rather than providing independently editable duplicate expectations.
-
-Example statement:
-
-> TS-01: Rejecting the outcome resumes the existing implementation conversation
-> without merging changes.
-
-Annotations: critical; integration; dependencies: c2j and mocked Codex/input;
-files: `recipes/develop/develop.yaml`, `recipes/develop/finish.yaml`.
-
-The test-plan reviewer checks requirement coverage, negative cases, meaningful
-assertions, feasible commands, and required environments. The implementation
-cannot weaken statements merely to make checks pass. Changes to existing
-behavioral expectations follow the repository's deprecation policy.
-
-Every phase emits a schema-validated structured result plus human-readable
-artifacts. Use Codex artifact output contracts and `rule_gate` for schema checks;
-command checks enforce cross-reference consistency. Parent transitions must require the gate
-result as well as the phase verdict. Missing, malformed, contradictory, or stale
-results cannot advance the workflow. An absent verification command is not a
-passing test; uncovered or unverified requirements remain explicit blockers.
-
-## Directory constraints
-
-Keep c2j's cell worktree and git integration rooted at the cell. Build uses the
-Codex op's default paths. Evolve intentionally overrides only:
-
-```yaml
-worktree_path: '{{ context.environment.op.worktree_path }}/.c2j'
-```
-
-All other Codex paths retain their extension defaults. The current c2ops code
-maps this input to `Options.WorktreeRoot`, which becomes the Codex process cwd.
-A disposable launcher probe passed for both `.` and `.c2j`, including default
-inbox/outbox placement. It used a stub Codex executable; live instruction loading,
-session resume, sandbox behavior, and c2j git persistence still need integration
-coverage.
-
-The target directory controls where Codex starts. The recipe does not enforce a
-second filesystem boundary or inspect every changed path. Applicable instructions
-and the approved design define intended behavior. Candidate freshness and clean
-Git state are still checked before merging the verified result.
-
-Root `AGENTS.md` supplies common project rules; `.c2j/AGENTS.md` supplies workflow
-authoring rules, standard paths, op references, test commands, and ephemeral
-runtime requirements. c2j pins the expanded recipe snapshot for the run; design reads the applicable
-instructions. Editing them does not relax that run's gates or change
-its approved scope. Local role skills must be available from the scoped directory
-or installed explicitly; changing the Codex root also changes its default skill
-discovery location.
-
-## Acceptance tests for implementation
-
-The deterministic suite in `recipe-tests/verify-default-recipes.py` covers phase
-routing, contracts, evidence, and integration. Live instruction discovery,
-session persistence, runtime cancellation and sandbox isolation are not claimed by
-these mocked-agent tests. The sandbox limitation has a separate bug report.
-All are integration tests. c2j runtime tests use disposable databases and git
-repositories; none submit against a home-sourced embedded database.
-
-| ID | Statement | Files | Importance | Dependencies / case |
-|---|---|---|---|---|
-| SD-01 | Build and evolve execute identical development phases with their configured target directories. | `build.yaml`, `evolve.yaml`, `recipes/develop/develop.yaml` | Critical | c2j, mocked agents; positive |
-| SD-02 | Evolve starts Codex in the local workflow directory while preserving normal artifact paths and cell git persistence. | `evolve.yaml`, `recipes/develop/implement.yaml` | Critical | c2j, Codex launcher, temporary git repository; positive |
-| SD-03 | Invalid artifacts or rejected design and test-plan reviews prevent implementation. | `recipes/develop/develop.yaml`, `recipes/develop/review-test-plan.yaml` | Critical | c2j, rule_gate, mocked agents; negative |
-| SD-04 | Approved test statements cover requirements and precede implementation. | `recipes/develop/test-plan.yaml`, `recipes/develop/review-test-plan.yaml` | Critical | c2j, mocked agents/input; positive |
-| SD-05 | Failed, missing, or stale verification evidence prevents merge despite a favorable agent summary. | `recipes/develop/verify.yaml`, `recipes/develop/finish.yaml` | Critical | c2j, real command execution; negative |
-| SD-06 | Implementation feedback resumes the existing conversation and reruns review and verification. | `recipes/develop/develop.yaml`, `recipes/develop/implement.yaml` | Critical | c2j, mocked agents/input; positive |
-| SD-07 | Requirement changes return to design and invalidate dependent approvals. | `recipes/develop/develop.yaml` | Critical | c2j, mocked agents/input; negative |
-| SD-08 | Retired: custom write-scope enforcement was explicitly removed during recipe simplification. | Historical | — | — |
-| SD-09 | Human satisfaction and passing gates produce one squash merge into upstream. | `recipes/develop/finish.yaml` | Critical | c2j, temporary upstream repository; positive |
-| SD-10 | Editing workflow instructions cannot bypass gates already governing the running job. | `evolve.yaml`, `recipes/develop/develop.yaml` | Critical | c2j, pinned recipe fixtures; negative |
-| SD-11 | Local entrypoints resolve shared phase recipes without requiring local copies. | `build.yaml`, `evolve.yaml`, `recipes/develop/develop.yaml` | High | c2j selector/include resolution; positive |
-| SD-12 | Cancellation and unresolved clarification cannot be reported as successful completion. | `recipes/develop/develop.yaml` | High | c2j, mocked input and cancellation; negative |
+The defaults resolve from `github.com/colony-2/recipes` when committed local
+`.c2j/recipes/build.yaml` or `.c2j/recipes/evolve.yaml` overrides are absent. Local
+wrappers can include this shared workflow by Git selector. Invalid recipes and
+access failures do not trigger fallback.

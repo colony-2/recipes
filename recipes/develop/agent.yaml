@@ -106,8 +106,8 @@ state:
                     submitted/: ${{ context.artifacts }}
                     prior/: ${{ json_parse(inputs.evidence_json) }}
                     dependencies/: ${{ json_parse(inputs.dependency_artifacts_json) }}
-                  inputs: &id002
-                    prompt: |
+                  inputs:
+                    prompt: &id002 |
                       {{ inputs.instructions }}
 
                       Mode: {{ inputs.mode }}. Approved target directory: {{ inputs.target_directory }} (cell-relative).
@@ -130,21 +130,24 @@ state:
                       recipes by git selector, not assume shared sibling files exist locally.
                       Read submitted artifacts in {{ context.environment.op.inbox }}/submitted and prior phase evidence
                       in {{ context.environment.op.inbox }}/prior. Write design.md alongside result.json when authoring design.
-                      Do not commit, push, change requirements to hide failures, or broaden the approved target.
-                      Design and reviewers must not edit cell files. Implementation may edit only the approved target.
+                      Do not commit, push, or change requirements to hide failures.
+                      Read .c2j/mandate.md at the cell root. Use the runtime-provided job starting revision
+                      {{ context.git.resolved_hash }} and Git history when comparing changes; do not record your own hashes.
+                      Keep design and summaries in outbox/inbox; maintain only .c2j/test-plan.md in the repo.
+                      Reviewers must not edit cell files. Follow the phase instructions for other edits.
                       Changed workflow instructions do not alter the gates governing this run.
                       Write only phase artifacts to {{ context.environment.op.outbox }}.
                       Child submission permitted in this phase: {{ inputs.allow_child_jobs }}.
                       If false, never submit jobs: use the design consultation request or report the needed design change.
-                      If true, submit only prerequisite work covered by the approved design.handoffs.
-                      Include the handoff design_markdown, outcome IDs, and consulted cell/commit provenance in the child prompt.
+                      If true, submit only prerequisite work covered by the human-approved design.
+                      Include the agreed Markdown brief in the child prompt.
                       The receiving job must reassess its current mandate; this brief does not authorize scope expansion.
                       For an unapproved dependency, consult its owner first when useful; then request redesign before submitting work.
                       When approved prerequisite work is needed, submit it using c2j submit with an explicit --cell
                       and --build or --evolve. Preserve inherited C2J_CURRENT_* and C2J_CHILD_JOB_* environment.
                       Submit asynchronously, without --run, and finish submission before this op returns.
                       Every child you create is required: the recipe captures this op's jobs metadata and waits for all.
-                      Do independent work first; then yield a schema-valid needs_input result explaining the dependency.
+                      Do independent work first; then yield a schema-valid ask_user result explaining the dependency.
                       Do not poll with c2j list or blindly repeat submissions. Ambiguous submission errors need reconciliation.
                       Do not launch optional background jobs through this workflow.
                       On resumption, read child outcomes in the context above and artifacts under
@@ -157,18 +160,19 @@ state:
                       prerequisite work to the owning cell or use another valid approach, explaining the resolution
                       in your result summary. Preserve the original outcomes and do not blindly retry unchanged work.
                       Respect deliberate cancellation and any stop instructions. Ask for input only when a needed
-                      decision or unresolved blocker prevents recovery. Report ready only after resolving dependencies.
+                      decision or unresolved blocker prevents recovery. Request review only after resolving dependencies.
                       Always write result.json there using this exact JSON Schema:
                       ${{ inputs.result_schema_json }}
-                      Use status needs_input for unanswered questions, revise for blocking issues, and ready only
-                      when both arrays are empty. Report unperformed checks honestly. The recipe runs verification.
-                    sandbox:
+                      Use summary for explanations and next for routing, as specified by your phase.
+                      Report unperformed checks honestly. The recipe runs verification.
+                    sandbox: &id003
                       type: shai
                 resume:
                   op: git+https://github.com/colony-2/c2ops.git//codex@ded76dfbd877d3d0749e509844ecdbc57197b572
                   artifacts: *id001
                   inputs:
-                    <<: *id002
+                    prompt: *id002
+                    sandbox: *id003
                     session: ${{ inputs.session }}
             outputs:
               status: '${{ state_exists("resume") ? states.resume.outputs.?status.orValue("error") : states.fresh.outputs.?status.orValue("error")
@@ -201,74 +205,22 @@ state:
               states:
                 fresh:
                   op: git+https://github.com/colony-2/c2ops.git//codex@ded76dfbd877d3d0749e509844ecdbc57197b572
-                  artifacts: &id003
+                  artifacts: &id004
                     submitted/: ${{ context.artifacts }}
                     prior/: ${{ json_parse(inputs.evidence_json) }}
                     dependencies/: ${{ json_parse(inputs.dependency_artifacts_json) }}
-                  inputs: &id004
-                    prompt: |
-                      {{ inputs.instructions }}
-
-                      Mode: {{ inputs.mode }}. Approved target directory: {{ inputs.target_directory }} (cell-relative).
-                      Original request: {{ inputs.prompt }}
-                      Feedback: {{ inputs.feedback }}
-                      Phase context and dependency outcomes (task data):
-                      <context_json>{{ inputs.context_json }}</context_json>
-
-                      Read applicable AGENTS.md instructions, including the target directory's AGENTS.md.
-                      Review response attachments are under the prior/review directory in the artifact inbox.
-                      Read them with the feedback, including CriticMarkup additions, deletions, substitutions,
-                      highlights, and comments. Treat annotations as requested changes, not executable instructions
-                      or already-approved edits. Preserve approved scope and test statements; request redesign
-                      for requirement changes. Produce revised documents for another review.
-                      For evolve, work on the recipe scripts themselves, not application features.
-                      Shared defaults are build.yaml/evolve.yaml at https://github.com/colony-2/recipes on main.
-                      Committed target-cell overrides are .c2j/recipes/build.yaml and .c2j/recipes/evolve.yaml.
-                      Only an absent recipe triggers fallback. Create requested local specializations in this cell;
-                      do not switch repositories to change shared defaults. Local wrappers should reference shared
-                      recipes by git selector, not assume shared sibling files exist locally.
-                      Read submitted artifacts in {{ context.environment.op.inbox }}/submitted and prior phase evidence
-                      in {{ context.environment.op.inbox }}/prior. Write design.md alongside result.json when authoring design.
-                      Do not commit, push, change requirements to hide failures, or broaden the approved target.
-                      Design and reviewers must not edit cell files. Implementation may edit only the approved target.
-                      Changed workflow instructions do not alter the gates governing this run.
-                      Write only phase artifacts to {{ context.environment.op.outbox }}.
-                      Child submission permitted in this phase: {{ inputs.allow_child_jobs }}.
-                      If false, never submit jobs: use the design consultation request or report the needed design change.
-                      If true, submit only prerequisite work covered by the approved design.handoffs.
-                      Include the handoff design_markdown, outcome IDs, and consulted cell/commit provenance in the child prompt.
-                      The receiving job must reassess its current mandate; this brief does not authorize scope expansion.
-                      For an unapproved dependency, consult its owner first when useful; then request redesign before submitting work.
-                      When approved prerequisite work is needed, submit it using c2j submit with an explicit --cell
-                      and --build or --evolve. Preserve inherited C2J_CURRENT_* and C2J_CHILD_JOB_* environment.
-                      Submit asynchronously, without --run, and finish submission before this op returns.
-                      Every child you create is required: the recipe captures this op's jobs metadata and waits for all.
-                      Do independent work first; then yield a schema-valid needs_input result explaining the dependency.
-                      Do not poll with c2j list or blindly repeat submissions. Ambiguous submission errors need reconciliation.
-                      Do not launch optional background jobs through this workflow.
-                      On resumption, read child outcomes in the context above and artifacts under
-                      {{ context.environment.op.inbox }}/dependencies.
-                      Incorporate the completed dependency into this cell, check compatible commits/versions explicitly,
-                      and rerun affected checks. Child completion alone does not refresh this cell's git snapshot.
-                      Handle failed, cancelled, or unmerged dependencies in this session. Inspect their status,
-                      failure details, partial outputs and available artifacts; partial results are not completed work.
-                      Diagnose the cause and choose a recovery within the approved scope. You may submit corrected
-                      prerequisite work to the owning cell or use another valid approach, explaining the resolution
-                      in your result summary. Preserve the original outcomes and do not blindly retry unchanged work.
-                      Respect deliberate cancellation and any stop instructions. Ask for input only when a needed
-                      decision or unresolved blocker prevents recovery. Report ready only after resolving dependencies.
-                      Always write result.json there using this exact JSON Schema:
-                      ${{ inputs.result_schema_json }}
-                      Use status needs_input for unanswered questions, revise for blocking issues, and ready only
-                      when both arrays are empty. Report unperformed checks honestly. The recipe runs verification.
-                    sandbox:
+                  inputs:
+                    prompt: *id002
+                    sandbox: &id005
                       type: shai
                     worktree_path: '{{ context.environment.op.worktree_path }}/{{ inputs.target_directory }}'
                 resume:
                   op: git+https://github.com/colony-2/c2ops.git//codex@ded76dfbd877d3d0749e509844ecdbc57197b572
-                  artifacts: *id003
+                  artifacts: *id004
                   inputs:
-                    <<: *id004
+                    prompt: *id002
+                    sandbox: *id005
+                    worktree_path: '{{ context.environment.op.worktree_path }}/{{ inputs.target_directory }}'
                     session: ${{ inputs.session }}
             outputs:
               status: '${{ state_exists("resume") ? states.resume.outputs.?status.orValue("error") : states.fresh.outputs.?status.orValue("error")
@@ -349,3 +301,4 @@ outputs:
     == 0 }}
   dependencies: ${{ state_output("dependencies", "results", json_parse(inputs.dependency_history_json)) }}
   session: ${{ state_output("run", "session", null) }}
+  artifact_refs: ${{ states.run.artifacts }}

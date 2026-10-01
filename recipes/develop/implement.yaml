@@ -1,5 +1,5 @@
 id: development-implement
-version: 0.3.0
+version: 0.4.0
 input_schema:
   prompt:
     type: string
@@ -48,224 +48,136 @@ vars:
     type: object
     additionalProperties: false
     required:
-    - status
     - summary
-    - blocking_issues
-    - questions
-    - changes
-    - statement_tests
-    - consultation
-    - proposed_handoffs
+    - next
     properties:
-      status:
-        type: string
-        enum:
-        - ready
-        - revise
-        - needs_input
-        - redesign
-      summary: &id001
+      summary:
         type: string
         pattern: \S
-      blocking_issues:
-        type: array
-        items: *id001
-        minItems: 0
-      questions:
-        type: array
-        items: *id001
-        minItems: 0
-      changes:
-        type: array
-        items: *id001
-        minItems: 0
-      statement_tests:
-        type: array
-        items:
-          type: object
-          additionalProperties: false
-          required:
-          - statement_id
-          - files
-          properties:
-            statement_id: *id001
-            files:
-              type: array
-              items: *id001
-              minItems: 1
-        minItems: 1
+      next:
+        enum:
+        - review
+        - continue
+        - consult
+        - ask_user
+        - redesign
       consultation:
-        anyOf:
-        - type: 'null'
-        - type: object
-          additionalProperties: false
+        type: object
+        additionalProperties: false
+        required:
+        - cell
+        - message
+        properties:
+          cell:
+            type: string
+            pattern: \S
+          message:
+            type: string
+            pattern: \S
+          ref:
+            type: string
+            pattern: \S
+    allOf:
+    - if:
+        properties:
+          next:
+            const: consult
+      then:
+        required:
+        - consultation
+      else:
+        not:
           required:
-          - thread_id
-          - cell
-          - ref
-          - message
-          properties:
-            thread_id: &id002
-              type: string
-              pattern: \S
-            cell: *id002
-            ref: *id002
-            message: *id002
-      proposed_handoffs:
-        type: array
-        items:
-          type: object
-          additionalProperties: false
-          required:
-          - thread_id
-          - cell
-          - mode
-          - outcome_ids
-          - design_markdown
-          properties:
-            thread_id: &id003
-              type: string
-              pattern: \S
-            cell: *id003
-            mode:
-              enum:
-              - build
-              - evolve
-            outcome_ids:
-              type: array
-              items: *id003
-            design_markdown: *id003
+          - consultation
+sequence:
+- id: agent
+  inputs:
+    prompt: ${{ inputs.prompt }}
+    target_directory: ${{ inputs.target_directory }}
+    mode: ${{ inputs.mode }}
+    feedback: ${{ inputs.feedback }}
+    context_json: ${{ inputs.context_json }}
+    evidence_json: ${{ inputs.evidence_json }}
+    dependency_history_json: ${{ inputs.dependency_history_json }}
+    consultation_history_json: ${{ inputs.consultation_history_json }}
+    session: ${{ inputs.?session.orValue(null) }}
+    review_response_json: ${{ inputs.review_response_json }}
+    instructions: |-
+      Implement the human-approved design and maintained .c2j/test-plan.md. Read the approved design from the inbox. Preserve the test expectations; use Git history from the job's starting revision to identify removed or weakened expectations and unauthorized mandate changes. Describe concerns to the reviewer; do not create a baseline ledger.
+      If new external work emerges, use next=consult with consultation {cell,message,ref?}. Continue the conversation in separate sessions. Use next=redesign before submitting work outside the approved design. Submit approved prerequisite work with its agreed Markdown brief; no handoff IDs or certificates are required.
+      Write implementation.md in the outbox with the changes, outcomes, tests performed and remaining limitations. Keep this summary out of the repository. Maintain the test plan in the repo; if expectations need to change, request redesign and explain the deprecation plan.
+      Provide a build.sh verification hook in the target directory when appropriate, or preserve the project's specialized verification op. Use next=review when ready for inspection, ask_user for a blocked decision, continue to keep working, or redesign for changed requirements.
+    result_schema_json: ${{ json_stringify(vars.result_schema) }}
+    allow_child_jobs: true
+    document: implementation.md
+    document_key: implement
+  state:
+    initial:
+    - to: resume
+      when: inputs.session != null
+    - to: fresh
+      when: true
+    states:
+      fresh:
+        include: ./phase.yaml
+        inputs:
+          prompt: ${{ inputs.prompt }}
+          target_directory: ${{ inputs.target_directory }}
+          mode: ${{ inputs.mode }}
+          feedback: ${{ inputs.feedback }}
+          context_json: ${{ inputs.context_json }}
+          evidence_json: ${{ inputs.evidence_json }}
+          dependency_history_json: ${{ inputs.dependency_history_json }}
+          consultation_history_json: ${{ inputs.consultation_history_json }}
+          review_response_json: ${{ inputs.review_response_json }}
+          instructions: ${{ inputs.instructions }}
+          result_schema_json: ${{ inputs.result_schema_json }}
+          allow_child_jobs: ${{ inputs.allow_child_jobs }}
+          document: ${{ inputs.document }}
+          document_key: ${{ inputs.document_key }}
+      resume:
+        include: ./phase.yaml
+        inputs:
+          prompt: ${{ inputs.prompt }}
+          target_directory: ${{ inputs.target_directory }}
+          mode: ${{ inputs.mode }}
+          feedback: ${{ inputs.feedback }}
+          context_json: ${{ inputs.context_json }}
+          evidence_json: ${{ inputs.evidence_json }}
+          dependency_history_json: ${{ inputs.dependency_history_json }}
+          consultation_history_json: ${{ inputs.consultation_history_json }}
+          review_response_json: ${{ inputs.review_response_json }}
+          instructions: ${{ inputs.instructions }}
+          result_schema_json: ${{ inputs.result_schema_json }}
+          allow_child_jobs: ${{ inputs.allow_child_jobs }}
+          document: ${{ inputs.document }}
+          document_key: ${{ inputs.document_key }}
+          session: ${{ inputs.session }}
+  outputs:
+    result: '${{ state_exists("resume") ? states.resume.outputs.result : states.fresh.outputs.result }}'
+    session_id: '${{ state_exists("resume") ? states.resume.outputs.session_id : states.fresh.outputs.session_id
+      }}'
+    completed: '${{ state_exists("resume") ? states.resume.outputs.completed : states.fresh.outputs.completed }}'
+    dependencies: '${{ state_exists("resume") ? states.resume.outputs.dependencies : states.fresh.outputs.dependencies
+      }}'
+    session: '${{ state_exists("resume") ? states.resume.outputs.session : states.fresh.outputs.session }}'
+    artifact_refs: '${{ state_exists("resume") ? states.resume.outputs.artifact_refs : states.fresh.outputs.artifact_refs
+      }}'
+    valid: '${{ state_exists("resume") ? states.resume.outputs.valid : states.fresh.outputs.valid }}'
+    consultations: '${{ state_exists("resume") ? states.resume.outputs.consultations : states.fresh.outputs.consultations
+      }}'
+    review_response: '${{ state_exists("resume") ? states.resume.outputs.review_response : states.fresh.outputs.review_response
+      }}'
+    review_documents: '${{ state_exists("resume") ? states.resume.outputs.review_documents : states.fresh.outputs.review_documents
+      }}'
 outputs:
-  valid: ${{ state_output("agent", "valid", false) && state_exists("contract") && state_output("consult", "valid",
-    true) }}
-  completed: ${{ state_output("agent", "completed", false) }}
-  session_id: ${{ state_output("agent", "session_id", "") }}
-  dependencies: ${{ state_output("agent", "dependencies", {}) }}
-  result: ${{ json_parse(state_output("contract", "stdout", "{}")).?result.orValue({}) }}
-  consultations: ${{ state_output("consult", "consultations", json_parse(inputs.consultation_history_json)) }}
-  session: ${{ state_output("agent", "session", null) }}
-  review_response: ${{ json_parse(inputs.review_response_json) }}
-  review_documents: '${{ state_exists("contract") ? {"implement": states.contract.artifacts["implementation.md"]}
-    : {} }}'
-state:
-  initial: agent
-  states:
-    agent:
-      inputs:
-        prompt: ${{ inputs.prompt }}
-        target_directory: ${{ inputs.target_directory }}
-        mode: ${{ inputs.mode }}
-        feedback: ${{ inputs.feedback }}
-        context_json: ${{ inputs.context_json }}
-        evidence_json: ${{ inputs.evidence_json }}
-        instructions: |
-          Implement the approved design and test plan provided in context_json. Write the tests and implementation. Map every approved test statement to test files in statement_tests. Preserve approved expectations; changes to existing expectations require the deprecation process. Address supplied review feedback. The current approved design and test plan supersede prior feedback when requirements have changed. Remain in the same implementation session on revision. Implement only locally owned requirements. Submit the approved design.handoffs to their owning cells before declaring ready, carrying the refined design and consultation provenance as the child request. Track each handoff against the dependency ledger to avoid duplicate submissions. Do not implement external outcomes here. New or changed external work requires returning to design approval. Return status redesign when a new dependency, changed handoff, or changed requirement needs design approval; explain the necessary decision in questions.
-          At any time, including after discovering a dependency bug or missing feature, set consultation to
-          {thread_id,cell,ref,message} to discuss it with a separate agent in the owning cell. Supply reproduction
-          evidence and interface expectations in the message. You need not return to design merely to ask a question.
-          Consultations from earlier phases appear in context.consultations. Reuse the same thread ID, cell and original
-          ref to continue that pinned session, or use a new thread for another cell or a fresh revision. Your local edits,
-          implementation session and dependency ledger survive each consultation. Never send your session checkpoint to B.
-          Use a schema-valid needs_input result while requesting consultation; do not submit new work during that turn.
-          After feedback, set consultation null. If an existing interface or local fix meets the approved design, continue
-          implementation without redesign. If external code must change, return proposed_handoffs containing the exact
-          latest agreed B design, mode, thread ID, cell and outcome IDs (empty for newly discovered supporting work).
-          The recipe returns such new work to design approval before submission. Unresolved B questions may be answered
-          through another turn; disagreement may yield needs_input or redesign with an explanation. Do not hide missing
-          external work by returning ready. The consultation limit is eight foreign turns per implementation pass.
-        result_schema_json: ${{ json_stringify(vars.result_schema) }}
-        dependency_history_json: ${{ json_stringify(state_output("agent", "dependencies", json_parse(inputs.dependency_history_json)))
-          }}
-        consultation_history_json: ${{ json_stringify(state_output("consult", "consultations", json_parse(inputs.consultation_history_json)))
-          }}
-        session: ${{ state_output("agent", "session", inputs.session) }}
-      state:
-        initial:
-        - to: resume
-          when: inputs.session != null
-        - to: fresh
-          when: true
-        states:
-          fresh:
-            include: ./agent.yaml
-            inputs: &id004
-              prompt: ${{ inputs.prompt }}
-              target_directory: ${{ inputs.target_directory }}
-              mode: ${{ inputs.mode }}
-              feedback: ${{ inputs.feedback }}
-              context_json: ${{ inputs.context_json }}
-              evidence_json: ${{ inputs.evidence_json }}
-              instructions: ${{ inputs.instructions }}
-              result_schema_json: ${{ inputs.result_schema_json }}
-              dependency_history_json: ${{ inputs.dependency_history_json }}
-              consultation_history_json: ${{ inputs.consultation_history_json }}
-          resume:
-            include: ./agent.yaml
-            inputs:
-              <<: *id004
-              session: ${{ inputs.session }}
-      outputs:
-        valid: '${{ state_exists("resume") ? states.resume.outputs.valid : states.fresh.outputs.valid }}'
-        result: '${{ state_exists("resume") ? states.resume.outputs.result : states.fresh.outputs.result }}'
-        session_id: '${{ state_exists("resume") ? states.resume.outputs.session_id : states.fresh.outputs.session_id
-          }}'
-        completed: '${{ state_exists("resume") ? states.resume.outputs.completed : states.fresh.outputs.completed
-          }}'
-        dependencies: '${{ state_exists("resume") ? states.resume.outputs.dependencies : states.fresh.outputs.dependencies
-          }}'
-        session: '${{ state_exists("resume") ? states.resume.outputs.session : states.fresh.outputs.session }}'
-      transitions:
-      - to: contract
-        when: outputs.valid
-    contract:
-      op: command_execution
-      inputs:
-        timeout: 10s
-        env:
-          RESULT_JSON: ${{ json_stringify(states.agent.outputs.result) }}
-          CONTEXT_JSON: ${{ inputs.context_json }}
-          HISTORY_JSON: ${{ json_stringify(state_output("consult", "consultations", json_parse(inputs.consultation_history_json)))
-            }}
-          INITIAL_HISTORY_JSON: ${{ inputs.consultation_history_json }}
-          SESSION: ${{ json_stringify(states.agent.outputs.session) }}
-          OUTBOX: '{{ context.environment.op.outbox }}'
-        run: |
-          python3 - <<'PYCODE'
-          import json,os,pathlib
-          r=json.loads(os.environ['RESULT_JSON']); context=json.loads(os.environ['CONTEXT_JSON']); history=json.loads(os.environ['HISTORY_JSON'])
-          request=r['consultation']; selection={}
-          if request:
-              if not json.loads(os.environ['SESSION']): raise ValueError('Consultation requires an originating session')
-              thread=history.get(request['thread_id'])
-              if thread and (thread['cell']!=request['cell'] or thread['ref']!=request['ref']): raise ValueError('Cannot retarget a consultation thread')
-              if sum(t.get('turn_count',0) for t in history.values())-sum(t.get('turn_count',0) for t in json.loads(os.environ['INITIAL_HISTORY_JSON']).values())>=8:
-                  r.update(status='needs_input',questions=r['questions']+['Consultation limit reached; resolve the open design decisions before continuing.'],consultation=None)
-              else:
-                  selection={**request,'workspace_ref':thread['commit'] if thread else request['ref'],'session':thread['session'] if thread else None,'turn_count':thread.get('turn_count',0)+1 if thread else 1}
-          approved=context.get('design',{}).get('handoffs',[])
-          new_work=False
-          for handoff in r['proposed_handoffs']:
-              thread=history.get(handoff['thread_id']); reply=thread['response'] if thread else {}
-              if not thread or handoff['cell']!=thread['cell'] or reply.get('status')!='ready' or reply.get('fit')!='fits' or reply['questions'] or reply['blocking_issues'] or handoff['design_markdown']!=reply['design_markdown']: raise ValueError('Proposed handoff requires the latest agreed foreign design')
-              fields=['thread_id','cell','mode','outcome_ids','design_markdown']
-              if not any(all(handoff[k]==old[k] for k in fields) and old.get('provenance',{}).get('commit')==thread['commit'] for old in approved): new_work=True
-              handoff['provenance']={'cell':thread['mandate']['cell'],'commit':thread['commit'],'mandate_sha256':thread['mandate']['sha256']}
-          if new_work and not selection:
-              r.update(status='redesign',questions=r['questions']+['Review the newly discovered external work and update the design/test plan before submission.'])
-          if r['status']=='ready' and (r['questions'] or r['blocking_issues']): raise ValueError('Ready implementation has unresolved decisions')
-          out=pathlib.Path(os.environ['OUTBOX']);(out/'proposed-handoffs.json').write_text(json.dumps(r['proposed_handoffs']))
-          (out/'implementation.md').write_text('# Implementation\n\n'+r['summary']+'\n\n'+'\n'.join('- '+change for change in r['changes'])+'\n')
-          print(json.dumps({'result':r,'selection':selection}))
-          PYCODE
-      transitions:
-      - to: consult
-        when: size(json_parse(outputs.stdout).selection) > 0
-    consult:
-      include: ./consultation-turn.yaml
-      inputs:
-        selection_json: ${{ json_stringify(json_parse(states.contract.outputs.stdout).selection) }}
-        history_json: ${{ json_stringify(state_output("consult", "consultations", json_parse(inputs.consultation_history_json)))
-          }}
-      transitions:
-      - to: agent
-        when: outputs.valid
+  result: ${{ sequence.agent.outputs.result }}
+  session_id: ${{ sequence.agent.outputs.session_id }}
+  completed: ${{ sequence.agent.outputs.completed }}
+  dependencies: ${{ sequence.agent.outputs.dependencies }}
+  session: ${{ sequence.agent.outputs.session }}
+  artifact_refs: ${{ sequence.agent.outputs.artifact_refs }}
+  valid: ${{ sequence.agent.outputs.valid }}
+  consultations: ${{ sequence.agent.outputs.consultations }}
+  review_response: ${{ sequence.agent.outputs.review_response }}
+  review_documents: ${{ sequence.agent.outputs.review_documents }}

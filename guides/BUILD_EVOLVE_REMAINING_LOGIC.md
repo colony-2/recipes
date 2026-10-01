@@ -1,27 +1,26 @@
-# Build/evolve logic remaining after simplification
+# Build/evolve orchestration after simplification
 
-The recipes now use direct prompt context, native child-job discovery and awaits,
-artifact bindings, and separate Codex session objects. They no longer record or
-merge consultation transcripts, prepare context files, or enforce changed-file
-write scopes. The coordinator passes one current consultation map between phases.
+The five remaining embedded Python blocks have been removed.
 
-Five embedded Python blocks remain for a separate policy review:
+| Former logic | Current behavior |
+|---|---|
+| Mandate parser and provenance recorder | Agents read `.c2j/mandate.md` as Markdown and use c2j's Git history when reviewing changes. |
+| Design validator and handoff formatter | Agent authors `outbox/design.md`; a small schema checks routing and native review presents the document. |
+| Implementation handoff comparator | Agent consults another cell, requests redesign when needed, and explains the changes in `outbox/implementation.md`. |
+| Test-plan catalog validator and renderer | Author maintains `.c2j/test-plan.md`; an independent agent reviews expectations and coverage. A native command copies the exact plan for review. |
+| Verification executor and candidate ledger | Native command runs target-relative `build.sh` when present, uses its return status, and publishes a report and log. |
 
-| Location | What remains | Question for the next review |
-|---|---|---|
-| `recipes/develop/mandate.yaml` | Read the committed mandate, validate its format, and report clause IDs and provenance. | Which format checks belong in authoring validation instead of every run? |
-| `recipes/develop/design.yaml` | Validate ownership and requirement links, route a consultation, validate agreed handoffs, and publish review documents. | Which policies need deterministic enforcement beyond the schema and design review? |
-| `recipes/develop/implement.yaml` | Route a consultation, compare proposed handoffs with approved work, and require redesign for new external changes. | Can consultation routing become shared recipe expressions while retaining the approval rule? |
-| `recipes/develop/test-plan.yaml` | Validate statement length, IDs, requirement coverage, negative cases, and command mappings; render Markdown. | Which constraints belong in the schema, and which require a cross-document check? |
-| `recipes/develop/verify.yaml` | Run approved commands with deadlines, capture evidence, map results to statements, and check candidate stability. | Is an existing verification operation a better home for this execution contract? |
+The shared phase loop resumes the local session or consults another cell as
+requested by `next`. A consultation retains the latest foreign session and reply.
+Native op metadata supplies child jobs; native await operations return outcomes
+and artifacts. No context preparation, transcript reconstruction, turn recorder,
+custom scope guard, or hash snapshot operation remains.
 
-Two small shell operations remain: `cat` exposes a schema-checked result artifact
-as structured recipe data through `json_parse`; `snapshot.yaml` creates the target
-directory when requested and reports Git HEAD/cleanliness. The latter preserves
-initial-mandate provenance and prevents merging a candidate that changed after
-verification. Neither implements a write-scope policy.
+The small shell steps create the target directory, read schema-checked result
+JSON, copy the maintained test plan for review, and run/report the verification
+hook. Native review handles uploaded Markdown/CriticMarkup and review receipts.
+`finish.yaml` uses c2j's current Git state for the accepted squash merge.
 
-The current plain Codex op does not export arbitrary parsed phase output.
-`codex/run_skill` does, but switching these generic phases into skills would be a
-separate design choice. No new artifact retrieval or child-job operation is needed
-for this workflow.
+Designs, summaries, and execution evidence remain runtime artifacts. Only maintained
+responsibility and test expectations belong in `.c2j/mandate.md` and
+`.c2j/test-plan.md`; the workflow does not accumulate per-job documents in Git.

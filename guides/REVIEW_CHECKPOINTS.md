@@ -15,7 +15,7 @@ those in [the session migration guide](CODEX_OBJECT_SESSION_MIGRATION.md).
   agreed external work.
 - Outcome acceptance presents those documents plus the implementation summary and
   verification report for the tested candidate. Satisfied approval allows the
-  existing verification/scope gates and squash merge.
+  verification result and acceptance gates and squash merge.
 - Clarification and outside-mandate checkpoints use the same native form pattern,
   exposing whichever documents are available.
 
@@ -73,3 +73,12 @@ and squash merges. Production forms have no autofill.
 The earlier [review handoff proposal](NATIVE_REVIEW_HANDOFF_PROPOSAL.md) and
 `contracts/review` fixtures are historical design material. They are not the
 implemented native review protocol or a prerequisite for these recipes.
+
+## Document storage
+
+Design and implementation summaries are authored directly in outbox, then bound
+to downstream inboxes. They are never stored as per-job files in the repository.
+The maintained `.c2j/test-plan.md` is tracked in Git and copied byte-for-byte to
+`test-statements.md` for review. Verification reports and logs are runtime artifacts.
+Native review preserves reviewed revisions and attachments without a recipe-owned
+document history, ID catalog, or hash ledger.

@@ -158,7 +158,7 @@ else:
     if scenario=='failed' and len(dependencies)==2:
         subprocess.run(['c2j','submit','Correct the diagnosed dependency failure','--recipe-file',os.environ['RECOVERY_RECIPE'],
             '--cell',os.environ['CHILD_CELL'],'--inputs-json',json.dumps({'release':os.environ['RELEASE']}),'--json'],check=True)
-result={'status':'ready','summary':'Integrated child outcomes' if os.environ['SESSION'] else 'Submitted dependencies','blocking_issues':[],'questions':[]}
+result={'next':'done','summary':'Integrated child outcomes' if os.environ['SESSION'] else 'Submitted dependencies'}
 if os.environ['SESSION']:
     if os.environ['SCENARIO']=='failed':
         result['summary']='Resolved failure with corrected dependency' if len(dependencies)==3 else 'Requested corrected dependency'
@@ -166,7 +166,7 @@ if os.environ['SESSION']:
         result['summary']='Resolved cancellation using an existing compatible interface'
     elif os.environ['SCENARIO']=='unmerged':
         assert all(r['outputs']['merged'] is False for r in dependencies.values())
-        result.update(status='needs_input', summary='Dependency integration needs a decision', questions=['Which upstream should receive the dependency?'])
+        result.update(next='ask_user', summary='Which upstream should receive the dependency?')
 if os.environ['SCENARIO']=='invalid-result': del result['summary']
 (outbox/'result.json').write_text(json.dumps(result))
 PY
@@ -238,10 +238,10 @@ PY
                 # The final decision belongs to the resumed session, not a
                 # recipe-generated failure response or the pre-wait result.
                 if scenario == 'unmerged':
-                    assert result['result']['status'] == 'needs_input', result
-                    assert result['result']['questions'] == ['Which upstream should receive the dependency?'], result
+                    assert result['result']['next'] == 'ask_user', result
+                    assert result['result']['summary'] == 'Which upstream should receive the dependency?', result
                 else:
-                    assert result['result']['status'] == 'ready' and not result['result']['questions'], result
+                    assert result['result']['next'] == 'done', result
                     expected_summary = {'failed': 'Resolved failure with corrected dependency',
                                         'cancelled': 'Resolved cancellation using an existing compatible interface'}.get(scenario, 'Integrated child outcomes')
                     assert result['result']['summary'] == expected_summary, result

@@ -105,9 +105,10 @@ def verify_lifecycle(work, binary, mode):
         first.terminate();first.wait(timeout=10)
         assert start(child,'child').wait(timeout=180)==0,(work/'child.log').read_text()[-8000:]
         child_result=inspect(child)['Attempts'][-1]['Output']['Data']
-        assert child_result['merged'] and child_result['verification']['ok'] and child_result['design']['assessment']['fit']=='fits'
+        assert child_result['merged'] and child_result['verification']['ok'] and child_result['design']['next']=='review'
         evidence=child_result['artifact_refs']
-        for name in ['verification.json', 'check-1.log']:
+        assert set(evidence)=={'verification.md','build.log'}, 'Only deliverable verification files are exported'
+        for name in ['verification.md', 'build.log']:
             assert name in evidence, ('Child did not export verification evidence',name,evidence)
             assert evidence[name]['stored']['key']['jobId']==child, 'Evidence lost child provenance'
         assert d.run(['git','--git-dir',str(upstreams['B']),'rev-parse','main']).strip()==child_result['merged_hash']
@@ -119,17 +120,16 @@ def verify_lifecycle(work, binary, mode):
         assert result['session_id']=='A-implement'
         assert list(result['dependencies']['implementation'])==[child]
         assert result['dependencies']['implementation'][child]['outputs']['merged_hash']==child_result['merged_hash']
-        for name in ['verification.json', 'check-1.log']:
+        for name in ['verification.md', 'build.log']:
             assert result['dependencies']['implementation'][child]['artifacts'][name]==evidence[name], 'Await changed evidence provenance'
-        thread=result['consultations']['service']
-        assert thread['session']['type']=='c2ops.codex.session/v1' and thread['commit']==heads['B'] and thread['turn_count']==1
+        thread=result['consultations'][str(upstreams['B'])]
+        assert thread['session']['type']=='c2ops.codex.session/v1'
         assert 'turns' not in thread and 'session_id' not in thread
-        assert result['design']['handoffs'][0]['provenance']['commit']==heads['B']
         assert len(children())==1,'Replay duplicated child submission'
         rows=[json.loads(line) for line in (work/'trace.jsonl').read_text().splitlines()]
         assert len([x for x in rows if x['role']=='consult'])==1,'Replay reran consultation'
         implementation=[x for x in rows if x['cell']=='A' and x['role']=='implement']
-        assert [x['session'] for x in implementation]==['','A-implement','A-implement','A-implement']
+        assert [x['session'] for x in implementation]==['','A-implement','A-implement','A-implement','A-implement']
         decisions=[json.loads(line) for line in (work/'decisions.jsonl').read_text().splitlines()]
         assert [(x['cell'],x['state']) for x in decisions]==[('A','approve_plan'),('A','plan_feedback'),('A','approve_plan'),('B','approve_plan'),('B','accept'),('A','accept')]
         relative='.c2j/' if mode=='evolve' else ''
@@ -140,9 +140,11 @@ def verify_lifecycle(work, binary, mode):
             assert git('show','main:'+relative+'feature.txt')=='valid:ok\ninvalid:error'
             assert git('show','main:app.txt')=='application'
             files=git('diff','--name-only',heads[cell],'main').splitlines()
-            assert set(files)=={relative+f for f in (['feature.txt','test_feature.py','candidate.txt'] if cell=='A' else ['feature.txt','test_feature.py'])},files
+            assert set(files)=={'.c2j/test-plan.md'} | {relative+f for f in (['feature.txt','test_feature.py','build.sh','candidate.txt'] if cell=='A' else ['feature.txt','test_feature.py','build.sh'])},files
+            assert 'Valid tokens succeed.' in git('show','main:.c2j/test-plan.md')
+            assert not any(f.endswith(('design.md','implementation.md','verification.md')) for f in files)
         assert not (work/'trace.jsonl.errors').exists() or not (work/'trace.jsonl.errors').read_text()
-        print('lifecycle: '+mode+' late consultation, named child, restart, verification and both squash merges passed',flush=True)
+        print('lifecycle: '+mode+' late consultation, named child, restart, verification failure/recovery and both squash merges passed',flush=True)
     except Exception:
         for log in logs:log.flush()
         # Preserve the first runtime failure, before automatic job retries obscure it.

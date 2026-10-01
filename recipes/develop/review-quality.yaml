@@ -1,5 +1,5 @@
 id: development-review-quality
-version: 0.2.0
+version: 0.4.0
 input_schema:
   prompt:
     type: string
@@ -22,10 +22,12 @@ input_schema:
   dependency_history_json:
     type: string
     default_value: '{}'
-  session:
-    type: object
-    object_type: c2ops.codex.session/v1
-    required: false
+  consultation_history_json:
+    type: string
+    default_value: '{}'
+  review_response_json:
+    type: string
+    default_value: '{}'
 inputs:
   prompt: ${{ inputs.prompt }}
   target_directory: ${{ inputs.target_directory }}
@@ -34,36 +36,27 @@ inputs:
   context_json: ${{ inputs.context_json }}
   evidence_json: ${{ inputs.evidence_json }}
   dependency_history_json: ${{ inputs.dependency_history_json }}
-  session: ${{ inputs.?session.orValue(null) }}
+  consultation_history_json: ${{ inputs.consultation_history_json }}
+  review_response_json: ${{ inputs.review_response_json }}
 vars:
   result_schema:
     type: object
     additionalProperties: false
     required:
-    - status
     - summary
-    - blocking_issues
-    - questions
+    - next
     properties:
-      status:
-        type: string
-        enum:
-        - ready
-        - revise
-        - needs_input
-      summary: &id001
+      summary:
         type: string
         pattern: \S
-      blocking_issues:
-        type: array
-        items: *id001
-        minItems: 0
-      questions:
-        type: array
-        items: *id001
-        minItems: 0
+      next:
+        enum:
+        - done
+        - revise
+        - ask_user
 sequence:
 - id: agent
+  include: ./phase.yaml
   inputs:
     prompt: ${{ inputs.prompt }}
     target_directory: ${{ inputs.target_directory }}
@@ -71,51 +64,24 @@ sequence:
     feedback: ${{ inputs.feedback }}
     context_json: ${{ inputs.context_json }}
     evidence_json: ${{ inputs.evidence_json }}
-    instructions: Independently inspect actual changes for correctness, maintainability, meaningful tests, compatibility
-      and appropriate failure handling. For evolve inspect state routing, contracts, scope, and ephemeral runtime
-      testing. Do not edit code.
-    result_schema_json: ${{ json_stringify(vars.result_schema) }}
     dependency_history_json: ${{ inputs.dependency_history_json }}
+    consultation_history_json: ${{ inputs.consultation_history_json }}
+    review_response_json: ${{ inputs.review_response_json }}
+    instructions: Independently review implementation quality, correctness, integration behavior, and regression
+      coverage. Read the design and implementation summary from the inbox and maintained .c2j/test-plan.md. Use
+      next=done, revise, or ask_user with concrete findings in summary. Do not edit repository files.
+    result_schema_json: ${{ json_stringify(vars.result_schema) }}
     allow_child_jobs: false
-    session: ${{ inputs.session }}
-  state:
-    initial:
-    - to: resume
-      when: inputs.session != null
-    - to: fresh
-      when: true
-    states:
-      fresh:
-        include: ./agent.yaml
-        inputs: &id002
-          prompt: ${{ inputs.prompt }}
-          target_directory: ${{ inputs.target_directory }}
-          mode: ${{ inputs.mode }}
-          feedback: ${{ inputs.feedback }}
-          context_json: ${{ inputs.context_json }}
-          evidence_json: ${{ inputs.evidence_json }}
-          instructions: ${{ inputs.instructions }}
-          result_schema_json: ${{ inputs.result_schema_json }}
-          dependency_history_json: ${{ inputs.dependency_history_json }}
-          allow_child_jobs: ${{ inputs.allow_child_jobs }}
-      resume:
-        include: ./agent.yaml
-        inputs:
-          <<: *id002
-          session: ${{ inputs.session }}
-  outputs:
-    valid: '${{ state_exists("resume") ? states.resume.outputs.valid : states.fresh.outputs.valid }}'
-    result: '${{ state_exists("resume") ? states.resume.outputs.result : states.fresh.outputs.result }}'
-    session_id: '${{ state_exists("resume") ? states.resume.outputs.session_id : states.fresh.outputs.session_id
-      }}'
-    completed: '${{ state_exists("resume") ? states.resume.outputs.completed : states.fresh.outputs.completed }}'
-    dependencies: '${{ state_exists("resume") ? states.resume.outputs.dependencies : states.fresh.outputs.dependencies
-      }}'
-    session: '${{ state_exists("resume") ? states.resume.outputs.session : states.fresh.outputs.session }}'
+    document: ''
+    document_key: ''
 outputs:
-  valid: ${{ sequence.agent.outputs.valid }}
   result: ${{ sequence.agent.outputs.result }}
   session_id: ${{ sequence.agent.outputs.session_id }}
   completed: ${{ sequence.agent.outputs.completed }}
   dependencies: ${{ sequence.agent.outputs.dependencies }}
   session: ${{ sequence.agent.outputs.session }}
+  artifact_refs: ${{ sequence.agent.outputs.artifact_refs }}
+  valid: ${{ sequence.agent.outputs.valid }}
+  consultations: ${{ sequence.agent.outputs.consultations }}
+  review_response: ${{ sequence.agent.outputs.review_response }}
+  review_documents: ${{ sequence.agent.outputs.review_documents }}

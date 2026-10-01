@@ -156,6 +156,9 @@ def exercise(work, server_binary, client, mode):
                             and form["request_id"]
                             and not form.get("response_schema")
                         ), form
+                        # Stop at the input boundary before responding. Otherwise the old
+                        # worker can race the submission and execute the next review cycle.
+                        worker.wait(timeout=60)
                         return form
                 if (
                     worker.poll() is not None

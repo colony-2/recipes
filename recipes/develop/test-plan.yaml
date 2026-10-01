@@ -1,5 +1,5 @@
 id: development-test-plan
-version: 0.2.0
+version: 0.4.0
 input_schema:
   prompt:
     type: string
@@ -22,10 +22,12 @@ input_schema:
   dependency_history_json:
     type: string
     default_value: '{}'
-  session:
-    type: object
-    object_type: c2ops.codex.session/v1
-    required: false
+  consultation_history_json:
+    type: string
+    default_value: '{}'
+  review_response_json:
+    type: string
+    default_value: '{}'
 inputs:
   prompt: ${{ inputs.prompt }}
   target_directory: ${{ inputs.target_directory }}
@@ -34,213 +36,80 @@ inputs:
   context_json: ${{ inputs.context_json }}
   evidence_json: ${{ inputs.evidence_json }}
   dependency_history_json: ${{ inputs.dependency_history_json }}
-  session: ${{ inputs.?session.orValue(null) }}
+  consultation_history_json: ${{ inputs.consultation_history_json }}
+  review_response_json: ${{ inputs.review_response_json }}
 vars:
   result_schema:
     type: object
     additionalProperties: false
     required:
-    - status
     - summary
-    - blocking_issues
-    - questions
-    - statements
-    - commands
+    - next
     properties:
-      status:
-        type: string
-        enum:
-        - ready
-        - revise
-        - needs_input
-      summary: &id001
+      summary:
         type: string
         pattern: \S
-      blocking_issues:
-        type: array
-        items: *id001
-        minItems: 0
-      questions:
-        type: array
-        items: *id001
-        minItems: 0
-      statements:
-        type: array
-        items:
-          type: object
-          additionalProperties: false
-          required:
-          - id
-          - statement
-          - requirement_ids
-          - files
-          - importance
-          - level
-          - dependencies
-          - case
-          properties:
-            id: *id001
-            statement: *id001
-            requirement_ids:
-              type: array
-              items: *id001
-              minItems: 1
-            files:
-              type: array
-              items: *id001
-              minItems: 1
-            importance:
-              enum:
-              - critical
-              - high
-              - normal
-            level:
-              enum:
-              - unit
-              - integration
-            dependencies:
-              type: array
-              items: *id001
-              minItems: 0
-            case:
-              enum:
-              - positive
-              - negative
-        minItems: 1
-      commands:
-        type: array
-        items:
-          type: object
-          additionalProperties: false
-          required:
-          - id
-          - run
-          - statement_ids
-          - timeout_seconds
-          properties:
-            id: *id001
-            run: *id001
-            statement_ids:
-              type: array
-              items: *id001
-              minItems: 1
-            timeout_seconds:
-              type: integer
-              minimum: 1
-              maximum: 600
-        minItems: 1
-state:
-  initial: author
-  states:
-    author:
-      inputs:
-        prompt: ${{ inputs.prompt }}
-        target_directory: ${{ inputs.target_directory }}
-        mode: ${{ inputs.mode }}
-        feedback: ${{ inputs.feedback }}
-        context_json: ${{ inputs.context_json }}
-        evidence_json: ${{ inputs.evidence_json }}
-        instructions: Write outcome-focused test statements BEFORE implementation. Each statement has a stable ID,
-          at most 30 words, requirement IDs, files, importance, unit/integration level, dependencies, and positive/negative
-          case. Include both cases for critical requirements. Define real verification commands relative to the
-          approved target with statement IDs and bounded timeouts. Use existing GitHub workflows where appropriate.
-          Tests of recipes must use c2j test with disposable databases, never a home-sourced database. Do not edit
-          cell files.
-        result_schema_json: ${{ json_stringify(vars.result_schema) }}
-        dependency_history_json: ${{ inputs.dependency_history_json }}
-        allow_child_jobs: false
-        session: ${{ inputs.session }}
-      state:
-        initial:
-        - to: resume
-          when: inputs.session != null
-        - to: fresh
-          when: true
-        states:
-          fresh:
-            include: ./agent.yaml
-            inputs: &id002
-              prompt: ${{ inputs.prompt }}
-              target_directory: ${{ inputs.target_directory }}
-              mode: ${{ inputs.mode }}
-              feedback: ${{ inputs.feedback }}
-              context_json: ${{ inputs.context_json }}
-              evidence_json: ${{ inputs.evidence_json }}
-              instructions: ${{ inputs.instructions }}
-              result_schema_json: ${{ inputs.result_schema_json }}
-              dependency_history_json: ${{ inputs.dependency_history_json }}
-              allow_child_jobs: ${{ inputs.allow_child_jobs }}
-          resume:
-            include: ./agent.yaml
-            inputs:
-              <<: *id002
-              session: ${{ inputs.session }}
-      outputs:
-        valid: '${{ state_exists("resume") ? states.resume.outputs.valid : states.fresh.outputs.valid }}'
-        result: '${{ state_exists("resume") ? states.resume.outputs.result : states.fresh.outputs.result }}'
-        session_id: '${{ state_exists("resume") ? states.resume.outputs.session_id : states.fresh.outputs.session_id
-          }}'
-        completed: '${{ state_exists("resume") ? states.resume.outputs.completed : states.fresh.outputs.completed
-          }}'
-        dependencies: '${{ state_exists("resume") ? states.resume.outputs.dependencies : states.fresh.outputs.dependencies
-          }}'
-        session: '${{ state_exists("resume") ? states.resume.outputs.session : states.fresh.outputs.session }}'
-      transitions:
-      - to: contract
-        when: outputs.valid && outputs.completed && outputs.result.status == "ready" && size(outputs.result.blocking_issues)
-          == 0 && size(outputs.result.questions) == 0
-    contract:
-      op: command_execution
-      inputs:
-        timeout: 15s
-        continue_on_error: true
-        env:
-          PLAN_JSON: ${{ json_stringify(states.author.outputs.result) }}
-          DESIGN_CONTEXT: ${{ inputs.context_json }}
-          OUTBOX: '{{ context.environment.op.outbox }}'
-        run: |
-          python3 - <<'PY'
-          import json, os, pathlib
-          plan=json.loads(os.environ['PLAN_JSON'])
-          context=json.loads(os.environ['DESIGN_CONTEXT'])
-          requirements={x['id'] for x in context['design']['requirements']}
-          assert len(requirements)==len(context['design']['requirements']), 'Duplicate requirement IDs'
-          statements=plan['statements']; ids=[s['id'] for s in statements]
-          assert len(set(ids))==len(ids), 'Duplicate statement IDs'
-          covered=set(); critical=set(); cases={r:set() for r in requirements}
-          for s in statements:
-              assert len(s['statement'].split())<=30, 'Statement exceeds 30 words'
-              refs=set(s['requirement_ids']); assert refs and refs<=requirements, 'Unknown requirement'
-              covered |= refs
-              for r in refs: cases[r].add(s['case'])
-              if s['importance']=='critical': critical |= refs
-              for file in s['files']:
-                  p=pathlib.PurePosixPath(file)
-                  assert not p.is_absolute() and '..' not in p.parts, 'Invalid statement filename'
-          assert covered==requirements, 'Uncovered requirements'
-          assert all(cases[r]=={'positive','negative'} for r in critical), 'Missing critical negative coverage'
-          commands=plan['commands']; command_ids=[c['id'] for c in commands]
-          assert commands and len(set(command_ids))==len(command_ids), 'Missing/duplicate commands'
-          verified=set()
-          for c in commands:
-              refs=set(c['statement_ids']); assert refs and refs<=set(ids), 'Unknown statement'
-              verified |= refs
-          assert verified==set(ids), 'Unverified statements'
-          lines=['# Test statements', '']
-          for s in statements:
-              lines += [f"- **{s['id']}**: {s['statement']}",
-                        '  Files: '+', '.join(s['files'])+'; importance: '+s['importance']+'; '+s['level']+'; '+s['case']+'; dependencies: '+(', '.join(s['dependencies']) or 'none')+'; requirements: '+', '.join(s['requirement_ids'])]
-          pathlib.Path(os.environ['OUTBOX'],'test-statements.md').write_text('\n'.join(lines)+'\n')
-          print(json.dumps({'ok':True, 'markdown':'\n'.join(lines)+'\n'}))
-          PY
+      next:
+        enum:
+        - review
+        - continue
+        - ask_user
+sequence:
+- id: agent
+  include: ./phase.yaml
+  inputs:
+    prompt: ${{ inputs.prompt }}
+    target_directory: ${{ inputs.target_directory }}
+    mode: ${{ inputs.mode }}
+    feedback: ${{ inputs.feedback }}
+    context_json: ${{ inputs.context_json }}
+    evidence_json: ${{ inputs.evidence_json }}
+    dependency_history_json: ${{ inputs.dependency_history_json }}
+    consultation_history_json: ${{ inputs.consultation_history_json }}
+    review_response_json: ${{ inputs.review_response_json }}
+    instructions: |-
+      Write outcome-focused test statements BEFORE implementation in the repository's .c2j/test-plan.md. Maintain this one plan; do not create per-job documents in Git. Read the proposed design from the inbox.
+      Each statement must be Markdown, at most 30 words, annotated with relevant filenames, importance, unit/integration level, and dependencies. Include positive and negative cases for critical behavior. Use expectation language and meaningful integration coverage; avoid trivial tests and implementation mirroring. No IDs or JSON statement catalog is required.
+      Review existing statements using Git history from the job's starting revision. Preserve approved expectations; explain any proposed change and deprecation plan for human review. Recipe tests must use disposable databases, never home-sourced databases. Use next=review when ready, ask_user for questions, or continue to keep working. Do not implement.
+    result_schema_json: ${{ json_stringify(vars.result_schema) }}
+    allow_child_jobs: false
+    document: ''
+    document_key: ''
+- id: publish
+  state:
+    initial:
+    - to: copy
+      when: inputs.ready
+    - to: skip
+      when: true
+    states:
+      copy:
+        op: command_execution
+        inputs:
+          timeout: 10s
+          continue_on_error: true
+          env:
+            PLAN: '{{ context.environment.op.worktree_path }}/.c2j/test-plan.md'
+            OUTBOX: '{{ context.environment.op.outbox }}'
+          run: |
+            cp "$PLAN" "$OUTBOX/test-statements.md"
+      skip:
+        sequence: []
+  outputs:
+    ok: ${{ state_output("copy", "success", true) }}
+    documents: '${{ state_exists("copy") && state_output("copy", "success", false) ? {"test_statements": states.copy.artifacts["test-statements.md"]}
+      : {} }}'
+  inputs:
+    ready: ${{ sequence.agent.outputs.valid && sequence.agent.outputs.completed && sequence.agent.outputs.result.next
+      == "review" }}
 outputs:
-  markdown: '${{ state_output("contract", "success", false) ? json_parse(states.contract.outputs.stdout).?markdown.orValue("")
-    : "" }}'
-  valid: ${{ states.author.outputs.valid && state_output("contract", "success", false) }}
-  completed: ${{ states.author.outputs.completed }}
-  result: ${{ states.author.outputs.result }}
-  session_id: ${{ states.author.outputs.session_id }}
-  contract_error: ${{ state_output("contract", "stderr", "") }}
-  dependencies: ${{ states.author.outputs.dependencies }}
-  session: ${{ states.author.outputs.session }}
-  review_documents: '${{ state_output("contract", "success", false) ? {"test_statements": states.contract.artifacts["test-statements.md"]} : {} }}'
+  result: ${{ sequence.agent.outputs.result }}
+  session_id: ${{ sequence.agent.outputs.session_id }}
+  completed: ${{ sequence.agent.outputs.completed }}
+  dependencies: ${{ sequence.agent.outputs.dependencies }}
+  session: ${{ sequence.agent.outputs.session }}
+  artifact_refs: ${{ sequence.agent.outputs.artifact_refs }}
+  valid: ${{ sequence.agent.outputs.valid && sequence.publish.outputs.ok }}
+  consultations: ${{ sequence.agent.outputs.consultations }}
+  review_response: ${{ sequence.agent.outputs.review_response }}
+  review_documents: ${{ sequence.publish.outputs.documents }}

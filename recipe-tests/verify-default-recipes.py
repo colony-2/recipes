@@ -26,12 +26,10 @@ sys.dont_write_bytecode = True
 _object_spec = importlib.util.spec_from_file_location('object_fixture', ROOT/'recipe-tests/object-session-fixture.py')
 objects = importlib.util.module_from_spec(_object_spec); _object_spec.loader.exec_module(objects)
 HASH = "a" * 40
-BASE = dict(status="ready", summary="Ready", blocking_issues=[], questions=[])
-DESIGN = {**BASE, "design_markdown": "Add the requested behavior", "requirements": [{"id": "R1", "statement": "Requested behavior works"}]}
-DESIGN.update(assessment={"assessment_status":"assessed","fit":"fits","rationale":"Owned behavior","outcomes":[{"id":"R1","statement":"Requested behavior works","ownership":"local","suggested_owner":"test","mandate_evidence":["OWN-01"],"reason":"Owned"}],"questions":[]},consultation=None,handoffs=[])
-PLAN = {**BASE, "statements": [{"id": "T1", "statement": "Requested behavior works", "requirement_ids": ["R1"], "files": ["test.sh"], "importance": "high", "level": "integration", "dependencies": [], "case": "positive"}], "commands": [{"id": "check", "run": "true", "statement_ids": ["T1"], "timeout_seconds": 10}]}
-IMPLEMENTATION = {**BASE, "consultation": None, "proposed_handoffs": [], "summary": "Implemented behavior", "changes": ["Requested change"], "statement_tests": [{"statement_id": "T1", "files": ["test.sh"]}]}
-SNAPSHOT = {"head": HASH, "base_hash": HASH, "target_directory": ".", "files": [], "clean": True}
+BASE = dict(next="done", summary="Ready")
+DESIGN = dict(next="review", summary="The request fits this cell. Add the requested behavior.")
+PLAN = dict(next="review", summary="Review the maintained test plan.")
+IMPLEMENTATION = dict(next="review", summary="Implemented behavior")
 
 
 def session_ref(identity="session", turn=0):
@@ -58,17 +56,12 @@ def command(value, success=True, artifacts=None):
     return mock("command_execution", {"success": success, "exit_code": 0 if success else 1, "stdout": json.dumps(value), "stderr": "" if success else "Check failed"}, artifacts)
 
 
-def phase(result, *, valid=True, status="completed", session="implementation-session"):
-    ops = [mock("extension_execution", {"status": status, "sessionId": session, **({"session": session_ref(session)} if session else {})}, {"result.json": json.dumps(result)}), mock("extension_execution", {"ok": valid})]
-    if valid:
-        ops.append(command(result))
-    if "design_markdown" in result:
-        ops.insert(0, command({"cell":"test","valid":True}))
-        if valid: ops.append(command({"result":result,"selection":{}}, artifacts={"design.md": result["design_markdown"]}))
-    if "statement_tests" in result and valid and status in ("completed", "incomplete"):
-        ops.append(command({"result":result,"selection":{}}, artifacts={"implementation.md": result["summary"]}))
+def phase(result, *, valid=True, status="completed", session="implementation-session", documents=True):
+    artifacts = {"result.json": json.dumps(result)}
+    if documents: artifacts.update({"design.md": "# Design", "implementation.md": "# Implementation"})
+    ops = [mock("extension_execution", {"status": status, "sessionId": session, **({"session": session_ref(session)} if session else {})}, artifacts), mock("extension_execution", {"ok": valid})]
+    if valid: ops.append(command(result))
     return ops
-
 
 def response(choice, text=None):
     return mock("input", {"fields": {"decision": choice, **({"feedback": text} if text is not None else {})}, "artifact_refs": {}, "receipt": {}})
@@ -87,17 +80,15 @@ def implementation(summary="Implemented behavior"):
 
 
 def verification(ok=True):
-    item = command({"ok": ok, "candidate_hash": HASH, "checks": [{"id": "check", "exit_code": 0 if ok else 1}], "candidate_unchanged": True})
-    item["behavior"]["artifacts"] = {"check-1.log": "Executed verification evidence", "verification.md": "# Verification"}
-    return [item]
-
+    result = mock("command_execution", {"success": ok, "exit_code": 0 if ok else 7, "stdout": "ran", "stderr": "", "timed_out": False}, {"build.log": "Executed verification evidence"})
+    return [result, command({}, artifacts={"verification.md": "# Verification"})]
 
 def finish():
-    return [response("satisfied"), command(SNAPSHOT), mock("extension_execution", {"ok": True}), mock("squashrebasemerge", {"merged_hash": "merged-hash", "target_branch": "main"})]
+    return [response("satisfied"), mock("extension_execution", {"ok": True}), mock("squashrebasemerge", {"merged_hash": "merged-hash", "target_branch": "main"})]
 
 
 def case(name, ops, merged=True):
-    return {"id": name, "type": "recipe_case", "inputs": {"prompt": "Improve requested behavior"}, "mocks": {"ops": [mock("recipe_within_resolution", {"resolved_selectors": {}}), command(SNAPSHOT)] + ops}, "assertions": [{"type": "output_equals", "path": "merged", "value": merged}]}
+    return {"id": name, "type": "recipe_case", "inputs": {"prompt": "Improve requested behavior"}, "mocks": {"ops": [mock("recipe_within_resolution", {"resolved_selectors": {}}), command({})] + ops}, "assertions": [{"type": "output_equals", "path": "merged", "value": merged}]}
 
 
 def routing_cases():
@@ -109,26 +100,28 @@ def routing_cases():
     cases += [case("direct-redesign", start + implementation() + verification() + [response("redesign", "Change scope")] + start + end)]
     cases += [case("repeat-feedback", start + implementation("First outcome") + verification() + [response("revise"), feedback("Add coverage")] + implementation("Second outcome") + verification() + [response("revise"), feedback("Handle empty input")] + implementation("Final outcome") + verification() + finish())]
     cases += [case("redesign", start + implementation() + verification() + [response("redesign"), feedback("Change the requirements")] + start + end)]
-    cases += [case("implementation-requests-redesign", start + phase({**IMPLEMENTATION,"status":"redesign","questions":["Approve the new external dependency"]}) + [feedback("Review the external work")] + start + end)]
+    cases += [case("implementation-requests-redesign", start + phase({**IMPLEMENTATION,"next":"redesign"}) + [feedback("Review the external work")] + start + end)]
     cases += [case("human-rejects-plan", planning() + [response("revise"), feedback()] + start + end)]
     for name, prefix in [
-        ("design-needs-input", phase({**DESIGN, "status": "needs_input", "questions": ["Which behavior?"]})),
-        ("design-review-rejects", phase(DESIGN) + phase({**BASE, "status": "revise", "blocking_issues": ["Missing requirement"]})),
-        ("test-review-rejects", phase(DESIGN) + phase(BASE) + phase(PLAN) + [command({"ok": True}, artifacts={"test-statements.md": "# Test statements"})] + phase({**BASE, "status": "revise", "blocking_issues": ["Missing coverage"]})),
+        ("design-needs-input", phase({**DESIGN, "next": "ask_user"})),
+        ("design-review-rejects", phase(DESIGN) + phase({**BASE, "next": "revise"})),
+        ("test-review-rejects", phase(DESIGN) + phase(BASE) + phase(PLAN) + [command({"ok": True}, artifacts={"test-statements.md": "# Test statements"})] + phase({**BASE, "next": "revise"})),
         ("test-contract-rejects", phase(DESIGN) + phase(BASE) + phase(PLAN) + [command({}, False)]),
-        ("contradictory-review", phase(DESIGN) + phase({**BASE, "blocking_issues": ["Still blocked"]})),
     ]:
         cases.append(case(name, prefix + [feedback()] + start + end))
     for name, prefix in [
-        ("implementation-incomplete", phase({**IMPLEMENTATION, "status": "needs_input", "questions": ["Need clarification"]}, status="incomplete")),
-        ("specification-rejects", phase(IMPLEMENTATION) + phase({**BASE, "status": "revise", "blocking_issues": ["Missing behavior"]})),
-        ("quality-rejects", phase(IMPLEMENTATION) + phase(BASE) + phase({**BASE, "status": "revise", "blocking_issues": ["Incorrect edge case"]})),
-        ("verification-fails", implementation() + verification(False)),
+        ("implementation-incomplete", phase({**IMPLEMENTATION, "next": "ask_user"}, status="incomplete")),
+        ("specification-rejects", phase(IMPLEMENTATION) + phase({**BASE, "next": "revise"})),
+        ("quality-rejects", phase(IMPLEMENTATION) + phase(BASE) + phase({**BASE, "next": "revise"})),
     ]:
         cases.append(case(name, start + prefix + [feedback()] + end))
+    cases += [case("verification-fails", start + implementation() + verification(False) + end)]
+    cases += [case("continue-session", phase({**DESIGN,"next":"continue"}) + start + end)]
+    cases += [case("outside", phase({**DESIGN,"next":"outside"}) + [response("acknowledge")], False)]
     cases += [case("invalid-human-input", planning() + [response("invalid"), response("approve")] + implementation() + verification() + [response("invalid"), response("revise"), feedback(" "), feedback("Fix this")] + end)]
     for name, prefix in [
         ("invalid-design-artifact", phase(DESIGN, valid=False)),
+        ("invalid-missing-design", phase(DESIGN, documents=False)),
         ("invalid-review-artifact", phase(DESIGN) + phase(BASE, valid=False)),
         ("invalid-implementation-artifact", start + phase(IMPLEMENTATION, valid=False)),
         ("missing-session", start + phase(IMPLEMENTATION, session="")),
@@ -209,7 +202,7 @@ def verify_routing(work):
                     assert ".c2j/recipes/build.yaml" in value["prompt"]
                 else:
                     assert "worktree_path" not in value
-                if "/implementation/" not in path:
+                if "/implementation/" not in path and case_id != "continue-session":
                     assert "session" not in value and "sessionId" not in value, (name, case_id, path)
             if case_id in ("repeat-feedback", "redesign", "invalid-human-input"):
                 implementers = [v for p, v in agents if "/implementation/" in p]
@@ -269,45 +262,35 @@ def command_test(code, env, ok=True):
 
 
 def verify_plan_contract(work):
-    code = script("test-plan.yaml", "contract")
-    for change in ("valid", "duplicate", "too-long", "unknown-requirement", "uncovered-requirement", "no-command", "unverified", "unknown-statement", "missing-negative", "bad-filename"):
-        plan = copy.deepcopy(PLAN); design = copy.deepcopy(DESIGN)
-        if change == "duplicate": plan["statements"] *= 2
-        if change == "too-long": plan["statements"][0]["statement"] = "word " * 31
-        if change == "unknown-requirement": plan["statements"][0]["requirement_ids"] = ["R99"]
-        if change == "uncovered-requirement": design["requirements"].append({"id": "R2", "statement": "Other behavior"})
-        if change == "no-command": plan["commands"] = []
-        if change == "unverified": plan["statements"].append({**plan["statements"][0], "id": "T2"})
-        if change == "unknown-statement": plan["commands"][0]["statement_ids"] = ["T99"]
-        if change == "missing-negative": plan["statements"][0]["importance"] = "critical"
-        if change == "bad-filename": plan["statements"][0]["files"] = ["../app.txt"]
-        out = work / ("plan-" + change); out.mkdir()
-        command_test(code, {"PLAN_JSON": json.dumps(plan), "DESIGN_CONTEXT": json.dumps({"design": design}), "OUTBOX": str(out)}, ok=change == "valid")
-        if change == "valid": assert "**T1**" in (out / "test-statements.md").read_text()
-    print("test plan: 10 real contract cases passed", flush=True)
-
+    # Publication copies the actual tracked Markdown; no JSON reconstruction.
+    doc = yaml.safe_load((ROOT / "recipes/develop/test-plan.yaml").read_text())
+    code = doc["sequence"][1]["state"]["states"]["copy"]["inputs"]["run"]
+    repo = repository(work, "plan-cell"); out = work / "plan-out"; out.mkdir()
+    plan = repo / ".c2j/test-plan.md"
+    text = "# Test plan\n\n- Valid requests succeed. Files: test.sh; critical; integration; dependencies: none.\n"
+    plan.write_text(text)
+    run(["bash", "-euo", "pipefail", "-c", code], env={**os.environ,"PLAN":str(plan),"OUTBOX":str(out)})
+    assert (out / "test-statements.md").read_text() == text
+    plan.unlink()
+    missing = subprocess.run(["bash", "-euo", "pipefail", "-c", code], env={**os.environ,"PLAN":str(plan),"OUTBOX":str(out)}, capture_output=True)
+    assert missing.returncode
+    print("test plan: exact Markdown publication and missing-file rejection passed", flush=True)
 
 def verify_commands(work):
-    code = script("verify.yaml")
-    for change in ("pass", "fail", "timeout", "missing", "unmapped", "tracked-mutation", "untracked-mutation", "mixed-evidence"):
-        repo = repository(work, "verify-" + change)
-        plan = copy.deepcopy(PLAN); implementation = copy.deepcopy(IMPLEMENTATION)
-        commands = {"pass": "printf 'verified output\\n'", "fail": "exit 7", "timeout": "sleep 5", "tracked-mutation": "echo bad > recipe.txt", "untracked-mutation": "touch unexpected.txt"}
-        plan["commands"][0]["run"] = commands.get(change, "true")
-        plan["commands"][0]["timeout_seconds"] = 1
-        if change == "mixed-evidence": plan["commands"].append({**plan["commands"][0], "id": "failed-check", "run": "exit 8"})
-        if change == "missing": plan["commands"] = []
-        if change == "unmapped": implementation["statement_tests"] = []
-        out = work / ("evidence-" + change); out.mkdir()
-        value = command_test(code, {"CELL_ROOT": str(repo), "TARGET_DIRECTORY": ".c2j", "PLAN_JSON": json.dumps(plan), "IMPLEMENTATION_JSON": json.dumps(implementation), "OUTBOX": str(out)}, ok=change not in ("missing", "unmapped"))
-        if value is not None:
-            assert value["ok"] == (change == "pass"), value
-            assert value["candidate_hash"] == git(repo, "rev-parse", "HEAD")
-            assert (out / value["checks"][0]["log"]).exists()
-            if change == "mixed-evidence": assert "FAILED" in value["report_markdown"]
-    print("verification: 8 real command/evidence cases passed", flush=True)
-
-
+    for name, hook in [("pass", "printf 'verified output\\n'"), ("fail", "echo failed; exit 7"), ("timeout", "echo starting; sleep 5"), ("missing", None)]:
+        repo = repository(work, "verify-" + name)
+        if hook is not None: (repo / ".c2j/build.sh").write_text(hook + "\n")
+        doc = yaml.safe_load((ROOT / "recipes/develop/verify.yaml").read_text())
+        execute = doc["sequence"][0]["inputs"]; execute.pop("sandbox")
+        execute["env"]["TARGET"] = str(repo / ".c2j")
+        path = work / ("hook-"+name+".yaml"); path.write_text(yaml.safe_dump(doc))
+        passthrough = [{"match":{"op":op}, "behavior":{"mode":"passthrough"}} for op in ["command_execution","command_execution"]]
+        case = {"id":name,"type":"recipe_case","inputs":{"timeout":"1s"},"mocks":{"ops":[mock("recipe_within_resolution",{"resolved_selectors":{}})]+passthrough},"assertions":[{"type":"output_equals","path":"ok","value":name in ["pass","missing"]},{"type":"output_equals","path":"result.status","value":"skipped" if name=="missing" else "passed" if name=="pass" else "failed"}]}
+        results=run_suite(path,[case],work/("hook-results-"+name))
+        output=results[name]["run"]["outputs"]
+        assert set(output["artifact_refs"]) == ({"verification.md"} if name=="missing" else {"verification.md","build.log"})
+        if name=="timeout": assert output["result"]["timed_out"]
+    print("verification: native pass/failure/timeout/skipped hook cases passed",flush=True)
 
 def verify_real_gates(work):
     role = yaml.safe_load((ROOT / "recipes/develop/implement.yaml").read_text())
@@ -317,22 +300,27 @@ def verify_real_gates(work):
         "malformed": "not json",
         "missing-field": json.dumps({"summary": "Incomplete result"}),
         "blank-summary": json.dumps({**IMPLEMENTATION, "summary": "  "}),
-        "wrong-type": json.dumps({**IMPLEMENTATION, "changes": "string"}),
+        "wrong-type": json.dumps({**IMPLEMENTATION, "next": 7}),
         "extra-field": json.dumps({**IMPLEMENTATION, "unexpected": True}),
+        "wrong-next": json.dumps({**IMPLEMENTATION, "next": "invented"}),
+        "consult-missing-request": json.dumps({**IMPLEMENTATION, "next": "consult"}),
+        "consult-missing-cell": json.dumps({**IMPLEMENTATION, "next": "consult", "consultation": {"message": "Explain the interface"}}),
+        "consult-blank-cell": json.dumps({**IMPLEMENTATION, "next": "consult", "consultation": {"cell": " ", "message": "Explain the interface"}}),
+        "unexpected-request": json.dumps({**IMPLEMENTATION, "consultation": {"cell": "B", "message": "Explain the interface"}}),
     }
     cases = []
     for resumed in (False, True):
-        for name, raw in {"valid": json.dumps(IMPLEMENTATION), **invalid}.items():
+        for name, raw in {"valid": json.dumps(IMPLEMENTATION), "valid-consult": json.dumps({**IMPLEMENTATION, "next": "consult", "consultation": {"cell": "B", "message": "Explain the interface"}}), **invalid}.items():
             ops = [mock("recipe_within_resolution", {"resolved_selectors": {}}), mock("extension_execution", {"status": "completed", "sessionId": "session", "session": session_ref()}, {} if raw is None else {"result.json": raw}),
                    {"match": {"op": "extension_execution"}, "behavior": {"mode": "passthrough"}}]
-            if name == "valid":
+            if name.startswith("valid"):
                 ops.append({"match": {"op": "command_execution"}, "behavior": {"mode": "passthrough"}})
             cases.append({"id": f"{name}-{'resume' if resumed else 'initial'}", "type": "recipe_case",
                           "inputs": {"prompt": "Improve behavior", "instructions": "Implement", "result_schema_json": schema_json,
                                      **({"session": session_ref()} if resumed else {})},
-                          "mocks": {"ops": ops}, "assertions": [{"type": "output_equals", "path": "valid", "value": name == "valid"}]})
+                          "mocks": {"ops": ops}, "assertions": [{"type": "output_equals", "path": "valid", "value": name.startswith("valid")}]})
     run_suite(ROOT / "recipes/develop/agent.yaml", cases, work / "real-gates")
-    print("agent: 14 real artifact/schema gate cases passed", flush=True)
+    print("agent: 26 real artifact/schema gate cases passed", flush=True)
 
 
 def verify_real_merge(work):
@@ -348,27 +336,17 @@ def verify_real_merge(work):
         git(repo, "commit", "-qm", text)
     candidate = git(repo, "rev-parse", "HEAD")
     fixtures = work / "merge-fixture"; fixtures.mkdir()
-    snapshot = yaml.safe_load((ROOT / "recipes/develop/snapshot.yaml").read_text())
-    snapshot["sequence"][0]["inputs"]["env"]["CELL_ROOT"] = str(repo)
-    (fixtures / "snapshot.yaml").write_text(yaml.safe_dump(snapshot, sort_keys=False))
     finish_recipe = yaml.safe_load((ROOT / "recipes/develop/finish.yaml").read_text())
-    finish_recipe["state"]["states"]["merge"]["inputs"].update(repo_path=str(repo), upstream_repo=str(upstream), upstream_branch="main")
+    finish_recipe["state"]["states"]["merge"]["inputs"].update(repo_path=str(repo), upstream_repo=str(upstream), upstream_branch="main", local_hash=candidate)
     (fixtures / "finish.yaml").write_text(yaml.safe_dump(finish_recipe, sort_keys=False))
     cases = []
-    for name, approved, verified, hash_value in [("unapproved", False, True, candidate), ("unverified", True, False, candidate), ("stale-candidate", True, True, baseline), ("accepted", True, True, candidate)]:
+    for name, approved, verified, hash_value in [("unapproved", False, True, candidate), ("unverified", True, False, candidate), ("accepted", True, True, candidate)]:
         ops = [mock("recipe_within_resolution", {"resolved_selectors": {}}),
-               {"match": {"op": "command_execution"}, "behavior": {"mode": "passthrough"}},
                {"match": {"op": "extension_execution"}, "behavior": {"mode": "passthrough"}}]
         if name == "accepted":
             ops.append({"match": {"op": "squashrebasemerge"}, "behavior": {"mode": "passthrough"}})
-        cases.append({"id": name, "type": "recipe_case", "inputs": {"target_directory": ".c2j", "candidate_hash": hash_value, "summary": "Verified result", "approved": approved, "verified": verified}, "mocks": {"ops": ops}, "assertions": [{"type": "output_equals", "path": "merged", "value": name == "accepted"}]})
+        cases.append({"id": name, "type": "recipe_case", "inputs": {"target_directory": ".c2j", "summary": "Verified result", "approved": approved, "verified": verified}, "mocks": {"ops": ops}, "assertions": [{"type": "output_equals", "path": "merged", "value": name == "accepted"}]})
     run_suite(fixtures / "finish.yaml", cases[:-1], work / "real-merge-rejected")
-    dirty = copy.deepcopy(cases[-1]); dirty["id"] = "dirty-candidate"
-    dirty["assertions"][0]["value"] = False
-    dirty["mocks"]["ops"].pop()
-    (repo / ".c2j/recipe.txt").write_text("unverified dirty change\n")
-    run_suite(fixtures / "finish.yaml", [dirty], work / "real-merge-dirty")
-    git(repo, "restore", ".c2j/recipe.txt")
     run_suite(fixtures / "finish.yaml", cases[-1:], work / "real-merge-accepted")
     assert run(["git", "--git-dir", str(upstream), "show", "main:.c2j/recipe.txt"]) == "revised\n"
     assert run(["git", "--git-dir", str(upstream), "rev-list", "--count", "main"]).strip() == "2"
@@ -385,11 +363,12 @@ def verify_real_merge(work):
     git(other, "push", "-q", "origin", "main")
     upstream_tip = git(other, "rev-parse", "HEAD")
     advanced = copy.deepcopy(cases[-1]); advanced["id"] = "advanced-upstream"
-    advanced["inputs"].update(candidate_hash=next_candidate)
+    finish_recipe["state"]["states"]["merge"]["inputs"]["local_hash"] = next_candidate
+    (fixtures / "finish.yaml").write_text(yaml.safe_dump(finish_recipe,sort_keys=False))
     advanced["assertions"] = []
     run_suite(fixtures / "finish.yaml", [advanced], work / "real-merge-advanced", failure_contains="fast-forward")
     assert run(["git", "--git-dir", str(upstream), "rev-parse", "main"]).strip() == upstream_tip
-    print("finish: 6 real cases passed, including squash merge and advanced-upstream rejection", flush=True)
+    print("finish: 4 real cases passed, including squash merge and advanced-upstream rejection", flush=True)
 
 
 def verify_specializations(work):

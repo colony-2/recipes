@@ -1,23 +1,24 @@
 id: consultation-turn
 version: 0.3.0
 input_schema:
-  selection_json:
-    type: string
-    required: true
   history_json:
     type: string
     required: true
+  request_json:
+    type: string
+    required: true
 inputs:
-  selection_json: ${{ inputs.selection_json }}
   history_json: ${{ inputs.history_json }}
+  request_json: ${{ inputs.request_json }}
 sequence:
 - id: consult
   workspace:
-    cell: ${{ json_parse(inputs.selection_json).cell }}
-    ref: ${{ json_parse(inputs.selection_json).workspace_ref }}
+    cell: ${{ json_parse(inputs.request_json).cell }}
+    ref: ${{ json_parse(inputs.request_json).?ref.orValue("main") }}
   inputs:
-    message: ${{ json_parse(inputs.selection_json).message }}
-    session: ${{ json_parse(inputs.selection_json).session }}
+    message: ${{ json_parse(inputs.request_json).message }}
+    session: ${{ json_parse(inputs.history_json)[?json_parse(inputs.request_json).cell].orValue({}).?session.orValue(null)
+      }}
   state:
     initial:
     - to: resume
@@ -37,13 +38,11 @@ sequence:
   outputs:
     valid: '${{ state_exists("resume") ? states.resume.outputs.valid : states.fresh.outputs.valid }}'
     result: '${{ state_exists("resume") ? states.resume.outputs.result : states.fresh.outputs.result }}'
-    mandate: '${{ state_exists("resume") ? states.resume.outputs.mandate : states.fresh.outputs.mandate }}'
     session_id: '${{ state_exists("resume") ? states.resume.outputs.session_id : states.fresh.outputs.session_id
       }}'
     session: '${{ state_exists("resume") ? states.resume.outputs.session : states.fresh.outputs.session }}'
 outputs:
-  consultations: '${{ jq(json_parse(''{"current":'' + inputs.history_json + '',"request":'' + inputs.selection_json
-    + '',"reply":'' + json_stringify(sequence.consult.outputs) + ''}''), ". as $v | .current + {($v.request.thread_id):
-    {cell: $v.request.cell, ref: $v.request.ref, commit: $v.reply.mandate.commit, session: $v.reply.session, mandate:
-    $v.reply.mandate, response: $v.reply.result, turn_count: $v.request.turn_count}}") }}'
+  consultations: '${{ jq(json_parse(''{"current":'' + inputs.history_json + '',"request":'' + inputs.request_json
+    + '',"reply":'' + json_stringify(sequence.consult.outputs) + ''}''), ". as $v | .current + {($v.request.cell):
+    {session: $v.reply.session, response: $v.reply.result}}") }}'
   valid: ${{ sequence.consult.outputs.valid }}

@@ -65,7 +65,7 @@ def verify_live(work, binary, scenario):
             nodes.append({'id': 'design', 'include': str(fixture/'design.yaml'), 'inputs': {'prompt': 'Implement client behavior'}})
             impl_inputs.update(consultation_history_json=e('json_stringify(sequence.design.outputs.consultations)'),
                                context_json=e("'{\"design\":' + json_stringify(sequence.design.outputs.result) + '}'"))
-        nodes.append({'id': 'implementation', 'include': str(fixture/'implement.yaml'), 'inputs': impl_inputs})
+        nodes.append({'id': 'implementation', 'include': str(fixture/('design.yaml' if scenario=='design' else 'implement.yaml')), 'inputs': {**impl_inputs, **({'dependency_history_json':'{}'} if scenario=='design' else {})}})
         output_node = 'implementation'
         if scenario == 'feedback':
             nodes.append({'id': 'revision', 'include': str(fixture/'implement.yaml'), 'inputs': {
@@ -102,13 +102,15 @@ def verify_live(work, binary, scenario):
                 assert not result['valid'], result
                 assert [r['role'] for r in rows] == ['I', 'B'], rows
             else:
-                assert result['valid'] and result['completed'] and result['session_id'] == 'I-session', result
-                expected = 'redesign' if scenario in ('bug', 'evolve', 'reuse') else 'needs_input' if scenario in ('missing-mandate', 'outside', 'limit') else 'ready'
-                assert result['result']['status'] == expected, result
-                assert result['dependencies'] == history
+                assert result['valid'] and result['completed'] and result['session_id'] == ('D-session' if scenario=='design' else 'I-session'), result
+                expected = 'redesign' if scenario in ('bug', 'evolve', 'reuse') else 'ask_user' if scenario in ('missing-mandate', 'outside') else 'review'
+                assert result['result']['next'] == expected, result
+                assert result['dependencies'] == ({} if scenario=='design' else history)
                 if expected == 'redesign':
-                    assert result['result']['proposed_handoffs'][0]['provenance']['commit'] == heads['B']
-                    assert result['result']['questions']
+                    assert 'approve external work' in result['result']['summary']
+                if scenario == 'design':
+                    assert [r['role'] for r in rows] == ['D','B','D','B','D']
+                    assert [r['session'] for r in rows if r['role']=='B'] == ['', 'B-session']
                 if scenario == 'multiple':
                     assert [r['role'] for r in rows] == ['I','B','I','C','I','B','I']
                 if scenario == 'reuse':
@@ -116,10 +118,9 @@ def verify_live(work, binary, scenario):
                     assert [r['session'] for r in rows if r['role'] == 'B'] == ['', 'B-session']
                 if scenario == 'feedback':
                     assert [r['session'] for r in rows if r['role'] == 'I'] == ['', 'I-session', 'I-session', 'I-session']
-                if scenario == 'limit':
-                    assert len([r for r in rows if r['role'] == 'B']) == 8
                 for key, thread in result['consultations'].items():
-                    assert thread['commit'] == heads[key]
+                    assert key in [str(repo) for repo in cells.values()]
+                    assert set(thread) == {'session','response'}
                     assert thread['session']['type']=='c2ops.codex.session/v1' and 'session_artifacts' not in thread
         children = json.loads(d.run(['c2j','list','children','--parent-tenant-id','test','--parent-job-id',job,
                                      '--all-ops','--all','--status','READY,ACTIVE,PENDING_JOBS,COMPLETED,CANCELLED','--json'], env=env))['jobs']
@@ -139,54 +140,13 @@ def verify_live(work, binary, scenario):
         server.terminate(); server.wait(timeout=10)
 
 
-def verify_contracts(work):
-    cases = ['advice', 'new-work', 'already-approved', 'changed-mode', 'changed-pin', 'disagreement',
-             'changed-brief', 'missing-thread', 'retarget', 'missing-session', 'budget', 'renewed-budget',
-             'false-ready', 'pending', 'missing-question']
-    for name in cases:
-        _, _, history = c.data()
-        result = copy.deepcopy(d.IMPLEMENTATION)
-        proposal = dict(thread_id='service',cell='service',mode='build',outcome_ids=[],design_markdown='Agreed service change')
-        context = {'design': {'handoffs': []}}
-        initial = {}; session = 'implementation-session'
-        if name in ['new-work','already-approved','changed-mode','changed-pin','disagreement','changed-brief','missing-thread']:
-            result['proposed_handoffs'] = [copy.deepcopy(proposal)]
-        if name in ['already-approved','changed-mode','changed-pin']:
-            context['design']['handoffs'] = [{**proposal, 'provenance': {'commit': d.HASH}}]
-        if name == 'changed-mode': result['proposed_handoffs'][0]['mode'] = 'evolve'
-        if name == 'changed-pin': context['design']['handoffs'][0]['provenance']['commit'] = 'different'
-        if name == 'disagreement': history['service']['response']['fit'] = 'outside'
-        if name == 'changed-brief': result['proposed_handoffs'][0]['design_markdown'] = 'Unreviewed scope'
-        if name == 'missing-thread': history = {}
-        if name in ['retarget','missing-session','budget','renewed-budget','pending']:
-            result.update(status='needs_input',questions=['Ask B'],consultation=dict(thread_id='service',cell='service',ref='main',message='Investigate dependency bug'))
-        if name == 'retarget': result['consultation']['cell'] = 'another-cell'
-        if name == 'missing-session': session = ''
-        if name in ['budget','renewed-budget']: history['service']['turn_count'] = 8
-        if name == 'renewed-budget': initial = copy.deepcopy(history)
-        if name == 'false-ready': result['blocking_issues'] = ['Still blocked']
-        if name == 'missing-question': result.update(status='needs_input',questions=[])
-        out = work/('contract-'+name);out.mkdir()
-        rejected = name in ['disagreement','changed-brief','missing-thread','retarget','missing-session','false-ready']
-        actual = d.command_test(d.script('implement.yaml','contract'), {'RESULT_JSON':json.dumps(result),
-            'CONTEXT_JSON':json.dumps(context),'HISTORY_JSON':json.dumps(history),'INITIAL_HISTORY_JSON':json.dumps(initial),
-            'SESSION':json.dumps(d.session_ref(session) if session else None),'OUTBOX':str(out)},ok=not rejected)
-        if actual:
-            expected = 'redesign' if name in ['new-work','changed-mode','changed-pin'] else 'needs_input' if name in ['budget','renewed-budget','pending','missing-question'] else 'ready'
-            assert actual['result']['status']==expected, (name,actual)
-            assert bool(actual['selection']) == (name in ['pending','renewed-budget'])
-            if expected=='redesign': assert actual['result']['proposed_handoffs'][0]['provenance']['commit']==d.HASH
-    print('implementation: 15 contract cases passed',flush=True)
-
-
 def main():
     with tempfile.TemporaryDirectory(prefix='implementation-dialogues-') as temp:
         work = Path(temp); binary = work/'jobdb-service'
         d.run(['go','build','-o',str(binary),'.'], cwd=ROOT/'recipe-tests/jobdb-service')
-        verify_contracts(work)
         failures = []
         scenarios = sys.argv[1:] or ['advice','bug','evolve','multiple','reuse','feedback','missing-mandate','outside','failed-dependency',
-                                    'malformed','missing-session','missing-checkpoint','illegal-children','unavailable','limit']
+                                    'malformed','missing-session','missing-checkpoint','illegal-children','unavailable','design']
         for scenario in scenarios:
             try: verify_live(work/scenario, binary, scenario)
             except Exception as error:

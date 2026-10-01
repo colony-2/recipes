@@ -1,0 +1,162 @@
+id: development-phase
+version: 0.4.0
+input_schema:
+  prompt:
+    type: string
+    required: true
+  target_directory:
+    type: string
+    default_value: .
+  mode:
+    type: string
+    default_value: build
+  feedback:
+    type: string
+    default_value: ''
+  context_json:
+    type: string
+    default_value: '{}'
+  evidence_json:
+    type: string
+    default_value: '{}'
+  dependency_history_json:
+    type: string
+    default_value: '{}'
+  consultation_history_json:
+    type: string
+    default_value: '{}'
+  session:
+    type: object
+    object_type: c2ops.codex.session/v1
+    required: false
+  review_response_json:
+    type: string
+    default_value: '{}'
+  instructions:
+    type: string
+    required: true
+  result_schema_json:
+    type: string
+    required: true
+  allow_child_jobs:
+    type: boolean
+    default_value: false
+  document:
+    type: string
+    default_value: ''
+  document_key:
+    type: string
+    default_value: ''
+inputs:
+  prompt: ${{ inputs.prompt }}
+  target_directory: ${{ inputs.target_directory }}
+  mode: ${{ inputs.mode }}
+  feedback: ${{ inputs.feedback }}
+  context_json: ${{ inputs.context_json }}
+  evidence_json: ${{ inputs.evidence_json }}
+  dependency_history_json: ${{ inputs.dependency_history_json }}
+  consultation_history_json: ${{ inputs.consultation_history_json }}
+  session: ${{ inputs.?session.orValue(null) }}
+  review_response_json: ${{ inputs.review_response_json }}
+  instructions: ${{ inputs.instructions }}
+  result_schema_json: ${{ inputs.result_schema_json }}
+  allow_child_jobs: ${{ inputs.allow_child_jobs }}
+  document: ${{ inputs.document }}
+  document_key: ${{ inputs.document_key }}
+outputs:
+  result: ${{ state_output("agent", "result", {}) }}
+  session_id: ${{ state_output("agent", "session_id", "") }}
+  completed: ${{ state_output("agent", "completed", false) }}
+  dependencies: ${{ state_output("agent", "dependencies", {}) }}
+  session: ${{ state_output("agent", "session", null) }}
+  artifact_refs: ${{ state_output("agent", "artifact_refs", {}) }}
+  valid: ${{ state_output("agent", "valid", false) && state_output("consult", "valid", true) && (inputs.document
+    == "" || state_output("agent", "result", {}).?next.orValue("") != "review" || inputs.document in state_output("agent",
+    "artifact_refs", {})) }}
+  consultations: ${{ state_output("consult", "consultations", json_parse(inputs.consultation_history_json)) }}
+  review_response: ${{ json_parse(inputs.review_response_json) }}
+  review_documents: '${{ inputs.document != "" && inputs.document in state_output("agent", "artifact_refs", {})
+    ? {inputs.document_key: states.agent.outputs.artifact_refs[inputs.document]} : {} }}'
+state:
+  initial: agent
+  states:
+    agent:
+      inputs:
+        prompt: ${{ inputs.prompt }}
+        target_directory: ${{ inputs.target_directory }}
+        mode: ${{ inputs.mode }}
+        feedback: ${{ inputs.feedback }}
+        evidence_json: ${{ json_stringify(jq(json_parse('[' + inputs.evidence_json + "," + json_stringify(state_output("agent",
+          "artifact_refs", {})) + "," + json_stringify(inputs.document) + ']'), ".[2] as $document | .[0] + (.[1]
+          | with_entries(select(.key == $document) | .key = (\"draft/\" + .key) | .value.name = .key))")) }}
+        dependency_history_json: ${{ json_stringify(state_output("agent", "dependencies", json_parse(inputs.dependency_history_json)))
+          }}
+        allow_child_jobs: ${{ inputs.allow_child_jobs }}
+        result_schema_json: ${{ inputs.result_schema_json }}
+        session: ${{ state_output("agent", "session", inputs.session) }}
+        instructions: ${{ inputs.instructions }}
+        context_json: ${{ inputs.context_json }}
+        consultation_history_json: ${{ json_stringify(state_output("consult", "consultations", json_parse(inputs.consultation_history_json)))
+          }}
+      state:
+        initial:
+        - to: resume
+          when: inputs.session != null
+        - to: fresh
+          when: true
+        states:
+          fresh:
+            include: ./agent.yaml
+            inputs:
+              prompt: ${{ inputs.prompt }}
+              target_directory: ${{ inputs.target_directory }}
+              mode: ${{ inputs.mode }}
+              feedback: ${{ inputs.feedback }}
+              evidence_json: ${{ inputs.evidence_json }}
+              dependency_history_json: ${{ inputs.dependency_history_json }}
+              context_json: ${{ inputs.context_json }}
+              allow_child_jobs: ${{ inputs.allow_child_jobs }}
+              result_schema_json: ${{ inputs.result_schema_json }}
+              instructions: ${{ inputs.instructions }}
+              consultation_history_json: ${{ inputs.consultation_history_json }}
+          resume:
+            include: ./agent.yaml
+            inputs:
+              prompt: ${{ inputs.prompt }}
+              target_directory: ${{ inputs.target_directory }}
+              mode: ${{ inputs.mode }}
+              feedback: ${{ inputs.feedback }}
+              evidence_json: ${{ inputs.evidence_json }}
+              dependency_history_json: ${{ inputs.dependency_history_json }}
+              context_json: ${{ inputs.context_json }}
+              allow_child_jobs: ${{ inputs.allow_child_jobs }}
+              result_schema_json: ${{ inputs.result_schema_json }}
+              instructions: ${{ inputs.instructions }}
+              session: ${{ inputs.session }}
+              consultation_history_json: ${{ inputs.consultation_history_json }}
+      outputs:
+        valid: '${{ state_exists("resume") ? states.resume.outputs.valid : states.fresh.outputs.valid }}'
+        result: '${{ state_exists("resume") ? states.resume.outputs.result : states.fresh.outputs.result }}'
+        session_id: '${{ state_exists("resume") ? states.resume.outputs.session_id : states.fresh.outputs.session_id
+          }}'
+        completed: '${{ state_exists("resume") ? states.resume.outputs.completed : states.fresh.outputs.completed
+          }}'
+        dependencies: '${{ state_exists("resume") ? states.resume.outputs.dependencies : states.fresh.outputs.dependencies
+          }}'
+        session: '${{ state_exists("resume") ? states.resume.outputs.session : states.fresh.outputs.session }}'
+        artifact_refs: '${{ state_exists("resume") ? states.resume.outputs.artifact_refs : states.fresh.outputs.artifact_refs
+          }}'
+      transitions:
+      - to: agent
+        when: outputs.valid && outputs.completed && outputs.result.next == "continue"
+      - to: consult
+        when: outputs.valid && outputs.completed && outputs.result.next == "consult"
+    consult:
+      include: ./consultation-turn.yaml
+      inputs:
+        request_json: ${{ json_stringify(states.agent.outputs.result.consultation) }}
+        history_json: ${{ json_stringify(state_output("consult", "consultations", json_parse(inputs.consultation_history_json)))
+          }}
+      transitions:
+      - to: agent
+        when: outputs.valid

@@ -4,9 +4,6 @@ input_schema:
   target_directory:
     type: string
     default_value: .
-  candidate_hash:
-    type: string
-    required: true
   summary:
     type: string
     required: true
@@ -18,7 +15,6 @@ input_schema:
     required: true
 inputs:
   target_directory: ${{ inputs.target_directory }}
-  candidate_hash: ${{ inputs.candidate_hash }}
   summary: ${{ inputs.summary }}
   approved: ${{ inputs.approved }}
   verified: ${{ inputs.verified }}
@@ -27,24 +23,16 @@ outputs:
   merged_hash: ${{ state_output("merge", "merged_hash", "") }}
   target_branch: ${{ state_output("merge", "target_branch", "") }}
 state:
-  initial: snapshot
+  initial: gate
   states:
-    snapshot:
-      include: ./snapshot.yaml
-      inputs:
-        target_directory: ${{ inputs.target_directory }}
-      transitions:
-      - to: gate
-        when: true
     gate:
       op: git+https://github.com/colony-2/c2ops.git//rule_gate@main
       inputs:
         rules:
-        - id: accepted-current-candidate
+        - id: accepted-outcome
           type: assert
-          value: ${{ inputs.approved && inputs.verified && states.snapshot.outputs.snapshot.head == inputs.candidate_hash
-            && states.snapshot.outputs.snapshot.clean }}
-          message: Only the accepted verified candidate may merge.
+          value: ${{ inputs.approved && inputs.verified }}
+          message: Only a human-accepted outcome that passed the verification step may merge.
       transitions:
       - to: merge
         when: outputs.ok
@@ -52,7 +40,7 @@ state:
       op: squashrebasemerge
       inputs:
         repo_path: '{{ context.environment.op.worktree_path }}'
-        local_hash: ${{ inputs.candidate_hash }}
+        local_hash: ${{ context.git.hash }}
         upstream_repo: '{{ context.git.repo }}'
         upstream_branch: '{{ context.git.ref }}'
         rebase: false
