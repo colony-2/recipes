@@ -122,7 +122,8 @@ def verify_lifecycle(work, binary, mode):
         for name in ['verification.json', 'check-1.log']:
             assert result['dependencies']['implementation'][child]['artifacts'][name]==evidence[name], 'Await changed evidence provenance'
         thread=result['consultations']['service']
-        assert thread['session_id']=='B-consult' and thread['commit']==heads['B'] and len(thread['turns'])==1
+        assert thread['session']['type']=='c2ops.codex.session/v1' and thread['commit']==heads['B'] and thread['turn_count']==1
+        assert 'turns' not in thread and 'session_id' not in thread
         assert result['design']['handoffs'][0]['provenance']['commit']==heads['B']
         assert len(children())==1,'Replay duplicated child submission'
         rows=[json.loads(line) for line in (work/'trace.jsonl').read_text().splitlines()]

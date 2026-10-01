@@ -27,12 +27,12 @@ sequence:
     states:
       fresh:
         include: ./consult.yaml
-        inputs: &id001
+        inputs:
           message: ${{ inputs.message }}
       resume:
         include: ./consult.yaml
         inputs:
-          <<: *id001
+          message: ${{ inputs.message }}
           session: ${{ inputs.session }}
   outputs:
     valid: '${{ state_exists("resume") ? states.resume.outputs.valid : states.fresh.outputs.valid }}'
@@ -41,29 +41,9 @@ sequence:
     session_id: '${{ state_exists("resume") ? states.resume.outputs.session_id : states.fresh.outputs.session_id
       }}'
     session: '${{ state_exists("resume") ? states.resume.outputs.session : states.fresh.outputs.session }}'
-- op: command_execution
-  inputs:
-    timeout: 10s
-    env:
-      HISTORY_JSON: ${{ inputs.history_json }}
-      SELECTION_JSON: ${{ inputs.selection_json }}
-      TURN_JSON: ${{ json_stringify(sequence.consult.outputs) }}
-      OUTBOX: '{{ context.environment.op.outbox }}'
-    run: |
-      python3 - <<'PYCODE'
-      import json, os, pathlib
-      history=json.loads(os.environ['HISTORY_JSON']); q=json.loads(os.environ['SELECTION_JSON']); turn=json.loads(os.environ['TURN_JSON'])
-      if q.get('session_id') and q['session_id']!=turn['session_id']: raise ValueError('Consultation session changed')
-      if not turn['valid']: raise ValueError('Invalid consultation result or missing session')
-      t=history.setdefault(q['thread_id'],{'cell':q['cell'],'ref':q['ref'],'commit':turn['mandate']['commit'],'turns':[]})
-      if t['commit']!=turn['mandate']['commit']: raise ValueError('Consultation commit changed')
-      if not turn['session']: raise ValueError('Missing consultation checkpoint')
-      if t.get('session') != q['session']: raise ValueError('Consultation did not resume latest checkpoint')
-      t.update(response=turn['result'],session_id=turn['session_id'],session=turn['session'],mandate=turn['mandate'])
-      t['turns'].append({'message':q['message'],'response':turn['result'],'input_session':q['session'],'session':turn['session']})
-      pathlib.Path(os.environ['OUTBOX'],'consultations.json').write_text(json.dumps(history))
-      print(json.dumps(history))
-      PYCODE
-  id: record
 outputs:
-  stdout: ${{ sequence.record.outputs.stdout }}
+  consultations: '${{ jq(json_parse(''{"current":'' + inputs.history_json + '',"request":'' + inputs.selection_json
+    + '',"reply":'' + json_stringify(sequence.consult.outputs) + ''}''), ". as $v | .current + {($v.request.thread_id):
+    {cell: $v.request.cell, ref: $v.request.ref, commit: $v.reply.mandate.commit, session: $v.reply.session, mandate:
+    $v.reply.mandate, response: $v.reply.result, turn_count: $v.request.turn_count}}") }}'
+  valid: ${{ sequence.consult.outputs.valid }}

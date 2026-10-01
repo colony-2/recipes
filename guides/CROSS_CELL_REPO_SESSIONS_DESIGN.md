@@ -72,7 +72,7 @@ A can request one consultation per turn:
 }
 ```
 
-The recipe runs B, adds its response to the thread's history, and resumes A.
+The recipe runs B, replaces the thread's latest reply and checkpoint, and resumes A.
 A can answer questions, refine the proposal and request another turn using the
 same thread ID, cell selector and original ref. Changing a thread's cell/ref is
 rejected; use a new thread for a different context. Multiple threads can discuss
@@ -96,11 +96,11 @@ boundary. Workspace isolation does not itself revoke Git publishing credentials.
 
 The recipe forwards the complete `c2ops.codex.session/v1` object returned by each
 Codex turn. c2j persists and hydrates its private agent state; no session files are
-bound through the ordinary artifact inbox. Each thread records its latest object,
-diagnostic session ID, pinned commit, mandate provenance, and message/response
-pairs with their input and successor checkpoints. Equal diagnostic IDs do not make
-two checkpoints interchangeable. Equal-length histories with different checkpoint
-references are rejected, as are divergent turn histories.
+bound through the ordinary artifact inbox. Each thread retains its latest object,
+reply, pinned commit, mandate provenance, and a counter for the discussion limit.
+Full conversations remain in their respective session objects; c2j records the
+executions. Diagnostic session IDs do not determine checkpoint identity. There is
+no recipe transcript recorder, transcript artifact, or history reconciliation.
 
 A's implementation checkpoint is routed separately from B's consultation object.
 Task documents and dependency evidence continue through ordinary artifact bindings.
@@ -110,7 +110,7 @@ those conversations are needed. Missing or corrupt objects fail; they do not
 silently start a new conversation.
 
 The durable design artifacts are `mandate-assessment.json`, `design.md`,
-`consultations.json`, and `handoffs.json`. These capture the discussion and
+`handoffs.json`. These capture the assessment and
 reviewed outcome; they are not implicitly approved implementation patches.
 
 ## Discoveries during implementation
@@ -120,8 +120,8 @@ executor as design. A can describe a newly discovered dependency bug, provide
 reproduction evidence, ask about an existing interface, and answer B's questions
 without leaving its coding session. Its local candidate and dependency ledger
 survive each foreign turn. Threads from design are available immediately; human
-feedback and redesign merge the most advanced consistent history for each thread.
-Different cells/refs/sessions or divergent message histories cannot be merged.
+feedback and redesign pass the current thread map through transition payloads.
+The coordinator owns that map, so phases do not merge independently accumulated histories.
 
 When advice resolves the problem within the approved plan, A resumes implementation.
 When B must change, A returns `proposed_handoffs` with B's exact latest agreed brief.
@@ -187,9 +187,9 @@ workaround; these two fixes do not establish that serialization issue is resolve
 coverage using the same separate ephemeral JobDB and real command/schema/workspace
 execution. Cases exercise advice, multi-turn bug refinement, evolve's `.c2j` scope,
 multiple foreign cells, design-session reuse, feedback resumption, failed dependency
-history, missing mandates, outside ownership, malformed replies, missing/replaced
+history, missing mandates, outside ownership, malformed replies, missing
 sessions, missing checkpoints, unavailable repositories, and the eight-turn limit.
-It also tests agreement/provenance gates and conflicting history merges directly.
+It also tests agreement/provenance gates and continuation through multiple cells and phases.
 Only model invocations are replaced; model and sandbox quality require separate
 live evaluation. All suites and both known runtime regressions are attempted even
 when an earlier test fails.

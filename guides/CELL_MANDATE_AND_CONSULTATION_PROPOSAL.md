@@ -11,8 +11,8 @@ This overview is superseded by two focused documents:
 
 The shared build/evolve recipes now implement these gates and hosted dialogues
 using c2j node workspaces. No new session operation is required. Actual work
-continues through separate jobs after design approval. The implementation design
-lists c2j broker/replay bugs that currently block reliable production handoffs.
+continues through separate jobs after design approval. The implementation design records the resolved c2j broker/replay regressions and
+their integration coverage.
 
 ## Architectural choice
 
@@ -34,5 +34,5 @@ checkout, provided repository changes are never carried into A, B's upstream,
 or subsequent turns. The conversation and explicitly selected evidence persist;
 the checkout does not. Read-only sandbox support is not a prerequisite.
 
-A handoff to real B work carries a brief, transcript, and provenance. It never carries an implicitly approved implementation or the
+A handoff to real B work carries an agreed brief and provenance. It never carries an implicitly approved implementation or the
 consultation's experimental repository changes.

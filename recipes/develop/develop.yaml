@@ -18,13 +18,15 @@ state:
   initial: prepare
   states:
     prepare:
-      include: ./scope.yaml
+      include: ./snapshot.yaml
       inputs:
         target_directory: ${{ inputs.target_directory }}
         create_target: true
       transitions:
       - to: design
         when: true
+        payload:
+          consultations: ${{ state_output("design", "consultations", {}) }}
     design:
       include: ./design.yaml
       inputs:
@@ -41,10 +43,9 @@ state:
           + '']''), ".[0] + (.[1] | with_entries(.value.name = (\"review/\" + .key) | .key = (\"review/\" + .key)))"))
           }}'
         dependency_history_json: ${{ json_stringify(state_output("design", "dependencies", {})) }}
-        consultation_history_json: ${{ json_stringify(state_output("design", "consultations", {})) }}
+        consultation_history_json: ${{ json_stringify(transition.payload.?consultations.orValue(state_output("design",
+          "consultations", {}))) }}
         mandate_commit: ${{ states.prepare.outputs.snapshot.head }}
-        additional_consultation_history_json: ${{ json_stringify(state_output("implementation", "consultations",
-          {})) }}
         review_response_json: ${{ json_stringify(transition.payload.?review.orValue({})) }}
       transitions:
       - to: outside
@@ -57,6 +58,8 @@ state:
         when: '!outputs.valid'
       - to: plan_feedback
         when: true
+        payload:
+          consultations: ${{ state_output("design", "consultations", {}) }}
     design_review:
       include: ./review-design.yaml
       inputs:
@@ -78,6 +81,8 @@ state:
         when: '!outputs.valid'
       - to: plan_feedback
         when: true
+        payload:
+          consultations: ${{ state_output("design", "consultations", {}) }}
     test_plan:
       include: ./test-plan.yaml
       inputs:
@@ -97,6 +102,8 @@ state:
           == 0 && size(outputs.result.blocking_issues) == 0
       - to: plan_feedback
         when: true
+        payload:
+          consultations: ${{ state_output("design", "consultations", {}) }}
     test_review:
       include: ./review-test-plan.yaml
       inputs:
@@ -119,6 +126,8 @@ state:
         when: '!outputs.valid'
       - to: plan_feedback
         when: true
+        payload:
+          consultations: ${{ state_output("design", "consultations", {}) }}
     approve_plan:
       op: input
       inputs:
@@ -167,13 +176,17 @@ state:
         when: outputs.fields.decision == "approve" && size(outputs.?artifact_refs.orValue({})) == 0
         payload:
           review: ${{ outputs }}
+          consultations: ${{ state_output("design", "consultations", {}) }}
       - to: design
         when: outputs.fields.decision in ["approve", "revise"] && (outputs.fields.?feedback.orValue("").matches("[^[:space:]]")
           || size(outputs.?artifact_refs.orValue({})) > 0)
         payload:
           review: ${{ outputs }}
+          consultations: ${{ state_output("design", "consultations", {}) }}
       - to: plan_feedback
         when: outputs.fields.decision == "revise"
+        payload:
+          consultations: ${{ state_output("design", "consultations", {}) }}
       - to: approve_plan
         when: true
     plan_feedback:
@@ -225,8 +238,13 @@ state:
           || size(outputs.?artifact_refs.orValue({})) > 0)
         payload:
           review: ${{ outputs }}
+          consultations: ${{ transition.payload.?consultations.orValue(state_output("implementation", "consultations",
+            state_output("design", "consultations", {}))) }}
       - to: plan_feedback
         when: true
+        payload:
+          consultations: ${{ transition.payload.?consultations.orValue(state_output("implementation", "consultations",
+            state_output("design", "consultations", {}))) }}
     implementation:
       inputs:
         prompt: ${{ inputs.prompt }}
@@ -243,9 +261,8 @@ state:
           + '']''), ".[0] + (.[1] | with_entries(.value.name = (\"review/\" + .key) | .key = (\"review/\" + .key)))"))
           }}'
         dependency_history_json: ${{ json_stringify(state_output("implementation", "dependencies", {})) }}
-        consultation_history_json: ${{ json_stringify(state_output("design", "consultations", {})) }}
-        additional_consultation_history_json: ${{ json_stringify(state_output("implementation", "consultations",
-          {})) }}
+        consultation_history_json: ${{ json_stringify(transition.payload.?consultations.orValue(state_output("design",
+          "consultations", {}))) }}
         session: ${{ state_output("implementation", "session", null) }}
         review_response_json: ${{ json_stringify(transition.payload.?review.orValue({})) }}
       state:
@@ -266,7 +283,6 @@ state:
               evidence_json: ${{ inputs.evidence_json }}
               dependency_history_json: ${{ inputs.dependency_history_json }}
               consultation_history_json: ${{ inputs.consultation_history_json }}
-              additional_consultation_history_json: ${{ inputs.additional_consultation_history_json }}
               review_response_json: ${{ inputs.review_response_json }}
           resume:
             include: ./implement.yaml
@@ -279,7 +295,6 @@ state:
               evidence_json: ${{ inputs.evidence_json }}
               dependency_history_json: ${{ inputs.dependency_history_json }}
               consultation_history_json: ${{ inputs.consultation_history_json }}
-              additional_consultation_history_json: ${{ inputs.additional_consultation_history_json }}
               session: ${{ inputs.session }}
               review_response_json: ${{ inputs.review_response_json }}
       outputs:
@@ -303,11 +318,17 @@ state:
         when: outputs.session == null || !outputs.valid
       - to: plan_feedback
         when: outputs.result.status == "redesign"
+        payload:
+          consultations: ${{ state_output("implementation", "consultations", state_output("design", "consultations",
+            {})) }}
       - to: specification
         when: outputs.valid && outputs.completed && outputs.result.status == "ready" && size(outputs.result.questions)
           == 0 && size(outputs.result.blocking_issues) == 0
       - to: implementation_feedback
         when: true
+        payload:
+          consultations: ${{ state_output("implementation", "consultations", state_output("design", "consultations",
+            {})) }}
     specification:
       include: ./review-specification.yaml
       inputs:
@@ -329,6 +350,9 @@ state:
         when: '!outputs.valid'
       - to: implementation_feedback
         when: true
+        payload:
+          consultations: ${{ state_output("implementation", "consultations", state_output("design", "consultations",
+            {})) }}
     quality:
       include: ./review-quality.yaml
       inputs:
@@ -350,6 +374,9 @@ state:
         when: '!outputs.valid'
       - to: implementation_feedback
         when: true
+        payload:
+          consultations: ${{ state_output("implementation", "consultations", state_output("design", "consultations",
+            {})) }}
     verify:
       include: ./verify.yaml
       inputs:
@@ -361,6 +388,9 @@ state:
         when: outputs.ok
       - to: implementation_feedback
         when: true
+        payload:
+          consultations: ${{ state_output("implementation", "consultations", state_output("design", "consultations",
+            {})) }}
     accept:
       op: input
       inputs:
@@ -395,7 +425,8 @@ state:
           - *review_feedback
           - *annotated_design
           - *annotated_test_statements
-          - id: annotated_outcome
+          - &id004
+            id: annotated_outcome
             type: file_upload
             question: Optional annotated implementation summary or verification report.
       transitions:
@@ -406,15 +437,25 @@ state:
           || size(outputs.?artifact_refs.orValue({})) > 0)
         payload:
           review: ${{ outputs }}
+          consultations: ${{ state_output("implementation", "consultations", state_output("design", "consultations",
+            {})) }}
       - to: plan_feedback
         when: outputs.fields.decision == "redesign"
+        payload:
+          consultations: ${{ state_output("implementation", "consultations", state_output("design", "consultations",
+            {})) }}
       - to: implementation
         when: outputs.fields.decision in ["satisfied", "revise"] && (outputs.fields.?feedback.orValue("").matches("[^[:space:]]")
           || size(outputs.?artifact_refs.orValue({})) > 0)
         payload:
           review: ${{ outputs }}
+          consultations: ${{ state_output("implementation", "consultations", state_output("design", "consultations",
+            {})) }}
       - to: implementation_feedback
         when: outputs.fields.decision == "revise"
+        payload:
+          consultations: ${{ state_output("implementation", "consultations", state_output("design", "consultations",
+            {})) }}
       - to: accept
         when: true
     implementation_feedback:
@@ -458,28 +499,32 @@ state:
           - *review_feedback
           - *annotated_design
           - *annotated_test_statements
-          - id: annotated_outcome
-            type: file_upload
-            question: Optional annotated implementation summary or verification report.
+          - *id004
       transitions:
       - to: design
         when: outputs.fields.decision == "redesign" && (outputs.fields.?feedback.orValue("").matches("[^[:space:]]")
           || size(outputs.?artifact_refs.orValue({})) > 0)
         payload:
           review: ${{ outputs }}
+          consultations: ${{ transition.payload.?consultations.orValue(state_output("implementation", "consultations",
+            state_output("design", "consultations", {}))) }}
       - to: implementation
         when: outputs.fields.decision == "revise" && (outputs.fields.?feedback.orValue("").matches("[^[:space:]]")
           || size(outputs.?artifact_refs.orValue({})) > 0) && state_output("implementation", "session", null) !=
           null
         payload:
           review: ${{ outputs }}
+          consultations: ${{ transition.payload.?consultations.orValue(state_output("implementation", "consultations",
+            state_output("design", "consultations", {}))) }}
       - to: implementation_feedback
         when: true
+        payload:
+          consultations: ${{ transition.payload.?consultations.orValue(state_output("implementation", "consultations",
+            state_output("design", "consultations", {}))) }}
     finish:
       include: ./finish.yaml
       inputs:
         target_directory: ${{ inputs.target_directory }}
-        base_hash: ${{ states.prepare.outputs.snapshot.head }}
         candidate_hash: ${{ states.verify.outputs.evidence.candidate_hash }}
         summary: ${{ states.implementation.outputs.result.summary }}
         approved: ${{ states.accept.outputs.fields.decision == "satisfied" && size(states.accept.outputs.?artifact_refs.orValue({}))
@@ -492,7 +537,7 @@ state:
       op: command_execution
       inputs:
         run: |
-          printf '%s\n' 'Development stopped: invalid result, missing session, scope violation, or merge gate failure.' >&2
+          printf '%s\n' 'Development stopped: invalid result, missing session, merge gate failure.' >&2
           exit 1
         timeout: 5s
     outside:
@@ -505,18 +550,15 @@ state:
           fields:
           - id: decision
             type: multiple_choice
-            question: '${{ states.design.outputs.result.summary }}
-
+            question: |-
+              ${{ states.design.outputs.result.summary }}
 
               Mandate assessment and suggested routing:
-
               ${{ json_stringify(states.design.outputs.result.assessment) }}
-
 
               No local implementation or merge will be performed.
 
-
-              How should we proceed? Uploaded edits require another revision and review.'
+              How should we proceed? Uploaded edits require another revision and review.
             required: true
             options:
             - value: acknowledge
@@ -533,8 +575,13 @@ state:
           > 0)
         payload:
           review: ${{ outputs }}
+          consultations: ${{ state_output("implementation", "consultations", state_output("design", "consultations",
+            {})) }}
       - to: plan_feedback
         when: outputs.fields.decision == "revise"
+        payload:
+          consultations: ${{ state_output("implementation", "consultations", state_output("design", "consultations",
+            {})) }}
       - to: outside
         when: outputs.fields.decision != "acknowledge"
 vars:
@@ -551,7 +598,6 @@ outputs:
     : state_output("design", "result", {}).?summary.orValue("") }}'
   result: ${{ state_output("implementation", "result", {}) }}
   verification: ${{ state_output("verify", "evidence", {}) }}
-  # Export durable evidence explicitly; the final merge artifacts do not include it.
   artifact_refs: '${{ state_exists("verify") ? states.verify.artifacts : {} }}'
   dependencies: '${{ {"design": state_output("design", "dependencies", {}), "design_review": state_output("design_review",
     "dependencies", {}), "test_plan": state_output("test_plan", "dependencies", {}), "test_review": state_output("test_review",

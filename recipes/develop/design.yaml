@@ -28,9 +28,6 @@ input_schema:
   mandate_commit:
     type: string
     default_value: ''
-  additional_consultation_history_json:
-    type: string
-    default_value: '{}'
   session:
     type: object
     object_type: c2ops.codex.session/v1
@@ -48,7 +45,6 @@ inputs:
   dependency_history_json: ${{ inputs.dependency_history_json }}
   consultation_history_json: ${{ inputs.consultation_history_json }}
   mandate_commit: ${{ inputs.mandate_commit }}
-  additional_consultation_history_json: ${{ inputs.additional_consultation_history_json }}
   session: ${{ inputs.?session.orValue(null) }}
   review_response_json: ${{ inputs.review_response_json }}
 vars:
@@ -189,18 +185,18 @@ vars:
             outcome_ids: *id003
             design_markdown: *id002
 outputs:
-  valid: ${{ state_output("agent", "valid", false) && state_exists("contract") }}
+  valid: ${{ state_output("agent", "valid", false) && state_exists("contract") && state_output("consult", "valid",
+    true) }}
   result: ${{ json_parse(state_output("contract", "stdout", "{}")).?result.orValue({}) }}
   session_id: ${{ state_output("agent", "session_id", "") }}
   completed: ${{ state_output("agent", "completed", false) }}
   dependencies: ${{ state_output("agent", "dependencies", {}) }}
-  consultations: ${{ json_parse(state_output("record", "stdout", json_stringify(states.history.outputs.history)))
-    }}
+  consultations: ${{ state_output("consult", "consultations", json_parse(inputs.consultation_history_json)) }}
   session: ${{ state_output("agent", "session", null) }}
   review_response: ${{ json_parse(inputs.review_response_json) }}
   review_documents: '${{ state_exists("contract") ? {"design": states.contract.artifacts["design.md"]} : {} }}'
 state:
-  initial: history
+  initial: mandate
   states:
     mandate:
       include: ./mandate.yaml
@@ -218,10 +214,9 @@ state:
         evidence_json: ${{ inputs.evidence_json }}
         dependency_history_json: ${{ inputs.dependency_history_json }}
         context_json: ${{ '{"previous":' + inputs.context_json + ',"mandate":' + json_stringify(states.mandate.outputs.mandate)
-          + ',"consultations":' + state_output("record", "stdout", json_stringify(states.history.outputs.history))
+          + ',"consultations":' + json_stringify(state_output("consult", "consultations", json_parse(inputs.consultation_history_json)))
           + '}' }}
         allow_child_jobs: false
-        writable: false
         result_schema_json: ${{ json_stringify(vars.result_schema) }}
         instructions: |-
           Assess every requested outcome against the supplied pinned .c2j/mandate.md before designing.
@@ -262,7 +257,6 @@ state:
               dependency_history_json: ${{ inputs.dependency_history_json }}
               context_json: ${{ inputs.context_json }}
               allow_child_jobs: ${{ inputs.allow_child_jobs }}
-              writable: ${{ inputs.writable }}
               result_schema_json: ${{ inputs.result_schema_json }}
               instructions: ${{ inputs.instructions }}
           resume:
@@ -290,12 +284,13 @@ state:
         env:
           RESULT_JSON: ${{ json_stringify(states.agent.outputs.result) }}
           MANDATE_JSON: ${{ json_stringify(states.mandate.outputs.mandate) }}
-          HISTORY_JSON: ${{ state_output("record", "stdout", json_stringify(states.history.outputs.history)) }}
+          HISTORY_JSON: ${{ json_stringify(state_output("consult", "consultations", json_parse(inputs.consultation_history_json)))
+            }}
           PROMPT: ${{ inputs.prompt }}
           FEEDBACK: ${{ inputs.feedback }}
           SESSION: ${{ json_stringify(states.agent.outputs.session) }}
           OUTBOX: '{{ context.environment.op.outbox }}'
-          INITIAL_HISTORY_JSON: ${{ json_stringify(states.history.outputs.history) }}
+          INITIAL_HISTORY_JSON: ${{ inputs.consultation_history_json }}
         run: |
           python3 - <<'PYCODE'
           import hashlib, json, os, pathlib
@@ -319,10 +314,10 @@ state:
               if not json.loads(os.environ['SESSION']): raise ValueError('Consultation requires an originating session')
               thread=history.get(request['thread_id'])
               if thread and (thread['cell']!=request['cell'] or thread['ref']!=request['ref']): raise ValueError('Cannot retarget a consultation thread')
-              if sum(len(t['turns']) for t in history.values())-sum(len(t['turns']) for t in json.loads(os.environ['INITIAL_HISTORY_JSON']).values())>=8:
+              if sum(t.get('turn_count',0) for t in history.values())-sum(t.get('turn_count',0) for t in json.loads(os.environ['INITIAL_HISTORY_JSON']).values())>=8:
                   r.update(status='needs_input',questions=r['questions']+['Consultation limit reached; resolve the open design decisions before continuing.'],consultation=None)
               else:
-                  selection={**request,'workspace_ref':thread['commit'] if thread else request['ref'],'session':thread['session'] if thread else None,'session_id':thread['session_id'] if thread else ''}
+                  selection={**request,'workspace_ref':thread['commit'] if thread else request['ref'],'session':thread['session'] if thread else None,'turn_count':thread.get('turn_count',0)+1 if thread else 1}
           covered=[]
           for h in r['handoffs']:
               t=history.get(h['thread_id']); b=t['response'] if t else {}
@@ -336,25 +331,18 @@ state:
           revision=hashlib.sha256((os.environ['PROMPT']+'\n'+os.environ['FEEDBACK']).encode()).hexdigest()
           assessment={'version':'c2.mandate-assessment/v1','request_id':hashlib.sha256(os.environ['PROMPT'].encode()).hexdigest(),'request_revision':revision,'cell':m['cell'],'mandate':{k:m[k] for k in ['path','commit','sha256']},**a,'consultations':list(history)}
           r['assessment']=assessment
-          out=pathlib.Path(os.environ['OUTBOX']); (out/'mandate-assessment.json').write_text(json.dumps(assessment)); (out/'design.md').write_text(r['design_markdown']); (out/'consultations.json').write_text(json.dumps(history)); (out/'handoffs.json').write_text(json.dumps(r['handoffs']))
+          out=pathlib.Path(os.environ['OUTBOX']); (out/'mandate-assessment.json').write_text(json.dumps(assessment)); (out/'design.md').write_text(r['design_markdown']); (out/'handoffs.json').write_text(json.dumps(r['handoffs']))
           print(json.dumps({'result':r,'selection':selection}))
           PYCODE
       transitions:
-      - to: record
+      - to: consult
         when: size(json_parse(outputs.stdout).selection) > 0
-    record:
+    consult:
       include: ./consultation-turn.yaml
       inputs:
         selection_json: ${{ json_stringify(json_parse(states.contract.outputs.stdout).selection) }}
-        history_json: ${{ state_output("record", "stdout", json_stringify(states.history.outputs.history)) }}
+        history_json: ${{ json_stringify(state_output("consult", "consultations", json_parse(inputs.consultation_history_json)))
+          }}
       transitions:
       - to: agent
-        when: true
-    history:
-      include: ./consultation-history.yaml
-      inputs:
-        history_json: ${{ inputs.consultation_history_json }}
-        additional_json: ${{ inputs.additional_consultation_history_json }}
-      transitions:
-      - to: mandate
-        when: true
+        when: outputs.valid

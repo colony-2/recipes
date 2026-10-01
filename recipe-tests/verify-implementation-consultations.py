@@ -40,11 +40,14 @@ def verify_live(work, binary, scenario):
         heads = {role: d.git(repo, 'rev-parse', 'HEAD') for role, repo in cells.items()}
         fixture = work/'recipes'; shutil.copytree(ROOT/'recipes/develop', fixture)
         history = {'previous-child': deps.outcome('previous-child', 'failed' if scenario == 'failed-dependency' else 'completed', outputs={'value': 'previous evidence'})}
+        illegal_recipe = work/'illegal-child.yaml'
+        c.write(illegal_recipe, {'id':'unexpected-work', 'input_schema':{'prompt':{'type':'string'}},
+                                'sequence':[{'op':'command_execution','inputs':{'run':'true'}}]})
         target = '.c2j' if scenario == 'evolve' else '.'
         common = {'INBOX': '{{ context.environment.op.inbox }}', 'OUTBOX': '{{ context.environment.op.outbox }}',
                   'WORKTREE': '{{ context.environment.op.worktree_path }}', 'WORKSPACE': '{{ context.workspace.cell }}',
                   'OWNER': '{{ context.workflow.cell }}',
-                  'SCENARIO': scenario, 'TRACE': str(work/'trace.jsonl'), 'TARGET': target,
+                  'SCENARIO': scenario, 'ILLEGAL_RECIPE': str(illegal_recipe), 'TRACE': str(work/'trace.jsonl'), 'TARGET': target,
                   'DEPENDENCIES_JSON': json.dumps(history), 'MISSING_CELL': (work/'missing-repository').as_uri(),
                   **{role+'_CELL': str(repo) for role, repo in cells.items()},
                   **{role+'_HEAD': value for role, value in heads.items()}}
@@ -68,7 +71,7 @@ def verify_live(work, binary, scenario):
             nodes.append({'id': 'revision', 'include': str(fixture/'implement.yaml'), 'inputs': {
                 **impl_inputs, 'feedback': 'Ask the dependency owner a follow-up question',
                 'session': e('sequence.implementation.outputs.session'),
-                'additional_consultation_history_json': e('json_stringify(sequence.implementation.outputs.consultations)'),
+                'consultation_history_json': e('json_stringify(sequence.implementation.outputs.consultations)'),
                 'dependency_history_json': e('json_stringify(sequence.implementation.outputs.dependencies)')}})
             output_node = 'revision'
         wrapper = work/'workflow.yaml'
@@ -88,40 +91,42 @@ def verify_live(work, binary, scenario):
         assert (work/'trace.jsonl').exists(), errors + log_path.read_text()[-5000:]
         rows = [json.loads(line) for line in (work/'trace.jsonl').read_text().splitlines()]
         assert not errors, errors
-        expected_fail = scenario in ('malformed', 'missing-session', 'wrong-session', 'missing-checkpoint', 'unavailable')
-        if expected_fail:
+        if scenario == 'unavailable':
             assert code != 0, (scenario, final)
-            if scenario == 'unavailable':
-                assert all(r['role'] == 'I' for r in rows), 'Resolution failure silently fell back to A'
-                assert 'workspace' in log_path.read_text().lower()
-            else:
-                assert any(r['role'] == 'B' for r in rows)
-                assert 'record' in log_path.read_text(), errors + log_path.read_text()[-3000:]
+            assert all(r['role'] == 'I' for r in rows), 'Resolution failure silently fell back to A'
+            assert 'workspace' in log_path.read_text().lower()
         else:
             assert code == 0, log_path.read_text()[-8000:]
             result = final['Attempts'][-1]['Output']['Data']['implementation']
-            assert result['valid'] and result['completed'] and result['session_id'] == 'I-session', result
-            expected = 'redesign' if scenario in ('bug', 'evolve', 'reuse') else 'needs_input' if scenario in ('missing-mandate', 'outside', 'limit') else 'ready'
-            assert result['result']['status'] == expected, result
-            assert result['dependencies'] == history
-            if expected == 'redesign':
-                assert result['result']['proposed_handoffs'][0]['provenance']['commit'] == heads['B']
-                assert result['result']['questions']
-            if scenario == 'multiple':
-                assert [r['role'] for r in rows] == ['I','B','I','C','I','B','I']
-            if scenario == 'reuse':
-                assert [r['role'] for r in rows] == ['D','B','D','I','B','I']
-                assert [r['session'] for r in rows if r['role'] == 'B'] == ['', 'B-session']
-            if scenario == 'feedback':
-                assert [r['session'] for r in rows if r['role'] == 'I'] == ['', 'I-session', 'I-session', 'I-session']
-            if scenario == 'limit':
-                assert len([r for r in rows if r['role'] == 'B']) == 8
-            for key, thread in result['consultations'].items():
-                assert thread['commit'] == heads[key]
-                assert thread['session']['type']=='c2ops.codex.session/v1' and 'session_artifacts' not in thread
+            if scenario in ('malformed', 'missing-session', 'missing-checkpoint', 'illegal-children'):
+                assert not result['valid'], result
+                assert [r['role'] for r in rows] == ['I', 'B'], rows
+            else:
+                assert result['valid'] and result['completed'] and result['session_id'] == 'I-session', result
+                expected = 'redesign' if scenario in ('bug', 'evolve', 'reuse') else 'needs_input' if scenario in ('missing-mandate', 'outside', 'limit') else 'ready'
+                assert result['result']['status'] == expected, result
+                assert result['dependencies'] == history
+                if expected == 'redesign':
+                    assert result['result']['proposed_handoffs'][0]['provenance']['commit'] == heads['B']
+                    assert result['result']['questions']
+                if scenario == 'multiple':
+                    assert [r['role'] for r in rows] == ['I','B','I','C','I','B','I']
+                if scenario == 'reuse':
+                    assert [r['role'] for r in rows] == ['D','B','D','I','B','I']
+                    assert [r['session'] for r in rows if r['role'] == 'B'] == ['', 'B-session']
+                if scenario == 'feedback':
+                    assert [r['session'] for r in rows if r['role'] == 'I'] == ['', 'I-session', 'I-session', 'I-session']
+                if scenario == 'limit':
+                    assert len([r for r in rows if r['role'] == 'B']) == 8
+                for key, thread in result['consultations'].items():
+                    assert thread['commit'] == heads[key]
+                    assert thread['session']['type']=='c2ops.codex.session/v1' and 'session_artifacts' not in thread
         children = json.loads(d.run(['c2j','list','children','--parent-tenant-id','test','--parent-job-id',job,
                                      '--all-ops','--all','--status','READY,ACTIVE,PENDING_JOBS,COMPLETED,CANCELLED','--json'], env=env))['jobs']
-        assert children == [], 'Discussion submitted unapproved external work'
+        if scenario == 'illegal-children':
+            assert len(children) == 1, children
+        else:
+            assert children == [], 'Discussion submitted unapproved external work'
         for role, repo in cells.items():
             assert not (repo/'experiment.txt').exists()
             assert (repo/'app.txt').read_text() == 'application\n'
@@ -157,7 +162,7 @@ def verify_contracts(work):
             result.update(status='needs_input',questions=['Ask B'],consultation=dict(thread_id='service',cell='service',ref='main',message='Investigate dependency bug'))
         if name == 'retarget': result['consultation']['cell'] = 'another-cell'
         if name == 'missing-session': session = ''
-        if name in ['budget','renewed-budget']: history['service']['turns'] *= 8
+        if name in ['budget','renewed-budget']: history['service']['turn_count'] = 8
         if name == 'renewed-budget': initial = copy.deepcopy(history)
         if name == 'false-ready': result['blocking_issues'] = ['Still blocked']
         if name == 'missing-question': result.update(status='needs_input',questions=[])
@@ -171,21 +176,7 @@ def verify_contracts(work):
             assert actual['result']['status']==expected, (name,actual)
             assert bool(actual['selection']) == (name in ['pending','renewed-budget'])
             if expected=='redesign': assert actual['result']['proposed_handoffs'][0]['provenance']['commit']==d.HASH
-    code = c.read('consultation-history.yaml')['sequence'][0]['inputs']['run']
-    for name in ['empty','retain','advance','reverse','different-cell','different-ref','different-session','divergent','conflicting-response','same-id-different-checkpoint']:
-        _,_,history=c.data(); additional=copy.deepcopy(history)
-        if name=='empty': history={};additional={}
-        if name=='retain': additional={}
-        if name in ['advance','reverse']: additional['service']['turns'].append({'message':'Follow-up','response':additional['service']['response']})
-        if name=='reverse': history,additional=additional,history
-        if name in ['different-cell','different-ref','different-session']:
-            additional['service'][{'different-cell':'cell','different-ref':'ref','different-session':'session_id'}[name]]='other'
-        if name=='divergent': additional['service']['turns'][0]['message']='Conflicting branch'
-        if name=='same-id-different-checkpoint': additional['service']['session']=d.session_ref('B-session',1)
-        if name=='conflicting-response': additional['service']['response']['summary']='Conflicting answer'
-        result=d.command_test(code,{'HISTORY_JSON':json.dumps(history),'ADDITIONAL_JSON':json.dumps(additional)},ok=name in ['empty','retain','advance','reverse'])
-        if name in ['advance','reverse']: assert len(result['service']['turns'])==2
-    print('implementation: 15 contract and 10 history merge cases passed',flush=True)
+    print('implementation: 15 contract cases passed',flush=True)
 
 
 def main():
@@ -195,7 +186,7 @@ def main():
         verify_contracts(work)
         failures = []
         scenarios = sys.argv[1:] or ['advice','bug','evolve','multiple','reuse','feedback','missing-mandate','outside','failed-dependency',
-                                    'malformed','missing-session','wrong-session','missing-checkpoint','unavailable','limit']
+                                    'malformed','missing-session','missing-checkpoint','illegal-children','unavailable','limit']
         for scenario in scenarios:
             try: verify_live(work/scenario, binary, scenario)
             except Exception as error:

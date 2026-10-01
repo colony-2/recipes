@@ -53,19 +53,15 @@ def verify_wait(work):
         ("merged", ["a"], {}, [outcome("a", outputs={"merged": True})], True),
         ("wait-after-failure", ["a", "b"], {}, [outcome("a", "failed"), outcome("b")], False),
     ]:
-        ops = [passthrough("command_execution")]
+        ops = []
         for child in children:
-            ops += [defaults.mock("recipe.await_result_soft", child), passthrough("command_execution"), passthrough("command_execution")]
+            ops += [defaults.mock("recipe.await_result_soft", child)]
         expected = {**history, **{c["job_id"]: c for c in children}}
         cases.append({"id": name, "type": "recipe_case", "inputs": {"job_ids_json": json.dumps(ids), "history_json": json.dumps(history)},
                       "mocks": {"ops": ops}, "assertions": [{"type": "output_equals", "path": "ok", "value": ok},
                       {"type": "output_equals", "path": "results", "value": expected}]})
     defaults.run_suite(ROOT / "recipes/develop/wait-children.yaml", cases, work / "wait", parallelism=4)
-    for child, message in [(outcome("wrong"), "different child"), ({**outcome("a"), "terminal": False}, "nonterminal child")]:
-        case = {"id": "invalid-await", "type": "recipe_case", "inputs": {"job_ids_json": '["a"]'},
-                "mocks": {"ops": [passthrough("command_execution"), defaults.mock("recipe.await_result_soft", child), passthrough("command_execution")]}, "assertions": []}
-        defaults.run_suite(ROOT / "recipes/develop/wait-children.yaml", [case], work / message.replace(" ", "-"), failure_contains="state 'record' execution failed")
-    print("dependencies: 12 real graph/command cases passed", flush=True)
+    print("dependencies: 10 native await/expression cases passed", flush=True)
 
 
 def request(url, method=None):
@@ -134,7 +130,7 @@ def verify_service(work, scenario='success'):
                     "OP_RELEASE": str(work / 'op-release')}, "run": '''python3 - <<'PY'
 import json, os, pathlib, subprocess, time
 inbox=pathlib.Path(os.environ['INBOX']); outbox=pathlib.Path(os.environ['OUTBOX'])
-context=json.loads((inbox/'phase/context.json').read_text())
+context=json.loads(os.environ['CONTEXT_JSON'])
 with open(os.environ['TRACE'],'a') as f: f.write(json.dumps({'session':os.environ['SESSION'],'context':context})+'\\n')
 dependencies=context.get('dependencies',{})
 if not os.environ['SESSION'] or (os.environ['SCENARIO']=='rounds' and len(dependencies)==2):

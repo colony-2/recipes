@@ -59,7 +59,7 @@ def replace(doc, folder, env, code):
         if '//codex@' in node.get('op',''):
             original=copy.deepcopy(node['inputs'])
             node['op']=selector
-            node['inputs']={'env':{k:v for k,v in env.items() if k!='SESSION'},'code':code,'sandbox':{'type':'none'}}
+            node['inputs']={'env':{**{k:v for k,v in env.items() if k!='SESSION'}, **({'CONTEXT_JSON': '${{ inputs.context_json }}'} if 'context_json' in str(original) else {})},'code':code,'sandbox':{'type':'none'}}
             if 'session' in original:node['inputs']['session']=original['session']
             return node
         return {k:visit(v) for k,v in node.items()}

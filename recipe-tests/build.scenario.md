@@ -7,7 +7,7 @@ Coverage: approved flow; repeated feedback in one implementation session;
 requirements returning to design; rejected design and test-plan reviews;
 invalid artifacts; incomplete work; missing sessions; specification and quality
 revisions; failed verification; invalid choices and blank feedback; real schema
-gates; real scope checks; real verification evidence; guarded squash merging.
+gates; real verification evidence; guarded squash merging.
 
 See TS-096–TS-120 in `RECIPE_TEST_STATEMENTS.md`. No model service or persistent
 home database is used. Shai configuration is checked through rendered inputs;

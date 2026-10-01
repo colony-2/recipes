@@ -71,7 +71,10 @@ a missing feature or dependency bug. It retains its coding session, local edits,
 and dependency history. Advice can lead directly back to implementation; a new
 or changed external handoff returns through design and test-plan approval before
 submission. Design and implementation share pinned conversation threads, including
-across human feedback rounds.
+across human feedback rounds. Each thread keeps its latest reply and session object;
+the coordinator passes that map between phases. Conversation history lives in the
+session objects and c2j execution story, without transcript artifacts or history merging.
+See [remaining custom logic](guides/BUILD_EVOLVE_REMAINING_LOGIC.md) for the next review.
 
 After design/test-plan approval, implementation can request agreed external work with asynchronous
 `c2j submit ... --cell <owner> --build` (or `--evolve`). The shared agent captures
@@ -116,8 +119,8 @@ integration rather than silently publishing an unverified rebased tree.
 Build starts at the cell root. Evolve starts in `.c2j` and reads the applicable
 root and `.c2j/AGENTS.md` instructions. The optional `target_directory` input sets
 a different cell-relative scope, for example `.` when editing shared defaults in
-this repository. Scope validation rejects traversal, symlink escapes, out-of-scope
-changes, and writes during design/review.
+this repository. The recipes set the working directory and instruct agents to respect
+the approved design; they do not add a separate changed-file scope enforcement layer.
 
 Build/evolve use native document reviews for plan approval, outcome acceptance,
 and feedback. Reviewers can submit text or annotated files, including Markdown
@@ -138,9 +141,8 @@ Codex and verification use `sandbox.type: shai`. Codex's artifact/runtime paths
 retain their defaults; evolve intentionally overrides only `worktree_path`.
 **Current upstream limitation:** Shai grants workspace-wide writes, and c2ops
 disables Codex's native sandbox. A scoped cwd is not yet a write-isolation boundary.
-See [the sandbox bug report](guides/BUG_REPORT_SCOPED_CODEX_SANDBOX.md). Scope gates
-block progression after violations; running sandboxed jobs requires a working
-Shai/Docker environment.
+See [the sandbox bug report](guides/BUG_REPORT_SCOPED_CODEX_SANDBOX.md).
+Running sandboxed jobs requires a working Shai/Docker environment.
 
 c2j resolves committed target-cell `.c2j/recipes/build.yaml` or `evolve.yaml` at
 the configured ref. Only a missing recipe falls back to the root defaults on
@@ -193,8 +195,8 @@ Set `C2J_BINARY=/absolute/path/to/c2j` to test a workspace-capable binary withou
 replacing the installed CLI. `C2OPS_REPOSITORY=/path/to/c2ops` uses committed local
 c2ops source for deterministic selector resolution without GitHub requests.
 It requires c2j, git, Python, uv/PyYAML, and Go/access to the c2ops selector for
-real gate checks. Codex and human replies are mocked; tests execute real scope
-checks, test-plan contracts, verification commands, schema gates and git merges
+real gate checks. Codex and human replies are mocked; tests execute test-plan
+contracts, verification commands, schema gates and git merges
 against disposable repositories. c2j passthrough runtimes use temporary databases,
 with scratch files under a per-run `TMPDIR`; tests never submit to the home
 embedded database. Rendered sandbox configuration is covered, but a live Codex
@@ -202,7 +204,9 @@ or Shai container run is not part of this deterministic suite.
 The suite also starts a separate temporary in-memory JobDB service and independent
 c2j workers to test brokered cross-cell submission, durable waits, worker replacement,
 session resumption, and dependency artifacts. The test server binds only to loopback
-and exits with the suite; it uses no persistent database.
+and exits with the suite; it uses no persistent database. Its JobDB version is
+pinned to `6da2fab0502e`, matching c2j `f82bdd2`; use a compatible CLI when
+running the multi-worker tests.
 `verify-implementation-consultations.py` runs actual implementation/foreign-cell
 loops with deterministic model turns, covering late bug discovery, advice, evolve
 scope, multiple cells, design-thread reuse, human feedback, dependency history,

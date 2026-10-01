@@ -49,17 +49,18 @@ if role in ('B', 'C'):
         result.update(status='needs_input', fit=None, questions=['Accept a mandate for this cell.'])
     if scenario == 'outside':
         result.update(fit='outside', summary='Another owner is needed')
-    if scenario == 'wrong-session' and turn:
-        identity = 'unexpected-replacement-session'
+    if scenario == 'illegal-children':
+        subprocess.run(['c2j', 'submit', 'Unauthorized consultation work', '--cell', os.environ['B_CELL'],
+                        '--recipe-file', os.environ['ILLEGAL_RECIPE'], '--json'], check=True, stdout=subprocess.DEVNULL)
     if scenario == 'missing-session':
         identity = ''
     if scenario == 'malformed':
         (outbox / 'result.json').write_text('invalid JSON')
 else:
     assert os.environ['WORKSPACE'] == os.environ['OWNER']
-    context = json.loads((inbox / 'phase/context.json').read_text())
+    context = json.loads(os.environ['CONTEXT_JSON'])
     if 'dependencies' in context:
-        assert context['dependencies'] == json.loads(os.environ['DEPENDENCIES_JSON'])
+        assert context['dependencies'] == ({} if role == 'D' else json.loads(os.environ['DEPENDENCIES_JSON']))
         context = context['phase']
     history = context['consultations']
     if role == 'D':
@@ -90,8 +91,6 @@ else:
             target_role = ['B', 'C', 'B'][turn] if turn < 3 else None
         elif scenario == 'feedback':
             target_role = 'B' if turn in (0, 2) else None
-        elif scenario == 'wrong-session':
-            target_role = 'B' if turn < 2 else None
         elif scenario == 'limit':
             target_role = 'B'
         elif turn == 0 or scenario in ('bug', 'evolve') and turn == 1:
@@ -111,9 +110,9 @@ else:
         elif scenario in ('missing-mandate', 'outside'):
             result.update(status='needs_input', questions=['Resolve dependency ownership'])
         if scenario == 'multiple' and not target_role:
-            assert len(history['B']['turns']) == 2 and len(history['C']['turns']) == 1
+            assert history['B']['turn_count'] == 2 and history['C']['turn_count'] == 1
         if scenario == 'reuse':
-            assert len(history['B']['turns']) == turn + 1, 'Design conversation was lost or restarted'
+            assert history['B']['turn_count'] == turn + 1, 'Design conversation was lost or restarted'
 
 if scenario != 'malformed' or role not in ('B', 'C'):
     (outbox / 'result.json').write_text(json.dumps(result))

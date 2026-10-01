@@ -1,0 +1,30 @@
+id: development-snapshot
+version: 0.2.0
+input_schema:
+  target_directory:
+    type: string
+    default_value: .
+  create_target:
+    type: boolean
+    default_value: false
+inputs:
+  target_directory: ${{ inputs.target_directory }}
+  create_target: ${{ inputs.create_target }}
+sequence:
+- id: check
+  op: command_execution
+  inputs:
+    timeout: 30s
+    env:
+      CELL_ROOT: '{{ context.environment.op.worktree_path }}'
+      TARGET_DIRECTORY: ${{ inputs.target_directory }}
+      CREATE_TARGET: '${{ inputs.create_target ? "true" : "false" }}'
+    run: |
+      cd "$CELL_ROOT"
+      if [ "$CREATE_TARGET" = true ]; then mkdir -p -- "$TARGET_DIRECTORY"; fi
+      head=$(git rev-parse HEAD)
+      clean=true
+      if [ -n "$(git status --porcelain)" ]; then clean=false; fi
+      printf '{"head":"%s","clean":%s}\n' "$head" "$clean"
+outputs:
+  snapshot: ${{ json_parse(sequence.check.outputs.stdout) }}

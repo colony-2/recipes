@@ -58,21 +58,13 @@ def command(value, success=True, artifacts=None):
     return mock("command_execution", {"success": success, "exit_code": 0 if success else 1, "stdout": json.dumps(value), "stderr": "" if success else "Check failed"}, artifacts)
 
 
-def prepared_context():
-    item = command({})
-    item["behavior"]["artifacts"] = {"context.json": "{}"}
-    return item
-
-
 def phase(result, *, valid=True, status="completed", session="implementation-session"):
-    ops = [command(SNAPSHOT), prepared_context(), mock("extension_execution", {"status": status, "sessionId": session, **({"session": session_ref(session)} if session else {})}, {"result.json": json.dumps(result)}), command(SNAPSHOT), mock("extension_execution", {"ok": valid})]
+    ops = [mock("extension_execution", {"status": status, "sessionId": session, **({"session": session_ref(session)} if session else {})}, {"result.json": json.dumps(result)}), mock("extension_execution", {"ok": valid})]
     if valid:
-        ops.append(command({"result":result}))
+        ops.append(command(result))
     if "design_markdown" in result:
         ops.insert(0, command({"cell":"test","valid":True}))
         if valid: ops.append(command({"result":result,"selection":{}}, artifacts={"design.md": result["design_markdown"]}))
-    if "design_markdown" in result or "statement_tests" in result:
-        ops.insert(0, command({}))
     if "statement_tests" in result and valid and status in ("completed", "incomplete"):
         ops.append(command({"result":result,"selection":{}}, artifacts={"implementation.md": result["summary"]}))
     return ops
@@ -275,34 +267,6 @@ def command_test(code, env, ok=True):
     return json.loads(p.stdout) if ok else None
 
 
-def verify_scope(work):
-    code = script("scope.yaml")
-    count = 0
-    for change in ("inside", "outside", "add-outside", "delete-outside", "rename-outside", "symlink-file", "symlink-target", "traversal", "absolute", "read-only"):
-        repo = repository(work, "scope-" + change)
-        base = git(repo, "rev-parse", "HEAD")
-        target = ".c2j"
-        if change in ("inside", "read-only"):
-            (repo / ".c2j/recipe.txt").write_text("changed\n")
-        if change == "outside":
-            (repo / "app.txt").write_text("changed\n")
-        if change == "add-outside":
-            (repo / "new.txt").write_text("new\n")
-        if change == "delete-outside":
-            (repo / "app.txt").unlink()
-        if change == "rename-outside":
-            git(repo, "mv", "app.txt", ".c2j/moved.txt")
-        if change == "symlink-file":
-            (repo / ".c2j/link").symlink_to(repo / "app.txt")
-        if change == "symlink-target":
-            (repo / "linked").symlink_to(repo / ".c2j")
-            target = "linked"
-        if change == "traversal": target = ".c2j/.."
-        if change == "absolute": target = str(repo)
-        command_test(code, {"CELL_ROOT": str(repo), "TARGET_DIRECTORY": target, "BASE_HASH": base, "READ_ONLY": "true" if change == "read-only" else "false"}, ok=change == "inside")
-        count += 1
-    print(f"scope: {count} real git/filesystem cases passed", flush=True)
-
 
 def verify_plan_contract(work):
     code = script("test-plan.yaml", "contract")
@@ -359,14 +323,13 @@ def verify_real_gates(work):
     cases = []
     for resumed in (False, True):
         for name, raw in {"valid": json.dumps(IMPLEMENTATION), **invalid}.items():
-            ops = [mock("recipe_within_resolution", {"resolved_selectors": {}}), command(SNAPSHOT), {"match": {"op": "command_execution"}, "behavior": {"mode": "passthrough"}},
-                   mock("extension_execution", {"status": "completed", "sessionId": "session", "session": session_ref()}, {} if raw is None else {"result.json": raw}),
-                   command(SNAPSHOT), {"match": {"op": "extension_execution"}, "behavior": {"mode": "passthrough"}}]
+            ops = [mock("recipe_within_resolution", {"resolved_selectors": {}}), mock("extension_execution", {"status": "completed", "sessionId": "session", "session": session_ref()}, {} if raw is None else {"result.json": raw}),
+                   {"match": {"op": "extension_execution"}, "behavior": {"mode": "passthrough"}}]
             if name == "valid":
                 ops.append({"match": {"op": "command_execution"}, "behavior": {"mode": "passthrough"}})
             cases.append({"id": f"{name}-{'resume' if resumed else 'initial'}", "type": "recipe_case",
                           "inputs": {"prompt": "Improve behavior", "instructions": "Implement", "result_schema_json": schema_json,
-                                     **({"session": session_ref()} if resumed else {}), "writable": True},
+                                     **({"session": session_ref()} if resumed else {})},
                           "mocks": {"ops": ops}, "assertions": [{"type": "output_equals", "path": "valid", "value": name == "valid"}]})
     run_suite(ROOT / "recipes/develop/agent.yaml", cases, work / "real-gates")
     print("agent: 14 real artifact/schema gate cases passed", flush=True)
@@ -385,9 +348,9 @@ def verify_real_merge(work):
         git(repo, "commit", "-qm", text)
     candidate = git(repo, "rev-parse", "HEAD")
     fixtures = work / "merge-fixture"; fixtures.mkdir()
-    scope = yaml.safe_load((ROOT / "recipes/develop/scope.yaml").read_text())
-    scope["sequence"][0]["inputs"]["env"]["CELL_ROOT"] = str(repo)
-    (fixtures / "scope.yaml").write_text(yaml.safe_dump(scope, sort_keys=False))
+    snapshot = yaml.safe_load((ROOT / "recipes/develop/snapshot.yaml").read_text())
+    snapshot["sequence"][0]["inputs"]["env"]["CELL_ROOT"] = str(repo)
+    (fixtures / "snapshot.yaml").write_text(yaml.safe_dump(snapshot, sort_keys=False))
     finish_recipe = yaml.safe_load((ROOT / "recipes/develop/finish.yaml").read_text())
     finish_recipe["state"]["states"]["merge"]["inputs"].update(repo_path=str(repo), upstream_repo=str(upstream), upstream_branch="main")
     (fixtures / "finish.yaml").write_text(yaml.safe_dump(finish_recipe, sort_keys=False))
@@ -398,7 +361,7 @@ def verify_real_merge(work):
                {"match": {"op": "extension_execution"}, "behavior": {"mode": "passthrough"}}]
         if name == "accepted":
             ops.append({"match": {"op": "squashrebasemerge"}, "behavior": {"mode": "passthrough"}})
-        cases.append({"id": name, "type": "recipe_case", "inputs": {"target_directory": ".c2j", "base_hash": baseline, "candidate_hash": hash_value, "summary": "Verified result", "approved": approved, "verified": verified}, "mocks": {"ops": ops}, "assertions": [{"type": "output_equals", "path": "merged", "value": name == "accepted"}]})
+        cases.append({"id": name, "type": "recipe_case", "inputs": {"target_directory": ".c2j", "candidate_hash": hash_value, "summary": "Verified result", "approved": approved, "verified": verified}, "mocks": {"ops": ops}, "assertions": [{"type": "output_equals", "path": "merged", "value": name == "accepted"}]})
     run_suite(fixtures / "finish.yaml", cases[:-1], work / "real-merge-rejected")
     dirty = copy.deepcopy(cases[-1]); dirty["id"] = "dirty-candidate"
     dirty["assertions"][0]["value"] = False
@@ -410,7 +373,6 @@ def verify_real_merge(work):
     assert run(["git", "--git-dir", str(upstream), "show", "main:.c2j/recipe.txt"]) == "revised\n"
     assert run(["git", "--git-dir", str(upstream), "rev-list", "--count", "main"]).strip() == "2"
     # Upstream advancement must not rebase and publish an unverified candidate.
-    base_after_merge = git(repo, "rev-parse", "HEAD")
     (repo / ".c2j/recipe.txt").write_text("next candidate\n")
     git(repo, "add", "."); git(repo, "commit", "-qm", "next candidate")
     next_candidate = git(repo, "rev-parse", "HEAD")
@@ -423,7 +385,7 @@ def verify_real_merge(work):
     git(other, "push", "-q", "origin", "main")
     upstream_tip = git(other, "rev-parse", "HEAD")
     advanced = copy.deepcopy(cases[-1]); advanced["id"] = "advanced-upstream"
-    advanced["inputs"].update(base_hash=base_after_merge, candidate_hash=next_candidate)
+    advanced["inputs"].update(candidate_hash=next_candidate)
     advanced["assertions"] = []
     run_suite(fixtures / "finish.yaml", [advanced], work / "real-merge-advanced", failure_contains="fast-forward")
     assert run(["git", "--git-dir", str(upstream), "rev-parse", "main"]).strip() == upstream_tip
@@ -449,7 +411,6 @@ def verify_specializations(work):
 def main():
     with tempfile.TemporaryDirectory(prefix="development-tests-") as temp:
         work = Path(temp)
-        verify_scope(work)
         verify_plan_contract(work)
         verify_commands(work)
         verify_real_gates(work)

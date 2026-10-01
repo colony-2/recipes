@@ -38,7 +38,7 @@ if consult:
     result = dict(base, fit='fits', design_markdown=brief)
 else:
     assert (root/'AGENTS.md').read_text() == 'Instructions for '+cell+'\n'
-    data = json.loads((inbox/'phase/context.json').read_text())
+    data = json.loads(os.environ['CONTEXT_JSON'])
     context = data.get('phase', data)
     dependencies = data.get('dependencies', {})
     if role == 'design':

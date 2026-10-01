@@ -39,8 +39,8 @@ Phase files live under `recipes/develop/`:
 | `review-test-plan.yaml` | Independently assess coverage and whether tests establish the requested outcomes | Structured verdict, uncovered requirement IDs, blocking feedback |
 | `implement.yaml` | Implement the approved design and tests, continuing the same implementation session on revision | Changes, statement-to-test mapping, implementation session ID |
 | `review-specification.yaml`, `review-quality.yaml` | Separate specification review from quality review | Two independent structured verdicts with actionable issues |
-| `verify.yaml` | Execute approved checks against the candidate revision and validate change scope | Command logs, exit codes, per-statement evidence, candidate hash |
-| `finish.yaml` | Check acceptance, scope and candidate freshness, then squash merge upstream | Merge hash; human review and feedback are owned by `develop.yaml` |
+| `verify.yaml` | Execute approved checks against the candidate revision and preserve candidate identity | Command logs, exit codes, per-statement evidence, candidate hash |
+| `finish.yaml` | Check acceptance and candidate freshness, then squash merge upstream | Merge hash; human review and feedback are owned by `develop.yaml` |
 | `agent.yaml`, `wait-children.yaml` | Capture children created by a phase, await required outcomes, and resume the same session | Child results keyed by job ID, namespaced artifact references, dependency history |
 
 Use includes for normal same-job phase composition, keeping git state and session
@@ -113,7 +113,7 @@ behavioral expectations follow the repository's deprecation policy.
 
 Every phase emits a schema-validated structured result plus human-readable
 artifacts. Use Codex artifact output contracts and `rule_gate` for schema checks;
-command checks enforce cross-reference and scope consistency. Parent transitions must require the gate
+command checks enforce cross-reference consistency. Parent transitions must require the gate
 result as well as the phase verdict. Missing, malformed, contradictory, or stale
 results cannot advance the workflow. An absent verification command is not a
 passing test; uncovered or unverified requirements remain explicit blockers.
@@ -134,11 +134,10 @@ inbox/outbox placement. It used a stub Codex executable; live instruction loadin
 session resume, sandbox behavior, and c2j git persistence still need integration
 coverage.
 
-Changing cwd is a scope aid, not filesystem isolation. Resolve the target within
-the cell, reject traversal and symlink escapes, and check the changed paths after
-mutating phases and before merge. Include additions, deletions, and rename source
-and destination paths. Out-of-scope changes block progression. Scope expansion
-returns to design rather than silently broadening access.
+The target directory controls where Codex starts. The recipe does not enforce a
+second filesystem boundary or inspect every changed path. Applicable instructions
+and the approved design define intended behavior. Candidate freshness and clean
+Git state are still checked before merging the verified result.
 
 Root `AGENTS.md` supplies common project rules; `.c2j/AGENTS.md` supplies workflow
 authoring rules, standard paths, op references, test commands, and ephemeral
@@ -151,7 +150,7 @@ discovery location.
 ## Acceptance tests for implementation
 
 The deterministic suite in `recipe-tests/verify-default-recipes.py` covers phase
-routing, contracts, scope, evidence, and integration. Live instruction discovery,
+routing, contracts, evidence, and integration. Live instruction discovery,
 session persistence, runtime cancellation and sandbox isolation are not claimed by
 these mocked-agent tests. The sandbox limitation has a separate bug report.
 All are integration tests. c2j runtime tests use disposable databases and git
@@ -166,7 +165,7 @@ repositories; none submit against a home-sourced embedded database.
 | SD-05 | Failed, missing, or stale verification evidence prevents merge despite a favorable agent summary. | `recipes/develop/verify.yaml`, `recipes/develop/finish.yaml` | Critical | c2j, real command execution; negative |
 | SD-06 | Implementation feedback resumes the existing conversation and reruns review and verification. | `recipes/develop/develop.yaml`, `recipes/develop/implement.yaml` | Critical | c2j, mocked agents/input; positive |
 | SD-07 | Requirement changes return to design and invalidate dependent approvals. | `recipes/develop/develop.yaml` | Critical | c2j, mocked agents/input; negative |
-| SD-08 | Changes outside the approved target, including renamed files, prevent progression and merge. | `recipes/develop/verify.yaml`, `recipes/develop/develop.yaml` | Critical | c2j, temporary git repository; negative |
+| SD-08 | Retired: custom write-scope enforcement was explicitly removed during recipe simplification. | Historical | — | — |
 | SD-09 | Human satisfaction and passing gates produce one squash merge into upstream. | `recipes/develop/finish.yaml` | Critical | c2j, temporary upstream repository; positive |
 | SD-10 | Editing workflow instructions cannot bypass gates already governing the running job. | `evolve.yaml`, `recipes/develop/develop.yaml` | Critical | c2j, pinned recipe fixtures; negative |
 | SD-11 | Local entrypoints resolve shared phase recipes without requiring local copies. | `build.yaml`, `evolve.yaml`, `recipes/develop/develop.yaml` | High | c2j selector/include resolution; positive |

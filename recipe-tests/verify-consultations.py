@@ -69,7 +69,7 @@ def data():
     m={'cell':'test','valid':True,'path':'.c2j/mandate.md','commit':d.HASH,'sha256':'b'*64,'clauses':['OWN-01','EXCLUDE-01','Purpose','Owns']}
     r=copy.deepcopy(d.DESIGN)
     b={**d.BASE,'fit':'fits','design_markdown':'Agreed service change'}
-    history={'service':{'cell':'service','ref':'main','commit':d.HASH,'session_id':'B-session','session':d.session_ref('B-session'),'mandate':{**m,'cell':'service'},'turns':[{'message':'Design?','response':b}],'response':b}}
+    history={'service':{'cell':'service','ref':'main','commit':d.HASH,'session_id':'B-session','session':d.session_ref('B-session'),'mandate':{**m,'cell':'service'},'turn_count':1,'response':b}}
     return m,r,history
 
 
@@ -86,7 +86,7 @@ def verify_contract(work):
         if case in ['consult','repeat','limit','retarget-cell','retarget-ref','missing-session']:
             r['consultation']={'thread_id':'service','cell':'service','ref':'main','message':'Refine design'}
             if case=='consult': h={}
-            if case=='limit': h['service']['turns']*=8
+            if case=='limit': h['service']['turn_count']=8
             if case=='retarget-cell': r['consultation']['cell']='other'
             if case=='retarget-ref': r['consultation']['ref']='other'
             if case=='missing-session':session=''
@@ -130,21 +130,18 @@ def verify_routing(work):
 
 def verify_foreign_gates(work):
     cases=[]
-    for name in ['ready','needs-input','partial','outside','missing-session','incomplete','error','malformed','missing-field']:
+    for name in ['ready','needs-input','partial','outside','missing-session','incomplete','error','malformed','missing-field','invalid-mandate','false-ready']:
         response={**d.BASE,'fit':'fits','design_markdown':'Agreed design'}
         if name=='needs-input':response.update(status='needs_input',fit=None,questions=['Clarify ownership'])
         if name in ['partial','outside']:response['fit']=name
         if name=='missing-field':del response['fit']
+        if name=='false-ready':response['questions']=['Unanswered']
         raw='not-json' if name=='malformed' else json.dumps(response)
-        ops=[d.mock('recipe_within_resolution',{'resolved_selectors':{}}),d.command({'valid':True}),d.mock('extension_execution',{'status':name if name in ['incomplete','error'] else 'completed','sessionId':'B-session',**({} if name=='missing-session' else {'session':d.session_ref('B-session')})},{'result.json':raw}),deps.passthrough('extension_execution')]
+        ops=[d.mock('recipe_within_resolution',{'resolved_selectors':{}}),d.command({'valid':name!='invalid-mandate'}),d.mock('extension_execution',{'status':name if name in ['incomplete','error'] else 'completed','sessionId':'B-session',**({} if name=='missing-session' else {'session':d.session_ref('B-session')})},{'result.json':raw}),deps.passthrough('extension_execution')]
         if name not in ['malformed','missing-field']:ops.append(deps.passthrough('command_execution'))
         cases.append({'id':name,'type':'recipe_case','inputs':{'message':'Assess this request'},'mocks':{'ops':ops},'assertions':[{'type':'output_equals','path':'valid','value':name in ['ready','needs-input','partial','outside']}]})
     d.run_suite(ROOT/'recipes/develop/consult.yaml',cases,work/'foreign-gates',parallelism=4)
-    code=d.script('consult.yaml','read')
-    for name in ['invalid-mandate','false-ready','illegal-children']:
-        path=work/(name+'.json');path.write_text(json.dumps({**d.BASE,'fit':'fits','design_markdown':'Design','questions':['Undecided'] if name=='false-ready' else []}))
-        d.command_test(code,{'RESULT':str(path),'MANDATE_JSON':json.dumps({'valid':name!='invalid-mandate'}),'JOBS_JSON':json.dumps(['unexpected'] if name=='illegal-children' else [])},ok=False)
-    print('consultation: 12 real schema/status/submission gate cases passed',flush=True)
+    print('consultation: 11 real schema/status/mandate gate cases passed',flush=True)
 
 
 def verify_service(work, handoff=True):
@@ -172,7 +169,7 @@ CHILD
         model_inputs={'env':{'INBOX':'{{ context.environment.op.inbox }}','OUTBOX':'{{ context.environment.op.outbox }}','WORKTREE':'{{ context.environment.op.worktree_path }}','TRACE':str(trace),'B_CELL':str(b),'WORKSPACE':'{{ context.workspace.cell }}','OWNER':'{{ context.workflow.cell }}','INSTRUCTIONS':e('inputs.instructions'),'CHILD_RECIPE':str(child_path)},'run':'''python3 - 2>>"${TRACE}.error" <<'CODE'
 import json,os,pathlib,subprocess
 inbox=pathlib.Path(os.environ['INBOX']);out=pathlib.Path(os.environ['OUTBOX']);root=pathlib.Path(os.environ['WORKTREE'])
-c=json.loads((inbox/'phase/context.json').read_text())
+c=json.loads(os.environ['CONTEXT_JSON'])
 if os.environ['INSTRUCTIONS'].startswith('Implement'):
  context=c.get('phase',c);h=context['design']['handoffs'][0];dependencies=c.get('dependencies',{})
  assert h['provenance']['commit'] and h['design_markdown']=='Service uses stable tokens; invalid tokens are rejected.'
@@ -188,13 +185,13 @@ if os.environ['INSTRUCTIONS'].startswith('Implement'):
  with open(os.environ['TRACE'],'a') as f:f.write(json.dumps({'actor':'I','session':os.environ['SESSION'],'workspace':os.environ['WORKSPACE'],'owner':os.environ['OWNER']})+'\\n')
  print(json.dumps({'status':'completed','sessionId':'I-session'}))
  raise SystemExit(0)
-h=c['consultations'];m=c['mandate']
+c=c['phase'];h=c['consultations'];m=c['mandate']
 assert (root/'app.txt').read_text()=='application\\n' and not (root/'experiment.txt').exists()
 if h: assert os.environ['SESSION']=='A-session' and (pathlib.Path(os.environ['SESSION_HOME'])/'session.txt').read_text()=='A', {'session':os.environ['SESSION'],'inbox':str(inbox),'context':c}
 else: assert not os.environ['SESSION']
-with open(os.environ['TRACE'],'a') as f:f.write(json.dumps({'actor':'A','session':os.environ['SESSION'],'workspace':os.environ['WORKSPACE'],'owner':os.environ['OWNER'],'turns':len(h.get('service',{}).get('turns',[]))})+'\\n')
+with open(os.environ['TRACE'],'a') as f:f.write(json.dumps({'actor':'A','session':os.environ['SESSION'],'workspace':os.environ['WORKSPACE'],'owner':os.environ['OWNER'],'turns':h.get('service',{}).get('turn_count',0)})+'\\n')
 r={'status':'ready','summary':'Reviewed mixed request','blocking_issues':[],'questions':[],'design_markdown':'Local client plus external service','requirements':[{'id':'R1','statement':'Client behavior'}], 'assessment':{'assessment_status':'assessed','fit':'partial','rationale':'Split ownership','questions':[],'outcomes':[{'id':'R1','statement':'Client behavior','ownership':'local','suggested_owner':m['cell'],'mandate_evidence':['OWN-01'],'reason':'Client owns this'},{'id':'R2','statement':'Service behavior','ownership':'external','suggested_owner':h['service']['mandate']['cell'] if h else 'cell-b','mandate_evidence':['EXCLUDE-01'],'reason':'Service owns this'}]},'consultation':None,'handoffs':[]}
-if len(h.get('service',{}).get('turns',[]))<2:
+if h.get('service',{}).get('turn_count',0)<2:
  r.update(status='needs_input',questions=['Refine service design'],consultation={'thread_id':'service','cell':os.environ['B_CELL'],'ref':'main','message':'Use stable tokens and cover invalid tokens' if h else 'Discuss pagination design'})
 else:
  r['handoffs']=[{'thread_id':'service','cell':os.environ['B_CELL'],'mode':'build','outcome_ids':['R2'],'design_markdown':h['service']['response']['design_markdown']}]

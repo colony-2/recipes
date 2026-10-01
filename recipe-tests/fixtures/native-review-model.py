@@ -53,7 +53,7 @@ base = dict(
     questions=[],
     blocking_issues=[],
 )
-context = json.loads((inbox / "phase/context.json").read_text())
+context = json.loads(os.environ['CONTEXT_JSON'])
 context = context.get("phase", context)
 if role == "design":
     mandate = context["mandate"]

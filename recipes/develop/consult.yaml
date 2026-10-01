@@ -128,25 +128,20 @@ state:
     read:
       op: command_execution
       inputs:
-        timeout: 10s
+        timeout: 5s
         env:
-          RESULT: '{{ context.environment.op.inbox }}/result/result.json'
-          MANDATE_JSON: ${{ json_stringify(states.mandate.outputs.mandate) }}
-          JOBS_JSON: ${{ json_stringify(states.agent.outputs.child_job_ids) }}
+          RESULT_PATH: '{{ context.environment.op.inbox }}/result/result.json'
         run: |
-          python3 - <<'PYCODE'
-          import json, os, pathlib
-          r=json.loads(pathlib.Path(os.environ['RESULT']).read_text()); m=json.loads(os.environ['MANDATE_JSON'])
-          if json.loads(os.environ['JOBS_JSON']): raise ValueError('Consultation must not create jobs')
-          if not m['valid'] and (r['fit'] is not None or r['status']=='ready'): raise ValueError('Missing valid consulted mandate')
-          if r['status']=='ready' and (r['questions'] or r['blocking_issues'] or r['fit'] is None): raise ValueError('Unresolved consultation')
-          print(json.dumps(r))
-          PYCODE
+          cat "$RESULT_PATH"
       artifacts:
         result/: ${{ states.agent.artifacts }}
 outputs:
   valid: ${{ state_output("schema", "ok", false) && state_exists("read") && states.agent.outputs.status == "completed"
-    && states.agent.outputs.?session.orValue(null) != null }}
+    && states.agent.outputs.session != null && size(states.agent.outputs.child_job_ids) == 0 && (states.mandate.outputs.mandate.valid
+    || (json_parse(state_output("read", "stdout", "{}")).fit == null && json_parse(state_output("read", "stdout",
+    "{}")).status != "ready")) && (json_parse(state_output("read", "stdout", "{}")).status != "ready" || (size(json_parse(state_output("read",
+    "stdout", "{}")).questions) == 0 && size(json_parse(state_output("read", "stdout", "{}")).blocking_issues) ==
+    0 && json_parse(state_output("read", "stdout", "{}")).fit != null)) }}
   result: ${{ json_parse(state_output("read", "stdout", "{}")) }}
   mandate: ${{ states.mandate.outputs.mandate }}
   session_id: ${{ states.agent.outputs.?sessionId.orValue("") }}

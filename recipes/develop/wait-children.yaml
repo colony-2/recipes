@@ -10,67 +10,37 @@ input_schema:
 inputs:
   job_ids_json: ${{ inputs.job_ids_json }}
   history_json: ${{ inputs.history_json }}
+outputs:
+  results: ${{ state_output("await", "results", json_parse(inputs.history_json)) }}
+  ok: ${{ jq(json_parse(('[' + json_stringify(json_parse(inputs.job_ids_json)) + ',' + json_stringify((state_output("await",
+    "results", json_parse(inputs.history_json)))) + ']')), ". as $v | all($v[0][]; . as $id | $v[1][$id] | .terminal
+    == true and .status == \"completed\" and (.outputs.merged != false))") }}
+
 state:
-  initial: select
+  initial:
+  - to: await
+    when: size(jq(json_parse(('[' + json_stringify(json_parse(inputs.job_ids_json)) + ',' + json_stringify(json_parse(inputs.history_json))
+      + ']')), ".[0] - (.[1] | keys) | unique")) > 0
+  - to: done
+    when: true
   states:
-    select:
-      op: command_execution
+    await:
       inputs:
-        timeout: 5s
-        env:
-          JOB_IDS: ${{ inputs.job_ids_json }}
-          HISTORY: ${{ state_output("record", "stdout", inputs.history_json) }}
-        run: |
-          python3 - <<'PY'
-          import json, os
-          ids=json.loads(os.environ['JOB_IDS'])
-          history=json.loads(os.environ['HISTORY'])
-          assert isinstance(ids,list) and all(isinstance(i,str) and i.strip() for i in ids)
-          assert isinstance(history,dict)
-          pending=sorted(set(ids)-history.keys())
-          current=[history[i] for i in set(ids) if i in history]
-          ok=not pending and all(r.get('terminal') is True and r.get('status')=='completed'
-              and r.get('outputs',{}).get('merged',True) is True for r in current)
-          # Artifact-set expansion uses each ref's name, not its map key.
-          # Change the inbox alias while preserving the stored artifact identity.
-          artifacts={f'{job}/{name}': {**ref, 'name':f'{job}/{name}'}
-              for job,r in history.items() for name,ref in r.get('artifacts',{}).items()}
-          print(json.dumps({'next':pending[0] if pending else '', 'ok':ok,
-              'results':history, 'child_artifacts':artifacts}))
-          PY
+        history: ${{ state_output("await", "results", json_parse(inputs.history_json)) }}
+        job_id: ${{ jq(json_parse(('[' + json_stringify(json_parse(inputs.job_ids_json)) + ',' + json_stringify(state_output("await",
+          "results", json_parse(inputs.history_json))) + ']')), ".[0] - (.[1] | keys) | unique")[0] }}
+      sequence:
+      - id: child
+        op: recipe.await_result_soft
+        inputs:
+          job_id: ${{ inputs.job_id }}
+          return_when: terminal
+      outputs:
+        results: ${{ jq(json_parse(('[' + json_stringify(inputs.history) + ',' + '{' + json_stringify(sequence.child.outputs.job_id)
+          + ':' + json_stringify(sequence.child.outputs) + '}' + ']')), "add") }}
       transitions:
       - to: await
-        when: json_parse(outputs.stdout).next != ""
-    await:
-      op: recipe.await_result_soft
-      inputs:
-        job_id: ${{ json_parse(states.select.outputs.stdout).next }}
-        return_when: terminal
-      transitions:
-      - to: record
-        when: true
-    record:
-      op: command_execution
-      inputs:
-        timeout: 5s
-        env:
-          HISTORY: ${{ json_stringify(json_parse(states.select.outputs.stdout).results) }}
-          CHILD: ${{ json_stringify(states.await.outputs) }}
-          JOB_ID: ${{ json_parse(states.select.outputs.stdout).next }}
-        run: |
-          python3 - <<'PY'
-          import json, os
-          history=json.loads(os.environ['HISTORY'])
-          child=json.loads(os.environ['CHILD'])
-          assert child.get('job_id') == os.environ['JOB_ID'], 'Await returned a different child'
-          assert child.get('terminal') is True, 'Terminal await returned a nonterminal child'
-          history[os.environ['JOB_ID']]=child
-          print(json.dumps(history))
-          PY
-      transitions:
-      - to: select
-        when: true
-outputs:
-  ok: ${{ json_parse(states.select.outputs.stdout).ok }}
-  results: ${{ json_parse(states.select.outputs.stdout).results }}
-  child_artifacts: ${{ json_parse(states.select.outputs.stdout).child_artifacts }}
+        when: size(jq(json_parse(('[' + json_stringify(json_parse(inputs.job_ids_json)) + ',' + json_stringify(outputs.results)
+          + ']')), ".[0] - (.[1] | keys) | unique")) > 0
+    done:
+      sequence: []

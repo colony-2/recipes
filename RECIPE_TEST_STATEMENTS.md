@@ -133,10 +133,10 @@ workflow adds a design/test-plan approval checkpoint before outcome acceptance.
 | TS-111 | Feedback resumes the implementation session while independent reviewers receive fresh conversations. | `recipes/develop/develop.yaml`, `recipes/develop/agent.yaml` | Critical | Integration; c2j input rendering | Positive |
 | TS-112 | Failed or missing verification evidence prevents acceptance and upstream merge. | `recipes/develop/verify.yaml`, `recipes/develop/develop.yaml` | Critical | Integration; real command execution | Negative |
 | TS-113 | Evolve runs Codex in its configured subdirectory with sandboxing enabled and automatic artifact paths. | `evolve.yaml`, `recipes/develop/agent.yaml` | Critical | Integration; c2j rendering; launcher probe documented separately | Positive |
-| TS-114 | Out-of-scope changes and writes during design or review prevent progression, including additions, deletions, and renames. | `recipes/develop/scope.yaml`, `recipes/develop/agent.yaml` | Critical | Integration; disposable git repository | Negative |
+| TS-114 | Retired by explicit removal of custom write-scope enforcement; target-directory behavior remains covered by TS-106. | Historical | — | — | — |
 | TS-115 | Requirement feedback returns to design and requires renewed plan approval before implementation resumes. | `recipes/develop/develop.yaml` | Critical | Integration; c2j, mocked input | Positive |
 | TS-116 | Only verified, reviewed, explicitly accepted work can squash merge into upstream. | `recipes/develop/finish.yaml`, `recipes/develop/develop.yaml` | Critical | Integration; c2j, disposable upstream | Positive |
-| TS-117 | Traversal and symlink escapes cannot broaden the configured development scope. | `recipes/develop/scope.yaml` | Critical | Integration; disposable filesystem | Negative |
+| TS-117 | Retired by explicit removal of custom write-scope enforcement; target-directory behavior remains covered by TS-106. | Historical | — | — | — |
 | TS-118 | Verification preserves command logs and rejects checks that modify tracked candidate content. | `recipes/develop/verify.yaml` | High | Integration; real commands, disposable git repository | Positive/negative |
 | TS-119 | Local specialization wrappers can reference shared phases without copying sibling recipes. | `build.yaml`, `evolve.yaml`, `recipes/develop/develop.yaml` | High | Integration; c2j include resolution | Positive |
 | TS-120 | Repeated invalid human choices and blank feedback cannot bypass approvals or lose the original request. | `recipes/develop/develop.yaml` | High | Integration; c2j, mocked input | Negative |
@@ -168,9 +168,9 @@ workflow adds a design/test-plan approval checkpoint before outcome acceptance.
 
 | TS-140 | Implementation can consult a dependency cell after discovering a bug without first abandoning its coding session. | `recipes/develop/implement.yaml` | Critical | Integration; isolated JobDB, c2j | Positive |
 | TS-141 | Implementation edits and dependency history survive foreign discussions; foreign experiments never enter the local candidate. | `recipes/develop/implement.yaml`, `recipes/develop/consultation-turn.yaml` | Critical | Integration; git, isolated JobDB | Positive |
-| TS-142 | Design and implementation share consultation threads without changing their cell, pinned commit, or session. | `recipes/develop/consultation-history.yaml` | Critical | Integration; isolated JobDB | Positive |
+| TS-142 | Design and implementation share consultation threads without changing their cell, pinned commit, or session. | `recipes/develop/develop.yaml`, `recipes/develop/consultation-turn.yaml` | Critical | Integration; isolated JobDB | Positive |
 | TS-143 | Newly agreed external work returns to design approval before submission; advisory answers can continue approved implementation directly. | `recipes/develop/implement.yaml`, `recipes/develop/develop.yaml` | Critical | Integration; c2j | Positive and negative |
-| TS-144 | Multiple foreign threads retain separate checkpoints and identities; mismatched or missing continuation sessions cannot advance. | `recipes/develop/consult.yaml`, `recipes/develop/consultation-turn.yaml` | Critical | Integration; isolated JobDB | Positive and negative |
+| TS-144 | Multiple foreign threads retain separate checkpoints and identities; missing continuation checkpoints cannot advance. | `recipes/develop/consult.yaml`, `recipes/develop/consultation-turn.yaml` | Critical | Integration; isolated JobDB | Positive and negative |
 | TS-145 | Missing repositories, invalid mandates, rejected ownership, and malformed foreign replies cannot become approved external work. | `recipes/develop/consult.yaml` | Critical | Integration; isolated JobDB | Negative |
 | TS-146 | Runtime blocker regressions execute independently so a broker or replay failure cannot hide other workspace coverage. | `recipe-tests/verify-consultations.py` | High | Integration; isolated JobDB | Negative |
 
@@ -205,7 +205,7 @@ a fresh job and cannot be imported by the new op revision.
 | TS-157 | New conversations omit session inputs; later turns receive the complete checkpoint produced by the selected predecessor. | `recipes/develop/agent.yaml`, `recipe-tests/verify-default-recipes.py` | Critical | Integration; c2j, pinned c2ops | Positive |
 | TS-158 | Human feedback and dependency recovery resume the latest successful checkpoint without session-state artifact bindings. | `recipes/develop/develop.yaml`, `recipe-tests/verify-dependencies.py` | Critical | Integration; ephemeral JobDB, object fixture | Positive |
 | TS-159 | Foreign conversations preserve independent checkpoints across worker replacement while repository experiments remain disposable. | `recipes/develop/consult.yaml`, `recipe-tests/verify-consultations.py` | Critical | Integration; ephemeral JobDB, git, object fixture | Positive |
-| TS-160 | Equal diagnostic session IDs cannot hide divergent checkpoints or conflicting consultation histories. | `recipes/develop/consultation-history.yaml`, `recipe-tests/verify-implementation-consultations.py` | Critical | Integration; c2j | Negative |
+| TS-160 | Retired with transcript reconciliation; native checkpoint validation remains covered by TS-161 and TS-165. | Historical | — | — | — |
 | TS-161 | Missing or invalid successor checkpoints cannot authorize continuation, acceptance, or merge. | `recipes/develop/agent.yaml`, `recipes/develop/consult.yaml` | Critical | Integration; c2j, object fixture | Negative |
 | TS-162 | Codex and skill calls share the pinned session contract and reject legacy resume inputs. | `recipes/`, `recipe-tests/verify-object-sessions.py` | Critical | Integration; pinned c2ops, deterministic Codex CLI | Positive and negative |
 | TS-163 | Session branches restore independent agent histories even when their diagnostic conversation IDs match. | `recipe-tests/verify-object-sessions.py` | Critical | Integration; ephemeral JobDB, pinned c2ops | Positive |
@@ -223,6 +223,14 @@ a fresh job and cannot be imported by the new op revision.
 | TS-170 | Returned files cannot silently change approved documents or authorize merging an unreviewed candidate. | `recipes/develop/develop.yaml`, `recipe-tests/verify-native-reviews.py` | Critical | Integration; c2j, git | Negative |
 | TS-171 | Review receipts and original document references remain available after worker replacement and at recipe completion. | `build.yaml`, `evolve.yaml`, `recipe-tests/verify-native-reviews.py` | High | Integration; c2j, ephemeral JobDB | Positive |
 | TS-172 | Feedback from earlier review rounds cannot replace a later response or leak into an unrelated revision. | `recipes/develop/develop.yaml`, `recipe-tests/verify-default-recipes.py` | Critical | Integration; c2j | Negative |
+
+## Simplified orchestration
+
+| ID | Test statement | Relevant files | Importance | Level / dependencies | Case |
+|---|---|---|---|---|---|
+| TS-173 | Agents receive current phase results and dependency outcomes directly, with dependency documents available through their artifact inbox. | `recipes/develop/agent.yaml`, `recipe-tests/verify-dependencies.py` | Critical | Integration; ephemeral JobDB, object fixture | Positive |
+| TS-174 | Design, implementation, and human feedback continue each foreign conversation from its latest checkpoint without replaying an older reply. | `recipes/develop/develop.yaml`, `recipe-tests/verify-implementation-consultations.py`, `recipe-tests/verify-development-lifecycle.py` | Critical | Integration; ephemeral JobDB, git, object fixture | Positive and negative |
+| TS-175 | Empty, duplicate, and previously completed child sets need no extra submissions; failures remain available to the requesting session. | `recipes/develop/wait-children.yaml`, `recipe-tests/verify-dependencies.py` | High | Integration; c2j, ephemeral JobDB | Positive and negative |
 
 ## Notes for Test Authoring
 

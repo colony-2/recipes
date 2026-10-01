@@ -2,7 +2,7 @@ module recipes-tests/jobdb-service
 
 go 1.26
 
-require github.com/colony-2/jobdb v0.0.19-0.20260919034646-71b6668a65db
+require github.com/colony-2/jobdb v0.0.23-0.20260930230839-6da2fab0502e
 
 require (
 	github.com/apapsch/go-jsonmerge/v2 v2.0.0 // indirect
