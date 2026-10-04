@@ -46,6 +46,15 @@ recipe family under `recipes/<family>/tests/`.
 5. The optional verification hook and retained execution evidence.
 6. Human satisfaction, then squash merge into the cell's upstream branch.
 
+The entrypoints select the working directory. `develop.yaml` owns the phase order,
+human reviews, and merge. It calls one `agent.yaml` loop with a named phase;
+the phase prompts and routing schemas live together there. There are no separate
+forwarding recipes for design, implementation, or individual reviewers.
+`consult.yaml`, `wait-children.yaml`, and `verify.yaml` handle foreign-cell
+conversations, prerequisite jobs, and the replaceable verification hook.
+Specializations that included an old phase file should now include `agent.yaml`
+with its phase name, for example `phase: design` or `phase: implement`.
+
 Design assesses whether the request fits, partially fits, or belongs outside the
 plain Markdown `.c2j/mandate.md`. The design explains the ownership split and any
 agreed external work. Missing or ambiguous mandates require clarification; outside

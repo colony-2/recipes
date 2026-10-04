@@ -4,7 +4,7 @@ A job in cell A can ask an agent in cell B to evaluate ownership, refine a desig
 explain an interface, or diagnose a missing dependency. Discussion alone does not
 need a separate job. Actual implementation in B still belongs to a B job.
 
-`phase.yaml` handles this during design and implementation. A returns:
+`agent.yaml` handles this during design and implementation. A returns:
 
 ```json
 {

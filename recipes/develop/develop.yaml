@@ -1,5 +1,5 @@
 id: develop
-version: 0.2.0
+version: 0.3.0
 input_schema:
   prompt:
     type: string
@@ -29,7 +29,7 @@ state:
       - to: design
         when: true
     design:
-      include: ./design.yaml
+      include: ./agent.yaml
       inputs:
         prompt: ${{ inputs.prompt }}
         target_directory: ${{ inputs.target_directory }}
@@ -49,6 +49,7 @@ state:
         consultation_history_json: ${{ json_stringify(transition.payload.?consultations.orValue(state_output("design",
           "consultations", {}))) }}
         review_response_json: ${{ json_stringify(transition.payload.?review.orValue({})) }}
+        phase: design
       transitions:
       - to: outside
         when: outputs.valid && outputs.completed && outputs.result.next == "outside"
@@ -61,7 +62,7 @@ state:
         payload:
           consultations: ${{ state_output("design", "consultations", {}) }}
     design_review:
-      include: ./review-design.yaml
+      include: ./agent.yaml
       inputs:
         prompt: ${{ inputs.prompt }}
         target_directory: ${{ inputs.target_directory }}
@@ -75,6 +76,7 @@ state:
           as $uploads | .[0:4] | add | with_entries(.key = .value.name) | . + ($uploads | with_entries(.key = (\"review/\"
           + .key) | .value.name = .key))")) }}'
         dependency_history_json: ${{ json_stringify(state_output("design_review", "dependencies", {})) }}
+        phase: review-design
       transitions:
       - to: test_plan
         when: outputs.valid && outputs.completed && outputs.result.next == "done"
@@ -85,7 +87,7 @@ state:
         payload:
           consultations: ${{ state_output("design", "consultations", {}) }}
     test_plan:
-      include: ./test-plan.yaml
+      include: ./agent.yaml
       inputs:
         prompt: ${{ inputs.prompt }}
         target_directory: ${{ inputs.target_directory }}
@@ -99,6 +101,7 @@ state:
           as $uploads | .[0:4] | add | with_entries(.key = .value.name) | . + ($uploads | with_entries(.key = (\"review/\"
           + .key) | .value.name = .key))")) }}'
         dependency_history_json: ${{ json_stringify(state_output("test_plan", "dependencies", {})) }}
+        phase: test-plan
       transitions:
       - to: test_review
         when: outputs.valid && outputs.completed && outputs.result.next == "review"
@@ -107,7 +110,7 @@ state:
         payload:
           consultations: ${{ state_output("design", "consultations", {}) }}
     test_review:
-      include: ./review-test-plan.yaml
+      include: ./agent.yaml
       inputs:
         prompt: ${{ inputs.prompt }}
         target_directory: ${{ inputs.target_directory }}
@@ -122,6 +125,7 @@ state:
           as $uploads | .[0:4] | add | with_entries(.key = .value.name) | . + ($uploads | with_entries(.key = (\"review/\"
           + .key) | .value.name = .key))")) }}'
         dependency_history_json: ${{ json_stringify(state_output("test_review", "dependencies", {})) }}
+        phase: review-test-plan
       transitions:
       - to: approve_plan
         when: outputs.valid && outputs.completed && outputs.result.next == "done"
@@ -272,7 +276,7 @@ state:
           when: true
         states:
           fresh:
-            include: ./implement.yaml
+            include: ./agent.yaml
             inputs:
               prompt: ${{ inputs.prompt }}
               target_directory: ${{ inputs.target_directory }}
@@ -283,8 +287,9 @@ state:
               dependency_history_json: ${{ inputs.dependency_history_json }}
               consultation_history_json: ${{ inputs.consultation_history_json }}
               review_response_json: ${{ inputs.review_response_json }}
+              phase: implement
           resume:
-            include: ./implement.yaml
+            include: ./agent.yaml
             inputs:
               prompt: ${{ inputs.prompt }}
               target_directory: ${{ inputs.target_directory }}
@@ -296,6 +301,7 @@ state:
               consultation_history_json: ${{ inputs.consultation_history_json }}
               session: ${{ inputs.session }}
               review_response_json: ${{ inputs.review_response_json }}
+              phase: implement
       outputs:
         valid: '${{ state_exists("resume") ? states.resume.outputs.valid : states.fresh.outputs.valid }}'
         completed: '${{ state_exists("resume") ? states.resume.outputs.completed : states.fresh.outputs.completed
@@ -328,7 +334,7 @@ state:
           consultations: ${{ state_output("implementation", "consultations", state_output("design", "consultations",
             {})) }}
     specification:
-      include: ./review-specification.yaml
+      include: ./agent.yaml
       inputs:
         prompt: ${{ inputs.prompt }}
         target_directory: ${{ inputs.target_directory }}
@@ -343,6 +349,7 @@ state:
           + "," + json_stringify(({}).?artifact_refs.orValue({})) + '']''), ".[4] as $uploads | .[0:4] | add | with_entries(.key
           = .value.name) | . + ($uploads | with_entries(.key = (\"review/\" + .key) | .value.name = .key))")) }}'
         dependency_history_json: ${{ json_stringify(state_output("implementation", "dependencies", {})) }}
+        phase: review-specification
       transitions:
       - to: quality
         when: outputs.valid && outputs.completed && outputs.result.next == "done"
@@ -354,7 +361,7 @@ state:
           consultations: ${{ state_output("implementation", "consultations", state_output("design", "consultations",
             {})) }}
     quality:
-      include: ./review-quality.yaml
+      include: ./agent.yaml
       inputs:
         prompt: ${{ inputs.prompt }}
         target_directory: ${{ inputs.target_directory }}
@@ -369,6 +376,7 @@ state:
           + "," + json_stringify(({}).?artifact_refs.orValue({})) + '']''), ".[4] as $uploads | .[0:4] | add | with_entries(.key
           = .value.name) | . + ($uploads | with_entries(.key = (\"review/\" + .key) | .value.name = .key))")) }}'
         dependency_history_json: ${{ json_stringify(state_output("implementation", "dependencies", {})) }}
+        phase: review-quality
       transitions:
       - to: verify
         when: outputs.valid && outputs.completed && outputs.result.next == "done"
@@ -522,7 +530,6 @@ state:
           consultations: ${{ transition.payload.?consultations.orValue(state_output("implementation", "consultations",
             state_output("design", "consultations", {}))) }}
     finish:
-      include: ./finish.yaml
       inputs:
         target_directory: ${{ inputs.target_directory }}
         summary: ${{ states.implementation.outputs.result.summary }}
@@ -532,6 +539,37 @@ state:
       transitions:
       - to: failed
         when: '!outputs.merged'
+      state:
+        initial: gate
+        states:
+          gate:
+            op: git+https://github.com/colony-2/c2ops.git//rule_gate@main
+            inputs:
+              rules:
+              - id: accepted-outcome
+                type: assert
+                value: ${{ inputs.approved && inputs.verified }}
+                message: Only a human-accepted outcome that passed the verification step may merge.
+            transitions:
+            - to: merge
+              when: outputs.ok
+          merge:
+            op: squashrebasemerge
+            inputs:
+              repo_path: '{{ context.environment.op.worktree_path }}'
+              local_hash: ${{ context.git.hash }}
+              upstream_repo: '{{ context.git.repo }}'
+              upstream_branch: '{{ context.git.ref }}'
+              rebase: false
+              author: ${{ context.git.?author.orValue("") }}
+              commit_message: |-
+                Complete approved development work
+
+                {{ inputs.summary }}
+      outputs:
+        merged: ${{ nonempty(state_output("merge", "merged_hash", "")) }}
+        merged_hash: ${{ state_output("merge", "merged_hash", "") }}
+        target_branch: ${{ state_output("merge", "target_branch", "") }}
     failed:
       op: command_execution
       inputs:

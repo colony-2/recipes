@@ -28,10 +28,12 @@ complete object from the selected predecessor:
 ```
 
 A recipe accepting a submitted session declares `type: object` with
-`object_type: c2ops.codex.session/v1`. Shared phases normalize an omitted input
+`object_type: c2ops.codex.session/v1`. The shared agent loop normalizes an omitted input
 to null only within their orchestration scope. Explicit fresh/resume branches
 omit the key from fresh op/include inputs; **no Codex op receives `session: null`**.
-The same branching also preserves typed optional inputs across included recipes.
+Only the implementation and consultation entrypoints branch at an include boundary;
+there are no intervening phase recipes repeating that choice. The Codex calls
+select fresh/resumed and root/scoped inputs in one set of sibling states.
 
 The shared agent, human revision loop, dependency recovery, and foreign-cell
 consultation route the latest successful object explicitly. Build/evolve export

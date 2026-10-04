@@ -1,5 +1,6 @@
+# Named phases share this loop; custom callers supply instructions and a result schema.
 id: development-agent
-version: 0.2.0
+version: 0.3.0
 input_schema:
   prompt:
     type: string
@@ -21,10 +22,10 @@ input_schema:
     default_value: '{}'
   instructions:
     type: string
-    required: true
+    default_value: ''
   result_schema_json:
     type: string
-    required: true
+    default_value: ''
   dependency_history_json:
     type: string
     default_value: '{}'
@@ -33,11 +34,17 @@ input_schema:
     default_value: true
   consultation_history_json:
     type: string
-    default_value: ''
+    default_value: '{}'
   session:
     type: object
     object_type: c2ops.codex.session/v1
     required: false
+  phase:
+    type: string
+    default_value: custom
+  review_response_json:
+    type: string
+    default_value: '{}'
 inputs:
   prompt: ${{ inputs.prompt }}
   target_directory: ${{ inputs.target_directory }}
@@ -51,6 +58,8 @@ inputs:
   allow_child_jobs: ${{ inputs.allow_child_jobs }}
   consultation_history_json: ${{ inputs.consultation_history_json }}
   session: ${{ inputs.?session.orValue(null) }}
+  phase: ${{ inputs.phase }}
+  review_response_json: ${{ inputs.review_response_json }}
 state:
   initial: run
   states:
@@ -60,187 +69,143 @@ state:
         target_directory: ${{ inputs.target_directory }}
         mode: ${{ inputs.mode }}
         feedback: ${{ inputs.feedback }}
-        context_json: '${{ json_stringify(jq(json_parse(''{"phase":'' + inputs.context_json + '',"consultations":''
-          + (inputs.consultation_history_json == "" ? "null" : inputs.consultation_history_json) + '',"dependencies":''
-          + json_stringify(state_output("dependencies", "results", json_parse(inputs.dependency_history_json)))
-          + ''}''), "if .consultations == null then del(.consultations) else .phase.consultations = .consultations
-          | del(.consultations) end")) }}'
-        evidence_json: ${{ inputs.evidence_json }}
-        instructions: ${{ inputs.instructions }}
-        result_schema_json: ${{ inputs.result_schema_json }}
+        context_json: '${{ json_stringify({"phase": jq([json_parse(inputs.context_json), {"consultations": state_output("consult",
+          "consultations", json_parse(inputs.consultation_history_json))}], "add"), "dependencies": state_output("dependencies",
+          "results", json_parse(inputs.dependency_history_json))}) }}'
+        evidence_json: '${{ json_stringify(jq(json_parse(''['' + inputs.evidence_json + "," + json_stringify(state_output("run",
+          "artifact_refs", {})) + "," + json_stringify((inputs.phase == "custom" ? "" : vars.phases[inputs.phase].document))
+          + '']''), ".[2] as $document | .[0] + (.[1] | with_entries(select(.key == $document) | .key = (\"draft/\"
+          + .key) | .value.name = .key))")) }}'
+        instructions: '${{ inputs.phase == "custom" ? inputs.instructions : vars.phases[inputs.phase].instructions
+          }}'
+        result_schema_json: '${{ inputs.phase == "custom" ? inputs.result_schema_json : json_stringify(vars.phases[inputs.phase].schema)
+          }}'
         dependency_artifacts_json: ${{ json_stringify(jq(json_parse(json_stringify(state_output("dependencies",
           "results", json_parse(inputs.dependency_history_json)))), "[to_entries[] | .key as $job | .value.artifacts
           // {} | to_entries[] | .key = ($job + \"/\" + .key) | .value.name = .key] | from_entries")) }}
-        allow_child_jobs: ${{ inputs.allow_child_jobs }}
+        allow_child_jobs: '${{ inputs.phase == "custom" ? inputs.allow_child_jobs : vars.phases[inputs.phase].allow_child_jobs
+          }}'
         session: ${{ state_output("run", "session", inputs.session) }}
       state:
+        # Omit absent sessions and use Codex's default paths for the cell root.
         initial:
-        - to: root
+        - to: root_resume
+          when: inputs.target_directory == "." && inputs.session != null
+        - to: root_fresh
           when: inputs.target_directory == "."
-        - to: scoped
+        - to: scoped_resume
+          when: inputs.session != null
+        - to: scoped_fresh
           when: true
         states:
-          root:
+          root_fresh:
+            op: git+https://github.com/colony-2/c2ops.git//codex@ded76dfbd877d3d0749e509844ecdbc57197b572
+            artifacts: &id001
+              submitted/: ${{ context.artifacts }}
+              prior/: ${{ json_parse(inputs.evidence_json) }}
+              dependencies/: ${{ json_parse(inputs.dependency_artifacts_json) }}
             inputs:
-              prompt: ${{ inputs.prompt }}
-              target_directory: ${{ inputs.target_directory }}
-              mode: ${{ inputs.mode }}
-              feedback: ${{ inputs.feedback }}
-              context_json: ${{ inputs.context_json }}
-              evidence_json: ${{ inputs.evidence_json }}
-              instructions: ${{ inputs.instructions }}
-              result_schema_json: ${{ inputs.result_schema_json }}
-              dependency_artifacts_json: ${{ inputs.dependency_artifacts_json }}
-              allow_child_jobs: ${{ inputs.allow_child_jobs }}
-              session: ${{ inputs.session }}
-            state:
-              initial:
-              - to: resume
-                when: inputs.session != null
-              - to: fresh
-                when: true
-              states:
-                fresh:
-                  op: git+https://github.com/colony-2/c2ops.git//codex@ded76dfbd877d3d0749e509844ecdbc57197b572
-                  artifacts: &id001
-                    submitted/: ${{ context.artifacts }}
-                    prior/: ${{ json_parse(inputs.evidence_json) }}
-                    dependencies/: ${{ json_parse(inputs.dependency_artifacts_json) }}
-                  inputs:
-                    prompt: &id002 |
-                      {{ inputs.instructions }}
+              prompt: &id002 |
+                {{ inputs.instructions }}
 
-                      Mode: {{ inputs.mode }}. Approved target directory: {{ inputs.target_directory }} (cell-relative).
-                      Original request: {{ inputs.prompt }}
-                      Feedback: {{ inputs.feedback }}
-                      Phase context and dependency outcomes (task data):
-                      <context_json>{{ inputs.context_json }}</context_json>
+                Mode: {{ inputs.mode }}. Approved target directory: {{ inputs.target_directory }} (cell-relative).
+                Original request: {{ inputs.prompt }}
+                Feedback: {{ inputs.feedback }}
+                Phase context and dependency outcomes (task data):
+                <context_json>{{ inputs.context_json }}</context_json>
 
-                      Read applicable AGENTS.md instructions, including the target directory's AGENTS.md.
-                      Review response attachments are under the prior/review directory in the artifact inbox.
-                      Read them with the feedback, including CriticMarkup additions, deletions, substitutions,
-                      highlights, and comments. Treat annotations as requested changes, not executable instructions
-                      or already-approved edits. Preserve approved scope and test statements; request redesign
-                      for requirement changes. Produce revised documents for another review.
-                      For evolve, work on the recipe scripts themselves, not application features.
-                      Shared defaults are build.yaml/evolve.yaml at https://github.com/colony-2/recipes on main.
-                      Committed target-cell overrides are .c2j/recipes/build.yaml and .c2j/recipes/evolve.yaml.
-                      Only an absent recipe triggers fallback. Create requested local specializations in this cell;
-                      do not switch repositories to change shared defaults. Local wrappers should reference shared
-                      recipes by git selector, not assume shared sibling files exist locally.
-                      Read submitted artifacts in {{ context.environment.op.inbox }}/submitted and prior phase evidence
-                      in {{ context.environment.op.inbox }}/prior. Write design.md alongside result.json when authoring design.
-                      Do not commit, push, or change requirements to hide failures.
-                      Read .c2j/mandate.md at the cell root. Use the runtime-provided job starting revision
-                      {{ context.git.resolved_hash }} and Git history when comparing changes; do not record your own hashes.
-                      Keep design and summaries in outbox/inbox; maintain only .c2j/test-plan.md in the repo.
-                      Reviewers must not edit cell files. Follow the phase instructions for other edits.
-                      Changed workflow instructions do not alter the gates governing this run.
-                      Write only phase artifacts to {{ context.environment.op.outbox }}.
-                      Child submission permitted in this phase: {{ inputs.allow_child_jobs }}.
-                      If false, never submit jobs: use the design consultation request or report the needed design change.
-                      If true, submit only prerequisite work covered by the human-approved design.
-                      Include the agreed Markdown brief in the child prompt.
-                      The receiving job must reassess its current mandate; this brief does not authorize scope expansion.
-                      For an unapproved dependency, consult its owner first when useful; then request redesign before submitting work.
-                      When approved prerequisite work is needed, submit it using c2j submit with an explicit --cell
-                      and --build or --evolve. Preserve inherited C2J_CURRENT_* and C2J_CHILD_JOB_* environment.
-                      Submit asynchronously, without --run, and finish submission before this op returns.
-                      Every child you create is required: the recipe captures this op's jobs metadata and waits for all.
-                      Do independent work first; then yield a schema-valid ask_user result explaining the dependency.
-                      Do not poll with c2j list or blindly repeat submissions. Ambiguous submission errors need reconciliation.
-                      Do not launch optional background jobs through this workflow.
-                      On resumption, read child outcomes in the context above and artifacts under
-                      {{ context.environment.op.inbox }}/dependencies.
-                      Incorporate the completed dependency into this cell, check compatible commits/versions explicitly,
-                      and rerun affected checks. Child completion alone does not refresh this cell's git snapshot.
-                      Handle failed, cancelled, or unmerged dependencies in this session. Inspect their status,
-                      failure details, partial outputs and available artifacts; partial results are not completed work.
-                      Diagnose the cause and choose a recovery within the approved scope. You may submit corrected
-                      prerequisite work to the owning cell or use another valid approach, explaining the resolution
-                      in your result summary. Preserve the original outcomes and do not blindly retry unchanged work.
-                      Respect deliberate cancellation and any stop instructions. Ask for input only when a needed
-                      decision or unresolved blocker prevents recovery. Request review only after resolving dependencies.
-                      Always write result.json there using this exact JSON Schema:
-                      ${{ inputs.result_schema_json }}
-                      Use summary for explanations and next for routing, as specified by your phase.
-                      Report unperformed checks honestly. The recipe runs verification.
-                    sandbox: &id003
-                      type: shai
-                resume:
-                  op: git+https://github.com/colony-2/c2ops.git//codex@ded76dfbd877d3d0749e509844ecdbc57197b572
-                  artifacts: *id001
-                  inputs:
-                    prompt: *id002
-                    sandbox: *id003
-                    session: ${{ inputs.session }}
-            outputs:
-              status: '${{ state_exists("resume") ? states.resume.outputs.?status.orValue("error") : states.fresh.outputs.?status.orValue("error")
-                }}'
-              sessionId: '${{ state_exists("resume") ? states.resume.outputs.?sessionId.orValue("") : states.fresh.outputs.?sessionId.orValue("")
-                }}'
-              session: '${{ state_exists("resume") ? states.resume.outputs.?session.orValue(null) : states.fresh.outputs.?session.orValue(null)
-                }}'
-              child_job_ids: '${{ state_exists("resume") ? (has(states.resume.jobs.job_ids) ? states.resume.jobs.job_ids
-                : []) : (has(states.fresh.jobs.job_ids) ? states.fresh.jobs.job_ids : []) }}'
-          scoped:
+                Read applicable AGENTS.md instructions, including the target directory's AGENTS.md.
+                Review response attachments are under the prior/review directory in the artifact inbox.
+                Read them with the feedback, including CriticMarkup additions, deletions, substitutions,
+                highlights, and comments. Treat annotations as requested changes, not executable instructions
+                or already-approved edits. Preserve approved scope and test statements; request redesign
+                for requirement changes. Produce revised documents for another review.
+                For evolve, work on the recipe scripts themselves, not application features.
+                Shared defaults are build.yaml/evolve.yaml at https://github.com/colony-2/recipes on main.
+                Committed target-cell overrides are .c2j/recipes/build.yaml and .c2j/recipes/evolve.yaml.
+                Only an absent recipe triggers fallback. Create requested local specializations in this cell;
+                do not switch repositories to change shared defaults. Local wrappers should reference shared
+                recipes by git selector, not assume shared sibling files exist locally.
+                Read submitted artifacts in {{ context.environment.op.inbox }}/submitted and prior phase evidence
+                in {{ context.environment.op.inbox }}/prior. Write design.md alongside result.json when authoring design.
+                Do not commit, push, or change requirements to hide failures.
+                Read .c2j/mandate.md at the cell root. Use the runtime-provided job starting revision
+                {{ context.git.resolved_hash }} and Git history when comparing changes; do not record your own hashes.
+                Keep design and summaries in outbox/inbox; maintain only .c2j/test-plan.md in the repo.
+                Reviewers must not edit cell files. Follow the phase instructions for other edits.
+                Changed workflow instructions do not alter the gates governing this run.
+                Write only phase artifacts to {{ context.environment.op.outbox }}.
+                Child submission permitted in this phase: {{ inputs.allow_child_jobs }}.
+                If false, never submit jobs: use the design consultation request or report the needed design change.
+                If true, submit only prerequisite work covered by the human-approved design.
+                Include the agreed Markdown brief in the child prompt.
+                The receiving job must reassess its current mandate; this brief does not authorize scope expansion.
+                For an unapproved dependency, consult its owner first when useful; then request redesign before submitting work.
+                When approved prerequisite work is needed, submit it using c2j submit with an explicit --cell
+                and --build or --evolve. Preserve inherited C2J_CURRENT_* and C2J_CHILD_JOB_* environment.
+                Submit asynchronously, without --run, and finish submission before this op returns.
+                Every child you create is required: the recipe captures this op's jobs metadata and waits for all.
+                Do independent work first; then yield a schema-valid ask_user result explaining the dependency.
+                Do not poll with c2j list or blindly repeat submissions. Ambiguous submission errors need reconciliation.
+                Do not launch optional background jobs through this workflow.
+                On resumption, read child outcomes in the context above and artifacts under
+                {{ context.environment.op.inbox }}/dependencies.
+                Incorporate the completed dependency into this cell, check compatible commits/versions explicitly,
+                and rerun affected checks. Child completion alone does not refresh this cell's git snapshot.
+                Handle failed, cancelled, or unmerged dependencies in this session. Inspect their status,
+                failure details, partial outputs and available artifacts; partial results are not completed work.
+                Diagnose the cause and choose a recovery within the approved scope. You may submit corrected
+                prerequisite work to the owning cell or use another valid approach, explaining the resolution
+                in your result summary. Preserve the original outcomes and do not blindly retry unchanged work.
+                Respect deliberate cancellation and any stop instructions. Ask for input only when a needed
+                decision or unresolved blocker prevents recovery. Request review only after resolving dependencies.
+                Always write result.json there using this exact JSON Schema:
+                ${{ inputs.result_schema_json }}
+                Use summary for explanations and next for routing, as specified by your phase.
+                Report unperformed checks honestly. The recipe runs verification.
+              sandbox: &id003
+                type: shai
+          root_resume:
+            op: git+https://github.com/colony-2/c2ops.git//codex@ded76dfbd877d3d0749e509844ecdbc57197b572
+            artifacts: *id001
             inputs:
-              prompt: ${{ inputs.prompt }}
-              target_directory: ${{ inputs.target_directory }}
-              mode: ${{ inputs.mode }}
-              feedback: ${{ inputs.feedback }}
-              context_json: ${{ inputs.context_json }}
-              evidence_json: ${{ inputs.evidence_json }}
-              instructions: ${{ inputs.instructions }}
-              result_schema_json: ${{ inputs.result_schema_json }}
-              dependency_artifacts_json: ${{ inputs.dependency_artifacts_json }}
-              allow_child_jobs: ${{ inputs.allow_child_jobs }}
+              prompt: *id002
+              sandbox: *id003
               session: ${{ inputs.session }}
-            state:
-              initial:
-              - to: resume
-                when: inputs.session != null
-              - to: fresh
-                when: true
-              states:
-                fresh:
-                  op: git+https://github.com/colony-2/c2ops.git//codex@ded76dfbd877d3d0749e509844ecdbc57197b572
-                  artifacts: &id004
-                    submitted/: ${{ context.artifacts }}
-                    prior/: ${{ json_parse(inputs.evidence_json) }}
-                    dependencies/: ${{ json_parse(inputs.dependency_artifacts_json) }}
-                  inputs:
-                    prompt: *id002
-                    sandbox: &id005
-                      type: shai
-                    worktree_path: '{{ context.environment.op.worktree_path }}/{{ inputs.target_directory }}'
-                resume:
-                  op: git+https://github.com/colony-2/c2ops.git//codex@ded76dfbd877d3d0749e509844ecdbc57197b572
-                  artifacts: *id004
-                  inputs:
-                    prompt: *id002
-                    sandbox: *id005
-                    worktree_path: '{{ context.environment.op.worktree_path }}/{{ inputs.target_directory }}'
-                    session: ${{ inputs.session }}
-            outputs:
-              status: '${{ state_exists("resume") ? states.resume.outputs.?status.orValue("error") : states.fresh.outputs.?status.orValue("error")
-                }}'
-              sessionId: '${{ state_exists("resume") ? states.resume.outputs.?sessionId.orValue("") : states.fresh.outputs.?sessionId.orValue("")
-                }}'
-              session: '${{ state_exists("resume") ? states.resume.outputs.?session.orValue(null) : states.fresh.outputs.?session.orValue(null)
-                }}'
-              child_job_ids: '${{ state_exists("resume") ? (has(states.resume.jobs.job_ids) ? states.resume.jobs.job_ids
-                : []) : (has(states.fresh.jobs.job_ids) ? states.fresh.jobs.job_ids : []) }}'
+          scoped_fresh:
+            op: git+https://github.com/colony-2/c2ops.git//codex@ded76dfbd877d3d0749e509844ecdbc57197b572
+            artifacts: *id001
+            inputs:
+              prompt: *id002
+              sandbox: *id003
+              worktree_path: '{{ context.environment.op.worktree_path }}/{{ inputs.target_directory }}'
+          scoped_resume:
+            op: git+https://github.com/colony-2/c2ops.git//codex@ded76dfbd877d3d0749e509844ecdbc57197b572
+            artifacts: *id001
+            inputs:
+              prompt: *id002
+              sandbox: *id003
+              worktree_path: '{{ context.environment.op.worktree_path }}/{{ inputs.target_directory }}'
+              session: ${{ inputs.session }}
       outputs:
-        status: '${{ state_exists("scoped") ? states.scoped.outputs.status : states.root.outputs.status }}'
-        session_id: '${{ state_exists("scoped") ? states.scoped.outputs.?sessionId.orValue("") : states.root.outputs.?sessionId.orValue("")
+        status: '${{ (inputs.target_directory == "." ? (inputs.session != null ? states.root_resume : states.root_fresh)
+          : (inputs.session != null ? states.scoped_resume : states.scoped_fresh)).outputs.?status.orValue("error")
           }}'
-        child_job_ids: '${{ state_exists("scoped") ? states.scoped.outputs.child_job_ids : states.root.outputs.child_job_ids
+        session_id: '${{ (inputs.target_directory == "." ? (inputs.session != null ? states.root_resume : states.root_fresh)
+          : (inputs.session != null ? states.scoped_resume : states.scoped_fresh)).outputs.?sessionId.orValue("")
           }}'
-        session: '${{ state_exists("scoped") ? states.scoped.outputs.session : states.root.outputs.session }}'
+        session: '${{ (inputs.target_directory == "." ? (inputs.session != null ? states.root_resume : states.root_fresh)
+          : (inputs.session != null ? states.scoped_resume : states.scoped_fresh)).outputs.?session.orValue(null)
+          }}'
+        child_job_ids: '${{ (inputs.target_directory == "." ? (inputs.session != null ? states.root_resume : states.root_fresh)
+          : (inputs.session != null ? states.scoped_resume : states.scoped_fresh)).?jobs.orValue({}).?job_ids.orValue([])
+          }}'
+        artifact_refs: '${{ (inputs.target_directory == "." ? (inputs.session != null ? states.root_resume : states.root_fresh)
+          : (inputs.session != null ? states.scoped_resume : states.scoped_fresh)).artifacts }}'
       transitions:
       - to: forbidden_children
-        when: '!inputs.allow_child_jobs && size(outputs.child_job_ids) > 0'
+        when: '!(inputs.phase == "custom" ? inputs.allow_child_jobs : vars.phases[inputs.phase].allow_child_jobs)
+          && size(outputs.child_job_ids) > 0'
       - to: dependencies
         when: size(outputs.child_job_ids) > 0
       - to: schema
@@ -255,7 +220,8 @@ state:
         - id: phase-result
           type: json_schema
           inbox_path: result/result.json
-          schema: ${{ json_parse(inputs.result_schema_json) }}
+          schema: '${{ json_parse(inputs.phase == "custom" ? inputs.result_schema_json : json_stringify(vars.phases[inputs.phase].schema))
+            }}'
           message: Every phase must publish a schema-valid result artifact.
       transitions:
       - to: read
@@ -275,6 +241,15 @@ state:
       - to: run
         when: size(states.run.outputs.child_job_ids) > 0 && states.run.outputs.session != null && states.run.outputs.status
           in ["completed", "incomplete"]
+      - to: run
+        when: states.run.outputs.session != null && states.run.outputs.status == "completed" && json_parse(outputs.stdout).next
+          == "continue"
+      - to: consult
+        when: states.run.outputs.session != null && states.run.outputs.status == "completed" && json_parse(outputs.stdout).next
+          == "consult"
+      - to: publish_plan
+        when: states.run.outputs.session != null && states.run.outputs.status == "completed" && inputs.phase ==
+          "test-plan" && json_parse(outputs.stdout).next == "review"
     dependencies:
       include: ./wait-children.yaml
       inputs:
@@ -292,9 +267,60 @@ state:
         run: |
           printf '%s\n' 'This phase may consult cells but must not submit jobs.' >&2
           exit 1
+    consult:
+      workspace:
+        cell: ${{ json_parse(states.read.outputs.stdout).consultation.cell }}
+        ref: ${{ json_parse(states.read.outputs.stdout).consultation.?ref.orValue("main") }}
+      inputs:
+        message: ${{ json_parse(states.read.outputs.stdout).consultation.message }}
+        session: ${{ (state_output("consult", "consultations", json_parse(inputs.consultation_history_json)))[?json_parse(states.read.outputs.stdout).consultation.cell].orValue({}).?session.orValue(null)
+          }}
+        cell: ${{ json_parse(states.read.outputs.stdout).consultation.cell }}
+        history: ${{ state_output("consult", "consultations", json_parse(inputs.consultation_history_json)) }}
+      state:
+        initial:
+        - to: resume
+          when: inputs.session != null
+        - to: fresh
+          when: true
+        states:
+          fresh:
+            include: ./consult.yaml
+            inputs:
+              message: ${{ inputs.message }}
+          resume:
+            include: ./consult.yaml
+            inputs:
+              message: ${{ inputs.message }}
+              session: ${{ inputs.session }}
+      outputs:
+        valid: '${{ state_exists("resume") ? states.resume.outputs.valid : states.fresh.outputs.valid }}'
+        result: '${{ state_exists("resume") ? states.resume.outputs.result : states.fresh.outputs.result }}'
+        session_id: '${{ state_exists("resume") ? states.resume.outputs.session_id : states.fresh.outputs.session_id
+          }}'
+        session: '${{ state_exists("resume") ? states.resume.outputs.session : states.fresh.outputs.session }}'
+        consultations: '${{ jq([inputs.history, {inputs.cell: {"session": state_exists("resume") ? states.resume.outputs.session
+          : states.fresh.outputs.session, "response": state_exists("resume") ? states.resume.outputs.result : states.fresh.outputs.result}
+          }], "add") }}'
+      transitions:
+      - to: run
+        when: outputs.valid
+    publish_plan:
+      op: command_execution
+      inputs:
+        timeout: 10s
+        continue_on_error: true
+        env:
+          PLAN: '{{ context.environment.op.worktree_path }}/.c2j/test-plan.md'
+          OUTBOX: '{{ context.environment.op.outbox }}'
+        run: |
+          cp "$PLAN" "$OUTBOX/test-statements.md"
 outputs:
-  valid: ${{ state_output("schema", "ok", false) && state_exists("read") && state_output("run", "status", "") in
-    ["completed", "incomplete"] && state_output("run", "session", null) != null }}
+  valid: '${{ state_output("schema", "ok", false) && state_exists("read") && state_output("run", "status", "") in
+    ["completed", "incomplete"] && state_output("run", "session", null) != null && state_output("consult", "valid",
+    true) && ((inputs.phase == "custom" ? "" : vars.phases[inputs.phase].document) == "" || json_parse(state_output("read",
+    "stdout", "{}")).?next.orValue("") != "review" || (inputs.phase == "custom" ? "" : vars.phases[inputs.phase].document)
+    in states.run.artifacts) && state_output("publish_plan", "success", true) }}'
   result: ${{ json_parse(state_output("read", "stdout", "{}")) }}
   session_id: ${{ state_output("run", "session_id", "") }}
   completed: ${{ state_output("run", "status", "") == "completed" && size(state_output("run", "child_job_ids", []))
@@ -302,3 +328,195 @@ outputs:
   dependencies: ${{ state_output("dependencies", "results", json_parse(inputs.dependency_history_json)) }}
   session: ${{ state_output("run", "session", null) }}
   artifact_refs: ${{ states.run.artifacts }}
+  consultations: ${{ state_output("consult", "consultations", json_parse(inputs.consultation_history_json)) }}
+  review_response: ${{ json_parse(inputs.review_response_json) }}
+  review_documents: '${{ inputs.phase == "test-plan" ? (state_exists("publish_plan") && state_output("publish_plan",
+    "success", false) ? {"test_statements": states.publish_plan.artifacts["test-statements.md"]} : {}) : ((inputs.phase
+    == "custom" ? "" : vars.phases[inputs.phase].document) != "" && (inputs.phase == "custom" ? "" : vars.phases[inputs.phase].document)
+    in states.run.artifacts ? {(inputs.phase == "custom" ? "" : vars.phases[inputs.phase].document_key): states.run.artifacts[(inputs.phase
+    == "custom" ? "" : vars.phases[inputs.phase].document)]} : {}) }}'
+vars:
+  phases:
+    design:
+      instructions: |-
+        Assess the request against this cell's .c2j/mandate.md before designing. Read it as a human description of ownership. Explain in your summary and design whether the request fits, partially fits, or belongs outside, including the owners of external work. Ask for clarification if the mandate is missing or ambiguous. Do not silently broaden it.
+        Write design.md in the outbox: goals, scope, interfaces, compatibility, acceptance outcomes, and any agreed external work. Keep design documents out of the repository. Read prior documents and review attachments from the inbox when revising; your earlier phase drafts are under prior/draft.
+        Use next=consult with consultation {cell,message,ref?} to talk to an agent in another cell. The recipe resumes you with its response and retains separate session objects. Follow up as needed; express the agreed brief in ordinary Markdown. No job submission during design.
+        Use next=review for a human-reviewable local or partial design, outside for wholly external requests, ask_user for unresolved questions, or continue to keep working in this session. Do not implement.
+      allow_child_jobs: false
+      document: design.md
+      document_key: design
+      schema:
+        type: object
+        additionalProperties: false
+        required:
+        - summary
+        - next
+        properties:
+          summary:
+            type: string
+            pattern: \S
+          next:
+            enum:
+            - review
+            - continue
+            - consult
+            - ask_user
+            - outside
+          consultation:
+            type: object
+            additionalProperties: false
+            required:
+            - cell
+            - message
+            properties:
+              cell:
+                type: string
+                pattern: \S
+              message:
+                type: string
+                pattern: \S
+              ref:
+                type: string
+                pattern: \S
+        allOf:
+        - if:
+            properties:
+              next:
+                const: consult
+          then:
+            required:
+            - consultation
+          else:
+            not:
+              required:
+              - consultation
+    test-plan:
+      instructions: |-
+        Write outcome-focused test statements BEFORE implementation in the repository's .c2j/test-plan.md. Maintain this one plan; do not create per-job documents in Git. Read the proposed design from the inbox.
+        Each statement must be Markdown, at most 30 words, annotated with relevant filenames, importance, unit/integration level, and dependencies. Include positive and negative cases for critical behavior. Use expectation language and meaningful integration coverage; avoid trivial tests and implementation mirroring. No IDs or JSON statement catalog is required.
+        Review existing statements using Git history from the job's starting revision. Preserve approved expectations; explain any proposed change and deprecation plan for human review. Recipe tests must use disposable databases, never home-sourced databases. Use next=review when ready, ask_user for questions, or continue to keep working. Do not implement.
+      allow_child_jobs: false
+      document: ''
+      document_key: ''
+      schema:
+        type: object
+        additionalProperties: false
+        required:
+        - summary
+        - next
+        properties:
+          summary:
+            type: string
+            pattern: \S
+          next:
+            enum:
+            - review
+            - continue
+            - ask_user
+    implement:
+      instructions: |-
+        Implement the human-approved design and maintained .c2j/test-plan.md. Read the approved design from the inbox. Preserve the test expectations; use Git history from the job's starting revision to identify removed or weakened expectations and unauthorized mandate changes. Describe concerns to the reviewer; do not create a baseline ledger.
+        If new external work emerges, use next=consult with consultation {cell,message,ref?}. Continue the conversation in separate sessions. Use next=redesign before submitting work outside the approved design. Submit approved prerequisite work with its agreed Markdown brief; no handoff IDs or certificates are required.
+        Write implementation.md in the outbox with the changes, outcomes, tests performed and remaining limitations. Keep this summary out of the repository. Maintain the test plan in the repo; if expectations need to change, request redesign and explain the deprecation plan.
+        Provide a build.sh verification hook in the target directory when appropriate, or preserve the project's specialized verification op. Use next=review when ready for inspection, ask_user for a blocked decision, continue to keep working, or redesign for changed requirements.
+      allow_child_jobs: true
+      document: implementation.md
+      document_key: implement
+      schema:
+        type: object
+        additionalProperties: false
+        required:
+        - summary
+        - next
+        properties:
+          summary:
+            type: string
+            pattern: \S
+          next:
+            enum:
+            - review
+            - continue
+            - consult
+            - ask_user
+            - redesign
+          consultation:
+            type: object
+            additionalProperties: false
+            required:
+            - cell
+            - message
+            properties:
+              cell:
+                type: string
+                pattern: \S
+              message:
+                type: string
+                pattern: \S
+              ref:
+                type: string
+                pattern: \S
+        allOf:
+        - if:
+            properties:
+              next:
+                const: consult
+          then:
+            required:
+            - consultation
+          else:
+            not:
+              required:
+              - consultation
+    review-design:
+      instructions: Independently review the design in the inbox against the request and .c2j/mandate.md. Assess
+        ownership, scope, interfaces, compatibility, acceptance outcomes, and external work agreements. The mandate
+        is prose; explain whether the request fits, partially fits, or is outside. Look at Git history for unauthorized
+        mandate changes. Use next=done if suitable for human approval, revise with concrete findings, or ask_user
+        for an unresolved decision. Do not edit repository files.
+      allow_child_jobs: false
+      document: ''
+      document_key: ''
+      schema: &id004
+        type: object
+        additionalProperties: false
+        required:
+        - summary
+        - next
+        properties:
+          summary:
+            type: string
+            pattern: \S
+          next:
+            enum:
+            - done
+            - revise
+            - ask_user
+    review-test-plan:
+      instructions: Independently review the Markdown .c2j/test-plan.md and design in the inbox. Check that statements
+        are at most 30 words, name relevant files, importance, unit/integration level and dependencies, and cover
+        positive and negative critical behavior. Assess meaningful coverage, feasible execution, and gaps; do not
+        mistake matching IDs for coverage. Compare Git history from the job's starting revision for removed or weakened
+        expectations; changes require an explained deprecation plan and human approval. Use next=done, revise, or
+        ask_user and explain in summary. Do not edit the plan or implement.
+      allow_child_jobs: false
+      document: ''
+      document_key: ''
+      schema: *id004
+    review-specification:
+      instructions: Independently review the implementation against the human-approved design in the inbox and repository
+        .c2j/test-plan.md. Look at the code and tests, including Git history from the job's starting revision, for
+        missing behavior, weakened expectations, and unauthorized mandate changes. Use next=done, revise, or ask_user
+        with concrete findings in summary. Do not edit repository files.
+      allow_child_jobs: false
+      document: ''
+      document_key: ''
+      schema: *id004
+    review-quality:
+      instructions: Independently review implementation quality, correctness, integration behavior, and regression
+        coverage. Read the design and implementation summary from the inbox and maintained .c2j/test-plan.md. Use
+        next=done, revise, or ask_user with concrete findings in summary. Do not edit repository files.
+      allow_child_jobs: false
+      document: ''
+      document_key: ''
+      schema: *id004

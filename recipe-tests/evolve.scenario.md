@@ -396,6 +396,8 @@ cases:
       && calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@"))[4].node_path.contains("/implementation/")
       && calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@"))[5].node_path.contains("/specification/")
       && calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@"))[6].node_path.contains("/quality/")
+  - type: cel_true
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@"))[0].node_path.startsWith("evolve/develop/root/design/design/development-agent/run/state_machine/scoped_fresh/")
   options:
     validation_mode: structure_only
 - id: direct-plan-feedback
@@ -3669,6 +3671,10 @@ cases:
   - type: cel_true
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, has(c.inputs.inputs.worktree_path)
       && c.inputs.inputs.prompt.contains(".c2j/recipes/build.yaml"))
+  - type: cel_true
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@"))[1].inputs.inputs.session.sha256 == "903e460bdf836d6656c641caac0995fec12b4bdaf56771e2b64a2689b4ea41d7"
+  - type: cel_true
+    expr: '!has(calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@"))[0].inputs.inputs.session)'
   options:
     validation_mode: structure_only
 - id: outside

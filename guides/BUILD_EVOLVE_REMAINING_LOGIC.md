@@ -2,6 +2,17 @@
 
 The five remaining embedded Python blocks have been removed.
 
+The development flow now uses five recipe files instead of fifteen. `develop.yaml`
+contains the phase order, human reviews, and merge. `agent.yaml` contains the shared
+session loop and named phase prompts/schemas. The remaining helpers handle a
+foreign-cell conversation, waiting for child jobs, and verification. Build and evolve
+remain thin entrypoints choosing the mode and directory.
+
+There is one loop for continuing work, consulting, and resuming after prerequisites.
+Fresh/resumed and root/scoped Codex calls are sibling branches. Fresh calls omit
+the optional session; root calls use the op's default paths. An implementation
+entry branch preserves the typed optional session at the include boundary.
+
 | Former logic | Current behavior |
 |---|---|
 | Mandate parser and provenance recorder | Agents read `.c2j/mandate.md` as Markdown and use c2j's Git history when reviewing changes. |
@@ -10,7 +21,7 @@ The five remaining embedded Python blocks have been removed.
 | Test-plan catalog validator and renderer | Author maintains `.c2j/test-plan.md`; an independent agent reviews expectations and coverage. A native command copies the exact plan for review. |
 | Verification executor and candidate ledger | Native command runs target-relative `build.sh` when present, uses its return status, and publishes a report and log. |
 
-The shared phase loop resumes the local session or consults another cell as
+The shared agent loop resumes the local session or consults another cell as
 requested by `next`. A consultation retains the latest foreign session and reply.
 Native op metadata supplies child jobs; native await operations return outcomes
 and artifacts. No context preparation, transcript reconstruction, turn recorder,
@@ -19,7 +30,7 @@ custom scope guard, or hash snapshot operation remains.
 The small shell steps create the target directory, read schema-checked result
 JSON, copy the maintained test plan for review, and run/report the verification
 hook. Native review handles uploaded Markdown/CriticMarkup and review receipts.
-`finish.yaml` uses c2j's current Git state for the accepted squash merge.
+The `finish` state in `develop.yaml` uses c2j's current Git state for the accepted squash merge.
 
 Designs, summaries, and execution evidence remain runtime artifacts. Only maintained
 responsibility and test expectations belong in `.c2j/mandate.md` and

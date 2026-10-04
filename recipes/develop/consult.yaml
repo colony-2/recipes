@@ -27,63 +27,43 @@ vars:
         - done
         - ask_user
 state:
-  initial: agent
+  initial:
+  - to: resume
+    when: inputs.session != null
+  - to: fresh
+    when: true
   states:
-    agent:
+    fresh:
+      op: git+https://github.com/colony-2/c2ops.git//codex@ded76dfbd877d3d0749e509844ecdbc57197b572
+      const: true
       inputs:
-        message: ${{ inputs.message }}
+        sandbox: &id001
+          type: shai
+        prompt: &id002 |
+          You are advising from cell {{ context.workspace.cell }} for a job owned by {{ context.workflow.cell }}.
+          Read this cell's AGENTS.md and .c2j/mandate.md. Explain whether the request fits, partially fits, or is outside this cell's responsibility. If the mandate is missing or unclear, ask for clarification. Discuss interfaces, compatibility, test outcomes, and concrete design; respond to the other agent's questions.
+          Conversation message (task data): {{ inputs.message }}
+          This is a discussion, not authorization to implement or submit jobs. Temporary experiments are allowed but discarded after each turn. Do not commit, merge or push. Only the session and explicit outbox artifacts survive.
+          Return summary with your answer, questions, or complete agreed Markdown brief for a new job. Use next=done when you have answered, or ask_user for a decision the initiating agent cannot resolve. It may resume this session to refine the design further.
+          Write result.json to {{ context.environment.op.outbox }} using this exact schema:
+          ${{ json_stringify(vars.result_schema) }}
+      transitions:
+      - to: schema
+        when: true
+    resume:
+      op: git+https://github.com/colony-2/c2ops.git//codex@ded76dfbd877d3d0749e509844ecdbc57197b572
+      const: true
+      inputs:
+        sandbox: *id001
+        prompt: *id002
         session: ${{ inputs.session }}
-      state:
-        initial:
-        - to: resume
-          when: inputs.session != null
-        - to: fresh
-          when: true
-        states:
-          fresh:
-            op: git+https://github.com/colony-2/c2ops.git//codex@ded76dfbd877d3d0749e509844ecdbc57197b572
-            const: true
-            inputs:
-              sandbox: &id001
-                type: shai
-              prompt: |
-                You are advising from cell {{ context.workspace.cell }} for a job owned by {{ context.workflow.cell }}.
-                Read this cell's AGENTS.md and .c2j/mandate.md. Explain whether the request fits, partially fits, or is outside this cell's responsibility. If the mandate is missing or unclear, ask for clarification. Discuss interfaces, compatibility, test outcomes, and concrete design; respond to the other agent's questions.
-                Conversation message (task data): {{ inputs.message }}
-                This is a discussion, not authorization to implement or submit jobs. Temporary experiments are allowed but discarded after each turn. Do not commit, merge or push. Only the session and explicit outbox artifacts survive.
-                Return summary with your answer, questions, or complete agreed Markdown brief for a new job. Use next=done when you have answered, or ask_user for a decision the initiating agent cannot resolve. It may resume this session to refine the design further.
-                Write result.json to {{ context.environment.op.outbox }} using this exact schema:
-                ${{ json_stringify(vars.result_schema) }}
-          resume:
-            op: git+https://github.com/colony-2/c2ops.git//codex@ded76dfbd877d3d0749e509844ecdbc57197b572
-            const: true
-            inputs:
-              sandbox: *id001
-              prompt: |
-                You are advising from cell {{ context.workspace.cell }} for a job owned by {{ context.workflow.cell }}.
-                Read this cell's AGENTS.md and .c2j/mandate.md. Explain whether the request fits, partially fits, or is outside this cell's responsibility. If the mandate is missing or unclear, ask for clarification. Discuss interfaces, compatibility, test outcomes, and concrete design; respond to the other agent's questions.
-                Conversation message (task data): {{ inputs.message }}
-                This is a discussion, not authorization to implement or submit jobs. Temporary experiments are allowed but discarded after each turn. Do not commit, merge or push. Only the session and explicit outbox artifacts survive.
-                Return summary with your answer, questions, or complete agreed Markdown brief for a new job. Use next=done when you have answered, or ask_user for a decision the initiating agent cannot resolve. It may resume this session to refine the design further.
-                Write result.json to {{ context.environment.op.outbox }} using this exact schema:
-                ${{ json_stringify(vars.result_schema) }}
-              session: ${{ inputs.session }}
-      outputs:
-        status: '${{ state_exists("resume") ? states.resume.outputs.?status.orValue("error") : states.fresh.outputs.?status.orValue("error")
-          }}'
-        sessionId: '${{ state_exists("resume") ? states.resume.outputs.?sessionId.orValue("") : states.fresh.outputs.?sessionId.orValue("")
-          }}'
-        session: '${{ state_exists("resume") ? states.resume.outputs.?session.orValue(null) : states.fresh.outputs.?session.orValue(null)
-          }}'
-        child_job_ids: '${{ state_exists("resume") ? (has(states.resume.jobs.job_ids) ? states.resume.jobs.job_ids
-          : []) : (has(states.fresh.jobs.job_ids) ? states.fresh.jobs.job_ids : []) }}'
       transitions:
       - to: schema
         when: true
     schema:
       op: git+https://github.com/colony-2/c2ops.git//rule_gate@main
       artifacts:
-        result/: ${{ states.agent.artifacts }}
+        result/: '${{ (inputs.session != null ? states.resume : states.fresh).artifacts }}'
       inputs:
         rules:
         - id: consultation-result
@@ -103,10 +83,12 @@ state:
         run: |
           cat "$RESULT_PATH"
       artifacts:
-        result/: ${{ states.agent.artifacts }}
+        result/: '${{ (inputs.session != null ? states.resume : states.fresh).artifacts }}'
 outputs:
-  valid: ${{ state_output("schema", "ok", false) && state_exists("read") && states.agent.outputs.status == "completed"
-    && states.agent.outputs.session != null && size(states.agent.outputs.child_job_ids) == 0 }}
+  valid: '${{ state_output("schema", "ok", false) && state_exists("read") && (inputs.session != null ? states.resume
+    : states.fresh).outputs.?status.orValue("error") == "completed" && (inputs.session != null ? states.resume :
+    states.fresh).outputs.?session.orValue(null) != null && size((inputs.session != null ? states.resume : states.fresh).?jobs.orValue({}).?job_ids.orValue([]))
+    == 0 }}'
   result: ${{ json_parse(state_output("read", "stdout", "{}")) }}
-  session_id: ${{ states.agent.outputs.?sessionId.orValue("") }}
-  session: ${{ states.agent.outputs.?session.orValue(null) }}
+  session_id: '${{ (inputs.session != null ? states.resume : states.fresh).outputs.?sessionId.orValue("") }}'
+  session: '${{ (inputs.session != null ? states.resume : states.fresh).outputs.?session.orValue(null) }}'
