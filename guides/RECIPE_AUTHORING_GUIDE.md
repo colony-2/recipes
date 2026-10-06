@@ -126,14 +126,9 @@ For c2ops `codex`, use `git+https://github.com/colony-2/c2ops.git//codex@ded76df
 
 c2j no longer has a separate cell path. The current cell is rooted at `context.environment.op.worktree_path`, so repo-relative prompts and validation commands should resolve from that root.
 
-For live local smoke recipes that should avoid the c2j extension wrapper sandbox, add:
-
-```yaml
-sandbox:
-  type: none
-```
-
-The pinned c2ops Codex adapter invokes Codex directly when the extension sandbox is disabled and uses c2j's op-visible path context when sandboxing is enabled.
+Omit op sandbox configuration, including explicit `none` settings: c2j is
+removing op sandbox support. Continue using `context.environment.op.*` for
+process paths. The pinned c2ops Codex adapter invokes Codex directly.
 
 Do not hard-code `/src/inbox` or `/src/outbox` in Codex prompts. Recipes should reference:
 

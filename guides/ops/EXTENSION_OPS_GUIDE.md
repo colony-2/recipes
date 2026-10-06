@@ -203,7 +203,6 @@ Current behavior:
 
 - the declared input payload is delivered on stdin as JSON
 - host execution does not inherit the ambient parent process environment
-- `sandbox.type: shai` follows the same contract
 - manifest `env` is the only environment passed to the extension process
 
 So the process boundary is explicit:
@@ -211,33 +210,19 @@ So the process boundary is explicit:
 - stdin carries the structured input payload
 - manifest `env` carries any additional environment the extension author intentionally declared
 
-## Sandbox
+## Process paths
 
-Extension ops support a reserved `sandbox` input field that is not passed through to the extension payload.
-
-Example:
+Omit op sandbox configuration as c2j removes that support. Use
+`context.environment.op.*` for paths passed to the extension process.
 
 ```yaml
 sequence:
-  - id: run_sandboxed
-    op: ./tools/ops/echo
+  - id: summarize
+    op: ./tools/ops/summarize-artifacts
     inputs:
-      message: hello
-      sandbox:
-        type: shai
+      artifact_inbox_path: "{{ context.environment.op.inbox }}"
+      artifact_outbox_path: "{{ context.environment.op.outbox }}"
 ```
-
-Supported values today:
-
-- `type: none`
-- `type: shai`
-
-Use `context.environment.op.*` for any paths passed to the extension process.
-Those values are host paths for direct execution and sandbox-visible paths for
-`sandbox.type: shai`.
-
-Do not include `sandbox` in the extension `input_schema`; c2j consumes it before
-schema validation and before stdin is delivered to the extension process.
 
 ## Validation Timing
 

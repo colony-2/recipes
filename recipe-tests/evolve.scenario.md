@@ -379,8 +379,8 @@ cases:
   - type: cel_true
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).size() > 0
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, c.inputs.inputs.sandbox.type
-      == "shai" && c.inputs.inputs.prompt.contains("Improve requested behavior"))
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, !has(c.inputs.inputs.sandbox)
+      && c.inputs.inputs.prompt.contains("Improve requested behavior"))
   - type: cel_true
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
       && c.inputs.inputs.artifact_outbox_path.endsWith("/outbox"))
@@ -622,8 +622,8 @@ cases:
   - type: cel_true
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).size() > 0
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, c.inputs.inputs.sandbox.type
-      == "shai" && c.inputs.inputs.prompt.contains("Improve requested behavior"))
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, !has(c.inputs.inputs.sandbox)
+      && c.inputs.inputs.prompt.contains("Improve requested behavior"))
   - type: cel_true
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
       && c.inputs.inputs.artifact_outbox_path.endsWith("/outbox"))
@@ -836,8 +836,8 @@ cases:
   - type: cel_true
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).size() > 0
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, c.inputs.inputs.sandbox.type
-      == "shai" && c.inputs.inputs.prompt.contains("Improve requested behavior"))
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, !has(c.inputs.inputs.sandbox)
+      && c.inputs.inputs.prompt.contains("Improve requested behavior"))
   - type: cel_true
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
       && c.inputs.inputs.artifact_outbox_path.endsWith("/outbox"))
@@ -1064,8 +1064,8 @@ cases:
   - type: cel_true
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).size() > 0
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, c.inputs.inputs.sandbox.type
-      == "shai" && c.inputs.inputs.prompt.contains("Improve requested behavior"))
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, !has(c.inputs.inputs.sandbox)
+      && c.inputs.inputs.prompt.contains("Improve requested behavior"))
   - type: cel_true
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
       && c.inputs.inputs.artifact_outbox_path.endsWith("/outbox"))
@@ -1576,8 +1576,8 @@ cases:
   - type: cel_true
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).size() > 0
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, c.inputs.inputs.sandbox.type
-      == "shai" && c.inputs.inputs.prompt.contains("Improve requested behavior"))
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, !has(c.inputs.inputs.sandbox)
+      && c.inputs.inputs.prompt.contains("Improve requested behavior"))
   - type: cel_true
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
       && c.inputs.inputs.artifact_outbox_path.endsWith("/outbox"))
@@ -1841,8 +1841,8 @@ cases:
   - type: cel_true
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).size() > 0
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, c.inputs.inputs.sandbox.type
-      == "shai" && c.inputs.inputs.prompt.contains("Improve requested behavior"))
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, !has(c.inputs.inputs.sandbox)
+      && c.inputs.inputs.prompt.contains("Improve requested behavior"))
   - type: cel_true
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
       && c.inputs.inputs.artifact_outbox_path.endsWith("/outbox"))
@@ -1984,8 +1984,8 @@ cases:
   - type: cel_true
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).size() > 0
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, c.inputs.inputs.sandbox.type
-      == "shai" && c.inputs.inputs.prompt.contains("Improve requested behavior"))
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, !has(c.inputs.inputs.sandbox)
+      && c.inputs.inputs.prompt.contains("Improve requested behavior"))
   - type: cel_true
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
       && c.inputs.inputs.artifact_outbox_path.endsWith("/outbox"))
@@ -2227,8 +2227,8 @@ cases:
   - type: cel_true
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).size() > 0
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, c.inputs.inputs.sandbox.type
-      == "shai" && c.inputs.inputs.prompt.contains("Improve requested behavior"))
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, !has(c.inputs.inputs.sandbox)
+      && c.inputs.inputs.prompt.contains("Improve requested behavior"))
   - type: cel_true
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
       && c.inputs.inputs.artifact_outbox_path.endsWith("/outbox"))
@@ -2340,8 +2340,8 @@ cases:
   - type: cel_true
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).size() > 0
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, c.inputs.inputs.sandbox.type
-      == "shai" && c.inputs.inputs.prompt.contains("Improve requested behavior"))
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, !has(c.inputs.inputs.sandbox)
+      && c.inputs.inputs.prompt.contains("Improve requested behavior"))
   - type: cel_true
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
       && c.inputs.inputs.artifact_outbox_path.endsWith("/outbox"))
@@ -2489,8 +2489,8 @@ cases:
   - type: cel_true
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).size() > 0
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, c.inputs.inputs.sandbox.type
-      == "shai" && c.inputs.inputs.prompt.contains("Improve requested behavior"))
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, !has(c.inputs.inputs.sandbox)
+      && c.inputs.inputs.prompt.contains("Improve requested behavior"))
   - type: cel_true
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
       && c.inputs.inputs.artifact_outbox_path.endsWith("/outbox"))
@@ -2721,8 +2721,8 @@ cases:
   - type: cel_true
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).size() > 0
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, c.inputs.inputs.sandbox.type
-      == "shai" && c.inputs.inputs.prompt.contains("Improve requested behavior"))
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, !has(c.inputs.inputs.sandbox)
+      && c.inputs.inputs.prompt.contains("Improve requested behavior"))
   - type: cel_true
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
       && c.inputs.inputs.artifact_outbox_path.endsWith("/outbox"))
@@ -2915,8 +2915,8 @@ cases:
   - type: cel_true
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).size() > 0
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, c.inputs.inputs.sandbox.type
-      == "shai" && c.inputs.inputs.prompt.contains("Improve requested behavior"))
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, !has(c.inputs.inputs.sandbox)
+      && c.inputs.inputs.prompt.contains("Improve requested behavior"))
   - type: cel_true
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
       && c.inputs.inputs.artifact_outbox_path.endsWith("/outbox"))
@@ -3028,8 +3028,8 @@ cases:
   - type: cel_true
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).size() > 0
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, c.inputs.inputs.sandbox.type
-      == "shai" && c.inputs.inputs.prompt.contains("Improve requested behavior"))
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, !has(c.inputs.inputs.sandbox)
+      && c.inputs.inputs.prompt.contains("Improve requested behavior"))
   - type: cel_true
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
       && c.inputs.inputs.artifact_outbox_path.endsWith("/outbox"))
@@ -3177,8 +3177,8 @@ cases:
   - type: cel_true
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).size() > 0
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, c.inputs.inputs.sandbox.type
-      == "shai" && c.inputs.inputs.prompt.contains("Improve requested behavior"))
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, !has(c.inputs.inputs.sandbox)
+      && c.inputs.inputs.prompt.contains("Improve requested behavior"))
   - type: cel_true
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
       && c.inputs.inputs.artifact_outbox_path.endsWith("/outbox"))
@@ -3362,8 +3362,8 @@ cases:
   - type: cel_true
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).size() > 0
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, c.inputs.inputs.sandbox.type
-      == "shai" && c.inputs.inputs.prompt.contains("Improve requested behavior"))
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, !has(c.inputs.inputs.sandbox)
+      && c.inputs.inputs.prompt.contains("Improve requested behavior"))
   - type: cel_true
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
       && c.inputs.inputs.artifact_outbox_path.endsWith("/outbox"))
@@ -3560,8 +3560,8 @@ cases:
   - type: cel_true
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).size() > 0
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, c.inputs.inputs.sandbox.type
-      == "shai" && c.inputs.inputs.prompt.contains("Improve requested behavior"))
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, !has(c.inputs.inputs.sandbox)
+      && c.inputs.inputs.prompt.contains("Improve requested behavior"))
   - type: cel_true
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
       && c.inputs.inputs.artifact_outbox_path.endsWith("/outbox"))
@@ -3663,8 +3663,8 @@ cases:
   - type: cel_true
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).size() > 0
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, c.inputs.inputs.sandbox.type
-      == "shai" && c.inputs.inputs.prompt.contains("Improve requested behavior"))
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, !has(c.inputs.inputs.sandbox)
+      && c.inputs.inputs.prompt.contains("Improve requested behavior"))
   - type: cel_true
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
       && c.inputs.inputs.artifact_outbox_path.endsWith("/outbox"))
@@ -3751,8 +3751,8 @@ cases:
   - type: cel_true
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).size() > 0
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, c.inputs.inputs.sandbox.type
-      == "shai" && c.inputs.inputs.prompt.contains("Improve requested behavior"))
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, !has(c.inputs.inputs.sandbox)
+      && c.inputs.inputs.prompt.contains("Improve requested behavior"))
   - type: cel_true
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
       && c.inputs.inputs.artifact_outbox_path.endsWith("/outbox"))
@@ -4146,8 +4146,8 @@ cases:
   - type: cel_true
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).size() > 0
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, c.inputs.inputs.sandbox.type
-      == "shai" && c.inputs.inputs.prompt.contains("Improve requested behavior"))
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, !has(c.inputs.inputs.sandbox)
+      && c.inputs.inputs.prompt.contains("Improve requested behavior"))
   - type: cel_true
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
       && c.inputs.inputs.artifact_outbox_path.endsWith("/outbox"))
@@ -4235,8 +4235,8 @@ cases:
   - type: cel_true
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).size() > 0
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, c.inputs.inputs.sandbox.type
-      == "shai" && c.inputs.inputs.prompt.contains("Improve requested behavior"))
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, !has(c.inputs.inputs.sandbox)
+      && c.inputs.inputs.prompt.contains("Improve requested behavior"))
   - type: cel_true
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
       && c.inputs.inputs.artifact_outbox_path.endsWith("/outbox"))
@@ -4319,8 +4319,8 @@ cases:
   - type: cel_true
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).size() > 0
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, c.inputs.inputs.sandbox.type
-      == "shai" && c.inputs.inputs.prompt.contains("Improve requested behavior"))
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, !has(c.inputs.inputs.sandbox)
+      && c.inputs.inputs.prompt.contains("Improve requested behavior"))
   - type: cel_true
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
       && c.inputs.inputs.artifact_outbox_path.endsWith("/outbox"))
@@ -4432,8 +4432,8 @@ cases:
   - type: cel_true
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).size() > 0
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, c.inputs.inputs.sandbox.type
-      == "shai" && c.inputs.inputs.prompt.contains("Improve requested behavior"))
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, !has(c.inputs.inputs.sandbox)
+      && c.inputs.inputs.prompt.contains("Improve requested behavior"))
   - type: cel_true
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
       && c.inputs.inputs.artifact_outbox_path.endsWith("/outbox"))
@@ -4523,8 +4523,8 @@ cases:
   - type: cel_true
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).size() > 0
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, c.inputs.inputs.sandbox.type
-      == "shai" && c.inputs.inputs.prompt.contains("Improve requested behavior"))
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, !has(c.inputs.inputs.sandbox)
+      && c.inputs.inputs.prompt.contains("Improve requested behavior"))
   - type: cel_true
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
       && c.inputs.inputs.artifact_outbox_path.endsWith("/outbox"))
@@ -4613,8 +4613,8 @@ cases:
   - type: cel_true
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).size() > 0
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, c.inputs.inputs.sandbox.type
-      == "shai" && c.inputs.inputs.prompt.contains("Improve requested behavior"))
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, !has(c.inputs.inputs.sandbox)
+      && c.inputs.inputs.prompt.contains("Improve requested behavior"))
   - type: cel_true
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
       && c.inputs.inputs.artifact_outbox_path.endsWith("/outbox"))
@@ -4713,8 +4713,8 @@ cases:
   - type: cel_true
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).size() > 0
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, c.inputs.inputs.sandbox.type
-      == "shai" && c.inputs.inputs.prompt.contains("Improve requested behavior"))
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, !has(c.inputs.inputs.sandbox)
+      && c.inputs.inputs.prompt.contains("Improve requested behavior"))
   - type: cel_true
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
       && c.inputs.inputs.artifact_outbox_path.endsWith("/outbox"))
@@ -4954,8 +4954,8 @@ cases:
   - type: cel_true
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).size() > 0
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, c.inputs.inputs.sandbox.type
-      == "shai" && c.inputs.inputs.prompt.contains("Improve requested behavior"))
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, !has(c.inputs.inputs.sandbox)
+      && c.inputs.inputs.prompt.contains("Improve requested behavior"))
   - type: cel_true
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
       && c.inputs.inputs.artifact_outbox_path.endsWith("/outbox"))

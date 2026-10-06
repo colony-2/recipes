@@ -85,7 +85,7 @@ correct dependency version before proceeding. A cancelled parent does not
 necessarily cancel its children.
 
 Cross-cell work requires a shared JobDB service, available workers, and inherited
-broker environment in the op sandbox. Tests use clean workspace/object/review-capable
+broker environment in the op process. Tests use clean workspace/object/review-capable
 c2j commit `f82bdd2` and a matching disposable JobDB. The historical
 [broker](guides/BUG_REPORT_CHILD_BROKER_COMPILED_INCLUDES.md),
 [replay](guides/BUG_REPORT_WORKSPACE_DIALOGUE_CHILD_WAIT_REPLAY.md), and
@@ -124,12 +124,10 @@ ID/artifact sessions cannot be resumed with these recipes. Start fresh jobs when
 upgrading, carrying any useful summary as ordinary task context. See
 [the session migration guide](guides/CODEX_OBJECT_SESSION_MIGRATION.md).
 
-Codex and verification use `sandbox.type: shai`. Codex's artifact/runtime paths
-retain their defaults; evolve intentionally overrides only `worktree_path`.
-**Current upstream limitation:** Shai grants workspace-wide writes, and c2ops
-disables Codex's native sandbox. A scoped cwd is not yet a write-isolation boundary.
-See [the sandbox bug report](guides/BUG_REPORT_SCOPED_CODEX_SANDBOX.md).
-Running sandboxed jobs requires a working Shai/Docker environment.
+Codex and verification omit op sandbox configuration as c2j removes that support.
+Codex's artifact/runtime paths retain their defaults; evolve intentionally
+overrides only `worktree_path`. A scoped working directory is not a write-isolation
+boundary.
 
 c2j resolves committed target-cell `.c2j/recipes/build.yaml` or `evolve.yaml` at
 the configured ref. Only a missing recipe falls back to the root defaults on

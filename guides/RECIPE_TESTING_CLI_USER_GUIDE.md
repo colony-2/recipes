@@ -152,7 +152,7 @@ Default output directory:
 
 - `jq(value, expr)` remains a default template helper. Keep jq programs static when possible and pass recipe context as input data.
 - `cells()` is a Cortex/runtime helper and is not currently registered by local `c2j test`; recipes that need a cell catalog should run `c2j cells --json` in a `command_execution` step and mock that `load_cells` node in local suites.
-- The live Codex smoke recipes set `sandbox.type: none` on c2ops Codex calls, which disables the c2j extension wrapper sandbox. Current c2ops `codex@main` invokes Codex directly and does not require Docker/Podman for an internal Shai runner.
+- Live Codex smoke recipes omit op sandbox configuration. The pinned c2ops adapter invokes Codex directly.
 - Prompts and command bodies should reference `{{ context.environment.op.inbox }}` and `{{ context.environment.op.outbox }}` instead of host-only paths or hard-coded `/src/inbox` and `/src/outbox`.
 - The op-visible path contract is documented in `../OP_VISIBLE_PATHS_USER_GUIDE.md`.
 - If `context.environment.op.worktree_path` resolves empty in `c2j test run`, see `BUG_REPORT_C2J_OP_WORKTREE_PATH_EMPTY_IN_TEST_RUN.md`.

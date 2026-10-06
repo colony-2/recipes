@@ -47,10 +47,10 @@ These statements are intended to drive `c2j test` cases.
 | TS-039 | Blocking outcome review sets `review_ok=false` and returns blocking issues. | `recipes/new-ticket/new-ticket-outcome-determination.yaml` | High | Integration (`recipe_case`); deps: contrarian review output | Negative |
 | TS-040 | Main job runs outcome review before implementation and uses outcome validation commands by default. | `recipes/new-ticket/new-ticket.yaml` | High | Integration (`recipe_case`); deps: outcome child recipe + validation input mapping | Positive |
 | TS-041 | Implementation requesting statement changes routes through pre-implementation review instead of direct `.c2/tests/*.md` edits. | `recipes/new-ticket/new-ticket.yaml` | High | Integration (`recipe_case`); deps: c2ops `codex` incompleteCategory + input gate | Positive |
-| TS-042 | Live skill bundle produces the intended behavior: cell triage, compatible requirements, and contrarian rejection of bad requirements. | `recipes/smoke/skill-quality-smoke.yaml`, `recipe-tests/skill-quality-smoke.scenario.md` | High | Live c2j integration; deps: c2ops `codex` at `@main`, extension sandbox disabled, pinned git skill ref, Codex API access | Positive |
-| TS-043 | Live skill execution reports the pinned HTTPS repo ref resolved to the expected concrete commit hash. | `recipes/smoke/skill-quality-smoke.yaml`, `recipe-tests/skill-quality-smoke.scenario.md` | High | Live c2j integration; deps: c2ops `codex` at `@main`, extension sandbox disabled, HTTPS-accessible skill repo, Codex API access | Positive |
-| TS-044 | Live Codex skill execution writes the expected marker file and ready status artifact. | `recipes/smoke/codex-skill-execution-smoke.yaml`, `recipe-tests/codex-skill-execution-smoke.scenario.md` | High | Live c2j integration; deps: c2ops `codex` at `@main`, extension sandbox disabled, pinned git skill ref, Codex API access | Positive |
-| TS-045 | Live Codex skill execution returns a session, resolved skill ref, summary artifact, and progress artifact. | `recipes/smoke/codex-skill-execution-smoke.yaml`, `recipe-tests/codex-skill-execution-smoke.scenario.md` | High | Live c2j integration; deps: c2ops `codex` at `@main`, extension sandbox disabled, pinned git skill ref, Codex API access | Positive |
+| TS-042 | Live skill bundle produces the intended behavior: cell triage, compatible requirements, and contrarian rejection of bad requirements. | `recipes/smoke/skill-quality-smoke.yaml`, `recipe-tests/skill-quality-smoke.scenario.md` | High | Live c2j integration; deps: c2ops `codex` at `@main`, pinned git skill ref, Codex API access | Positive |
+| TS-043 | Live skill execution reports the pinned HTTPS repo ref resolved to the expected concrete commit hash. | `recipes/smoke/skill-quality-smoke.yaml`, `recipe-tests/skill-quality-smoke.scenario.md` | High | Live c2j integration; deps: c2ops `codex` at `@main`, HTTPS-accessible skill repo, Codex API access | Positive |
+| TS-044 | Live Codex skill execution writes the expected marker file and ready status artifact. | `recipes/smoke/codex-skill-execution-smoke.yaml`, `recipe-tests/codex-skill-execution-smoke.scenario.md` | High | Live c2j integration; deps: c2ops `codex` at `@main`, pinned git skill ref, Codex API access | Positive |
+| TS-045 | Live Codex skill execution returns a session, resolved skill ref, summary artifact, and progress artifact. | `recipes/smoke/codex-skill-execution-smoke.yaml`, `recipe-tests/codex-skill-execution-smoke.scenario.md` | High | Live c2j integration; deps: c2ops `codex` at `@main`, pinned git skill ref, Codex API access | Positive |
 | TS-046 | Embedded child jobs receive submitted artifacts without duplicate artifact refs. | `recipe-tests/verify-child-artifact-forwarding-live.sh` | High | Live c2j integration; deps: `recipe.run_and_get_result`, embedded child job | Positive |
 | TS-047 | `rule_gate` validates task-plan JSON and returns `ok=false` for routeable policy failures. | `recipes/superpowers/tests/superpowers-rule-gate-schema-smoke.yaml`, `recipes/superpowers/tests/superpowers-rule-gate-schema-smoke.scenario.md` | High | Live c2j integration; deps: c2ops `rule_gate`, JSON Schema | Positive |
 | TS-048 | Invalid `rule_gate` input is rejected instead of becoming policy data. | `recipes/superpowers/tests/superpowers-rule-gate-invalid-input-smoke.yaml`, `recipes/superpowers/tests/superpowers-rule-gate-schema-smoke.scenario.md` | High | Live c2j integration; deps: c2ops `rule_gate` schema validation | Negative |
@@ -136,7 +136,7 @@ workflow adds a design/test-plan approval checkpoint before outcome acceptance.
 | TS-110 | A rejecting independent test-plan review prevents implementation until revision and human approval. | `recipes/develop/agent.yaml`, `recipe-tests/build.scenario.md`, `recipe-tests/evolve.scenario.md` | Critical | Integration; c2j, rule_gate, command checks | Negative |
 | TS-111 | Feedback resumes the implementation session while independent reviewers receive fresh conversations. | `recipes/develop/develop.yaml`, `recipes/develop/agent.yaml` | Critical | Integration; c2j input rendering | Positive |
 | TS-112 | Failed or timed-out verification returns evidence to implementation before acceptance or merge. | `recipes/develop/verify.yaml`, `recipes/develop/develop.yaml` | Critical | Integration; real command execution | Negative |
-| TS-113 | Evolve runs Codex in its configured subdirectory with sandboxing enabled and automatic artifact paths. | `evolve.yaml`, `recipes/develop/agent.yaml` | Critical | Integration; c2j rendering; launcher probe documented separately | Positive |
+| TS-113 | Evolve runs Codex in its configured subdirectory with automatic artifact paths and no op sandbox configuration. | `evolve.yaml`, `recipes/develop/agent.yaml` | Critical | Integration; c2j rendering; launcher probe documented separately | Positive |
 | TS-114 | Retired by explicit removal of custom write-scope enforcement; target-directory behavior remains covered by TS-106. | Historical | — | — | — |
 | TS-115 | Requirement feedback returns to design and requires renewed plan approval before implementation resumes. | `recipes/develop/develop.yaml` | Critical | Integration; c2j, mocked input | Positive |
 | TS-116 | Human acceptance after the verification step authorizes one squash merge into upstream. | `recipes/develop/develop.yaml`, `recipe-tests/build-lifecycle.test.yaml`, `recipe-tests/evolve-lifecycle.test.yaml` | Critical | Integration; c2j, disposable upstream | Positive |
@@ -252,7 +252,7 @@ a fresh job and cannot be imported by the new op revision.
 
 ## Notes for Test Authoring
 
-- Prefer `recipe_case` with explicit op mocks for deterministic branch coverage under test-policy sandboxing.
+- Prefer `recipe_case` with explicit op mocks for deterministic branch coverage under the test policy.
 - Op mocks are single-use per invocation; if a node/op can run multiple times, add one mock entry per expected invocation.
 - For selector-backed c2ops at `@main`, mock `recipe_within_resolution` once per case and mock the c2j diagnostic node path or op `extension_execution`.
 - Recipes that need cell catalogs should load them through `c2j cells --json`; tests should mock the `load_cells` node rather than pass cell lists as public inputs.
@@ -279,3 +279,12 @@ resolution are split there between runtime regressions and recipe decisions.
 | Consultations preserve the local candidate and route each cell's exact previous checkpoint. | `recipe-tests/implementation-consultations.test.yaml` | Critical | Integration; native c2j, Git, rule_gate | Positive |
 | Text-only review revisions and redesigns do not inherit earlier annotations. | `recipe-tests/build-reviews.test.yaml`, `recipe-tests/evolve-reviews.test.yaml` | Critical | Integration; native c2j, Git, rule_gate | Negative |
 | Consultation continuations receive the complete dependency history in their prompt, including failure details. | `recipe-tests/implementation-consultations.test.yaml` | Critical | Integration; native c2j, Git, rule_gate | Positive and negative mutation |
+
+## Op sandbox removal
+
+Migration: [consumer removal plan](guides/OP_SANDBOX_REMOVAL.json).
+
+| Test statement | Relevant files | Importance | Level / dependencies | Case |
+|---|---|---|---|---|
+| Development and consultation calls preserve prompts, session routing, and artifact paths while omitting op sandbox configuration. | `recipes/develop/agent.yaml`, `recipes/develop/consult.yaml`, `recipe-tests/build.scenario.md`, `recipe-tests/evolve.scenario.md` | High | Integration; c2j, mocked Codex | Positive |
+| Failed and timed-out verification still returns failure evidence without a test sandbox override. | `recipes/develop/verify.yaml`, `recipe-tests/verification.test.yaml` | Critical | Integration; c2j, Git, bash | Negative |

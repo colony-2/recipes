@@ -17,13 +17,11 @@ working_directory: "{{ context.environment.op.worktree_path }}"
 shell: bash
 env:
   CI: "true"
-sandbox:
-  type: none
 continue_on_error: false
 timeout: 5m
 ```
 
-`sandbox` is supported by `command_execution`; see [Op-Visible Paths]({{% relref "/reference/op-visible-paths" %}}) for direct and sandboxed path examples.
+Omit op sandbox configuration as c2j removes that support. See [Op-Visible Paths]({{% relref "/reference/op-visible-paths" %}}) for process path examples.
 
 Outputs:
 

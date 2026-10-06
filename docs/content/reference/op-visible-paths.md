@@ -3,7 +3,7 @@ title: "Op-Visible Paths"
 weight: 43
 ---
 
-Every operation sees a path view that may differ from the host view when sandboxing is enabled.
+Every operation receives paths for its worktree and artifacts.
 
 Author recipes against the op-visible paths:
 
@@ -14,12 +14,7 @@ Author recipes against the op-visible paths:
 
 Default `command_execution` working directory is `context.environment.op.worktree_path`.
 
-`inputs.sandbox` is currently an execution option for:
-
-- `command_execution`
-- selector-backed and local extension ops, including c2ops selectors such as Codex
-
-It is not a recipe-wide setting. It does not apply to `include`, `child_group`, child recipe ops, `input`, `sleep`, or git integration ops. If a parent starts a child recipe, sandbox behavior is controlled by the ops inside that child recipe.
+Omit op sandbox configuration, including explicit `none` settings, as c2j removes that support.
 
 Use outbox to produce artifacts:
 
@@ -39,7 +34,7 @@ inputs:
   run: cat result.txt
 ```
 
-## Sandbox Examples
+## Process Path Examples
 
 Run a command directly on the worker host:
 
@@ -47,23 +42,19 @@ Run a command directly on the worker host:
 - id: direct_check
   op: command_execution
   inputs:
-    sandbox:
-      type: none
     run: |
       pwd
       ls "{{ context.environment.op.worktree_path }}"
 ```
 
-Run a command in the Shai sandbox:
+Run a command with bound input artifacts:
 
 ```yaml
-- id: sandboxed_check
+- id: artifact_check
   op: command_execution
   artifacts:
     submitted/: '${{ context.artifacts }}'
   inputs:
-    sandbox:
-      type: shai
     working_directory: "{{ context.environment.op.worktree_path }}"
     run: |
       ls "{{ context.environment.op.inbox }}/submitted"
@@ -77,8 +68,6 @@ Run a selector-backed extension op directly:
 - id: run_codex
   op: git+https://github.com/colony-2/c2ops.git//codex@ded76dfbd877d3d0749e509844ecdbc57197b572
   inputs:
-    sandbox:
-      type: none
     prompt: "Review the current cell."
     worktree_path: "{{ context.environment.op.worktree_path }}"
     workdir_path: "{{ context.environment.op.workdir }}"
@@ -86,7 +75,7 @@ Run a selector-backed extension op directly:
     artifact_outbox_path: "{{ context.environment.op.outbox }}"
 ```
 
-Run an extension op in the Shai sandbox:
+Run an extension op with bound input artifacts:
 
 ```yaml
 - id: summarize
@@ -94,10 +83,6 @@ Run an extension op in the Shai sandbox:
   artifacts:
     submitted/: '${{ context.artifacts }}'
   inputs:
-    sandbox:
-      type: shai
     artifact_inbox_path: "{{ context.environment.op.inbox }}"
     artifact_outbox_path: "{{ context.environment.op.outbox }}"
 ```
-
-The reserved `sandbox` input is not delivered to extension op stdin. Keep it out of extension `input_schema`.

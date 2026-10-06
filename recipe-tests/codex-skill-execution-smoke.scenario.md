@@ -1,6 +1,6 @@
 # codex-skill-execution-smoke test suite
 
-Requires Codex credentials, its normal sandbox, and access to the authored skill source.
+Requires Codex credentials and access to the authored skill source.
 
 ```yaml
 recipe: ../recipes/smoke/codex-skill-execution-smoke.yaml

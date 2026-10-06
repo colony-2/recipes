@@ -24,7 +24,6 @@ cases:
   type: integration_case
   inputs: {timeout: 1s}
   runtime:
-    command_sandbox: none
     cells:
       root:
         files:
@@ -53,8 +52,7 @@ broker-submitted children. Do not invent object storage keys in runtime cases.
 Declare `runtime.responses` with input node paths, fields, and attachment-file
 paths to answer real reviews. Fixture paths resolve relative to the suite.
 
-`command_sandbox: none` is an explicit test environment choice for trusted
-commands. It does not change production recipes. Omit it to use their sandbox.
+Runtime suites use the recipe's normal command execution without sandbox overrides.
 External ops still need their declared dependencies (the current rule_gate uses
 Go). There is no separate Python/Go test server or client to install.
 

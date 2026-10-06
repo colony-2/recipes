@@ -47,20 +47,7 @@ Process contract:
 
 Extension ops do not receive implicit environment metadata. Pass paths and other runtime values through inputs or manifest `env`.
 
-Extension ops support a reserved `sandbox` input field. The runtime consumes this field before building the extension payload, so extension authors should not include `sandbox` in `input_schema`.
-
-Direct execution:
-
-```yaml
-- id: summarize
-  op: ./tools/ops/summarize
-  inputs:
-    sandbox:
-      type: none
-    report_path: "{{ context.environment.op.outbox }}/summary.json"
-```
-
-Sandboxed execution:
+Omit op sandbox configuration as c2j removes that support.
 
 ```yaml
 - id: summarize
@@ -68,12 +55,10 @@ Sandboxed execution:
   artifacts:
     submitted/: '${{ context.artifacts }}'
   inputs:
-    sandbox:
-      type: shai
     artifact_inbox_path: "{{ context.environment.op.inbox }}"
     artifact_outbox_path: "{{ context.environment.op.outbox }}"
 ```
 
-Use `context.environment.op.*` for paths passed to the extension process. Those values are host paths for direct execution and sandbox-visible paths for `sandbox.type: shai`.
+Use `context.environment.op.*` for paths passed to the extension process.
 
 Selector-backed ops are resolved at execution time, so static recipe validation only verifies that `inputs` is an object. Concrete extension input validation happens after the op is resolved.

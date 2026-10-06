@@ -23,7 +23,6 @@ Common fields:
   checkpoint. Null, legacy `sessionId`, and `resume_context` inputs are rejected.
 - `model`: Codex model override.
 - `env`: extra environment variables.
-- `sandbox`: reserved c2j extension sandbox config. Use `sandbox.type: none` to run the extension process without the c2j wrapper sandbox.
 - `worktree_path`: defaults to `{{ context.environment.op.worktree_path }}`.
 - `workdir_path`: defaults to `{{ context.environment.op.workdir }}`.
 - `artifact_inbox_path`: defaults to `{{ context.environment.op.inbox }}`.
@@ -43,10 +42,10 @@ Notes:
 - `skills` is for installing skill bundles.
 - `skill` is for selecting/enforcing one top-level skill segment.
 - `skill_artifacts` and `skill_blobs` are not supported.
-- `sandbox.type: none` controls the c2j extension wrapper. The pinned c2ops adapter invokes the Codex CLI directly and does not create an additional Shai/Docker sandbox.
-- Use `context.environment.op.*` for paths passed to Codex prompts or path inputs. c2j maps these to host paths for direct execution and sandbox-visible paths for `sandbox.type: shai`.
+- Omit op sandbox configuration as c2j removes that support. The pinned c2ops adapter invokes the Codex CLI directly.
+- Use `context.environment.op.*` for paths passed to Codex prompts or path inputs.
 - c2j no longer exposes a separate cell path. The current cell is rooted at `context.environment.op.worktree_path`; repo-relative paths in prompts should be relative to that root.
-- For the sandbox-agnostic path contract, see `../../OP_VISIBLE_PATHS_USER_GUIDE.md`.
+- For the path contract, see `../OP_VISIBLE_PATHS_USER_GUIDE.md`.
 
 ## Skill Source Resolution
 
@@ -75,8 +74,6 @@ Session objects exclude credentials, config.toml, and installed skills.
 - id: run_codex_skill
   op: git+https://github.com/colony-2/c2ops.git//codex/run_skill@ded76dfbd877d3d0749e509844ecdbc57197b572
   inputs:
-    sandbox:
-      type: none
     prompt: "Use my-skill."
     skill: "my-skill"
     skills:
@@ -179,7 +176,5 @@ Execution metadata example (the full op output also includes its opaque `session
 `worktree_path` also selects Codex's starting directory. The shared evolve
 workflow intentionally overrides it with the cell worktree plus `.c2j`, while
 leaving runtime and artifact paths at their defaults. Build retains all defaults.
-Both enable the supported Shai wrapper. The current launcher disables native
-Codex sandboxing, and the outer wrapper grants workspace-wide writes: see
-[the scoped sandbox report](../BUG_REPORT_SCOPED_CODEX_SANDBOX.md). Do not infer
-write isolation from a subdirectory cwd; enforce recipe scope checks as well.
+Both omit op sandbox configuration. A subdirectory working directory does not
+enforce write isolation.

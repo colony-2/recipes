@@ -1,6 +1,6 @@
 # skill-quality-smoke test suite
 
-Requires Codex credentials, its normal sandbox, and access to the authored skill source.
+Requires Codex credentials and access to the authored skill source.
 
 ```yaml
 recipe: ../recipes/smoke/skill-quality-smoke.yaml
