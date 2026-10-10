@@ -18,7 +18,7 @@ cases:
           behavior:
             mode: passthrough
         - match:
-            node_path: "superpowers-adaptive-task-loop-smoke/task_a_implementer/git+https://github.com/colony-2/c2ops.git//codex@ded76dfbd877d3d0749e509844ecdbc57197b572"
+            node_path: "superpowers-adaptive-task-loop-smoke/task_a_implementer/nix:github:colony-2/c2ops/main#codex"
           behavior:
             mode: return
             outputs:
@@ -42,7 +42,7 @@ cases:
               incompleteCategory: ""
               pendingDependencies: []
         - match:
-            node_path: "superpowers-adaptive-task-loop-smoke/task_a_spec_review/git+https://github.com/colony-2/c2ops.git//codex@ded76dfbd877d3d0749e509844ecdbc57197b572"
+            node_path: "superpowers-adaptive-task-loop-smoke/task_a_spec_review/nix:github:colony-2/c2ops/main#codex"
           behavior:
             mode: return
             outputs:
@@ -66,7 +66,7 @@ cases:
               incompleteCategory: ""
               pendingDependencies: []
         - match:
-            node_path: "superpowers-adaptive-task-loop-smoke/planner_update/git+https://github.com/colony-2/c2ops.git//codex@ded76dfbd877d3d0749e509844ecdbc57197b572"
+            node_path: "superpowers-adaptive-task-loop-smoke/planner_update/nix:github:colony-2/c2ops/main#codex"
           behavior:
             mode: return
             outputs:
@@ -136,7 +136,7 @@ cases:
               incompleteCategory: ""
               pendingDependencies: []
         - match:
-            node_path: "superpowers-adaptive-task-loop-smoke/task_b_boundary/git+https://github.com/colony-2/c2ops.git//codex@ded76dfbd877d3d0749e509844ecdbc57197b572"
+            node_path: "superpowers-adaptive-task-loop-smoke/task_b_boundary/nix:github:colony-2/c2ops/main#codex"
           behavior:
             mode: return
             outputs:

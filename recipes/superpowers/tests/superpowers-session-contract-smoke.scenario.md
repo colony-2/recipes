@@ -14,7 +14,7 @@ cases:
             outputs:
               resolved_selectors: {}
         - match:
-            node_path: "superpowers-session-contract-smoke/start_isolated_session/git+https://github.com/colony-2/c2ops.git//codex@ded76dfbd877d3d0749e509844ecdbc57197b572"
+            node_path: "superpowers-session-contract-smoke/start_isolated_session/nix:github:colony-2/c2ops/main#codex"
           behavior:
             mode: return
             outputs:
@@ -38,7 +38,7 @@ cases:
               incompleteCategory: ""
               pendingDependencies: []
         - match:
-            node_path: "superpowers-session-contract-smoke/resume_same_session/git+https://github.com/colony-2/c2ops.git//codex@ded76dfbd877d3d0749e509844ecdbc57197b572"
+            node_path: "superpowers-session-contract-smoke/resume_same_session/nix:github:colony-2/c2ops/main#codex"
           behavior:
             mode: return
             outputs:

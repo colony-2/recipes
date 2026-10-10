@@ -7,7 +7,7 @@ This is the selector-backed replacement for the old `llm_inference2` op name.
 Use this selector form in recipes:
 
 ```yaml
-op: git+https://github.com/colony-2/c2ops.git//llm2@main
+op: nix:github:colony-2/c2ops/main#llm2
 ```
 
 This repo uses c2ops selectors at `@main` so recipes automatically pick up c2ops fixes. Mock the exact `@main` selector path in deterministic tests.

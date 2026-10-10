@@ -23,8 +23,8 @@ with a focused live smoke.
 
 | Need | Current coverage | Status |
 | --- | --- | --- |
-| Skill-first prompting and enforced skill execution | c2ops `codex/run_skill` | Covered. Latest c2ops exposes `git+https://github.com/colony-2/c2ops.git//codex/run_skill@ded76dfbd877d3d0749e509844ecdbc57197b572`; its manifest name is `skill.run`. |
-| Deterministic gates and schema checks | c2ops `rule_gate` with `json_schema` | Covered. Latest c2ops exposes `git+https://github.com/colony-2/c2ops.git//rule_gate@main`. This removes the need for a separate plan-update validation op. |
+| Skill-first prompting and enforced skill execution | c2ops `codex/run_skill` | Covered. Latest c2ops exposes `nix:github:colony-2/c2ops/main#skill-run`; its manifest name is `skill.run`. |
+| Deterministic gates and schema checks | c2ops `rule_gate` with `json_schema` | Covered. Latest c2ops exposes `nix:github:colony-2/c2ops/main#rule_gate`. This removes the need for a separate plan-update validation op. |
 | Failed child jobs as workflow data | `recipe.await_result_soft` | Covered for failed-child status and failure routing by TS-049. Child internals remain encapsulated; parent-visible artifacts must be exported as child job result artifacts. |
 | Parallel reviewer/adversarial fanout | `child_group` | Covered. TS-050 validates required/optional reviewer aggregation. |
 | Dependent implementation tasks | ordinary recipe state machine plus same-job Codex sessions | Covered. TS-051..TS-055 validate native task selection, same-job role sessions, session isolation/resume, and adaptive task-plan iteration. No `for_each`, task-loop primitive, or child job is required for the normal Superpowers task chain. |
@@ -281,8 +281,8 @@ include it.
 I checked out the latest c2ops repo at commit `63ba6ba` and found concrete docs
 and manifests for:
 
-- `git+https://github.com/colony-2/c2ops.git//codex/run_skill@ded76dfbd877d3d0749e509844ecdbc57197b572`
-- `git+https://github.com/colony-2/c2ops.git//rule_gate@main`
+- `nix:github:colony-2/c2ops/main#skill-run`
+- `nix:github:colony-2/c2ops/main#rule_gate`
 
 The implemented `rule_gate` surface is intentionally smaller than the earlier
 requirements draft: it supports `assert`, `artifact_exists`, `file_exists`,

@@ -2,16 +2,33 @@
 
 ## Overview
 
-Extension ops let you package an operation as a directory with an `op.yaml` manifest plus an executable command.
+Extension ops package an operation with a manifest and executable command.
+For shared c2ops, use published Nix packages. Local/Git source ops remain supported.
 
-There are two selector forms:
+Selector forms:
 
 - cell-local extension ops: referenced by local path such as `./tools/ops/echo`
 - git-backed extension ops: referenced by git selector such as `git+https://github.com/acme/repo.git//tools/ops/echo@main`
+- prebuilt Nix ops: `nix:github:colony-2/c2ops/main#rule_gate`
 
 At runtime, an extension op receives a JSON input object on stdin and is expected to write JSON on stdout.
 
 ## Choosing A Selector
+
+Use `nix:github:colony-2/c2ops/main#<package>` for the shared ops. The skill
+entrypoint uses `#skill-run`; `#codex`, `#rule_gate`, `#llm2`, `#gha`, and
+`#gha-many` retain their names. Reference these directly in `op:`. Do not wrap
+them in `extension_execution` or repeat the package in dependencies.
+
+Nix packages expose a manifest via `passthru.c2j` and install the same document
+at `share/c2j/op.json`. Their `command` starts with a package-relative `bin/`
+executable; `run` and `shell` are not supported. Current c2j `main` inspects the
+manifest and records the exact output before installation. Workers substitute
+prebuilt outputs from configured, trusted caches; they never build a missing op.
+Configure the public `colony2` cache using the
+[c2ops setup instructions](https://github.com/colony-2/c2ops/blob/main/NIX_PACKAGES.md).
+Wait for publication after `main` changes. Recorded invocations retain their
+package identity even if that branch subsequently moves.
 
 Use a cell-local path when the op lives alongside the current cell or repository content.
 
@@ -40,6 +57,7 @@ Supported selector forms:
 - `./path/to/op`
 - `../path/to/op`
 - `git+<repo-url>//<repo-relative-path>@<ref>`
+- `nix:github:<owner>/<repo>/<ref>#<package>`
 
 Resolution notes:
 
@@ -50,7 +68,9 @@ Resolution notes:
 
 ## Manifest
 
-Each extension op directory contains `op.yaml`.
+The following manifest fields and examples describe local/Git source ops,
+whose directories contain `op.yaml`. For the Nix packaging contract, see
+[c2j's extension guide](https://github.com/colony-2/c2j/blob/main/EXTENSION_OPS.md).
 
 Example:
 
@@ -324,4 +344,4 @@ The extension process receives stdin equivalent to:
 - `input_schema` and `output_schema` are required so validation failures are immediate.
 - Use schema `default` for missing-field behavior instead of baking defaults into the script. Use CEL expressions/templates to automatically configure common context values.
 - Use cell-local paths for ops that live with the current cell or repo.
-- Use git selectors for ops loaded from another repo or pinned ref.
+- Prefer Nix selectors for published shared ops; use Git selectors for source-based development.

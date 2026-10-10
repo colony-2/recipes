@@ -21,7 +21,7 @@ cases:
             outputs:
               resolved_selectors: {}
         - match:
-            node_path: "superpowers-route/heuristic_route/git+https://github.com/colony-2/c2ops.git//codex/run_skill@ded76dfbd877d3d0749e509844ecdbc57197b572"
+            node_path: "superpowers-route/heuristic_route/nix:github:colony-2/c2ops/main#skill-run"
           behavior:
             mode: return
             outputs: &route_brainstorm
@@ -62,7 +62,7 @@ cases:
               status_contract_errors: []
               diagnostics: {}
         - match:
-            node_path: "superpowers-route/heuristic_route_gate/git+https://github.com/colony-2/c2ops.git//rule_gate@main"
+            node_path: "superpowers-route/heuristic_route_gate/nix:github:colony-2/c2ops/main#rule_gate"
           behavior:
             mode: return
             outputs:
@@ -115,7 +115,7 @@ cases:
             outputs:
               resolved_selectors: {}
         - match:
-            node_path: "superpowers-route/heuristic_route/git+https://github.com/colony-2/c2ops.git//codex/run_skill@ded76dfbd877d3d0749e509844ecdbc57197b572"
+            node_path: "superpowers-route/heuristic_route/nix:github:colony-2/c2ops/main#skill-run"
           behavior:
             mode: return
             outputs:
@@ -134,7 +134,7 @@ cases:
                 required_artifacts: []
                 human_review_required: false
         - match:
-            node_path: "superpowers-route/heuristic_route_gate/git+https://github.com/colony-2/c2ops.git//rule_gate@main"
+            node_path: "superpowers-route/heuristic_route_gate/nix:github:colony-2/c2ops/main#rule_gate"
           behavior:
             mode: return
             outputs:
@@ -193,12 +193,12 @@ cases:
             outputs:
               resolved_selectors: {}
         - match:
-            node_path: "superpowers-route/heuristic_route/git+https://github.com/colony-2/c2ops.git//codex/run_skill@ded76dfbd877d3d0749e509844ecdbc57197b572"
+            node_path: "superpowers-route/heuristic_route/nix:github:colony-2/c2ops/main#skill-run"
           behavior:
             mode: return
             outputs: *route_brainstorm
         - match:
-            node_path: "superpowers-route/heuristic_route_gate/git+https://github.com/colony-2/c2ops.git//rule_gate@main"
+            node_path: "superpowers-route/heuristic_route_gate/nix:github:colony-2/c2ops/main#rule_gate"
           behavior:
             mode: return
             outputs:
@@ -254,12 +254,12 @@ cases:
             outputs:
               resolved_selectors: {}
         - match:
-            node_path: "superpowers-route/heuristic_route/git+https://github.com/colony-2/c2ops.git//codex/run_skill@ded76dfbd877d3d0749e509844ecdbc57197b572"
+            node_path: "superpowers-route/heuristic_route/nix:github:colony-2/c2ops/main#skill-run"
           behavior:
             mode: return
             outputs: *route_brainstorm
         - match:
-            node_path: "superpowers-route/heuristic_route_gate/git+https://github.com/colony-2/c2ops.git//rule_gate@main"
+            node_path: "superpowers-route/heuristic_route_gate/nix:github:colony-2/c2ops/main#rule_gate"
           behavior:
             mode: return
             outputs:

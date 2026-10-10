@@ -44,7 +44,7 @@ Use `rule_gate` to convert policy into routeable data instead of failing early:
 
 ```yaml
 - id: gate
-  op: git+https://github.com/colony-2/c2ops.git//rule_gate@main
+  op: nix:github:colony-2/c2ops/main#rule_gate
   inputs:
     rules:
       - id: review_passed

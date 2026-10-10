@@ -63,13 +63,24 @@ Do not rely on ambient shell state, ad hoc temp files, or the assumption that on
 
 Most formerly named ops in this area are now selector-backed extension ops from `/c2ops`.
 
-Use git selectors in committed recipes:
+Use the published Nix selectors in committed recipes:
 
 ```yaml
-op: git+https://github.com/colony-2/c2ops.git//codex@ded76dfbd877d3d0749e509844ecdbc57197b572
+op: nix:github:colony-2/c2ops/main#codex
 ```
 
-Codex and `codex/run_skill` are pinned together to `ded76dfbd877d3d0749e509844ecdbc57197b572`, the object-session migration. Other c2ops selectors continue to use `@main`. Upgrade both Codex entrypoints together and validate their session contract. Deterministic `c2j test` suites should mock `recipe_within_resolution` once per case and mock selector-backed ops by the node path reported by c2j diagnostics, or by op `extension_execution` when there is no ambiguity.
+`codex/run_skill` is packaged as `nix:github:colony-2/c2ops/main#skill-run`.
+Other attributes retain their op names, including `rule_gate`, `llm2`, `gha`,
+and `gha-many`. Use selectors directly in `op:`, without an
+`extension_execution` wrapper or a duplicate package dependency.
+
+Use current c2j `main` for packaged-op support. Nix resolves the manifest and
+package identity; workers download prebuilt outputs from the trusted `colony2`
+Cachix cache. A new resolution can follow an updated `main`, while replay uses
+the recorded identity. See [package setup](https://github.com/colony-2/c2ops/blob/main/NIX_PACKAGES.md).
+Tests mock model decisions by selector or node path; real schema gates still
+need Nix and cache access. `extension_execution` remains the lowered op name
+for mock matching, not the recipe authoring syntax.
 
 ## Authoring Loop
 

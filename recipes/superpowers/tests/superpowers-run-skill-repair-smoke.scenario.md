@@ -14,7 +14,7 @@ cases:
             outputs:
               resolved_selectors: {}
         - match:
-            node_path: "superpowers-run-skill-repair-smoke/run_skill/git+https://github.com/colony-2/c2ops.git//codex/run_skill@ded76dfbd877d3d0749e509844ecdbc57197b572"
+            node_path: "superpowers-run-skill-repair-smoke/run_skill/nix:github:colony-2/c2ops/main#skill-run"
           behavior:
             mode: return
             outputs: &run_skill_repair_output

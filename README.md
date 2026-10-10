@@ -115,11 +115,17 @@ with CriticMarkup. Revisions return to the appropriate agent and require another
 review before merge. Workers and authoring tools require c2j `614bfac82f15` or
 later. See [review checkpoints and client usage](guides/REVIEW_CHECKPOINTS.md).
 
-Codex and `codex/run_skill` now use c2ops revision
-`ded76dfbd877d3d0749e509844ecdbc57197b572`. Workers and authoring tools need c2j
-immutable-object support (at least `e1334817a353d4868a97fa5452fe8fe3aee2fc13`)
-and Codex CLI **0.157.1** in the execution environment. Continuations forward the
-complete `session` object; `session_id` outputs are diagnostic only. Legacy
+Extension ops now use published Nix packages from c2ops `main`, including
+`nix:github:colony-2/c2ops/main#codex` and `#skill-run` for `codex/run_skill`.
+Build c2j from current `main` until a release includes packaged-op support
+(migration build: `82362f0ec1ad68b79ed2fb078ca9418e722de0cd`). Workers need Nix
+with flakes enabled and the trusted `colony2` Cachix cache configured; see
+[worker setup](https://github.com/colony-2/c2ops/blob/main/NIX_PACKAGES.md).
+c2j records the exact package output for each invocation. Wait for c2ops'
+publication workflow before consuming a new `main`; workers do not build missing
+packages. The manifests declare Codex CLI **0.157.1** for setup through pnpm.
+Continuations forward the complete `session` object; `session_id` outputs are
+diagnostic only. Legacy
 ID/artifact sessions cannot be resumed with these recipes. Start fresh jobs when
 upgrading, carrying any useful summary as ordinary task context. See
 [the session migration guide](guides/CODEX_OBJECT_SESSION_MIGRATION.md).

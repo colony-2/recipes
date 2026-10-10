@@ -5,10 +5,14 @@ Runs Codex CLI non-interactively through the selector-backed c2ops extension and
 Use this selector form in recipes:
 
 ```yaml
-op: git+https://github.com/colony-2/c2ops.git//codex@ded76dfbd877d3d0749e509844ecdbc57197b572
+op: nix:github:colony-2/c2ops/main#codex
 ```
 
-Codex and `codex/run_skill` are pinned together to this object-session revision. See [the migration guide](../CODEX_OBJECT_SESSION_MIGRATION.md) for required worker and CLI versions. In deterministic tests, mock `recipe_within_resolution` once per case and mock the Codex node path reported by c2j diagnostics, or by op `extension_execution` when there is no ambiguity.
+The skill entrypoint is `nix:github:colony-2/c2ops/main#skill-run`.
+Both packages retain the object-session contract. See
+[the migration guide](../CODEX_OBJECT_SESSION_MIGRATION.md) for worker setup.
+In deterministic tests, mock model responses by selector or node path, or match
+`extension_execution` when unambiguous. Package metadata still requires Nix.
 
 This op also emits output artifacts:
 - `stdout.jsonl`
@@ -42,7 +46,7 @@ Notes:
 - `skills` is for installing skill bundles.
 - `skill` is for selecting/enforcing one top-level skill segment.
 - `skill_artifacts` and `skill_blobs` are not supported.
-- Omit op sandbox configuration as c2j removes that support. The pinned c2ops adapter invokes the Codex CLI directly.
+- Omit op sandbox configuration as c2j removes that support. The packaged c2ops adapter invokes the Codex CLI directly.
 - Use `context.environment.op.*` for paths passed to Codex prompts or path inputs.
 - c2j no longer exposes a separate cell path. The current cell is rooted at `context.environment.op.worktree_path`; repo-relative paths in prompts should be relative to that root.
 - For the path contract, see `../OP_VISIBLE_PATHS_USER_GUIDE.md`.
@@ -63,7 +67,7 @@ Session objects exclude credentials, config.toml, and installed skills.
 
 ```yaml
 - id: run_codex
-  op: git+https://github.com/colony-2/c2ops.git//codex@ded76dfbd877d3d0749e509844ecdbc57197b572
+  op: nix:github:colony-2/c2ops/main#codex
   inputs:
     prompt: "Summarize the changes in this repo."
 ```
@@ -72,7 +76,7 @@ Session objects exclude credentials, config.toml, and installed skills.
 
 ```yaml
 - id: run_codex_skill
-  op: git+https://github.com/colony-2/c2ops.git//codex/run_skill@ded76dfbd877d3d0749e509844ecdbc57197b572
+  op: nix:github:colony-2/c2ops/main#skill-run
   inputs:
     prompt: "Use my-skill."
     skill: "my-skill"
@@ -95,7 +99,7 @@ that artifact to c2ops `rule_gate` with a `json_schema` rule before consuming it
 State-machine selector-backed ops appear in c2j mock diagnostics with the selector in the node path:
 
 ```yaml
-node_path: "job-implement/new_session/git+https://github.com/colony-2/c2ops.git//codex@ded76dfbd877d3d0749e509844ecdbc57197b572"
+node_path: "job-implement/new_session/nix:github:colony-2/c2ops/main#codex"
 ```
 
 Sequence selector-backed ops generally use the authored node id, for example `new-ticket-triage/assess_cell`.

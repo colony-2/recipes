@@ -1,7 +1,16 @@
 # Native recipe testing
 
-Use c2j with native directory/runtime test support (`9e34b70` or later). Until a
-release includes it, build that c2j revision and invoke its binary directly.
+Use current c2j `main` for Nix-packaged extension ops. This migration uses
+`82362f0ec1ad68b79ed2fb078ca9418e722de0cd`; build it and invoke the binary directly
+until a release contains that support. Configure Nix with flakes enabled and the
+trusted `colony2` Cachix cache, as described in
+[c2ops worker setup](https://github.com/colony-2/c2ops/blob/main/NIX_PACKAGES.md).
+
+At that c2j revision, fast-test passthrough of Nix ops fails before execution;
+see the [c2j bug report](BUG_REPORT_C2J_NIX_TEST_PASSTHROUGH.md). Keep the real
+schema-gate tests: they require the upstream fix, not mocked validation results.
+Runtime cases also need cache access during op setup, even when model responses
+are mocked.
 
 ```sh
 c2j test validate --directory .
@@ -53,8 +62,9 @@ Declare `runtime.responses` with input node paths, fields, and attachment-file
 paths to answer real reviews. Fixture paths resolve relative to the suite.
 
 Runtime suites use the recipe's normal command execution without sandbox overrides.
-External ops still need their declared dependencies (the current rule_gate uses
-Go). There is no separate Python/Go test server or client to install.
+Nix supplies op manifests even when model responses are mocked. Real `rule_gate`
+calls use its prebuilt Nix package and need cache access, not a Go compiler.
+There is no separate Python/Go test server or client to install.
 
 Use CEL assertions over `outputs`, `calls`, `reviews`, `artifacts`, and
 `repositories` to check routing and actual upstream file changes. Use

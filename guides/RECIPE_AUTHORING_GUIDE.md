@@ -117,7 +117,12 @@ Write recipes with these rules:
 - use `json_parse(...)` when consuming `llm2` responses produced under `response_schema`
 - guard optional values with `has(...)` before indexing or dereferencing
 
-For c2ops `codex`, use `git+https://github.com/colony-2/c2ops.git//codex@ded76dfbd877d3d0749e509844ecdbc57197b572` to use the validated object-session contract. Pin `codex/run_skill` to the same revision. Its manifest supplies these op-visible path defaults automatically; omit them from recipe inputs unless intentionally overriding a path:
+For c2ops `codex`, use `nix:github:colony-2/c2ops/main#codex`.
+The skill entrypoint is `nix:github:colony-2/c2ops/main#skill-run`.
+Use current c2j `main` and configure Nix with the trusted `colony2` cache;
+packages must be published before workers can execute them. c2j records each
+invocation's exact package identity. The manifest supplies these op-visible
+path defaults automatically; omit them unless intentionally overriding a path:
 
 - `worktree_path: "{{ context.environment.op.worktree_path }}"`
 - `workdir_path: "{{ context.environment.op.workdir }}"`
@@ -128,7 +133,7 @@ c2j no longer has a separate cell path. The current cell is rooted at `context.e
 
 Omit op sandbox configuration, including explicit `none` settings: c2j is
 removing op sandbox support. Continue using `context.environment.op.*` for
-process paths. The pinned c2ops Codex adapter invokes Codex directly.
+process paths. The packaged c2ops Codex adapter invokes Codex directly.
 
 Do not hard-code `/src/inbox` or `/src/outbox` in Codex prompts. Recipes should reference:
 

@@ -3,17 +3,25 @@ title: "Extension Ops"
 weight: 53
 ---
 
-Extension ops package repo-specific or shared behavior behind an `op.yaml` manifest.
+Extension ops package repo-specific or shared behavior behind a manifest.
+Published c2ops use Nix packages; local/Git ops use an `op.yaml` manifest.
 
 Selector forms:
 
 ```yaml
 op: ./tools/ops/echo
 op: ../shared/ops/echo
-op: git+https://github.com/colony-2/c2ops.git//rule_gate@main
+op: nix:github:colony-2/c2ops/main#rule_gate
 ```
 
-Manifest shape:
+Nix packages expose metadata as `passthru.c2j` and install the matching manifest
+at `share/c2j/op.json`, with a package-relative `command` under `bin/`. c2j
+inspects metadata before fetching prebuilt executables. Workers must trust the
+publishing cache and cannot build missing outputs. Use the selector directly in
+`op:`, without an `extension_execution` wrapper or duplicate dependency entry.
+See the [upstream extension guide](https://github.com/colony-2/c2j/blob/main/EXTENSION_OPS.md).
+
+Local/Git manifest shape:
 
 ```yaml
 name: echo

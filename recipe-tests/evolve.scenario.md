@@ -377,27 +377,27 @@ cases:
     path: merged
     value: true
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).size() > 0
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).size() > 0
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, !has(c.inputs.inputs.sandbox)
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.sandbox)
       && c.inputs.inputs.prompt.contains("Improve requested behavior"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
       && c.inputs.inputs.artifact_outbox_path.endsWith("/outbox"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, has(c.inputs.inputs.worktree_path)
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, has(c.inputs.inputs.worktree_path)
       && c.inputs.inputs.prompt.contains(".c2j/recipes/build.yaml"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).size() == 7 &&
-      calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@"))[0].node_path.contains("/design/")
-      && calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@"))[1].node_path.contains("/design_review/")
-      && calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@"))[2].node_path.contains("/test_plan/")
-      && calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@"))[3].node_path.contains("/test_review/")
-      && calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@"))[4].node_path.contains("/implementation/")
-      && calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@"))[5].node_path.contains("/specification/")
-      && calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@"))[6].node_path.contains("/quality/")
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).size() == 7 &&
+      calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex"))[0].node_path.contains("/design/")
+      && calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex"))[1].node_path.contains("/design_review/")
+      && calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex"))[2].node_path.contains("/test_plan/")
+      && calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex"))[3].node_path.contains("/test_review/")
+      && calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex"))[4].node_path.contains("/implementation/")
+      && calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex"))[5].node_path.contains("/specification/")
+      && calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex"))[6].node_path.contains("/quality/")
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@"))[0].node_path.startsWith("evolve/develop/root/design/design/development-agent/run/state_machine/scoped_fresh/")
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex"))[0].node_path.startsWith("evolve/develop/root/design/design/development-agent/run/state_machine/scoped_fresh/")
   options:
     validation_mode: structure_only
 - id: direct-plan-feedback
@@ -620,19 +620,19 @@ cases:
     path: merged
     value: true
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).size() > 0
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).size() > 0
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, !has(c.inputs.inputs.sandbox)
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.sandbox)
       && c.inputs.inputs.prompt.contains("Improve requested behavior"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
       && c.inputs.inputs.artifact_outbox_path.endsWith("/outbox"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, has(c.inputs.inputs.worktree_path)
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, has(c.inputs.inputs.worktree_path)
       && c.inputs.inputs.prompt.contains(".c2j/recipes/build.yaml"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).filter(c, c.node_path.contains("/design/"))[calls.filter(c,
-      c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).filter(c, c.node_path.contains("/design/")).size()-1].inputs.inputs.prompt.contains("Clarify
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).filter(c, c.node_path.contains("/design/"))[calls.filter(c,
+      c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).filter(c, c.node_path.contains("/design/")).size()-1].inputs.inputs.prompt.contains("Clarify
       outcomes")
   - type: cel_true
     expr: '!calls.exists(c, c.node_path.endsWith("/plan_feedback/input"))'
@@ -834,19 +834,19 @@ cases:
     path: merged
     value: true
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).size() > 0
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).size() > 0
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, !has(c.inputs.inputs.sandbox)
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.sandbox)
       && c.inputs.inputs.prompt.contains("Improve requested behavior"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
       && c.inputs.inputs.artifact_outbox_path.endsWith("/outbox"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, has(c.inputs.inputs.worktree_path)
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, has(c.inputs.inputs.worktree_path)
       && c.inputs.inputs.prompt.contains(".c2j/recipes/build.yaml"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).filter(c, c.node_path.contains("/implementation/"))[calls.filter(c,
-      c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).filter(c, c.node_path.contains("/implementation/")).size()-1].inputs.inputs.prompt.contains("Direct
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).filter(c, c.node_path.contains("/implementation/"))[calls.filter(c,
+      c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).filter(c, c.node_path.contains("/implementation/")).size()-1].inputs.inputs.prompt.contains("Direct
       revision")
   - type: cel_true
     expr: '!calls.exists(c, c.node_path.endsWith("/implementation_feedback/input"))'
@@ -1062,19 +1062,19 @@ cases:
     path: merged
     value: true
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).size() > 0
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).size() > 0
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, !has(c.inputs.inputs.sandbox)
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.sandbox)
       && c.inputs.inputs.prompt.contains("Improve requested behavior"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
       && c.inputs.inputs.artifact_outbox_path.endsWith("/outbox"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, has(c.inputs.inputs.worktree_path)
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, has(c.inputs.inputs.worktree_path)
       && c.inputs.inputs.prompt.contains(".c2j/recipes/build.yaml"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).filter(c, c.node_path.contains("/design/"))[calls.filter(c,
-      c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).filter(c, c.node_path.contains("/design/")).size()-1].inputs.inputs.prompt.contains("Change
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).filter(c, c.node_path.contains("/design/"))[calls.filter(c,
+      c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).filter(c, c.node_path.contains("/design/")).size()-1].inputs.inputs.prompt.contains("Change
       scope")
   - type: cel_true
     expr: '!calls.exists(c, c.node_path.endsWith("/plan_feedback/input"))'
@@ -1574,33 +1574,33 @@ cases:
     path: merged
     value: true
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).size() > 0
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).size() > 0
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, !has(c.inputs.inputs.sandbox)
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.sandbox)
       && c.inputs.inputs.prompt.contains("Improve requested behavior"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
       && c.inputs.inputs.artifact_outbox_path.endsWith("/outbox"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, has(c.inputs.inputs.worktree_path)
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, has(c.inputs.inputs.worktree_path)
       && c.inputs.inputs.prompt.contains(".c2j/recipes/build.yaml"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).filter(c, c.node_path.contains("/implementation/")).size()
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).filter(c, c.node_path.contains("/implementation/")).size()
       == 3
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).filter(c, c.node_path.contains("/implementation/"))[1].inputs.inputs.prompt.contains("Add
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).filter(c, c.node_path.contains("/implementation/"))[1].inputs.inputs.prompt.contains("Add
       coverage")
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).filter(c, c.node_path.contains("/implementation/"))[2].inputs.inputs.prompt.contains("Handle
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).filter(c, c.node_path.contains("/implementation/"))[2].inputs.inputs.prompt.contains("Handle
       empty input")
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).filter(c, c.node_path.contains("/implementation/")).size()
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).filter(c, c.node_path.contains("/implementation/")).size()
       >= 2
   - type: cel_true
-    expr: '!has(calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).filter(c,
+    expr: '!has(calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).filter(c,
       c.node_path.contains("/implementation/"))[0].inputs.inputs.session)'
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).filter(c, c.node_path.contains("/implementation/")).filter(c,
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).filter(c, c.node_path.contains("/implementation/")).filter(c,
       has(c.inputs.inputs.session)).all(c, c.inputs.inputs.session.type == "c2ops.codex.session/v1")
   - type: cel_true
     expr: calls.filter(c,c.op == "input" && c.node_path.endsWith("/accept/input")).size() == 3
@@ -1614,7 +1614,7 @@ cases:
     expr: calls.filter(c,c.op == "input" && c.node_path.endsWith("/accept/input"))[2].inputs.form.fields[0].question.contains("Final
       outcome")
   - type: cel_true
-    expr: 'calls.filter(c,c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).filter(c,c.node_path.contains("/implementation/")).filter(c,has(c.inputs.inputs.session)).all(c,c.inputs.inputs.session
+    expr: 'calls.filter(c,c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).filter(c,c.node_path.contains("/implementation/")).filter(c,has(c.inputs.inputs.session)).all(c,c.inputs.inputs.session
       == {"$c2j_object": "v1", "type": "c2ops.codex.session/v1", "tenant_id": "test", "sha256": "903e460bdf836d6656c641caac0995fec12b4bdaf56771e2b64a2689b4ea41d7",
       "artifact": {"jobId": "implementation-session", "taskOrdinal": 1, "name": "__c2j_objects__/903e460bdf836d6656c641caac0995fec12b4bdaf56771e2b64a2689b4ea41d7.tar",
       "sizeBytes": 100}})'
@@ -1839,29 +1839,29 @@ cases:
     path: merged
     value: true
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).size() > 0
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).size() > 0
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, !has(c.inputs.inputs.sandbox)
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.sandbox)
       && c.inputs.inputs.prompt.contains("Improve requested behavior"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
       && c.inputs.inputs.artifact_outbox_path.endsWith("/outbox"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, has(c.inputs.inputs.worktree_path)
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, has(c.inputs.inputs.worktree_path)
       && c.inputs.inputs.prompt.contains(".c2j/recipes/build.yaml"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).filter(c, c.node_path.contains("/implementation/")).size()
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).filter(c, c.node_path.contains("/implementation/")).size()
       >= 2
   - type: cel_true
-    expr: '!has(calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).filter(c,
+    expr: '!has(calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).filter(c,
       c.node_path.contains("/implementation/"))[0].inputs.inputs.session)'
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).filter(c, c.node_path.contains("/implementation/")).filter(c,
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).filter(c, c.node_path.contains("/implementation/")).filter(c,
       has(c.inputs.inputs.session)).all(c, c.inputs.inputs.session.type == "c2ops.codex.session/v1")
   - type: cel_true
     expr: calls.filter(c, c.op == "input" && c.node_path.endsWith("/approve_plan/input")).size() == 2
   - type: cel_true
-    expr: 'calls.filter(c,c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).filter(c,c.node_path.contains("/implementation/")).filter(c,has(c.inputs.inputs.session)).all(c,c.inputs.inputs.session
+    expr: 'calls.filter(c,c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).filter(c,c.node_path.contains("/implementation/")).filter(c,has(c.inputs.inputs.session)).all(c,c.inputs.inputs.session
       == {"$c2j_object": "v1", "type": "c2ops.codex.session/v1", "tenant_id": "test", "sha256": "903e460bdf836d6656c641caac0995fec12b4bdaf56771e2b64a2689b4ea41d7",
       "artifact": {"jobId": "implementation-session", "taskOrdinal": 1, "name": "__c2j_objects__/903e460bdf836d6656c641caac0995fec12b4bdaf56771e2b64a2689b4ea41d7.tar",
       "sizeBytes": 100}})'
@@ -1982,15 +1982,15 @@ cases:
     path: merged
     value: true
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).size() > 0
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).size() > 0
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, !has(c.inputs.inputs.sandbox)
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.sandbox)
       && c.inputs.inputs.prompt.contains("Improve requested behavior"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
       && c.inputs.inputs.artifact_outbox_path.endsWith("/outbox"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, has(c.inputs.inputs.worktree_path)
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, has(c.inputs.inputs.worktree_path)
       && c.inputs.inputs.prompt.contains(".c2j/recipes/build.yaml"))
   - type: cel_true
     expr: calls.filter(c, c.op == "input" && c.node_path.endsWith("/approve_plan/input")).size() == 2
@@ -2225,15 +2225,15 @@ cases:
     path: merged
     value: true
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).size() > 0
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).size() > 0
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, !has(c.inputs.inputs.sandbox)
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.sandbox)
       && c.inputs.inputs.prompt.contains("Improve requested behavior"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
       && c.inputs.inputs.artifact_outbox_path.endsWith("/outbox"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, has(c.inputs.inputs.worktree_path)
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, has(c.inputs.inputs.worktree_path)
       && c.inputs.inputs.prompt.contains(".c2j/recipes/build.yaml"))
   options:
     validation_mode: structure_only
@@ -2338,15 +2338,15 @@ cases:
     path: merged
     value: true
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).size() > 0
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).size() > 0
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, !has(c.inputs.inputs.sandbox)
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.sandbox)
       && c.inputs.inputs.prompt.contains("Improve requested behavior"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
       && c.inputs.inputs.artifact_outbox_path.endsWith("/outbox"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, has(c.inputs.inputs.worktree_path)
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, has(c.inputs.inputs.worktree_path)
       && c.inputs.inputs.prompt.contains(".c2j/recipes/build.yaml"))
   options:
     validation_mode: structure_only
@@ -2487,15 +2487,15 @@ cases:
     path: merged
     value: true
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).size() > 0
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).size() > 0
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, !has(c.inputs.inputs.sandbox)
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.sandbox)
       && c.inputs.inputs.prompt.contains("Improve requested behavior"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
       && c.inputs.inputs.artifact_outbox_path.endsWith("/outbox"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, has(c.inputs.inputs.worktree_path)
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, has(c.inputs.inputs.worktree_path)
       && c.inputs.inputs.prompt.contains(".c2j/recipes/build.yaml"))
   options:
     validation_mode: structure_only
@@ -2719,15 +2719,15 @@ cases:
     path: merged
     value: true
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).size() > 0
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).size() > 0
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, !has(c.inputs.inputs.sandbox)
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.sandbox)
       && c.inputs.inputs.prompt.contains("Improve requested behavior"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
       && c.inputs.inputs.artifact_outbox_path.endsWith("/outbox"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, has(c.inputs.inputs.worktree_path)
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, has(c.inputs.inputs.worktree_path)
       && c.inputs.inputs.prompt.contains(".c2j/recipes/build.yaml"))
   options:
     validation_mode: structure_only
@@ -2913,15 +2913,15 @@ cases:
     path: merged
     value: true
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).size() > 0
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).size() > 0
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, !has(c.inputs.inputs.sandbox)
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.sandbox)
       && c.inputs.inputs.prompt.contains("Improve requested behavior"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
       && c.inputs.inputs.artifact_outbox_path.endsWith("/outbox"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, has(c.inputs.inputs.worktree_path)
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, has(c.inputs.inputs.worktree_path)
       && c.inputs.inputs.prompt.contains(".c2j/recipes/build.yaml"))
   options:
     validation_mode: structure_only
@@ -3026,15 +3026,15 @@ cases:
     path: merged
     value: true
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).size() > 0
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).size() > 0
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, !has(c.inputs.inputs.sandbox)
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.sandbox)
       && c.inputs.inputs.prompt.contains("Improve requested behavior"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
       && c.inputs.inputs.artifact_outbox_path.endsWith("/outbox"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, has(c.inputs.inputs.worktree_path)
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, has(c.inputs.inputs.worktree_path)
       && c.inputs.inputs.prompt.contains(".c2j/recipes/build.yaml"))
   options:
     validation_mode: structure_only
@@ -3175,15 +3175,15 @@ cases:
     path: merged
     value: true
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).size() > 0
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).size() > 0
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, !has(c.inputs.inputs.sandbox)
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.sandbox)
       && c.inputs.inputs.prompt.contains("Improve requested behavior"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
       && c.inputs.inputs.artifact_outbox_path.endsWith("/outbox"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, has(c.inputs.inputs.worktree_path)
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, has(c.inputs.inputs.worktree_path)
       && c.inputs.inputs.prompt.contains(".c2j/recipes/build.yaml"))
   options:
     validation_mode: structure_only
@@ -3360,15 +3360,15 @@ cases:
     path: merged
     value: true
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).size() > 0
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).size() > 0
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, !has(c.inputs.inputs.sandbox)
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.sandbox)
       && c.inputs.inputs.prompt.contains("Improve requested behavior"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
       && c.inputs.inputs.artifact_outbox_path.endsWith("/outbox"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, has(c.inputs.inputs.worktree_path)
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, has(c.inputs.inputs.worktree_path)
       && c.inputs.inputs.prompt.contains(".c2j/recipes/build.yaml"))
   options:
     validation_mode: structure_only
@@ -3558,15 +3558,15 @@ cases:
     path: merged
     value: true
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).size() > 0
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).size() > 0
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, !has(c.inputs.inputs.sandbox)
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.sandbox)
       && c.inputs.inputs.prompt.contains("Improve requested behavior"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
       && c.inputs.inputs.artifact_outbox_path.endsWith("/outbox"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, has(c.inputs.inputs.worktree_path)
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, has(c.inputs.inputs.worktree_path)
       && c.inputs.inputs.prompt.contains(".c2j/recipes/build.yaml"))
   options:
     validation_mode: structure_only
@@ -3661,20 +3661,20 @@ cases:
     path: merged
     value: true
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).size() > 0
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).size() > 0
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, !has(c.inputs.inputs.sandbox)
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.sandbox)
       && c.inputs.inputs.prompt.contains("Improve requested behavior"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
       && c.inputs.inputs.artifact_outbox_path.endsWith("/outbox"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, has(c.inputs.inputs.worktree_path)
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, has(c.inputs.inputs.worktree_path)
       && c.inputs.inputs.prompt.contains(".c2j/recipes/build.yaml"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@"))[1].inputs.inputs.session.sha256 == "903e460bdf836d6656c641caac0995fec12b4bdaf56771e2b64a2689b4ea41d7"
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex"))[1].inputs.inputs.session.sha256 == "903e460bdf836d6656c641caac0995fec12b4bdaf56771e2b64a2689b4ea41d7"
   - type: cel_true
-    expr: '!has(calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@"))[0].inputs.inputs.session)'
+    expr: '!has(calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex"))[0].inputs.inputs.session)'
   options:
     validation_mode: structure_only
 - id: outside
@@ -3749,15 +3749,15 @@ cases:
     path: merged
     value: false
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).size() > 0
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).size() > 0
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, !has(c.inputs.inputs.sandbox)
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.sandbox)
       && c.inputs.inputs.prompt.contains("Improve requested behavior"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
       && c.inputs.inputs.artifact_outbox_path.endsWith("/outbox"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, has(c.inputs.inputs.worktree_path)
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, has(c.inputs.inputs.worktree_path)
       && c.inputs.inputs.prompt.contains(".c2j/recipes/build.yaml"))
   options:
     validation_mode: structure_only
@@ -4144,27 +4144,27 @@ cases:
     path: merged
     value: true
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).size() > 0
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).size() > 0
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, !has(c.inputs.inputs.sandbox)
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.sandbox)
       && c.inputs.inputs.prompt.contains("Improve requested behavior"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
       && c.inputs.inputs.artifact_outbox_path.endsWith("/outbox"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, has(c.inputs.inputs.worktree_path)
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, has(c.inputs.inputs.worktree_path)
       && c.inputs.inputs.prompt.contains(".c2j/recipes/build.yaml"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).filter(c, c.node_path.contains("/implementation/")).size()
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).filter(c, c.node_path.contains("/implementation/")).size()
       >= 2
   - type: cel_true
-    expr: '!has(calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).filter(c,
+    expr: '!has(calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).filter(c,
       c.node_path.contains("/implementation/"))[0].inputs.inputs.session)'
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).filter(c, c.node_path.contains("/implementation/")).filter(c,
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).filter(c, c.node_path.contains("/implementation/")).filter(c,
       has(c.inputs.inputs.session)).all(c, c.inputs.inputs.session.type == "c2ops.codex.session/v1")
   - type: cel_true
-    expr: 'calls.filter(c,c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).filter(c,c.node_path.contains("/implementation/")).filter(c,has(c.inputs.inputs.session)).all(c,c.inputs.inputs.session
+    expr: 'calls.filter(c,c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).filter(c,c.node_path.contains("/implementation/")).filter(c,has(c.inputs.inputs.session)).all(c,c.inputs.inputs.session
       == {"$c2j_object": "v1", "type": "c2ops.codex.session/v1", "tenant_id": "test", "sha256": "903e460bdf836d6656c641caac0995fec12b4bdaf56771e2b64a2689b4ea41d7",
       "artifact": {"jobId": "implementation-session", "taskOrdinal": 1, "name": "__c2j_objects__/903e460bdf836d6656c641caac0995fec12b4bdaf56771e2b64a2689b4ea41d7.tar",
       "sizeBytes": 100}})'
@@ -4233,15 +4233,15 @@ cases:
     path: merged
     value: false
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).size() > 0
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).size() > 0
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, !has(c.inputs.inputs.sandbox)
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.sandbox)
       && c.inputs.inputs.prompt.contains("Improve requested behavior"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
       && c.inputs.inputs.artifact_outbox_path.endsWith("/outbox"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, has(c.inputs.inputs.worktree_path)
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, has(c.inputs.inputs.worktree_path)
       && c.inputs.inputs.prompt.contains(".c2j/recipes/build.yaml"))
   - type: cel_true
     expr: '!calls.exists(c, c.op == "squashrebasemerge")'
@@ -4317,15 +4317,15 @@ cases:
     path: merged
     value: false
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).size() > 0
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).size() > 0
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, !has(c.inputs.inputs.sandbox)
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.sandbox)
       && c.inputs.inputs.prompt.contains("Improve requested behavior"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
       && c.inputs.inputs.artifact_outbox_path.endsWith("/outbox"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, has(c.inputs.inputs.worktree_path)
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, has(c.inputs.inputs.worktree_path)
       && c.inputs.inputs.prompt.contains(".c2j/recipes/build.yaml"))
   - type: cel_true
     expr: '!calls.exists(c, c.op == "squashrebasemerge")'
@@ -4430,15 +4430,15 @@ cases:
     path: merged
     value: false
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).size() > 0
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).size() > 0
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, !has(c.inputs.inputs.sandbox)
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.sandbox)
       && c.inputs.inputs.prompt.contains("Improve requested behavior"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
       && c.inputs.inputs.artifact_outbox_path.endsWith("/outbox"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, has(c.inputs.inputs.worktree_path)
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, has(c.inputs.inputs.worktree_path)
       && c.inputs.inputs.prompt.contains(".c2j/recipes/build.yaml"))
   - type: cel_true
     expr: '!calls.exists(c, c.op == "squashrebasemerge")'
@@ -4521,15 +4521,15 @@ cases:
     path: merged
     value: false
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).size() > 0
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).size() > 0
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, !has(c.inputs.inputs.sandbox)
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.sandbox)
       && c.inputs.inputs.prompt.contains("Improve requested behavior"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
       && c.inputs.inputs.artifact_outbox_path.endsWith("/outbox"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, has(c.inputs.inputs.worktree_path)
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, has(c.inputs.inputs.worktree_path)
       && c.inputs.inputs.prompt.contains(".c2j/recipes/build.yaml"))
   - type: cel_true
     expr: '!calls.exists(c, c.op == "squashrebasemerge")'
@@ -4611,15 +4611,15 @@ cases:
     path: merged
     value: false
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).size() > 0
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).size() > 0
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, !has(c.inputs.inputs.sandbox)
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.sandbox)
       && c.inputs.inputs.prompt.contains("Improve requested behavior"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
       && c.inputs.inputs.artifact_outbox_path.endsWith("/outbox"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, has(c.inputs.inputs.worktree_path)
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, has(c.inputs.inputs.worktree_path)
       && c.inputs.inputs.prompt.contains(".c2j/recipes/build.yaml"))
   - type: cel_true
     expr: '!calls.exists(c, c.op == "squashrebasemerge")'
@@ -4711,15 +4711,15 @@ cases:
     path: merged
     value: false
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).size() > 0
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).size() > 0
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, !has(c.inputs.inputs.sandbox)
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.sandbox)
       && c.inputs.inputs.prompt.contains("Improve requested behavior"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
       && c.inputs.inputs.artifact_outbox_path.endsWith("/outbox"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, has(c.inputs.inputs.worktree_path)
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, has(c.inputs.inputs.worktree_path)
       && c.inputs.inputs.prompt.contains(".c2j/recipes/build.yaml"))
   - type: cel_true
     expr: '!calls.exists(c, c.op == "squashrebasemerge")'
@@ -4952,15 +4952,15 @@ cases:
     path: merged
     value: false
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).size() > 0
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).size() > 0
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, !has(c.inputs.inputs.sandbox)
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.sandbox)
       && c.inputs.inputs.prompt.contains("Improve requested behavior"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
       && c.inputs.inputs.artifact_outbox_path.endsWith("/outbox"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c, has(c.inputs.inputs.worktree_path)
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, has(c.inputs.inputs.worktree_path)
       && c.inputs.inputs.prompt.contains(".c2j/recipes/build.yaml"))
   - type: cel_true
     expr: '!calls.exists(c, c.op == "squashrebasemerge")'

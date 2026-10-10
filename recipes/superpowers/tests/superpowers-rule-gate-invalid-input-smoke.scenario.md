@@ -15,7 +15,7 @@ cases:
             outputs:
               resolved_selectors: {}
         - match:
-            op: git+https://github.com/colony-2/c2ops.git//rule_gate@main
+            op: nix:github:colony-2/c2ops/main#rule_gate
           behavior:
             mode: passthrough
         - match:

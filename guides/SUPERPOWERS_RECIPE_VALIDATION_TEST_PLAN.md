@@ -193,9 +193,9 @@ Local c2ops checkout:
 
 Relevant selectors:
 
-- `git+https://github.com/colony-2/c2ops.git//codex/run_skill@ded76dfbd877d3d0749e509844ecdbc57197b572`
-- `git+https://github.com/colony-2/c2ops.git//rule_gate@main`
-- `git+https://github.com/colony-2/c2ops.git//codex@ded76dfbd877d3d0749e509844ecdbc57197b572`
+- `nix:github:colony-2/c2ops/main#skill-run`
+- `nix:github:colony-2/c2ops/main#rule_gate`
+- `nix:github:colony-2/c2ops/main#codex`
 
 Relevant c2j/core docs:
 
@@ -253,7 +253,7 @@ Implementation implication:
 
 Selector:
 
-- `git+https://github.com/colony-2/c2ops.git//rule_gate@main`
+- `nix:github:colony-2/c2ops/main#rule_gate`
 
 Rule types:
 
@@ -312,7 +312,7 @@ Tests:
 
 - Verify c2ops selectors resolve:
   - `//codex/run_skill@main`
-  - `//rule_gate@main`
+  - `nix:github:colony-2/c2ops/main#rule_gate`
 - Verify manifests expose the expected input and output keys.
 - Verify `rule_gate` supports `json_schema` and `child_status`.
 - Verify `codex/run_skill` supports artifact-first output validation.

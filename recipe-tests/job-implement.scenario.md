@@ -46,7 +46,7 @@ cases:
           feedback/prior-session-summary.md: ''
           feedback/extra-instructions.md: ''
     - match:
-        node_path: job-implement/continue_session/git+https://github.com/colony-2/c2ops.git//codex@ded76dfbd877d3d0749e509844ecdbc57197b572
+        node_path: job-implement/continue_session/nix:github:colony-2/c2ops/main#codex
       behavior:
         mode: return
         outputs:
@@ -109,7 +109,7 @@ cases:
           feedback/prior-session-summary.md: ''
           feedback/extra-instructions.md: ''
     - match:
-        node_path: job-implement/new_session/git+https://github.com/colony-2/c2ops.git//codex@ded76dfbd877d3d0749e509844ecdbc57197b572
+        node_path: job-implement/new_session/nix:github:colony-2/c2ops/main#codex
       behavior:
         mode: return
         outputs:
@@ -170,7 +170,7 @@ cases:
           feedback/prior-session-summary.md: ''
           feedback/extra-instructions.md: ''
     - match:
-        node_path: job-implement/new_session/git+https://github.com/colony-2/c2ops.git//codex@ded76dfbd877d3d0749e509844ecdbc57197b572
+        node_path: job-implement/new_session/nix:github:colony-2/c2ops/main#codex
       behavior:
         mode: return
         outputs:

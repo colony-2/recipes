@@ -261,7 +261,7 @@ is attached to a state-machine node and should route to one of its states.
 
 ```yaml
 implement:
-  op: git+https://github.com/colony-2/c2ops.git//codex@ded76dfbd877d3d0749e509844ecdbc57197b572
+  op: nix:github:colony-2/c2ops/main#codex
   transitions:
     - to: validate
       when: "true"
@@ -322,7 +322,7 @@ Use `fail:` to make the failure more actionable and then propagate it.
 ```yaml
 catch:
   - id: unhandled_codex_error
-    when: 'failure.node.op.contains("//codex@")'
+    when: 'failure.node.op.endsWith("#codex")'
     fail:
       kind: task_error
       code: codex_unhandled
@@ -387,7 +387,7 @@ use `fail:`:
 
 ```yaml
 deploy:
-  op: git+https://github.com/colony-2/c2ops.git//gha@main
+  op: nix:github:colony-2/c2ops/main#gha
   retry: 2
   inputs:
     workflow: deploy.yml
@@ -438,7 +438,7 @@ This pattern fits the existing `recipes/new-ticket/new-ticket.yaml` implementati
 
 ```yaml
 implement:
-  op: git+https://github.com/colony-2/c2ops.git//codex@ded76dfbd877d3d0749e509844ecdbc57197b572
+  op: nix:github:colony-2/c2ops/main#codex
   transitions:
     - to: pre_implementation_followup_review
       when: 'has(outputs.incompleteCategory) && outputs.incompleteCategory == "needs_user_input"'
@@ -470,7 +470,7 @@ state:
   initial: implement
   states:
     implement:
-      op: git+https://github.com/colony-2/c2ops.git//codex@ded76dfbd877d3d0749e509844ecdbc57197b572
+      op: nix:github:colony-2/c2ops/main#codex
       transitions:
         - to: validate
           when: "true"
@@ -501,7 +501,7 @@ to a review state before retry can run.
 
 ```yaml
 run_ci:
-  op: git+https://github.com/colony-2/c2ops.git//gha@main
+  op: nix:github:colony-2/c2ops/main#gha
   retry: 3
   inputs:
     workflow: ci.yml
