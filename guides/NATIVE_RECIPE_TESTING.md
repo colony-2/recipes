@@ -1,14 +1,14 @@
 # Native recipe testing
 
 Use current c2j `main` for Nix-packaged extension ops. This migration uses
-`82362f0ec1ad68b79ed2fb078ca9418e722de0cd`; build it and invoke the binary directly
+`b98e25fcba7fe00101d49db8455cf0d5ebc0a4cb`; build it and invoke the binary directly
 until a release contains that support. Configure Nix with flakes enabled and the
 trusted `colony2` Cachix cache, as described in
 [c2ops worker setup](https://github.com/colony-2/c2ops/blob/main/NIX_PACKAGES.md).
 
-At that c2j revision, fast-test passthrough of Nix ops fails before execution;
-see the [c2j bug report](BUG_REPORT_C2J_NIX_TEST_PASSTHROUGH.md). Keep the real
-schema-gate tests: they require the upstream fix, not mocked validation results.
+This revision includes the Nix passthrough fix from `b6f6a04`; all 35 previously
+affected schema-gate cases now pass. See the
+[resolved c2j bug report](BUG_REPORT_C2J_NIX_TEST_PASSTHROUGH.md).
 Runtime cases also need cache access during op setup, even when model responses
 are mocked.
 

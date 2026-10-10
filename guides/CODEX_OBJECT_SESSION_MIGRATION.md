@@ -6,10 +6,10 @@ Codex and `codex/run_skill` now use the published c2ops packages
 The Nix migration does not change the session handoff contract below.
 
 Workers and authoring tools need packaged-op support from current c2j `main`
-(migration build: `82362f0ec1ad68b79ed2fb078ca9418e722de0cd`). Configure Nix and
+(verified build: `b98e25fcba7fe00101d49db8455cf0d5ebc0a4cb`). Configure Nix and
 the trusted `colony2` Cachix cache. The packages contain compiled op executables;
-their manifests declare Codex CLI **0.157.1** through pnpm. A Go toolchain is
-needed to build c2j from source, not to execute these prebuilt ops.
+their manifests declare the required Codex CLI version through pnpm. A Go
+toolchain is needed to build c2j from source, not to execute these prebuilt ops.
 Updating a submitting CLI alone does not update remote workers.
 
 ## Routing

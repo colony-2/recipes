@@ -118,15 +118,16 @@ later. See [review checkpoints and client usage](guides/REVIEW_CHECKPOINTS.md).
 Extension ops now use published Nix packages from c2ops `main`, including
 `nix:github:colony-2/c2ops/main#codex` and `#skill-run` for `codex/run_skill`.
 Build c2j from current `main` until a release includes packaged-op support
-(migration build: `82362f0ec1ad68b79ed2fb078ca9418e722de0cd`). Workers need Nix
+(verified build: `b98e25fcba7fe00101d49db8455cf0d5ebc0a4cb`). Workers need Nix
 with flakes enabled and the trusted `colony2` Cachix cache configured; see
 [worker setup](https://github.com/colony-2/c2ops/blob/main/NIX_PACKAGES.md).
 c2j records the exact package output for each invocation. Wait for c2ops'
 publication workflow before consuming a new `main`; workers do not build missing
-packages. The manifests declare Codex CLI **0.157.1** for setup through pnpm.
+packages. The manifests declare the required Codex CLI version for setup through
+pnpm.
 Continuations forward the complete `session` object; `session_id` outputs are
-diagnostic only. Legacy
-ID/artifact sessions cannot be resumed with these recipes. Start fresh jobs when
+diagnostic only. Legacy ID/artifact sessions cannot be resumed with these recipes.
+Start fresh jobs when
 upgrading, carrying any useful summary as ordinary task context. See
 [the session migration guide](guides/CODEX_OBJECT_SESSION_MIGRATION.md).
 

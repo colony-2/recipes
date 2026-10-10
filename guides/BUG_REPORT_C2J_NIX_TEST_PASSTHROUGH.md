@@ -1,5 +1,13 @@
 # c2j: recipe-test passthrough loses prepared Nix extension context
 
+Resolved upstream in `b6f6a04a5086cac882b5eea6d6a22a9dfce35578`, with a macOS
+fixture-path follow-up in `14e8ddf`. Verified on 2026-10-10 using a clean build
+of main `b98e25fcba7fe00101d49db8455cf0d5ebc0a4cb`: the original `valid-initial`
+reproducer passes with the real Nix-packaged gate. The upstream passthrough,
+setup, recording/replay, scoped-tools, and timeout regression tests also pass.
+All 35 recipe cases previously affected by this bug now pass with real gates.
+The original report follows.
+
 Observed on 2026-10-10 with c2j main
 `82362f0ec1ad68b79ed2fb078ca9418e722de0cd`, built from a clean source snapshot.
 c2ops main was `0ba79fa444f4227b5cc44b522e0df2b0e098823c`; its publication
