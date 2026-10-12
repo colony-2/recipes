@@ -243,7 +243,7 @@ cases:
                     - printf green
                 child_job_boundaries: []
         - match:
-            op: nix:github:colony-2/c2ops/main#rule_gate
+            op: nix:github:colony-2/c2ops/published#rule_gate
           behavior:
             mode: passthrough
         - match:
@@ -320,7 +320,7 @@ cases:
                   commands: []
                 child_job_boundaries: []
         - match:
-            op: nix:github:colony-2/c2ops/main#rule_gate
+            op: nix:github:colony-2/c2ops/published#rule_gate
           behavior:
             mode: passthrough
         - match:

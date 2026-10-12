@@ -11,7 +11,7 @@ Selector forms:
 ```yaml
 op: ./tools/ops/echo
 op: ../shared/ops/echo
-op: nix:github:colony-2/c2ops/main#rule_gate
+op: nix:github:colony-2/c2ops/published#rule_gate
 ```
 
 Nix packages expose metadata as `passthru.c2j` and install the matching manifest

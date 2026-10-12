@@ -9,13 +9,13 @@ Selector forms:
 
 - cell-local extension ops: referenced by local path such as `./tools/ops/echo`
 - git-backed extension ops: referenced by git selector such as `git+https://github.com/acme/repo.git//tools/ops/echo@main`
-- prebuilt Nix ops: `nix:github:colony-2/c2ops/main#rule_gate`
+- prebuilt Nix ops: `nix:github:colony-2/c2ops/published#rule_gate`
 
 At runtime, an extension op receives a JSON input object on stdin and is expected to write JSON on stdout.
 
 ## Choosing A Selector
 
-Use `nix:github:colony-2/c2ops/main#<package>` for the shared ops. The skill
+Use `nix:github:colony-2/c2ops/published#<package>` for the shared ops. The skill
 entrypoint uses `#skill-run`; `#codex`, `#rule_gate`, `#llm2`, `#gha`, and
 `#gha-many` retain their names. Reference these directly in `op:`. Do not wrap
 them in `extension_execution` or repeat the package in dependencies.
@@ -26,9 +26,12 @@ executable; `run` and `shell` are not supported. Current c2j `main` inspects the
 manifest and records the exact output before installation. Workers substitute
 prebuilt outputs from configured, trusted caches; they never build a missing op.
 Configure the public `colony2` cache using the
-[c2ops setup instructions](https://github.com/colony-2/c2ops/blob/main/NIX_PACKAGES.md).
-Wait for publication after `main` changes. Recorded invocations retain their
-package identity even if that branch subsequently moves.
+[c2ops setup instructions](https://github.com/colony-2/c2ops/blob/published/NIX_PACKAGES.md).
+CI advances `published` only after both architectures finish testing, uploading,
+and verifying downloads. A pending or failed publication leaves the branch on
+the previous available release. Recorded invocations retain their package
+identity when the branch moves; cached resolutions may lag behind promotion.
+Use `main` only for development against potentially unpublished outputs.
 
 Use a cell-local path when the op lives alongside the current cell or repository content.
 

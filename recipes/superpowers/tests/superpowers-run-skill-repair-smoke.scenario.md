@@ -14,7 +14,7 @@ cases:
             outputs:
               resolved_selectors: {}
         - match:
-            node_path: "superpowers-run-skill-repair-smoke/run_skill/nix:github:colony-2/c2ops/main#skill-run"
+            node_path: "superpowers-run-skill-repair-smoke/run_skill/nix:github:colony-2/c2ops/published#skill-run"
           behavior:
             mode: return
             outputs: &run_skill_repair_output

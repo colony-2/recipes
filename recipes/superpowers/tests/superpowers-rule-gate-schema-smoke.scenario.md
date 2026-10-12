@@ -22,27 +22,27 @@ cases:
           behavior:
             mode: passthrough
         - match:
-            op: nix:github:colony-2/c2ops/main#rule_gate
+            op: nix:github:colony-2/c2ops/published#rule_gate
           behavior:
             mode: passthrough
         - match:
-            op: nix:github:colony-2/c2ops/main#rule_gate
+            op: nix:github:colony-2/c2ops/published#rule_gate
           behavior:
             mode: passthrough
         - match:
-            op: nix:github:colony-2/c2ops/main#rule_gate
+            op: nix:github:colony-2/c2ops/published#rule_gate
           behavior:
             mode: passthrough
         - match:
-            op: nix:github:colony-2/c2ops/main#rule_gate
+            op: nix:github:colony-2/c2ops/published#rule_gate
           behavior:
             mode: passthrough
         - match:
-            op: nix:github:colony-2/c2ops/main#rule_gate
+            op: nix:github:colony-2/c2ops/published#rule_gate
           behavior:
             mode: passthrough
         - match:
-            op: nix:github:colony-2/c2ops/main#rule_gate
+            op: nix:github:colony-2/c2ops/published#rule_gate
           behavior:
             mode: passthrough
         - match:

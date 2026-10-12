@@ -1188,7 +1188,7 @@ cases:
   - type: node_executed
     node_path: new-ticket/pre_implementation_review/input
   - type: node_executed
-    node_path: new-ticket/implement/state_machine/fresh/nix:github:colony-2/c2ops/main#skill-run
+    node_path: new-ticket/implement/state_machine/fresh/nix:github:colony-2/c2ops/published#skill-run
   - type: output_equals
     path: implementation_user_questions_requested
     value: true

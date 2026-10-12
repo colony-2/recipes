@@ -18,7 +18,7 @@ cases:
           behavior:
             mode: passthrough
         - match:
-            node_path: "superpowers-task-session-smoke/implementer_session/nix:github:colony-2/c2ops/main#codex"
+            node_path: "superpowers-task-session-smoke/implementer_session/nix:github:colony-2/c2ops/published#codex"
           behavior:
             mode: return
             outputs:
@@ -42,7 +42,7 @@ cases:
               incompleteCategory: ""
               pendingDependencies: []
         - match:
-            node_path: "superpowers-task-session-smoke/spec_reviewer_session/nix:github:colony-2/c2ops/main#codex"
+            node_path: "superpowers-task-session-smoke/spec_reviewer_session/nix:github:colony-2/c2ops/published#codex"
           behavior:
             mode: return
             outputs:
@@ -66,7 +66,7 @@ cases:
               incompleteCategory: ""
               pendingDependencies: []
         - match:
-            node_path: "superpowers-task-session-smoke/quality_reviewer_session/nix:github:colony-2/c2ops/main#codex"
+            node_path: "superpowers-task-session-smoke/quality_reviewer_session/nix:github:colony-2/c2ops/published#codex"
           behavior:
             mode: return
             outputs:

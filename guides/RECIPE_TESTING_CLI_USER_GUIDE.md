@@ -88,7 +88,7 @@ mocks:
         outputs:
           resolved_selectors: {}
     - match:
-        node_path: "job-implement/new_session/nix:github:colony-2/c2ops/main#codex"
+        node_path: "job-implement/new_session/nix:github:colony-2/c2ops/published#codex"
       behavior:
         mode: return
         outputs:

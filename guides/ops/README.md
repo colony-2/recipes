@@ -66,18 +66,19 @@ Most formerly named ops in this area are now selector-backed extension ops from 
 Use the published Nix selectors in committed recipes:
 
 ```yaml
-op: nix:github:colony-2/c2ops/main#codex
+op: nix:github:colony-2/c2ops/published#codex
 ```
 
-`codex/run_skill` is packaged as `nix:github:colony-2/c2ops/main#skill-run`.
+`codex/run_skill` is packaged as `nix:github:colony-2/c2ops/published#skill-run`.
 Other attributes retain their op names, including `rule_gate`, `llm2`, `gha`,
 and `gha-many`. Use selectors directly in `op:`, without an
 `extension_execution` wrapper or a duplicate package dependency.
 
 Use current c2j `main` for packaged-op support. Nix resolves the manifest and
 package identity; workers download prebuilt outputs from the trusted `colony2`
-Cachix cache. A new resolution can follow an updated `main`, while replay uses
-the recorded identity. See [package setup](https://github.com/colony-2/c2ops/blob/main/NIX_PACKAGES.md).
+Cachix cache. CI promotes `published` after testing and verifying cache downloads
+on both architectures. A new resolution can follow that branch, while replay uses
+the recorded identity. See [package setup](https://github.com/colony-2/c2ops/blob/published/NIX_PACKAGES.md).
 Tests mock model decisions by selector or node path; real schema gates still
 need Nix and cache access. `extension_execution` remains the lowered op name
 for mock matching, not the recipe authoring syntax.

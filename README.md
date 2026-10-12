@@ -115,16 +115,16 @@ with CriticMarkup. Revisions return to the appropriate agent and require another
 review before merge. Workers and authoring tools require c2j `614bfac82f15` or
 later. See [review checkpoints and client usage](guides/REVIEW_CHECKPOINTS.md).
 
-Extension ops now use published Nix packages from c2ops `main`, including
-`nix:github:colony-2/c2ops/main#codex` and `#skill-run` for `codex/run_skill`.
+Extension ops use Nix packages from c2ops' `published` branch, including
+`nix:github:colony-2/c2ops/published#codex` and `#skill-run` for `codex/run_skill`.
 Build c2j from current `main` until a release includes packaged-op support
 (verified build: `b98e25fcba7fe00101d49db8455cf0d5ebc0a4cb`). Workers need Nix
 with flakes enabled and the trusted `colony2` Cachix cache configured; see
-[worker setup](https://github.com/colony-2/c2ops/blob/main/NIX_PACKAGES.md).
-c2j records the exact package output for each invocation. Wait for c2ops'
-publication workflow before consuming a new `main`; workers do not build missing
-packages. The manifests declare the required Codex CLI version for setup through
-pnpm.
+[worker setup](https://github.com/colony-2/c2ops/blob/published/NIX_PACKAGES.md).
+c2j records the exact package output for each invocation. CI advances `published`
+only after both architectures pass tests, cache upload, and download verification.
+New resolutions follow promoted packages; recorded invocations retain their
+identity. Workers do not build missing packages. Codex packages include the CLI.
 Continuations forward the complete `session` object; `session_id` outputs are
 diagnostic only. Legacy ID/artifact sessions cannot be resumed with these recipes.
 Start fresh jobs when

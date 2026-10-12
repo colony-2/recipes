@@ -3,11 +3,12 @@ title: "c2ops Catalog"
 weight: 53
 ---
 
-Use `nix:github:colony-2/c2ops/main#<package>` for shared extension ops.
+Use `nix:github:colony-2/c2ops/published#<package>` for shared extension ops.
 Workers need current c2j `main`, Nix with flakes enabled, and the trusted `colony2`
 Cachix cache. c2j records the resolved package output for each invocation;
-fresh resolutions can follow updates to `main`. See
-[package setup](https://github.com/colony-2/c2ops/blob/main/NIX_PACKAGES.md).
+fresh resolutions can follow `published`, which advances only after tests,
+uploads, and download verification succeed on both architectures. See
+[package setup](https://github.com/colony-2/c2ops/blob/published/NIX_PACKAGES.md).
 
 Current catalog from `github.com/colony-2/c2ops`:
 
@@ -32,7 +33,7 @@ Codex skill pattern:
 
 ```yaml
 - id: implement
-  op: nix:github:colony-2/c2ops/main#skill-run
+  op: nix:github:colony-2/c2ops/published#skill-run
   inputs:
     skill: c2-superpowers-task-implementer
     skills:

@@ -66,7 +66,7 @@ Run a selector-backed extension op directly:
 
 ```yaml
 - id: run_codex
-  op: nix:github:colony-2/c2ops/main#codex
+  op: nix:github:colony-2/c2ops/published#codex
   inputs:
     prompt: "Review the current cell."
     worktree_path: "{{ context.environment.op.worktree_path }}"

@@ -10,8 +10,8 @@ Use these ops when a recipe should reuse an existing repository workflow instead
 Use selector-backed references:
 
 ```yaml
-op: nix:github:colony-2/c2ops/main#gha
-op: nix:github:colony-2/c2ops/main#gha-many
+op: nix:github:colony-2/c2ops/published#gha
+op: nix:github:colony-2/c2ops/published#gha-many
 ```
 
 ## What These Ops Do Not Do
@@ -117,7 +117,7 @@ Example:
 
 ```yaml
 - id: ci
-  op: nix:github:colony-2/c2ops/main#gha
+  op: nix:github:colony-2/c2ops/published#gha
   inputs:
     workflow: "ci.yml"
     backend: "local"
@@ -164,7 +164,7 @@ Example:
 
 ```yaml
 - id: checks
-  op: nix:github:colony-2/c2ops/main#gha-many
+  op: nix:github:colony-2/c2ops/published#gha-many
   inputs:
     timeout: "15m"
     continue_on_error: true

@@ -1,15 +1,15 @@
 # Recipe migration to Codex object sessions
 
 Codex and `codex/run_skill` now use the published c2ops packages
-`nix:github:colony-2/c2ops/main#codex` and
-`nix:github:colony-2/c2ops/main#skill-run`. Both retain `c2ops.codex.session/v1`.
+`nix:github:colony-2/c2ops/published#codex` and
+`nix:github:colony-2/c2ops/published#skill-run`. Both retain `c2ops.codex.session/v1`.
 The Nix migration does not change the session handoff contract below.
 
 Workers and authoring tools need packaged-op support from current c2j `main`
 (verified build: `b98e25fcba7fe00101d49db8455cf0d5ebc0a4cb`). Configure Nix and
 the trusted `colony2` Cachix cache. The packages contain compiled op executables;
-their manifests declare the required Codex CLI version through pnpm. A Go
-toolchain is needed to build c2j from source, not to execute these prebuilt ops.
+the Codex packages include the native Codex CLI. A Go toolchain is needed to
+build c2j from source, not to execute these prebuilt ops.
 Updating a submitting CLI alone does not update remote workers.
 
 ## Routing
@@ -19,11 +19,11 @@ complete object from the selected predecessor:
 
 ```yaml
 - id: start
-  op: nix:github:colony-2/c2ops/main#codex
+  op: nix:github:colony-2/c2ops/published#codex
   inputs:
     prompt: Investigate the requested behavior.
 - id: continue
-  op: nix:github:colony-2/c2ops/main#codex
+  op: nix:github:colony-2/c2ops/published#codex
   inputs:
     prompt: Implement the agreed change.
     session: '${{ sequence.start.outputs.session }}'

@@ -117,10 +117,10 @@ Write recipes with these rules:
 - use `json_parse(...)` when consuming `llm2` responses produced under `response_schema`
 - guard optional values with `has(...)` before indexing or dereferencing
 
-For c2ops `codex`, use `nix:github:colony-2/c2ops/main#codex`.
-The skill entrypoint is `nix:github:colony-2/c2ops/main#skill-run`.
+For c2ops `codex`, use `nix:github:colony-2/c2ops/published#codex`.
+The skill entrypoint is `nix:github:colony-2/c2ops/published#skill-run`.
 Use current c2j `main` and configure Nix with the trusted `colony2` cache;
-packages must be published before workers can execute them. c2j records each
+`published` advances after CI verifies the uploaded packages. c2j records each
 invocation's exact package identity. The manifest supplies these op-visible
 path defaults automatically; omit them unless intentionally overriding a path:
 

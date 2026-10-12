@@ -261,7 +261,7 @@ is attached to a state-machine node and should route to one of its states.
 
 ```yaml
 implement:
-  op: nix:github:colony-2/c2ops/main#codex
+  op: nix:github:colony-2/c2ops/published#codex
   transitions:
     - to: validate
       when: "true"
@@ -387,7 +387,7 @@ use `fail:`:
 
 ```yaml
 deploy:
-  op: nix:github:colony-2/c2ops/main#gha
+  op: nix:github:colony-2/c2ops/published#gha
   retry: 2
   inputs:
     workflow: deploy.yml
@@ -438,7 +438,7 @@ This pattern fits the existing `recipes/new-ticket/new-ticket.yaml` implementati
 
 ```yaml
 implement:
-  op: nix:github:colony-2/c2ops/main#codex
+  op: nix:github:colony-2/c2ops/published#codex
   transitions:
     - to: pre_implementation_followup_review
       when: 'has(outputs.incompleteCategory) && outputs.incompleteCategory == "needs_user_input"'
@@ -470,7 +470,7 @@ state:
   initial: implement
   states:
     implement:
-      op: nix:github:colony-2/c2ops/main#codex
+      op: nix:github:colony-2/c2ops/published#codex
       transitions:
         - to: validate
           when: "true"
@@ -501,7 +501,7 @@ to a review state before retry can run.
 
 ```yaml
 run_ci:
-  op: nix:github:colony-2/c2ops/main#gha
+  op: nix:github:colony-2/c2ops/published#gha
   retry: 3
   inputs:
     workflow: ci.yml

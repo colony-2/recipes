@@ -4,7 +4,7 @@ These statements are intended to drive `c2j test` cases.
 
 ## Packaged extension ops
 
-- Recipes resolve c2ops through its published Nix package selectors. Files: `recipes/`, `docs/examples/recipes/`; importance: critical; integration; dependencies: current c2j, Nix, colony2 cache.
+- Recipes resolve c2ops through the `published` branch after verified package promotion. Files: `recipes/`, `docs/examples/recipes/`; importance: critical; integration; dependencies: current c2j, Nix, colony2 cache.
 - Packaged ops retain session continuation, schema rejection, review, and dependency behavior. Files: `recipe-tests/`, `recipes/superpowers/tests/`; importance: critical; integration; dependencies: isolated JobDB, Nix; positive and negative cases.
 
 ## Statement Catalog

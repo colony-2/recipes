@@ -5,10 +5,10 @@ Runs Codex CLI non-interactively through the selector-backed c2ops extension and
 Use this selector form in recipes:
 
 ```yaml
-op: nix:github:colony-2/c2ops/main#codex
+op: nix:github:colony-2/c2ops/published#codex
 ```
 
-The skill entrypoint is `nix:github:colony-2/c2ops/main#skill-run`.
+The skill entrypoint is `nix:github:colony-2/c2ops/published#skill-run`.
 Both packages retain the object-session contract. See
 [the migration guide](../CODEX_OBJECT_SESSION_MIGRATION.md) for worker setup.
 In deterministic tests, mock model responses by selector or node path, or match
@@ -67,7 +67,7 @@ Session objects exclude credentials, config.toml, and installed skills.
 
 ```yaml
 - id: run_codex
-  op: nix:github:colony-2/c2ops/main#codex
+  op: nix:github:colony-2/c2ops/published#codex
   inputs:
     prompt: "Summarize the changes in this repo."
 ```
@@ -76,7 +76,7 @@ Session objects exclude credentials, config.toml, and installed skills.
 
 ```yaml
 - id: run_codex_skill
-  op: nix:github:colony-2/c2ops/main#skill-run
+  op: nix:github:colony-2/c2ops/published#skill-run
   inputs:
     prompt: "Use my-skill."
     skill: "my-skill"
@@ -99,7 +99,7 @@ that artifact to c2ops `rule_gate` with a `json_schema` rule before consuming it
 State-machine selector-backed ops appear in c2j mock diagnostics with the selector in the node path:
 
 ```yaml
-node_path: "job-implement/new_session/nix:github:colony-2/c2ops/main#codex"
+node_path: "job-implement/new_session/nix:github:colony-2/c2ops/published#codex"
 ```
 
 Sequence selector-backed ops generally use the authored node id, for example `new-ticket-triage/assess_cell`.
