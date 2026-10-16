@@ -14,7 +14,7 @@ c2 is designed to be an adaptive, extensible system that is built using the foll
 
 - actor: any entity working to move a c2 project forward. an entity may be an llm-based agent, a human or some kind of external process.
 - project: a specific software initiative. May be an operationally complex SaaS service or a simple CLI tool. Each project is associated with a specific git repository (subcomponents, what c2 may be in other repositories).
-- cell: a context for a specific task. Cells are designed to decompose a software project into distinct, manageable chunks/components.
+- cell: a responsibility boundary encompassing the entire repository in which a job operates. Cells decompose a software project into distinct components with separate repositories. A task's target directory does not redefine the cell. The mandate describes responsibilities, not which files belong to the cell, and need not comprehensively cover dependencies. Discover dependencies through the project's normal dependency system; c2j also lists cells we likely have influence over.
 - recipe: a recipe is a c2 workflow that will be completed in a durable way. a recipe is composed of ops (operations), sequences and state machines. Recipes are authored from yaml files and validated directly with `c2j submit --recipe-file ... --run --embed`. See guides/RECIPE_AUTHORING_GUIDE.md for the recommended authoring flow
 - op: an op or operation is the building block of a recipe. Ops are combined together to achieve arbitrary goals. Ops include things like consulting an llm, running a bash command, merging some git code into a repo, starting and/or consuming execution of other recipes, delegating to GitHub Actions workflows and having a coding agent build some code. Ops defined input and output structured types. See guides/ops/* for information about available ops, including guides/ops/OP_GITHUB_ACTIONS.md.
 - template: recipes support the use of CEL-based template expansion and referencing of both global context and specific op/state/sequence outputs in a recipe. (see )
@@ -44,7 +44,7 @@ Operations are executed in a working directory that contains three subdirectorie
 Ops are generally run in a sandbox environment where access to outside resources are limited.
 
 ### Git Persistence
-Each cell has an associated git repository and relative path. A recipe running in that cell will get a local copy of the associated repository (similar to git worktree). After each recipe op, C2 automatically creates a local commit of all changes to the cell's relative path. These changes are made available as thin packs as well as git diffs. (Thinpacks are effectively git changesets with a connected hash.) This git state is automatically propagated to later ops.
+Each cell encompasses its associated Git repository. A recipe running in that cell gets a local worktree rooted at the repository root. After each recipe op, C2 automatically persists repository changes as local commits. These changes are made available as thin packs as well as git diffs. (Thinpacks are effectively git changesets with a connected hash.) This git state is automatically propagated to later ops.
 
 A job is typically run in a given ref (e.g. the main branch). Until an op mutates the underlying codebase, the ref typically moves forward to stay up to date with the latest version of the underlying ref. Once an op makes changes to the git repository, a base commit is locked and the future commits are based on top of that. This git management is automatic and independent of the underlying repo for the project.
 

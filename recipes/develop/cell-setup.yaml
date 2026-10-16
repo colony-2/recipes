@@ -1,0 +1,103 @@
+id: cell-setup
+version: 0.1.0
+input_schema:
+  prompt:
+    type: string
+    required: true
+  bootstrap_mandate:
+    type: boolean
+    default_value: false
+inputs:
+  prompt: ${{ inputs.prompt }}
+  bootstrap_mandate: ${{ inputs.bootstrap_mandate }}
+vars:
+  mandate_prompt: |-
+    Initialize this cell's missing .c2j/mandate.md through repository inspection.
+    The cell encompasses the entire repository. Its mandate describes its purpose,
+    responsibilities, and relationships with other cells; it is not a file inventory
+    or an allowlist of paths. Inspect the whole repository, including documentation,
+    code, tests, configuration, interfaces, and relevant Git history. Describe what
+    the cell currently does, infer its likely intended purpose from that evidence,
+    and distinguish observed responsibilities from uncertain inferences. Mention
+    what it relies on other cells or systems to do where that helps explain its
+    responsibility boundary. A comprehensive dependency inventory is not required.
+    Discover task-relevant dependencies through the project's normal dependency
+    system and tooling. Use c2j cells --json to find listed cells we likely have
+    influence over; this can make coordinating dependency changes for new features
+    easier, but the listing is not an exhaustive dependency graph or proof of control.
+    Document purpose, responsibilities, exclusions, and useful boundary examples
+    in ordinary Markdown at .c2j/mandate.md. Do not require an exhaustive file list
+    or block mandate initialization on discovering every dependency.
+    This job establishes a missing mandate; do not treat its absence as a blocker
+    or submit another mandate initialization job. If a mandate now exists, preserve
+    its accepted boundary and assess whether any initialization work remains.
+    Propose the inferred boundary in the design for human review before writing it.
+    Use the normal design, test-plan, implementation, verification, and outcome
+    approval flow. Implement only this setup work and merge the approved result.
+    Do not implement the request that caused the parent build to discover the gap.
+state:
+  initial: check
+  states:
+    check:
+      op: command_execution
+      inputs:
+        timeout: 10s
+        env:
+          CELL_ROOT: '{{ context.environment.op.worktree_path }}'
+        run: |
+          if [ -f "$CELL_ROOT/.c2j/mandate.md" ]; then
+            printf ready
+          else
+            printf missing
+          fi
+      transitions:
+      - to: failed
+        when: '!outputs.success || !(outputs.stdout in ["ready", "missing"])'
+      - to: initialize
+        when: outputs.stdout == "missing" && !inputs.bootstrap_mandate
+    initialize:
+      op: recipe.run_and_get_result
+      inputs:
+        name: build
+        cell_name: ${{ context.workflow.cell }}
+        git_ref: ${{ context.git.ref }}
+        inputs:
+          prompt: ${{ vars.mandate_prompt }}
+          type: build
+          target_directory: .
+          bootstrap_mandate: true
+      transitions:
+      - to: refresh
+        when: outputs.?outputs.orValue({}).?merged.orValue(false) && nonempty(outputs.?outputs.orValue({}).?merged_hash.orValue(""))
+      - to: failed
+        when: true
+    refresh:
+      op: thinpackrebase
+      inputs:
+        target_base_hash: ${{ states.initialize.outputs.outputs.merged_hash }}
+      transitions:
+      - to: verify
+        when: true
+    verify:
+      op: command_execution
+      inputs:
+        timeout: 10s
+        env:
+          CELL_ROOT: '{{ context.environment.op.worktree_path }}'
+        run: |
+          if [ ! -f "$CELL_ROOT/.c2j/mandate.md" ]; then
+            printf '%s\n' 'Cell setup failed: the merged mandate is absent from the refreshed repository.' >&2
+            exit 1
+          fi
+      transitions:
+      - to: failed
+        when: '!outputs.success'
+    failed:
+      op: command_execution
+      inputs:
+        timeout: 5s
+        run: |
+          printf '%s\n' 'Cell setup failed: a successful mandate build, merged commit, and refreshed mandate are required before design.' >&2
+          exit 1
+outputs:
+  prompt: '${{ inputs.bootstrap_mandate ? vars.mandate_prompt : inputs.prompt }}'

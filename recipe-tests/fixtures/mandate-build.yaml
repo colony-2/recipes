@@ -1,0 +1,52 @@
+id: mandate-build-fixture
+version: '1'
+input_schema:
+  prompt:
+    type: string
+    required: true
+  bootstrap_mandate:
+    type: boolean
+    default_value: false
+  target_directory:
+    type: string
+    default_value: .
+  type:
+    type: string
+    default_value: build
+inputs:
+  prompt: ${{ inputs.prompt }}
+  bootstrap_mandate: ${{ inputs.bootstrap_mandate }}
+sequence:
+- id: setup
+  include: ./cell-setup.yaml
+  inputs:
+    prompt: ${{ inputs.prompt }}
+    bootstrap_mandate: ${{ inputs.bootstrap_mandate }}
+- id: write
+  op: command_execution
+  inputs:
+    working_directory: '{{ context.environment.op.worktree_path }}'
+    run: |
+      set -e
+      mkdir -p .c2j
+      printf '# Mandate\n\nOwn this repository; rely on the identity cell for authentication.\n' > .c2j/mandate.md
+- id: head
+  op: command_execution
+  inputs:
+    working_directory: '{{ context.environment.op.worktree_path }}'
+    run: |
+      set -e
+      candidate=$(git rev-parse HEAD)
+      printf '%s' "$candidate"
+- id: merge
+  op: squashrebasemerge
+  inputs:
+    repo_path: '{{ context.environment.op.worktree_path }}'
+    local_hash: ${{ sequence.head.outputs.stdout }}
+    upstream_repo: ${{ context.git.repo }}
+    upstream_branch: ${{ context.git.ref }}
+    rebase: false
+    commit_message: Initialize fixture mandate
+outputs:
+  merged: ${{ nonempty(sequence.merge.outputs.merged_hash) }}
+  merged_hash: ${{ sequence.merge.outputs.merged_hash }}

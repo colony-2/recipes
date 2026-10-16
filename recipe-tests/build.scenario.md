@@ -2,6 +2,9 @@
 
 Executable declarations; run `c2j test run --file recipe-tests/build.scenario.md`.
 
+Fast mocks check authored inputs: root builds leave path defaults to the operation
+manifest. `build-cell-setup.test.yaml` checks the resolved paths in the native runtime.
+
 ```yaml
 recipe: ../build.yaml
 cases:
@@ -12,6 +15,14 @@ cases:
     type: build
   mocks:
     ops:
+    - &cell_setup_ready
+      match:
+        node_path: build/setup/cell-setup/check/command_execution
+      behavior:
+        mode: return
+        outputs:
+          success: true
+          stdout: ready
     - match:
         op: recipe_within_resolution
       behavior:
@@ -382,10 +393,10 @@ cases:
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.sandbox)
       && c.inputs.inputs.prompt.contains("Improve requested behavior"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
-      && c.inputs.inputs.artifact_outbox_path.endsWith("/outbox"))
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.artifact_inbox_path)
+      && !has(c.inputs.inputs.artifact_outbox_path))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !c.inputs.inputs.worktree_path.endsWith("/.c2j"))
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.worktree_path))
   - type: cel_true
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).size() == 7 &&
       calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex"))[0].node_path.contains("/design/")
@@ -406,6 +417,7 @@ cases:
     type: build
   mocks:
     ops:
+    - *cell_setup_ready
     - match:
         op: recipe_within_resolution
       behavior:
@@ -624,10 +636,10 @@ cases:
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.sandbox)
       && c.inputs.inputs.prompt.contains("Improve requested behavior"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
-      && c.inputs.inputs.artifact_outbox_path.endsWith("/outbox"))
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.artifact_inbox_path)
+      && !has(c.inputs.inputs.artifact_outbox_path))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !c.inputs.inputs.worktree_path.endsWith("/.c2j"))
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.worktree_path))
   - type: cel_true
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).filter(c, c.node_path.contains("/design/"))[calls.filter(c,
       c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).filter(c, c.node_path.contains("/design/")).size()-1].inputs.inputs.prompt.contains("Clarify
@@ -643,6 +655,7 @@ cases:
     type: build
   mocks:
     ops:
+    - *cell_setup_ready
     - match:
         op: recipe_within_resolution
       behavior:
@@ -837,10 +850,10 @@ cases:
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.sandbox)
       && c.inputs.inputs.prompt.contains("Improve requested behavior"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
-      && c.inputs.inputs.artifact_outbox_path.endsWith("/outbox"))
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.artifact_inbox_path)
+      && !has(c.inputs.inputs.artifact_outbox_path))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !c.inputs.inputs.worktree_path.endsWith("/.c2j"))
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.worktree_path))
   - type: cel_true
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).filter(c, c.node_path.contains("/implementation/"))[calls.filter(c,
       c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).filter(c, c.node_path.contains("/implementation/")).size()-1].inputs.inputs.prompt.contains("Direct
@@ -856,6 +869,7 @@ cases:
     type: build
   mocks:
     ops:
+    - *cell_setup_ready
     - match:
         op: recipe_within_resolution
       behavior:
@@ -1064,10 +1078,10 @@ cases:
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.sandbox)
       && c.inputs.inputs.prompt.contains("Improve requested behavior"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
-      && c.inputs.inputs.artifact_outbox_path.endsWith("/outbox"))
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.artifact_inbox_path)
+      && !has(c.inputs.inputs.artifact_outbox_path))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !c.inputs.inputs.worktree_path.endsWith("/.c2j"))
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.worktree_path))
   - type: cel_true
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).filter(c, c.node_path.contains("/design/"))[calls.filter(c,
       c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).filter(c, c.node_path.contains("/design/")).size()-1].inputs.inputs.prompt.contains("Change
@@ -1083,6 +1097,7 @@ cases:
     type: build
   mocks:
     ops:
+    - *cell_setup_ready
     - match:
         op: recipe_within_resolution
       behavior:
@@ -1575,10 +1590,10 @@ cases:
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.sandbox)
       && c.inputs.inputs.prompt.contains("Improve requested behavior"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
-      && c.inputs.inputs.artifact_outbox_path.endsWith("/outbox"))
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.artifact_inbox_path)
+      && !has(c.inputs.inputs.artifact_outbox_path))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !c.inputs.inputs.worktree_path.endsWith("/.c2j"))
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.worktree_path))
   - type: cel_true
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).filter(c, c.node_path.contains("/implementation/")).size()
       == 3
@@ -1622,6 +1637,7 @@ cases:
     type: build
   mocks:
     ops:
+    - *cell_setup_ready
     - match:
         op: recipe_within_resolution
       behavior:
@@ -1839,10 +1855,10 @@ cases:
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.sandbox)
       && c.inputs.inputs.prompt.contains("Improve requested behavior"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
-      && c.inputs.inputs.artifact_outbox_path.endsWith("/outbox"))
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.artifact_inbox_path)
+      && !has(c.inputs.inputs.artifact_outbox_path))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !c.inputs.inputs.worktree_path.endsWith("/.c2j"))
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.worktree_path))
   - type: cel_true
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).filter(c, c.node_path.contains("/implementation/")).size()
       >= 2
@@ -1868,6 +1884,7 @@ cases:
     type: build
   mocks:
     ops:
+    - *cell_setup_ready
     - match:
         op: recipe_within_resolution
       behavior:
@@ -1981,10 +1998,10 @@ cases:
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.sandbox)
       && c.inputs.inputs.prompt.contains("Improve requested behavior"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
-      && c.inputs.inputs.artifact_outbox_path.endsWith("/outbox"))
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.artifact_inbox_path)
+      && !has(c.inputs.inputs.artifact_outbox_path))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !c.inputs.inputs.worktree_path.endsWith("/.c2j"))
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.worktree_path))
   - type: cel_true
     expr: calls.filter(c, c.op == "input" && c.node_path.endsWith("/approve_plan/input")).size() == 2
   options:
@@ -1996,6 +2013,7 @@ cases:
     type: build
   mocks:
     ops:
+    - *cell_setup_ready
     - match:
         op: recipe_within_resolution
       behavior:
@@ -2223,10 +2241,10 @@ cases:
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.sandbox)
       && c.inputs.inputs.prompt.contains("Improve requested behavior"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
-      && c.inputs.inputs.artifact_outbox_path.endsWith("/outbox"))
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.artifact_inbox_path)
+      && !has(c.inputs.inputs.artifact_outbox_path))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !c.inputs.inputs.worktree_path.endsWith("/.c2j"))
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.worktree_path))
   options:
     validation_mode: structure_only
 - id: design-needs-input
@@ -2236,6 +2254,7 @@ cases:
     type: build
   mocks:
     ops:
+    - *cell_setup_ready
     - match:
         op: recipe_within_resolution
       behavior:
@@ -2335,10 +2354,10 @@ cases:
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.sandbox)
       && c.inputs.inputs.prompt.contains("Improve requested behavior"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
-      && c.inputs.inputs.artifact_outbox_path.endsWith("/outbox"))
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.artifact_inbox_path)
+      && !has(c.inputs.inputs.artifact_outbox_path))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !c.inputs.inputs.worktree_path.endsWith("/.c2j"))
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.worktree_path))
   options:
     validation_mode: structure_only
 - id: design-review-rejects
@@ -2348,6 +2367,7 @@ cases:
     type: build
   mocks:
     ops:
+    - *cell_setup_ready
     - match:
         op: recipe_within_resolution
       behavior:
@@ -2483,10 +2503,10 @@ cases:
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.sandbox)
       && c.inputs.inputs.prompt.contains("Improve requested behavior"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
-      && c.inputs.inputs.artifact_outbox_path.endsWith("/outbox"))
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.artifact_inbox_path)
+      && !has(c.inputs.inputs.artifact_outbox_path))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !c.inputs.inputs.worktree_path.endsWith("/.c2j"))
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.worktree_path))
   options:
     validation_mode: structure_only
 - id: test-review-rejects
@@ -2496,6 +2516,7 @@ cases:
     type: build
   mocks:
     ops:
+    - *cell_setup_ready
     - match:
         op: recipe_within_resolution
       behavior:
@@ -2714,10 +2735,10 @@ cases:
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.sandbox)
       && c.inputs.inputs.prompt.contains("Improve requested behavior"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
-      && c.inputs.inputs.artifact_outbox_path.endsWith("/outbox"))
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.artifact_inbox_path)
+      && !has(c.inputs.inputs.artifact_outbox_path))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !c.inputs.inputs.worktree_path.endsWith("/.c2j"))
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.worktree_path))
   options:
     validation_mode: structure_only
 - id: test-contract-rejects
@@ -2727,6 +2748,7 @@ cases:
     type: build
   mocks:
     ops:
+    - *cell_setup_ready
     - match:
         op: recipe_within_resolution
       behavior:
@@ -2907,10 +2929,10 @@ cases:
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.sandbox)
       && c.inputs.inputs.prompt.contains("Improve requested behavior"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
-      && c.inputs.inputs.artifact_outbox_path.endsWith("/outbox"))
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.artifact_inbox_path)
+      && !has(c.inputs.inputs.artifact_outbox_path))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !c.inputs.inputs.worktree_path.endsWith("/.c2j"))
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.worktree_path))
   options:
     validation_mode: structure_only
 - id: implementation-incomplete
@@ -2920,6 +2942,7 @@ cases:
     type: build
   mocks:
     ops:
+    - *cell_setup_ready
     - match:
         op: recipe_within_resolution
       behavior:
@@ -3019,10 +3042,10 @@ cases:
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.sandbox)
       && c.inputs.inputs.prompt.contains("Improve requested behavior"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
-      && c.inputs.inputs.artifact_outbox_path.endsWith("/outbox"))
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.artifact_inbox_path)
+      && !has(c.inputs.inputs.artifact_outbox_path))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !c.inputs.inputs.worktree_path.endsWith("/.c2j"))
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.worktree_path))
   options:
     validation_mode: structure_only
 - id: specification-rejects
@@ -3032,6 +3055,7 @@ cases:
     type: build
   mocks:
     ops:
+    - *cell_setup_ready
     - match:
         op: recipe_within_resolution
       behavior:
@@ -3167,10 +3191,10 @@ cases:
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.sandbox)
       && c.inputs.inputs.prompt.contains("Improve requested behavior"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
-      && c.inputs.inputs.artifact_outbox_path.endsWith("/outbox"))
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.artifact_inbox_path)
+      && !has(c.inputs.inputs.artifact_outbox_path))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !c.inputs.inputs.worktree_path.endsWith("/.c2j"))
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.worktree_path))
   options:
     validation_mode: structure_only
 - id: quality-rejects
@@ -3180,6 +3204,7 @@ cases:
     type: build
   mocks:
     ops:
+    - *cell_setup_ready
     - match:
         op: recipe_within_resolution
       behavior:
@@ -3351,10 +3376,10 @@ cases:
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.sandbox)
       && c.inputs.inputs.prompt.contains("Improve requested behavior"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
-      && c.inputs.inputs.artifact_outbox_path.endsWith("/outbox"))
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.artifact_inbox_path)
+      && !has(c.inputs.inputs.artifact_outbox_path))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !c.inputs.inputs.worktree_path.endsWith("/.c2j"))
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.worktree_path))
   options:
     validation_mode: structure_only
 - id: verification-fails
@@ -3364,6 +3389,7 @@ cases:
     type: build
   mocks:
     ops:
+    - *cell_setup_ready
     - match:
         op: recipe_within_resolution
       behavior:
@@ -3548,10 +3574,10 @@ cases:
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.sandbox)
       && c.inputs.inputs.prompt.contains("Improve requested behavior"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
-      && c.inputs.inputs.artifact_outbox_path.endsWith("/outbox"))
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.artifact_inbox_path)
+      && !has(c.inputs.inputs.artifact_outbox_path))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !c.inputs.inputs.worktree_path.endsWith("/.c2j"))
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.worktree_path))
   options:
     validation_mode: structure_only
 - id: continue-session
@@ -3561,6 +3587,7 @@ cases:
     type: build
   mocks:
     ops:
+    - *cell_setup_ready
     - match:
         op: recipe_within_resolution
       behavior:
@@ -3650,10 +3677,10 @@ cases:
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.sandbox)
       && c.inputs.inputs.prompt.contains("Improve requested behavior"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
-      && c.inputs.inputs.artifact_outbox_path.endsWith("/outbox"))
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.artifact_inbox_path)
+      && !has(c.inputs.inputs.artifact_outbox_path))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !c.inputs.inputs.worktree_path.endsWith("/.c2j"))
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.worktree_path))
   - type: cel_true
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex"))[1].inputs.inputs.session.sha256 == "903e460bdf836d6656c641caac0995fec12b4bdaf56771e2b64a2689b4ea41d7"
   - type: cel_true
@@ -3667,6 +3694,7 @@ cases:
     type: build
   mocks:
     ops:
+    - *cell_setup_ready
     - match:
         op: recipe_within_resolution
       behavior:
@@ -3737,10 +3765,10 @@ cases:
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.sandbox)
       && c.inputs.inputs.prompt.contains("Improve requested behavior"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
-      && c.inputs.inputs.artifact_outbox_path.endsWith("/outbox"))
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.artifact_inbox_path)
+      && !has(c.inputs.inputs.artifact_outbox_path))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !c.inputs.inputs.worktree_path.endsWith("/.c2j"))
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.worktree_path))
   options:
     validation_mode: structure_only
 - id: invalid-human-input
@@ -3750,6 +3778,7 @@ cases:
     type: build
   mocks:
     ops:
+    - *cell_setup_ready
     - match:
         op: recipe_within_resolution
       behavior:
@@ -4131,10 +4160,10 @@ cases:
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.sandbox)
       && c.inputs.inputs.prompt.contains("Improve requested behavior"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
-      && c.inputs.inputs.artifact_outbox_path.endsWith("/outbox"))
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.artifact_inbox_path)
+      && !has(c.inputs.inputs.artifact_outbox_path))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !c.inputs.inputs.worktree_path.endsWith("/.c2j"))
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.worktree_path))
   - type: cel_true
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).filter(c, c.node_path.contains("/implementation/")).size()
       >= 2
@@ -4158,6 +4187,7 @@ cases:
     type: build
   mocks:
     ops:
+    - *cell_setup_ready
     - match:
         op: recipe_within_resolution
       behavior:
@@ -4219,10 +4249,10 @@ cases:
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.sandbox)
       && c.inputs.inputs.prompt.contains("Improve requested behavior"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
-      && c.inputs.inputs.artifact_outbox_path.endsWith("/outbox"))
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.artifact_inbox_path)
+      && !has(c.inputs.inputs.artifact_outbox_path))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !c.inputs.inputs.worktree_path.endsWith("/.c2j"))
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.worktree_path))
   - type: cel_true
     expr: '!calls.exists(c, c.op == "squashrebasemerge")'
   options:
@@ -4234,6 +4264,7 @@ cases:
     type: build
   mocks:
     ops:
+    - *cell_setup_ready
     - match:
         op: recipe_within_resolution
       behavior:
@@ -4302,10 +4333,10 @@ cases:
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.sandbox)
       && c.inputs.inputs.prompt.contains("Improve requested behavior"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
-      && c.inputs.inputs.artifact_outbox_path.endsWith("/outbox"))
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.artifact_inbox_path)
+      && !has(c.inputs.inputs.artifact_outbox_path))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !c.inputs.inputs.worktree_path.endsWith("/.c2j"))
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.worktree_path))
   - type: cel_true
     expr: '!calls.exists(c, c.op == "squashrebasemerge")'
   options:
@@ -4317,6 +4348,7 @@ cases:
     type: build
   mocks:
     ops:
+    - *cell_setup_ready
     - match:
         op: recipe_within_resolution
       behavior:
@@ -4414,10 +4446,10 @@ cases:
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.sandbox)
       && c.inputs.inputs.prompt.contains("Improve requested behavior"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
-      && c.inputs.inputs.artifact_outbox_path.endsWith("/outbox"))
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.artifact_inbox_path)
+      && !has(c.inputs.inputs.artifact_outbox_path))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !c.inputs.inputs.worktree_path.endsWith("/.c2j"))
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.worktree_path))
   - type: cel_true
     expr: '!calls.exists(c, c.op == "squashrebasemerge")'
   options:
@@ -4429,6 +4461,7 @@ cases:
     type: build
   mocks:
     ops:
+    - *cell_setup_ready
     - match:
         op: recipe_within_resolution
       behavior:
@@ -4504,10 +4537,10 @@ cases:
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.sandbox)
       && c.inputs.inputs.prompt.contains("Improve requested behavior"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
-      && c.inputs.inputs.artifact_outbox_path.endsWith("/outbox"))
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.artifact_inbox_path)
+      && !has(c.inputs.inputs.artifact_outbox_path))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !c.inputs.inputs.worktree_path.endsWith("/.c2j"))
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.worktree_path))
   - type: cel_true
     expr: '!calls.exists(c, c.op == "squashrebasemerge")'
   options:
@@ -4519,6 +4552,7 @@ cases:
     type: build
   mocks:
     ops:
+    - *cell_setup_ready
     - match:
         op: recipe_within_resolution
       behavior:
@@ -4593,10 +4627,10 @@ cases:
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.sandbox)
       && c.inputs.inputs.prompt.contains("Improve requested behavior"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
-      && c.inputs.inputs.artifact_outbox_path.endsWith("/outbox"))
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.artifact_inbox_path)
+      && !has(c.inputs.inputs.artifact_outbox_path))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !c.inputs.inputs.worktree_path.endsWith("/.c2j"))
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.worktree_path))
   - type: cel_true
     expr: '!calls.exists(c, c.op == "squashrebasemerge")'
   options:
@@ -4608,6 +4642,7 @@ cases:
     type: build
   mocks:
     ops:
+    - *cell_setup_ready
     - match:
         op: recipe_within_resolution
       behavior:
@@ -4692,10 +4727,10 @@ cases:
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.sandbox)
       && c.inputs.inputs.prompt.contains("Improve requested behavior"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
-      && c.inputs.inputs.artifact_outbox_path.endsWith("/outbox"))
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.artifact_inbox_path)
+      && !has(c.inputs.inputs.artifact_outbox_path))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !c.inputs.inputs.worktree_path.endsWith("/.c2j"))
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.worktree_path))
   - type: cel_true
     expr: '!calls.exists(c, c.op == "squashrebasemerge")'
   options:
@@ -4707,6 +4742,7 @@ cases:
     type: build
   mocks:
     ops:
+    - *cell_setup_ready
     - match:
         op: recipe_within_resolution
       behavior:
@@ -4932,10 +4968,10 @@ cases:
     expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.sandbox)
       && c.inputs.inputs.prompt.contains("Improve requested behavior"))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, c.inputs.inputs.artifact_inbox_path.endsWith("/inbox")
-      && c.inputs.inputs.artifact_outbox_path.endsWith("/outbox"))
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.artifact_inbox_path)
+      && !has(c.inputs.inputs.artifact_outbox_path))
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !c.inputs.inputs.worktree_path.endsWith("/.c2j"))
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).all(c, !has(c.inputs.inputs.worktree_path))
   - type: cel_true
     expr: '!calls.exists(c, c.op == "squashrebasemerge")'
   options:
