@@ -11,7 +11,6 @@ cases:
             '
   inputs:
     target_directory: .c2j
-    timeout: 1s
   mocks:
     ops:
     - repeat: true
@@ -26,6 +25,11 @@ cases:
   - type: output_equals
     path: result.status
     value: passed
+  - type: output_equals
+    path: result.timed_out
+    value: false
+  - type: cel_true
+    expr: calls.filter(c, c.op == "command_execution").all(c, !("timeout" in c.inputs))
   - type: cel_true
     expr: size(outputs.artifact_refs) == 2 && "verification.md" in outputs.artifact_refs
 - id: fail
@@ -39,7 +43,6 @@ cases:
             '
   inputs:
     target_directory: .c2j
-    timeout: 1s
   mocks:
     ops:
     - repeat: true
@@ -56,22 +59,28 @@ cases:
     value: failed
   - type: cel_true
     expr: size(outputs.artifact_refs) == 2 && "verification.md" in outputs.artifact_refs
-- id: timeout
+# Preserve timeout evidence from the runtime without imposing a recipe deadline.
+- id: external-timeout
   type: integration_case
-  runtime:
-    cells:
-      root:
-        files:
-          .c2j/build.sh: 'echo starting; sleep 5
-
-            '
+  runtime: {}
   inputs:
     target_directory: .c2j
-    timeout: 1s
   mocks:
     ops:
-    - repeat: true
-      match:
+    - match:
+        node_path: development-verify/execute
+      behavior:
+        mode: return
+        outputs:
+          stdout: ran
+          stderr: ''
+          success: false
+          exit_code: -1
+          timed_out: true
+        artifacts:
+          build.log: |
+            starting
+    - match:
         op: command_execution
       behavior:
         mode: passthrough
@@ -95,7 +104,6 @@ cases:
         files: {}
   inputs:
     target_directory: .c2j
-    timeout: 1s
   mocks:
     ops:
     - repeat: true

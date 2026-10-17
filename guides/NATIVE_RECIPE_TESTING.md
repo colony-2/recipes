@@ -31,7 +31,6 @@ recipe: ../recipes/develop/verify.yaml
 cases:
 - id: failed-hook
   type: integration_case
-  inputs: {timeout: 1s}
   runtime:
     cells:
       root:

@@ -13,7 +13,7 @@ snapshots, and merges remain real in runtime cases.
 | Real agent gates: valid/invalid result artifacts, initial and resumed sessions (26 cases) | `recipe-tests/agent-gates.test.yaml` |
 | Foreign result gates: done, ask-user, incomplete/error, missing session and malformed/schema-invalid replies (8 cases) | `recipe-tests/consultation-gates.test.yaml` |
 | Test-plan publication and missing maintained plan | `recipe-tests/test-plan.test.yaml` |
-| Verification pass, failure, timeout and skipped hook, exported report/log names | `recipe-tests/verification.test.yaml` |
+| Verification pass, failure, externally reported timeout and skipped hook, exported report/log names | `recipe-tests/verification.test.yaml` |
 | Empty, duplicate, already-recorded, multi-round, failed/cancelled/unmerged dependencies (10 cases) | `recipe-tests/dependencies.test.yaml` |
 | Actual child submission, multiple children, scoped work, successive rounds, failed-child recovery, unmerged outcomes, missing session and invalid reply | `recipe-tests/dependency-runtime.test.yaml` |
 | Late advice, bug/evolve redesign, multiple cells, missing mandate/outside ownership, failed history, malformed reply, missing checkpoint, forbidden children, unavailable cell | `recipe-tests/implementation-consultations.test.yaml` |

@@ -2,6 +2,14 @@
 
 These statements are intended to drive `c2j test` cases.
 
+## Development timeout removal
+
+| Test statement | Relevant files | Importance | Level / dependencies | Case |
+|---|---|---|---|---|
+| Build and shared development phases impose no recipe, node, or command execution deadlines. | `build.yaml`, `recipes/develop/*.yaml` | High | Integration; c2j, Git, bash | Positive |
+| Verification runs without a timeout input and preserves successful reports and build logs. | `recipes/develop/verify.yaml`, `recipe-tests/verification.test.yaml` | High | Integration; c2j, Git, bash | Positive |
+| Failed commands and externally reported timeouts remain failed verification outcomes with report and log evidence. | `recipes/develop/verify.yaml`, `recipe-tests/verification.test.yaml` | Critical | Integration; c2j, Git, command mock | Negative |
+
 ## Packaged extension ops
 
 - Recipes resolve c2ops through the `published` branch after verified package promotion. Files: `recipes/`, `docs/examples/recipes/`; importance: critical; integration; dependencies: current c2j, Nix, colony2 cache.

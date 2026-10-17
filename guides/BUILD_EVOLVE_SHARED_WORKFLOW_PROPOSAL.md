@@ -56,7 +56,7 @@ deprecation plan for human review.
 ## Verification and integration
 
 `verify.yaml` uses native `command_execution` to run `bash ./build.sh` in the
-selected target directory, with a ten-minute default timeout. It preserves the
+selected target directory, without a recipe-imposed timeout. It preserves the
 log and inspects the native success, exit-code, and timeout outputs. An absent
 hook is explicitly reported as **skipped**, with no claim that automated checks
 passed; the human can still accept the outcome. Failure returns to implementation.
