@@ -1,0 +1,188 @@
+recipe: fixtures/build-handoff.yaml
+cases:
+- id: build-resumes-serving-checkpoint-and-transcript
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          candidate.txt: original
+    observe_files:
+    - candidate.txt
+    - unapproved.txt
+    responses:
+    - node_path: build-handoff/run/build/develop/root/approval/sequence/plan_review/kernel-review/ask
+      fields:
+        decision: approve
+    - node_path: build-handoff/run/build/develop/root/accept/sequence/outcome_review/kernel-review/ask
+      fields:
+        decision: accept
+  mocks:
+    ops:
+    - match:
+        node_path: build-handoff/starter
+      behavior:
+        mode: return
+        outputs:
+          success: true
+        artifacts:
+          conversation.json: '{"outcome":"agreed","message":"Agreed feature scope"}'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: serving-consultant
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: design response
+            files:
+            - path: design.md
+              description: Review evidence
+            questions: []
+            consultations: []
+            keys: []
+        artifacts:
+          design.md: '# design evidence'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: design
+                turn: 1review
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: test-plan response
+            files:
+            - path: test-statements.md
+              description: Review evidence
+            questions: []
+            consultations: []
+            keys: []
+        artifacts: {}
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: test-plan
+                turn: 1review
+          artifact_files:
+            test-statements.md: build-kernel-statements.md
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: agreed
+            thinking: Independent plan assessment
+            assessment: pass
+            files:
+            - path: iter1/consultant/plan-review.md
+              description: Review evidence
+        artifacts:
+          iter1/consultant/plan-review.md: '# Independent findings'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                expert: plan
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: implement response
+            files:
+            - path: implementation.md
+              description: Review evidence
+            questions: []
+            consultations: []
+            keys: []
+        artifacts:
+          implementation.md: '# implement evidence'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: implement
+                turn: 1review
+          worktree:
+            candidate.txt: implemented behavior
+            build.sh: |
+              #!/bin/sh
+              test "$(cat candidate.txt)" = "implemented behavior"
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: agreed
+            thinking: Independent outcome assessment
+            assessment: pass
+            files:
+            - path: iter1/consultant/outcome-review.md
+              description: Review evidence
+        artifacts:
+          iter1/consultant/outcome-review.md: '# Independent findings'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                expert: outcome
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: merged
+    value: true
+  - type: cel_true
+    expr: repositories.root.new_commits == 1
+  - type: cel_true
+    expr: calls.filter(c, c.op == "extension_execution")[0].inputs.inputs.session == calls.filter(c, c.node_path
+      == "build-handoff/starter")[0].outputs.session
+  - type: cel_true
+    expr: '!("instructions" in calls.filter(c, c.op == "extension_execution")[0].inputs.inputs)'
+  - type: cel_true
+    expr: calls.filter(c, c.op == "extension_execution")[0].artifacts["consultation/conversation.json"].contains("Agreed
+      feature scope")
+  - type: cel_true
+    expr: calls.filter(c, c.op == "extension_execution")[0].inputs.inputs.prompt.contains("recipes own
+      those actions") && !calls.filter(c, c.op == "extension_execution")[0].inputs.inputs.prompt.contains("A
+      cell encompasses")

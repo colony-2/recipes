@@ -1,5 +1,8 @@
 # Shared build and evolve workflow
 
+> Historical design: current build uses optional root PURPOSE.md, the shared
+> consultation kernel, and one build entrypoint. See [current workflow](../README.md).
+
 Build and evolve use one workflow. Build starts at the cell root; evolve starts
 in `.c2j` and explains that the requested changes concern workflows and their
 instructions. Applicable `AGENTS.md` files provide domain guidance. Both read

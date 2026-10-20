@@ -1,21 +1,18 @@
 # Native recipe testing
 
-Use current c2j `main` for Nix-packaged extension ops. This migration uses
-`b98e25fcba7fe00101d49db8455cf0d5ebc0a4cb`; build it and invoke the binary directly
-until a release contains that support. Configure Nix with flakes enabled and the
-trusted `colony2` Cachix cache, as described in
+Use current c2j; the build and consultation kernel are validated with v0.0.82.
+Cell creation requires main commit `a058abe015e556ee7264ded665c47efe95959235`
+or later for empty workspaces. Run `recipe-tests/create.test.yaml` and
+`recipe-tests/create-handoff.test.yaml` for its review, publication, and handoff
+coverage; these use disposable repositories and do not create GitHub repositories.
+Configure the op's declared tools, including Nix, as described in
 [c2ops worker setup](https://github.com/colony-2/c2ops/blob/published/NIX_PACKAGES.md).
-
-This revision includes the Nix passthrough fix from `b6f6a04`; all 35 previously
-affected schema-gate cases now pass. See the
-[resolved c2j bug report](BUG_REPORT_C2J_NIX_TEST_PASSTHROUGH.md).
-Runtime cases also need cache access during op setup, even when model responses
-are mocked.
+Runtime cases still resolve op manifests when model responses are mocked.
 
 ```sh
 c2j test validate --directory .
 c2j test run --directory . --case-timeout 5m --out-dir .c2j/test-results
-c2j test run --file recipe-tests/build.scenario.md --case happy
+c2j test run --file recipe-tests/build-kernel.test.yaml --case build-without-purpose
 ```
 
 Discovery recursively finds `*.test.yaml`, `*.test.yml`, `*.test.json`, and
@@ -53,7 +50,7 @@ repositories and runs normal workers, including children. It never uses the
 home embedded database for these cases.
 
 Runtime mocks can match a node, selector, and cell. They are consumed in order;
-`repeat: true` is useful for a real schema gate or command used repeatedly.
+`repeat: true` is useful for a command used repeatedly.
 Mock only external decisions. Declare `behavior.artifacts`, `effects.worktree`,
 `effects.objects`, and `effects.children` to produce real persisted data and
 broker-submitted children. Do not invent object storage keys in runtime cases.
@@ -61,8 +58,8 @@ Declare `runtime.responses` with input node paths, fields, and attachment-file
 paths to answer real reviews. Fixture paths resolve relative to the suite.
 
 Runtime suites use the recipe's normal command execution without sandbox overrides.
-Nix supplies op manifests even when model responses are mocked. Real `rule_gate`
-calls use its prebuilt Nix package and need cache access, not a Go compiler.
+Nix supplies op manifests even when model responses are mocked. Build uses the
+Codex op's enforced schema rather than a second recipe-level schema gate.
 There is no separate Python/Go test server or client to install.
 
 Use CEL assertions over `outputs`, `calls`, `reviews`, `artifacts`, and
@@ -94,12 +91,9 @@ case must not validate an unselected resume branch against a null checkpoint.
 The default `all` mode remains useful for whole-graph checks. Runtime cases are
 structurally validated; their actual path and assertions execute under `run`.
 
-The build/evolve mock routing suites and agent schema suite use
-`validation_mode: structure_only`. Their templates consume mocked artifact data
-and runtime histories that the validation-only compiler replaces with placeholders.
-Preflight checks syntax, case declarations and dependencies, and reports that
-execution validation is deferred. `run` executes these data-dependent paths and
-all assertions; a structural preflight alone is not a passing behavior test.
+The current build and consultation suites use native integration cases. A
+structural preflight alone is not a passing behavior test; `run` executes the
+state transitions, review responses, and assertions.
 
 Use `runtime.observe_files` to select cell-relative files to record before each
 op. Assert on `calls[].worktree` for retained candidates or absent foreign edits.

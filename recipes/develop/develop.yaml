@@ -1,650 +1,523 @@
 id: develop
-version: 0.3.0
-input_schema:
-  prompt:
-    type: string
-    required: true
-  mode:
-    type: string
-    default_value: build
-  target_directory:
-    type: string
-    default_value: .
+version: 1.0.0
 inputs:
   prompt: ${{ inputs.prompt }}
-  mode: ${{ inputs.mode }}
   target_directory: ${{ inputs.target_directory }}
+  session: ${{ inputs.session }}
+  documents: ${{ inputs.documents }}
+  root_cell: ${{ inputs.root_cell }}
+  root_ref: ${{ inputs.root_ref }}
+  consultation_recipe: ${{ inputs.consultation_recipe }}
+  build_recipe: ${{ inputs.build_recipe }}
+  create_recipe: ${{ inputs.create_recipe }}
 state:
   initial: prepare
   states:
     prepare:
       op: command_execution
+      const: true
       inputs:
-        env:
-          TARGET: '{{ context.environment.op.worktree_path }}/{{ inputs.target_directory }}'
         run: |
-          mkdir -p "$TARGET"
+          if [ -f .c2j/config.yaml ] && command -v c2j >/dev/null 2>&1; then
+            c2j self --json
+          else
+            printf '{}'
+          fi
       transitions:
-      - to: design
+      - to: start
         when: true
-    design:
-      include: ./agent.yaml
+    start:
       inputs:
-        prompt: ${{ inputs.prompt }}
-        target_directory: ${{ inputs.target_directory }}
-        mode: ${{ inputs.mode }}
-        feedback: ${{ transition.payload.?review.orValue({}).?fields.orValue({}).?feedback.orValue("") }}
-        context_json: ${{ '{"design":' + json_stringify(state_output("design", "result", {})) + ',"design_review":'
-          + json_stringify(state_output("design_review", "result", {})) + ',"test_plan":' + json_stringify(state_output("test_plan",
-          "result", {})) + ',"test_review":' + json_stringify(state_output("test_review", "result", {})) + ',"implementation":'
-          + json_stringify(state_output("implementation", "result", {})) + '}' }}
-        evidence_json: '${{ json_stringify(jq(json_parse(''['' + json_stringify(state_exists("verify") ? states.verify.outputs.artifact_refs
-          : context.artifacts) + "," + json_stringify(state_output("design", "review_documents", {})) + "," + json_stringify(state_output("test_plan",
-          "review_documents", {})) + "," + json_stringify(state_output("implementation", "review_documents", {}))
-          + "," + json_stringify((transition.payload.?review.orValue({})).?artifact_refs.orValue({})) + '']''),
-          ".[4] as $uploads | .[0:4] | add | with_entries(.key = .value.name) | . + ($uploads | with_entries(.key
-          = (\"review/\" + .key) | .value.name = .key))")) }}'
-        dependency_history_json: ${{ json_stringify(state_output("design", "dependencies", {})) }}
-        consultation_history_json: ${{ json_stringify(transition.payload.?consultations.orValue(state_output("design",
-          "consultations", {}))) }}
-        review_response_json: ${{ json_stringify(transition.payload.?review.orValue({})) }}
-        phase: design
+        request: ${{ inputs.prompt }}
+        directory: ${{ inputs.target_directory }}
+        session: ${{ inputs.session }}
+        documents: >-
+          ${{ jq([json_parse(json_stringify(context.artifacts)), inputs.documents], 'add | with_entries(select(.key
+          != "__git_state_thin_pack__" and .key != "diff_from_parent.diff" and .key != "diff_from_base.diff"))')
+          }}
+        root_cell: >-
+          ${{ inputs.root_cell != '' ? inputs.root_cell : json_parse(states.prepare.outputs.stdout).?root_repo.orValue('')
+          }}
+        root_ref: >-
+          ${{ inputs.root_ref != '' ? inputs.root_ref : json_parse(states.prepare.outputs.stdout).?root_ref.orValue('main')
+          }}
+        consultation_recipe: ${{ inputs.consultation_recipe }}
+        build_recipe: ${{ inputs.build_recipe }}
+        create_recipe: ${{ inputs.create_recipe }}
+      sequence: []
+      outputs:
+        valid: >-
+          ${{ nonempty(inputs.directory) && !inputs.directory.startsWith('/') && !inputs.directory.matches('(^|/)[.][.](/|$)')
+          }}
+        flow: >-
+          ${{ {'phase': 'design', 'last_phase': '', 'message': inputs.request, 'request': inputs.request,
+          'target_directory': inputs.directory, 'session': inputs.session, 'documents': inputs.documents,
+          'threads': {}, 'jobs': {}, 'approved': [], 'plan_keys': [], 'reviews': {}, 'root_cell': inputs.root_cell,
+          'root_ref': inputs.root_ref, 'consultation_recipe': inputs.consultation_recipe, 'build_recipe':
+          inputs.build_recipe, 'create_recipe': inputs.create_recipe} }}
       transitions:
-      - to: outside
-        when: outputs.valid && outputs.completed && outputs.result.next == "outside"
-      - to: design_review
-        when: outputs.valid && outputs.completed && outputs.result.next == "review"
       - to: failed
         when: '!outputs.valid'
-      - to: plan_feedback
+      - to: work
         when: true
         payload:
-          consultations: ${{ state_output("design", "consultations", {}) }}
-    design_review:
-      include: ./agent.yaml
+          flow: ${{ outputs.flow }}
+    work:
       inputs:
-        prompt: ${{ inputs.prompt }}
-        target_directory: ${{ inputs.target_directory }}
-        mode: ${{ inputs.mode }}
-        feedback: ${{ states.design.outputs.review_response.?fields.orValue({}).?feedback.orValue("") }}
-        context_json: ${{ '{"design":' + json_stringify(state_output("design", "result", {})) + '}' }}
-        evidence_json: '${{ json_stringify(jq(json_parse(''['' + json_stringify(state_exists("verify") ? states.verify.outputs.artifact_refs
-          : context.artifacts) + "," + json_stringify(state_output("design", "review_documents", {})) + "," + json_stringify(state_output("test_plan",
-          "review_documents", {})) + "," + json_stringify(state_output("implementation", "review_documents", {}))
-          + "," + json_stringify((states.design.outputs.review_response).?artifact_refs.orValue({})) + '']''), ".[4]
-          as $uploads | .[0:4] | add | with_entries(.key = .value.name) | . + ($uploads | with_entries(.key = (\"review/\"
-          + .key) | .value.name = .key))")) }}'
-        dependency_history_json: ${{ json_stringify(state_output("design_review", "dependencies", {})) }}
-        phase: review-design
+        flow: ${{ jq(transition.payload.flow, 'del(.review_hint)') }}
+      sequence:
+      - id: context
+        op: command_execution
+        const: true
+        inputs:
+          env:
+            OUTBOX: ${{ context.environment.op.outbox }}
+            CONTEXT: ${{ json_stringify(jq(inputs.flow, 'del(.session, .documents, .result)')) }}
+          run: |
+            printf '%s\n' "$CONTEXT" > "$OUTBOX/context.json"
+      - id: agent
+        include: ./agent.yaml
+        inputs:
+          flow: ${{ inputs.flow }}
+          documents: >-
+            ${{ jq([inputs.flow.documents, {'context.json': sequence.context.artifacts['context.json']}],
+            'add') }}
+      outputs:
+        flow: ${{ inputs.flow }}
+        turn: ${{ sequence.agent.outputs.turn }}
       transitions:
-      - to: test_plan
-        when: outputs.valid && outputs.completed && outputs.result.next == "done"
+      - to: record
+        when: true
+    record:
+      inputs:
+        previous: ${{ states.work.outputs.flow }}
+        turn: ${{ states.work.outputs.turn }}
+      sequence: []
+      outputs:
+        valid: |-
+          ${{ inputs.turn.result.?status.orValue('failed') == 'completed'
+          && inputs.turn.result.?output_schema_valid.orValue(false)
+          && inputs.turn.result.?session.orValue(null) != null
+          && size(inputs.turn.jobs.?job_ids.orValue([])) == 0
+          && inputs.turn.result.response.files.all(f, f.path in inputs.turn.artifacts
+              && !f.path.startsWith('/') && !f.path.contains('..') && !f.path.contains('\\')
+              && !(f.path in ['context.json', 'feedback.json', '__git_state_thin_pack__']))
+          && (inputs.turn.result.response.next != 'review'
+              || inputs.turn.result.response.files.exists(f, f.path == {'design': 'design.md', 'test-plan': 'test-statements.md', 'implement': 'implementation.md'}[inputs.previous.phase]))
+          && (inputs.turn.result.response.next != 'ask_user'
+              || (size(inputs.turn.result.response.questions) > 0 && size(inputs.turn.result.response.files) > 0
+                  && inputs.turn.result.response.questions.all(q, q.id != 'annotations')))
+          && (inputs.turn.result.response.next != 'consult' || size(inputs.turn.result.response.consultations) > 0)
+          && (!(inputs.turn.result.response.next in ['blocked', 'submit']) || size(inputs.turn.result.response.keys) > 0) }}
+        flow: |-
+          ${{ jq([inputs.previous, {
+           'session': inputs.turn.result.?session.orValue(inputs.previous.session),
+           'last_phase': inputs.previous.phase,
+           'plan_keys': inputs.previous.phase == 'design' && inputs.turn.result.?response.orValue({}).?next.orValue('') == 'review' ? inputs.turn.result.response.keys : inputs.previous.plan_keys,
+           'result': inputs.turn.result.?response.orValue({}),
+           'documents': jq([inputs.previous.documents,
+             jq({'files': inputs.turn.result.?response.orValue({}).?files.orValue([]), 'artifacts': inputs.turn.artifacts},
+                '. as $v | $v.files | map(select(.path as $p | $v.artifacts | has($p)) | {key: .path, value: $v.artifacts[.path]}) | from_entries')], 'add')}], 'add') }}
+      transitions:
       - to: failed
         when: '!outputs.valid'
-      - to: plan_feedback
+      - to: stopped
+        when: outputs.flow.result.next == 'outside'
+        payload:
+          flow: '${{ jq([outputs.flow, {''disposition'': ''outside''}], ''add'') }}'
+      - to: design_next
+        when: outputs.flow.result.next == 'redesign'
+        payload:
+          flow: ${{ outputs.flow }}
+      - to: questions
+        when: outputs.flow.result.next == 'ask_user'
+        payload:
+          flow: ${{ outputs.flow }}
+      - to: coordinate
+        when: outputs.flow.result.next in ['consult', 'submit', 'blocked']
+        payload:
+          action: ${{ outputs.flow.result.next }}
+          requests: ${{ outputs.flow.result.consultations }}
+          keys: ${{ outputs.flow.result.keys }}
+          flow: ${{ outputs.flow }}
+      - to: work
+        when: outputs.flow.result.next == 'continue'
+        payload:
+          flow: '${{ jq([outputs.flow, {''message'': ''Continue the current phase.''}], ''add'') }}'
+      - to: test_next
+        when: outputs.flow.phase == 'design'
+        payload:
+          flow: ${{ outputs.flow }}
+      - to: coordinate
+        when: outputs.flow.threads.exists(k, outputs.flow.threads[k].status == 'running') || outputs.flow.jobs.exists(k,
+          outputs.flow.jobs[k].status == 'running')
+        payload:
+          action: ${{ 'blocked' }}
+          requests: ${{ [] }}
+          keys: >-
+            ${{ jq([outputs.flow.threads, outputs.flow.jobs], 'add | to_entries | map(select(.value.status
+            == "running") | .key)') }}
+          flow: ${{ outputs.flow }}
+      - to: failed
+        when: 'outputs.flow.phase == ''implement'' && !outputs.flow.approved.all(k, k in outputs.flow.jobs
+          && outputs.flow.jobs[k].status == ''completed'' && (outputs.flow.jobs[k].kind == ''create''
+          ? outputs.flow.jobs[k].result.?disposition.orValue('''') == ''created'' : outputs.flow.jobs[k].result.?merged.orValue(false)))'
+      - to: failed
+        when: |-
+          outputs.flow.phase == 'test-plan' && !outputs.flow.plan_keys.all(k,
+            k in outputs.flow.threads && outputs.flow.threads[k].request.kind != 'expert'
+            && outputs.flow.threads[k].?result.orValue({}).?outcome.orValue('') == 'agreed')
+      - to: assessment
         when: true
         payload:
-          consultations: ${{ state_output("design", "consultations", {}) }}
-    test_plan:
-      include: ./agent.yaml
+          flow: ${{ outputs.flow }}
+    design_next:
       inputs:
-        prompt: ${{ inputs.prompt }}
-        target_directory: ${{ inputs.target_directory }}
-        mode: ${{ inputs.mode }}
-        feedback: ${{ states.design.outputs.review_response.?fields.orValue({}).?feedback.orValue("") }}
-        context_json: ${{ '{"design":' + json_stringify(state_output("design", "result", {})) + '}' }}
-        evidence_json: '${{ json_stringify(jq(json_parse(''['' + json_stringify(state_exists("verify") ? states.verify.outputs.artifact_refs
-          : context.artifacts) + "," + json_stringify(state_output("design", "review_documents", {})) + "," + json_stringify(state_output("test_plan",
-          "review_documents", {})) + "," + json_stringify(state_output("implementation", "review_documents", {}))
-          + "," + json_stringify((states.design.outputs.review_response).?artifact_refs.orValue({})) + '']''), ".[4]
-          as $uploads | .[0:4] | add | with_entries(.key = .value.name) | . + ($uploads | with_entries(.key = (\"review/\"
-          + .key) | .value.name = .key))")) }}'
-        dependency_history_json: ${{ json_stringify(state_output("test_plan", "dependencies", {})) }}
-        phase: test-plan
+        flow: ${{ transition.payload.flow }}
+      sequence: []
+      outputs:
+        flow: >-
+          ${{ jq([inputs.flow, {'phase': 'design', 'approved': [], 'message': 'Revise the design and scope;
+          previous approval is no longer current.'}], 'add') }}
       transitions:
-      - to: test_review
-        when: outputs.valid && outputs.completed && outputs.result.next == "review"
-      - to: plan_feedback
+      - to: work
         when: true
         payload:
-          consultations: ${{ state_output("design", "consultations", {}) }}
-    test_review:
-      include: ./agent.yaml
+          flow: ${{ outputs.flow }}
+    test_next:
       inputs:
-        prompt: ${{ inputs.prompt }}
-        target_directory: ${{ inputs.target_directory }}
-        mode: ${{ inputs.mode }}
-        feedback: ${{ states.design.outputs.review_response.?fields.orValue({}).?feedback.orValue("") }}
-        context_json: ${{ '{"design":' + json_stringify(state_output("design", "result", {})) + ',"test_plan":'
-          + json_stringify(state_output("test_plan", "result", {})) + '}' }}
-        evidence_json: '${{ json_stringify(jq(json_parse(''['' + json_stringify(state_exists("verify") ? states.verify.outputs.artifact_refs
-          : context.artifacts) + "," + json_stringify(state_output("design", "review_documents", {})) + "," + json_stringify(state_output("test_plan",
-          "review_documents", {})) + "," + json_stringify(state_output("implementation", "review_documents", {}))
-          + "," + json_stringify((states.design.outputs.review_response).?artifact_refs.orValue({})) + '']''), ".[4]
-          as $uploads | .[0:4] | add | with_entries(.key = .value.name) | . + ($uploads | with_entries(.key = (\"review/\"
-          + .key) | .value.name = .key))")) }}'
-        dependency_history_json: ${{ json_stringify(state_output("test_review", "dependencies", {})) }}
-        phase: review-test-plan
+        flow: ${{ transition.payload.flow }}
+      sequence: []
+      outputs:
+        flow: >-
+          ${{ jq([inputs.flow, {'phase': 'test-plan', 'approved': [], 'message': 'Define test statements
+          for this design.'}], 'add') }}
       transitions:
-      - to: approve_plan
-        when: outputs.valid && outputs.completed && outputs.result.next == "done"
+      - to: work
+        when: true
+        payload:
+          flow: ${{ outputs.flow }}
+    coordinate:
+      inputs:
+        flow: ${{ transition.payload.flow }}
+        action: ${{ transition.payload.action }}
+        requests: ${{ transition.payload.requests }}
+        keys: ${{ transition.payload.keys }}
+      sequence:
+      - id: coordinate
+        include: ./coordinate.yaml
+        inputs:
+          flow: ${{ inputs.flow }}
+          action: ${{ inputs.action }}
+          requests: ${{ inputs.requests }}
+          keys: ${{ inputs.keys }}
+      outputs:
+        valid: ${{ sequence.coordinate.outputs.valid }}
+        flow: >-
+          ${{ jq([sequence.coordinate.outputs.flow, {'message': 'Coordination state changed. Read context.json
+          and new evidence; continue independent work before waiting.'}], 'add') }}
+      transitions:
       - to: failed
         when: '!outputs.valid'
-      - to: plan_feedback
+      - to: work
         when: true
         payload:
-          consultations: ${{ state_output("design", "consultations", {}) }}
-    approve_plan:
-      op: input
+          flow: ${{ outputs.flow }}
+    questions:
       inputs:
-        form:
-          kind: review
-          title: Approve design and test plan
-          documents: ${{ jq(json_parse('[' + json_stringify(state_output("design", "review_documents", {})) + ","
-            + json_stringify(state_output("test_plan", "review_documents", {})) + ']'), "add") }}
+        flow: ${{ transition.payload.flow }}
+      sequence:
+      - id: review
+        include: ../kernel/review.yaml
+        inputs:
+          title: Clarify the current build
+          documents: ${{ inputs.flow.documents }}
+          fields: >-
+            ${{ inputs.flow.result.questions + [{'id': 'annotations', 'type': 'file_upload', 'question':
+            'Optional supporting documents or annotations.', 'required': false}] }}
+      outputs:
+        flow: >-
+          ${{ jq([inputs.flow, {'documents': jq([inputs.flow.documents, sequence.review.outputs.documents],
+          'add'), 'message': 'Read feedback.json and the attachments, then continue the phase that asked
+          these questions.'}], 'add') }}
+      transitions:
+      - to: work
+        when: true
+        payload:
+          flow: ${{ outputs.flow }}
+    assessment:
+      inputs:
+        flow: ${{ transition.payload.flow }}
+      sequence:
+      - id: consult
+        include: ../kernel/consultation.yaml
+        inputs:
+          thread: '${{ inputs.flow.phase == ''test-plan'' ? ''plan-assessment'' : ''outcome-assessment''
+            }}'
+          request: >-
+            ${{ inputs.flow.phase == 'test-plan' ? 'Independently assess the proposed design and test
+            statements before human approval.' : 'Independently inspect the implemented candidate against
+            the approved design, test statements, and quality requirements.' }}
+          consultant_role: |
+            Inspect the current candidate and bound evidence in this repository. Evaluate
+            purpose, approved scope, compatibility, correctness, test coverage, and preserved
+            expectations. For planning assess feasible test statements before implementation;
+            for completed work inspect code and tests for missing behavior and regressions.
+            Publish a concise review document with concrete findings. Report assessment=pass
+            only when no blocking issues remain; otherwise assessment=revise. Agreement on
+            findings does not make the candidate pass. Consult the requester to resolve
+            questions; request human deconfliction when needed. Do not edit the repository.
+          requester_session: ${{ inputs.flow.session }}
+          documents: ${{ inputs.flow.documents }}
+      outputs:
+        result: ${{ sequence.consult.outputs }}
+        flow: >-
+          ${{ jq([inputs.flow, {'session': sequence.consult.outputs.requester_session, 'documents': jq([inputs.flow.documents,
+          sequence.consult.outputs.final_artifacts], 'add'), 'message': sequence.consult.outputs.state.message,
+          'assessment': sequence.consult.outputs.assessment}], 'add') }}
+      transitions:
+      - to: failed
+        when: outputs.result.outcome in ['failed', 'needs_review']
+      - to: approval
+        when: outputs.result.outcome == 'agreed' && outputs.result.assessment == 'pass' && outputs.flow.phase
+          == 'test-plan'
+        payload:
+          flow: ${{ outputs.flow }}
+      - to: verify
+        when: outputs.result.outcome == 'agreed' && outputs.result.assessment == 'pass'
+        payload:
+          flow: ${{ outputs.flow }}
+      - to: design_next
+        when: outputs.flow.phase == 'test-plan'
+        payload:
+          flow: ${{ outputs.flow }}
+      - to: work
+        when: true
+        payload:
+          flow: ${{ outputs.flow }}
+    approval:
+      inputs:
+        flow: ${{ transition.payload.flow }}
+      sequence:
+      - id: plan_review
+        include: ../kernel/review.yaml
+        inputs:
+          title: Review design and test statements
+          documents: ${{ inputs.flow.documents }}
           fields:
           - id: decision
             type: multiple_choice
-            question: |-
-              {{ vars.scope_explanation }}
-
-              Mode: {{ inputs.mode }}; target: {{ inputs.target_directory }}
-
-              ${{ states.design.outputs.result.summary }}
-
-              Review the attached design and test statements before implementation.
-
-              How should we proceed? Uploaded edits require another revision and review.
+            question: Approve this design and test plan before implementation and the listed prerequisite
+              jobs?
             required: true
             options:
             - value: approve
-              label: Approve design and test plan
+              label: Approve
             - value: revise
-              label: Revise the plan
-          - &id001
-            id: feedback
+              label: Request changes
+            - value: cancel
+              label: Cancel
+          - id: feedback
             type: paragraph_text
-            question: Feedback or answers to open questions. Select a revision decision to request changes.
-          - &id002
-            id: annotated_design
+            question: >-
+              ${{ inputs.flow.?review_hint.orValue('Requested changes or guidance (required when requesting
+              changes).') }}
+            required: false
+          - id: annotations
             type: file_upload
-            question: Optional annotated design (Markdown may include CriticMarkup).
-          - &id003
-            id: annotated_test_statements
-            type: file_upload
-            question: Optional annotated test statements.
-      transitions:
-      - to: implementation
-        when: outputs.fields.decision == "approve" && size(outputs.?artifact_refs.orValue({})) == 0
-        payload:
-          review: ${{ outputs }}
-          consultations: ${{ state_output("design", "consultations", {}) }}
-      - to: design
-        when: outputs.fields.decision in ["approve", "revise"] && (outputs.fields.?feedback.orValue("").matches("[^[:space:]]")
-          || size(outputs.?artifact_refs.orValue({})) > 0)
-        payload:
-          review: ${{ outputs }}
-          consultations: ${{ state_output("design", "consultations", {}) }}
-      - to: plan_feedback
-        when: outputs.fields.decision == "revise"
-        payload:
-          consultations: ${{ state_output("design", "consultations", {}) }}
-      - to: approve_plan
-        when: true
-    plan_feedback:
-      op: input
-      inputs:
-        form:
-          kind: review
-          title: Design or test-plan feedback
-          documents: ${{ jq(json_parse('[' + json_stringify(state_output("design", "review_documents", {})) + ","
-            + json_stringify(state_output("test_plan", "review_documents", {})) + ']'), "add") }}
-          fields:
-          - id: decision
-            type: multiple_choice
-            question: |-
-              {{ vars.scope_explanation }}
-
-              Resolve questions and review findings before implementation.
-
-              Design:
-              ${{ json_stringify(state_output("design", "result", {})) }}
-
-              Design review:
-              ${{ json_stringify(state_output("design_review", "result", {})) }}
-
-              Test plan:
-              ${{ json_stringify(state_output("test_plan", "result", {})) }}
-
-              Test review:
-              ${{ json_stringify(state_output("test_review", "result", {})) }}
-
-              Implementation:
-              ${{ json_stringify(state_output("implementation", "result", {})) }}
-
-              What should change or what is the answer to the open questions?
-
-              How should we proceed? Uploaded edits require another revision and review.
-            required: true
-            options:
-            - value: revise
-              label: Revise the plan
-          - *id001
-          - *id002
-          - *id003
-      transitions:
-      - to: design
-        when: outputs.fields.decision == "revise" && (outputs.fields.?feedback.orValue("").matches("[^[:space:]]")
-          || size(outputs.?artifact_refs.orValue({})) > 0)
-        payload:
-          review: ${{ outputs }}
-          consultations: ${{ transition.payload.?consultations.orValue(state_output("implementation", "consultations",
-            state_output("design", "consultations", {}))) }}
-      - to: plan_feedback
-        when: true
-        payload:
-          consultations: ${{ transition.payload.?consultations.orValue(state_output("implementation", "consultations",
-            state_output("design", "consultations", {}))) }}
-    implementation:
-      inputs:
-        prompt: ${{ inputs.prompt }}
-        target_directory: ${{ inputs.target_directory }}
-        mode: ${{ inputs.mode }}
-        feedback: ${{ transition.payload.?review.orValue({}).?fields.orValue({}).?feedback.orValue("") }}
-        context_json: ${{ '{"previous_implementation":' + json_stringify(state_output("implementation", "result",
-          {})) + ',"design":' + json_stringify(state_output("design", "result", {})) + ',"test_plan":' + json_stringify(state_output("test_plan",
-          "result", {})) + ',"specification":' + json_stringify(state_output("specification", "result", {})) + ',"quality":'
-          + json_stringify(state_output("quality", "result", {})) + ',"verify":' + json_stringify(state_output("verify",
-          "result", {})) + '}' }}
-        evidence_json: '${{ json_stringify(jq(json_parse(''['' + json_stringify(state_exists("verify") ? states.verify.outputs.artifact_refs
-          : context.artifacts) + "," + json_stringify(state_output("design", "review_documents", {})) + "," + json_stringify(state_output("test_plan",
-          "review_documents", {})) + "," + json_stringify(state_output("implementation", "review_documents", {}))
-          + "," + json_stringify((transition.payload.?review.orValue({})).?artifact_refs.orValue({})) + '']''),
-          ".[4] as $uploads | .[0:4] | add | with_entries(.key = .value.name) | . + ($uploads | with_entries(.key
-          = (\"review/\" + .key) | .value.name = .key))")) }}'
-        dependency_history_json: ${{ json_stringify(state_output("implementation", "dependencies", {})) }}
-        consultation_history_json: ${{ json_stringify(transition.payload.?consultations.orValue(state_output("design",
-          "consultations", {}))) }}
-        session: ${{ state_output("implementation", "session", null) }}
-        review_response_json: ${{ json_stringify(transition.payload.?review.orValue({})) }}
-      state:
-        initial:
-        - to: resume
-          when: inputs.session != null
-        - to: fresh
-          when: true
-        states:
-          fresh:
-            include: ./agent.yaml
-            inputs:
-              prompt: ${{ inputs.prompt }}
-              target_directory: ${{ inputs.target_directory }}
-              mode: ${{ inputs.mode }}
-              feedback: ${{ inputs.feedback }}
-              context_json: ${{ inputs.context_json }}
-              evidence_json: ${{ inputs.evidence_json }}
-              dependency_history_json: ${{ inputs.dependency_history_json }}
-              consultation_history_json: ${{ inputs.consultation_history_json }}
-              review_response_json: ${{ inputs.review_response_json }}
-              phase: implement
-          resume:
-            include: ./agent.yaml
-            inputs:
-              prompt: ${{ inputs.prompt }}
-              target_directory: ${{ inputs.target_directory }}
-              mode: ${{ inputs.mode }}
-              feedback: ${{ inputs.feedback }}
-              context_json: ${{ inputs.context_json }}
-              evidence_json: ${{ inputs.evidence_json }}
-              dependency_history_json: ${{ inputs.dependency_history_json }}
-              consultation_history_json: ${{ inputs.consultation_history_json }}
-              session: ${{ inputs.session }}
-              review_response_json: ${{ inputs.review_response_json }}
-              phase: implement
+            question: Optional annotated documents; uploads request revision and another review.
+            required: false
       outputs:
-        valid: '${{ state_exists("resume") ? states.resume.outputs.valid : states.fresh.outputs.valid }}'
-        completed: '${{ state_exists("resume") ? states.resume.outputs.completed : states.fresh.outputs.completed
-          }}'
-        session_id: '${{ state_exists("resume") ? states.resume.outputs.session_id : states.fresh.outputs.session_id
-          }}'
-        dependencies: '${{ state_exists("resume") ? states.resume.outputs.dependencies : states.fresh.outputs.dependencies
-          }}'
-        result: '${{ state_exists("resume") ? states.resume.outputs.result : states.fresh.outputs.result }}'
-        consultations: '${{ state_exists("resume") ? states.resume.outputs.consultations : states.fresh.outputs.consultations
-          }}'
-        session: '${{ state_exists("resume") ? states.resume.outputs.session : states.fresh.outputs.session }}'
-        review_response: '${{ state_exists("resume") ? states.resume.outputs.review_response : states.fresh.outputs.review_response
-          }}'
-        review_documents: '${{ state_exists("resume") ? states.resume.outputs.review_documents : states.fresh.outputs.review_documents
-          }}'
+        response: ${{ sequence.plan_review.outputs.response }}
+        changed: ${{ sequence.plan_review.outputs.changed }}
+        flow: >-
+          ${{ jq([inputs.flow, {'documents': jq([inputs.flow.documents, sequence.plan_review.outputs.documents],
+          'add'), 'reviews': jq([inputs.flow.reviews, {'plan': sequence.plan_review.outputs.response.?receipt.orValue({})}],
+          'add')}], 'add') }}
       transitions:
-      - to: failed
-        when: outputs.session == null || !outputs.valid
-      - to: plan_feedback
-        when: outputs.result.next == "redesign"
+      - to: stopped
+        when: outputs.response.fields.decision == 'cancel'
         payload:
-          consultations: ${{ state_output("implementation", "consultations", state_output("design", "consultations",
-            {})) }}
-      - to: specification
-        when: outputs.valid && outputs.completed && outputs.result.next == "review"
-      - to: implementation_feedback
+          flow: '${{ jq([outputs.flow, {''disposition'': ''cancelled''}], ''add'') }}'
+      - to: implementation_next
+        when: outputs.response.fields.decision == 'approve' && !outputs.changed
+        payload:
+          flow: ${{ outputs.flow }}
+      - to: design_next
+        when: outputs.changed
+        payload:
+          flow: >-
+            ${{ jq([outputs.flow, {'message': 'Read feedback.json and revise the design and tests for
+            another review.'}], 'add') }}
+      - to: approval
         when: true
         payload:
-          consultations: ${{ state_output("implementation", "consultations", state_output("design", "consultations",
-            {})) }}
-    specification:
-      include: ./agent.yaml
+          flow: >-
+            ${{ jq([outputs.flow, {'review_hint': 'Please describe the requested changes or attach annotated
+            documents before requesting revision.'}], 'add') }}
+    implementation_next:
       inputs:
-        prompt: ${{ inputs.prompt }}
-        target_directory: ${{ inputs.target_directory }}
-        mode: ${{ inputs.mode }}
-        feedback: ${{ "" }}
-        context_json: ${{ '{"design":' + json_stringify(state_output("design", "result", {})) + ',"test_plan":'
-          + json_stringify(state_output("test_plan", "result", {})) + ',"implementation":' + json_stringify(state_output("implementation",
-          "result", {})) + '}' }}
-        evidence_json: '${{ json_stringify(jq(json_parse(''['' + json_stringify(state_exists("verify") ? states.verify.outputs.artifact_refs
-          : context.artifacts) + "," + json_stringify(state_output("design", "review_documents", {})) + "," + json_stringify(state_output("test_plan",
-          "review_documents", {})) + "," + json_stringify(state_output("implementation", "review_documents", {}))
-          + "," + json_stringify(({}).?artifact_refs.orValue({})) + '']''), ".[4] as $uploads | .[0:4] | add | with_entries(.key
-          = .value.name) | . + ($uploads | with_entries(.key = (\"review/\" + .key) | .value.name = .key))")) }}'
-        dependency_history_json: ${{ json_stringify(state_output("implementation", "dependencies", {})) }}
-        phase: review-specification
+        flow: ${{ transition.payload.flow }}
+      sequence: []
+      outputs:
+        flow: >-
+          ${{ jq([inputs.flow, {'phase': 'implement', 'message': 'The design and test statements are approved.
+          Implement them; submit agreed approved prerequisites as needed.', 'approved': inputs.flow.plan_keys}],
+          'add') }}
       transitions:
-      - to: quality
-        when: outputs.valid && outputs.completed && outputs.result.next == "done"
-      - to: failed
-        when: '!outputs.valid'
-      - to: implementation_feedback
+      - to: work
         when: true
         payload:
-          consultations: ${{ state_output("implementation", "consultations", state_output("design", "consultations",
-            {})) }}
-    quality:
-      include: ./agent.yaml
-      inputs:
-        prompt: ${{ inputs.prompt }}
-        target_directory: ${{ inputs.target_directory }}
-        mode: ${{ inputs.mode }}
-        feedback: ${{ "" }}
-        context_json: ${{ '{"design":' + json_stringify(state_output("design", "result", {})) + ',"test_plan":'
-          + json_stringify(state_output("test_plan", "result", {})) + ',"implementation":' + json_stringify(state_output("implementation",
-          "result", {})) + '}' }}
-        evidence_json: '${{ json_stringify(jq(json_parse(''['' + json_stringify(state_exists("verify") ? states.verify.outputs.artifact_refs
-          : context.artifacts) + "," + json_stringify(state_output("design", "review_documents", {})) + "," + json_stringify(state_output("test_plan",
-          "review_documents", {})) + "," + json_stringify(state_output("implementation", "review_documents", {}))
-          + "," + json_stringify(({}).?artifact_refs.orValue({})) + '']''), ".[4] as $uploads | .[0:4] | add | with_entries(.key
-          = .value.name) | . + ($uploads | with_entries(.key = (\"review/\" + .key) | .value.name = .key))")) }}'
-        dependency_history_json: ${{ json_stringify(state_output("implementation", "dependencies", {})) }}
-        phase: review-quality
-      transitions:
-      - to: verify
-        when: outputs.valid && outputs.completed && outputs.result.next == "done"
-      - to: failed
-        when: '!outputs.valid'
-      - to: implementation_feedback
-        when: true
-        payload:
-          consultations: ${{ state_output("implementation", "consultations", state_output("design", "consultations",
-            {})) }}
+          flow: ${{ outputs.flow }}
     verify:
-      include: ./verify.yaml
       inputs:
-        target_directory: ${{ inputs.target_directory }}
+        flow: ${{ transition.payload.flow }}
+      sequence:
+      - id: verify
+        include: ./verify.yaml
+        inputs:
+          target_directory: ${{ inputs.flow.target_directory }}
+      outputs:
+        ok: ${{ sequence.verify.outputs.ok }}
+        flow: >-
+          ${{ jq([inputs.flow, {'verification': sequence.verify.outputs.evidence, 'documents': jq([inputs.flow.documents,
+          sequence.verify.outputs.artifact_refs], 'add'), 'message': 'Verification did not pass. Read
+          verification.md and build.log, resolve the issue, and request inspection again.'}], 'add') }}
       transitions:
       - to: accept
         when: outputs.ok
-      - to: implementation
+        payload:
+          flow: ${{ outputs.flow }}
+      - to: work
         when: true
         payload:
-          consultations: ${{ state_output("implementation", "consultations", state_output("design", "consultations",
-            {})) }}
+          flow: ${{ outputs.flow }}
     accept:
-      op: input
       inputs:
-        form:
-          kind: review
+        flow: ${{ transition.payload.flow }}
+      sequence:
+      - id: outcome_review
+        include: ../kernel/review.yaml
+        inputs:
           title: Review verified outcome
-          documents: ${{ jq(json_parse('[' + json_stringify(state_output("design", "review_documents", {})) + ","
-            + json_stringify(state_output("test_plan", "review_documents", {})) + "," + json_stringify(state_output("implementation",
-            "review_documents", {})) + "," + json_stringify(state_output("verify", "review_documents", {})) + ']'),
-            "add") }}
+          documents: ${{ inputs.flow.documents }}
           fields:
           - id: decision
             type: multiple_choice
-            question: |-
-              {{ vars.scope_explanation }}
-
-              Mode: {{ inputs.mode }}; target: {{ inputs.target_directory }}
-
-              ${{ states.implementation.outputs.result.summary }}
-
-              Review the attached outcome and verification evidence. Satisfied approval squashes and merges this verified candidate into upstream.
-
-              How should we proceed? Uploaded edits require another revision and review.
+            question: Accept this verified outcome and squash-merge this candidate into the target branch?
             required: true
             options:
-            - value: satisfied
-              label: 'Satisfied: squash and merge'
+            - value: accept
+              label: Accept and merge
             - value: revise
               label: Revise implementation
             - value: redesign
               label: Change requirements or design
-          - *id001
-          - *id002
-          - *id003
-          - &id004
-            id: annotated_outcome
+            - value: cancel
+              label: Cancel
+          - id: feedback
+            type: paragraph_text
+            question: >-
+              ${{ inputs.flow.?review_hint.orValue('Requested changes or guidance (required when requesting
+              changes).') }}
+            required: false
+          - id: annotations
             type: file_upload
-            question: Optional annotated implementation summary or verification report.
+            question: Optional annotated documents; uploads request revision and another review.
+            required: false
+      outputs:
+        response: ${{ sequence.outcome_review.outputs.response }}
+        changed: ${{ sequence.outcome_review.outputs.changed }}
+        flow: >-
+          ${{ jq([inputs.flow, {'documents': jq([inputs.flow.documents, sequence.outcome_review.outputs.documents],
+          'add'), 'reviews': jq([inputs.flow.reviews, {'outcome': sequence.outcome_review.outputs.response.?receipt.orValue({})}],
+          'add'), 'message': 'Read feedback.json and attachments, revise the implementation, and request
+          inspection again.'}], 'add') }}
       transitions:
-      - to: finish
-        when: outputs.fields.decision == "satisfied" && size(outputs.?artifact_refs.orValue({})) == 0
-      - to: design
-        when: outputs.fields.decision == "redesign" && (outputs.fields.?feedback.orValue("").matches("[^[:space:]]")
-          || size(outputs.?artifact_refs.orValue({})) > 0)
+      - to: stopped
+        when: outputs.response.fields.decision == 'cancel'
         payload:
-          review: ${{ outputs }}
-          consultations: ${{ state_output("implementation", "consultations", state_output("design", "consultations",
-            {})) }}
-      - to: plan_feedback
-        when: outputs.fields.decision == "redesign"
+          flow: '${{ jq([outputs.flow, {''disposition'': ''cancelled''}], ''add'') }}'
+      - to: merge
+        when: outputs.response.fields.decision == 'accept' && !outputs.changed && outputs.flow.verification.status
+          == 'passed' && outputs.flow.assessment == 'pass'
         payload:
-          consultations: ${{ state_output("implementation", "consultations", state_output("design", "consultations",
-            {})) }}
-      - to: implementation
-        when: outputs.fields.decision in ["satisfied", "revise"] && (outputs.fields.?feedback.orValue("").matches("[^[:space:]]")
-          || size(outputs.?artifact_refs.orValue({})) > 0)
+          flow: ${{ outputs.flow }}
+      - to: design_next
+        when: outputs.response.fields.decision == 'redesign' && outputs.changed
         payload:
-          review: ${{ outputs }}
-          consultations: ${{ state_output("implementation", "consultations", state_output("design", "consultations",
-            {})) }}
-      - to: implementation_feedback
-        when: outputs.fields.decision == "revise"
+          flow: ${{ outputs.flow }}
+      - to: work
+        when: outputs.changed
         payload:
-          consultations: ${{ state_output("implementation", "consultations", state_output("design", "consultations",
-            {})) }}
+          flow: ${{ outputs.flow }}
       - to: accept
         when: true
-    implementation_feedback:
-      op: input
+        payload:
+          flow: >-
+            ${{ jq([outputs.flow, {'review_hint': 'Please describe the requested changes or attach annotated
+            documents before requesting revision.'}], 'add') }}
+    merge:
       inputs:
-        form:
-          kind: review
-          title: Implementation feedback
-          documents: ${{ jq(json_parse('[' + json_stringify(state_output("design", "review_documents", {})) + ","
-            + json_stringify(state_output("test_plan", "review_documents", {})) + "," + json_stringify(state_output("implementation",
-            "review_documents", {})) + "," + json_stringify(state_output("verify", "review_documents", {})) + ']'),
-            "add") }}
-          fields:
-          - id: decision
-            type: multiple_choice
-            question: |-
-              {{ vars.scope_explanation }}
+        flow: ${{ transition.payload.flow }}
+      sequence:
+      - id: merge
+        op: squashrebasemerge
+        inputs:
+          repo_path: ${{ context.environment.op.worktree_path }}
+          local_hash: ${{ context.git.hash }}
+          upstream_repo: ${{ context.git.repo }}
+          upstream_branch: ${{ context.git.ref }}
+          rebase: false
+          author: ${{ context.git.?author.orValue('') }}
+          commit_message: |-
+            Complete approved build
 
-              Work needs revision before merge.
-
-              Implementation:
-              ${{ json_stringify(state_output("implementation", "result", {})) }}
-
-              Specification:
-              ${{ json_stringify(state_output("specification", "result", {})) }}
-
-              Quality:
-              ${{ json_stringify(state_output("quality", "result", {})) }}
-
-              Verification: ${{ json_stringify(state_output("verify", "evidence", {})) }}
-
-              Provide feedback or answer the outstanding questions. New external scope requires design approval.
-
-              How should we proceed? Uploaded edits require another revision and review.
-            required: true
-            options:
-            - value: revise
-              label: Revise implementation
-            - value: redesign
-              label: Change requirements or design
-          - *id001
-          - *id002
-          - *id003
-          - *id004
-      transitions:
-      - to: design
-        when: outputs.fields.decision == "redesign" && (outputs.fields.?feedback.orValue("").matches("[^[:space:]]")
-          || size(outputs.?artifact_refs.orValue({})) > 0)
-        payload:
-          review: ${{ outputs }}
-          consultations: ${{ transition.payload.?consultations.orValue(state_output("implementation", "consultations",
-            state_output("design", "consultations", {}))) }}
-      - to: implementation
-        when: outputs.fields.decision == "revise" && (outputs.fields.?feedback.orValue("").matches("[^[:space:]]")
-          || size(outputs.?artifact_refs.orValue({})) > 0) && state_output("implementation", "session", null) !=
-          null
-        payload:
-          review: ${{ outputs }}
-          consultations: ${{ transition.payload.?consultations.orValue(state_output("implementation", "consultations",
-            state_output("design", "consultations", {}))) }}
-      - to: implementation_feedback
-        when: true
-        payload:
-          consultations: ${{ transition.payload.?consultations.orValue(state_output("implementation", "consultations",
-            state_output("design", "consultations", {}))) }}
-    finish:
-      inputs:
-        target_directory: ${{ inputs.target_directory }}
-        summary: ${{ states.implementation.outputs.result.summary }}
-        approved: ${{ states.accept.outputs.fields.decision == "satisfied" && size(states.accept.outputs.?artifact_refs.orValue({}))
-          == 0 }}
-        verified: ${{ states.verify.outputs.ok }}
-      transitions:
-      - to: failed
-        when: '!outputs.merged'
-      state:
-        initial: gate
-        states:
-          gate:
-            op: nix:github:colony-2/c2ops/published#rule_gate
-            inputs:
-              rules:
-              - id: accepted-outcome
-                type: assert
-                value: ${{ inputs.approved && inputs.verified }}
-                message: Only a human-accepted outcome that passed the verification step may merge.
-            transitions:
-            - to: merge
-              when: outputs.ok
-          merge:
-            op: squashrebasemerge
-            inputs:
-              repo_path: '{{ context.environment.op.worktree_path }}'
-              local_hash: ${{ context.git.hash }}
-              upstream_repo: '{{ context.git.repo }}'
-              upstream_branch: '{{ context.git.ref }}'
-              rebase: false
-              author: ${{ context.git.?author.orValue("") }}
-              commit_message: |-
-                Complete approved development work
-
-                {{ inputs.summary }}
+            {{ inputs.flow.result.summary }}
       outputs:
-        merged: ${{ nonempty(state_output("merge", "merged_hash", "")) }}
-        merged_hash: ${{ state_output("merge", "merged_hash", "") }}
-        target_branch: ${{ state_output("merge", "target_branch", "") }}
+        flow: '${{ jq([inputs.flow, {''disposition'': ''implemented''}], ''add'') }}'
+        merged_hash: ${{ sequence.merge.outputs.merged_hash }}
+        target_branch: ${{ sequence.merge.outputs.target_branch }}
+    stopped:
+      inputs:
+        flow: ${{ transition.payload.flow }}
+      sequence: []
+      outputs:
+        flow: ${{ inputs.flow }}
     failed:
       op: command_execution
       inputs:
         run: |
-          printf '%s\n' 'Development stopped: invalid result, missing session, merge gate failure.' >&2
+          printf '%s\n' 'Build stopped: invalid agent result, coordination request, or unmet approval/dependency gate.' >&2
           exit 1
-    outside:
-      op: input
-      inputs:
-        form:
-          kind: review
-          title: Request belongs outside this cell
-          documents: ${{ state_output("design", "review_documents", {}) }}
-          fields:
-          - id: decision
-            type: multiple_choice
-            question: |-
-              ${{ states.design.outputs.result.summary }}
-
-              No local implementation or merge will be performed.
-
-              How should we proceed? Uploaded edits require another revision and review.
-            required: true
-            options:
-            - value: acknowledge
-              label: Acknowledge routing result
-            - value: revise
-              label: Revise the request
-          - *id001
-          - *id002
-          - *id003
-      transitions:
-      - to: design
-        when: (outputs.fields.decision == "revise" || (outputs.fields.decision == "acknowledge" && size(outputs.?artifact_refs.orValue({}))
-          > 0)) && (outputs.fields.?feedback.orValue("").matches("[^[:space:]]") || size(outputs.?artifact_refs.orValue({}))
-          > 0)
-        payload:
-          review: ${{ outputs }}
-          consultations: ${{ state_output("implementation", "consultations", state_output("design", "consultations",
-            {})) }}
-      - to: plan_feedback
-        when: outputs.fields.decision == "revise"
-        payload:
-          consultations: ${{ state_output("implementation", "consultations", state_output("design", "consultations",
-            {})) }}
-      - to: outside
-        when: outputs.fields.decision != "acknowledge"
-vars:
-  scope_explanation: '${{ inputs.mode == "evolve" ? "Evolve improves workflow recipes and instructions in the selected
-    directory. Shared defaults live at github.com/colony-2/recipes; committed local specializations live at .c2j/recipes/build.yaml
-    and .c2j/recipes/evolve.yaml. Only missing recipes fall back to shared defaults." : "Build implements the requested
-    software behavior in the selected cell directory." }}'
 outputs:
-  merged: ${{ state_output("finish", "merged", false) }}
-  merged_hash: ${{ state_output("finish", "merged_hash", "") }}
-  target_branch: ${{ state_output("finish", "target_branch", "") }}
-  session_id: ${{ state_output("implementation", "session_id", "") }}
-  assistant_summary: '${{ state_exists("implementation") ? states.implementation.outputs.result.?summary.orValue("")
-    : state_output("design", "result", {}).?summary.orValue("") }}'
-  result: ${{ state_output("implementation", "result", {}) }}
-  verification: ${{ state_output("verify", "evidence", {}) }}
-  artifact_refs: ${{ state_output("verify", "artifact_refs", {}) }}
-  dependencies: '${{ {"design": state_output("design", "dependencies", {}), "design_review": state_output("design_review",
-    "dependencies", {}), "test_plan": state_output("test_plan", "dependencies", {}), "test_review": state_output("test_review",
-    "dependencies", {}), "implementation": state_output("implementation", "dependencies", {}), "specification":
-    state_output("specification", "dependencies", {}), "quality": state_output("quality", "dependencies", {})} }}'
-  design: ${{ state_output("design", "result", {}) }}
-  consultations: '${{ state_exists("implementation") && state_output("design", "result", {}).?next.orValue("") !=
-    "outside" ? states.implementation.outputs.consultations : state_output("design", "consultations", {}) }}'
-  disposition: '${{ state_output("finish", "merged", false) ? "implemented" : (state_output("design", "result",
-    {}).?next.orValue("") == "outside" ? "outside" : "incomplete") }}'
-  session: ${{ state_output("implementation", "session", null) }}
-  reviews: '${{ {"plan": state_output("approve_plan", "receipt", {}), "outcome": state_output("accept", "receipt",
-    {}), "plan_feedback": state_output("plan_feedback", "receipt", {}), "implementation_feedback": state_output("implementation_feedback",
-    "receipt", {}), "outside": state_output("outside", "receipt", {})} }}'
-  review_documents: ${{ jq(json_parse('[' + json_stringify(state_output("design", "review_documents", {})) + ","
-    + json_stringify(state_output("test_plan", "review_documents", {})) + "," + json_stringify(state_output("implementation",
-    "review_documents", {})) + "," + json_stringify(state_output("verify", "review_documents", {})) + ']'), "add")
+  merged: ${{ nonempty(state_output('merge', 'merged_hash', '')) }}
+  merged_hash: ${{ state_output('merge', 'merged_hash', '') }}
+  target_branch: ${{ state_output('merge', 'target_branch', '') }}
+  session: >-
+    ${{ state_output('merge', 'flow', state_output('stopped', 'flow', state_output('record', 'flow', {}))).session
+    }}
+  assistant_summary: >-
+    ${{ state_output('merge', 'flow', state_output('stopped', 'flow', state_output('record', 'flow', {}))).result.?summary.orValue('')
+    }}
+  disposition: >-
+    ${{ state_output('merge', 'flow', state_output('stopped', 'flow', state_output('record', 'flow', {}))).?disposition.orValue('incomplete')
+    }}
+  result: >-
+    ${{ state_output('merge', 'flow', state_output('stopped', 'flow', state_output('record', 'flow', {}))).result
+    }}
+  artifact_refs: >-
+    ${{ state_output('merge', 'flow', state_output('stopped', 'flow', state_output('record', 'flow', {}))).documents
+    }}
+  consultations: >-
+    ${{ state_output('merge', 'flow', state_output('stopped', 'flow', state_output('record', 'flow', {}))).threads
+    }}
+  dependencies: >-
+    ${{ state_output('merge', 'flow', state_output('stopped', 'flow', state_output('record', 'flow', {}))).jobs
+    }}
+  reviews: >-
+    ${{ state_output('merge', 'flow', state_output('stopped', 'flow', state_output('record', 'flow', {}))).reviews
+    }}
+  verification: >-
+    ${{ state_output('merge', 'flow', state_output('stopped', 'flow', state_output('record', 'flow', {}))).?verification.orValue({})
     }}

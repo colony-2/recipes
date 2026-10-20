@@ -22,6 +22,8 @@ This op also emits output artifacts:
 
 Common fields:
 - `prompt` (required): prompt sent to Codex.
+- `instructions`: additional context for a newly created session; ignored when resuming.
+- `output.schema`: JSON Schema enforced by the op for a task-specific response.
 - `session`: the complete `c2ops.codex.session/v1` object from a prior invocation.
   Omit it to start fresh; pass a complete `${{ ... }}` value to resume that exact
   checkpoint. Null, legacy `sessionId`, and `resume_context` inputs are rejected.
@@ -87,12 +89,16 @@ Session objects exclude credentials, config.toml, and installed skills.
 
 ## Structured Results
 
-The plain Codex op already enforces its normalized execution envelope
-(`status`, `assistantSummary`, and related fields). It does not expose a custom
-`response_schema` input for task-specific results. Ask Codex to write a JSON
-artifact in the op outbox, include the desired schema in its prompt, and bind
-that artifact to c2ops `rule_gate` with a `json_schema` rule before consuming it.
-`codex/run_skill` also supports an artifact output contract when running a skill.
+Supply the task's JSON Schema through `output.schema`. On success, consume the
+typed `response` and require `output_schema_valid: true`. The execution envelope
+(`status`, `session`, and related fields) remains separate. Do not paste the schema
+into the prompt or run a second schema validator over a JSON artifact. Recipe-level
+checks still enforce routing, artifact existence, and authorization semantics.
+
+The shared kernel pins
+`git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3`,
+which supports `instructions` and `output.schema`; use a revision or published
+package containing that contract. See [agent-turn.yaml](../../recipes/kernel/agent-turn.yaml).
 
 ## Test Mocks
 
@@ -121,6 +127,8 @@ If a test matches by op name instead of node path, the runtime op name is `exten
 
 Top-level output:
 - `status`: `completed | incomplete | error`
+- `response`: task-specific structured result when `output.schema` is supplied.
+- `output_schema_valid`: whether that response satisfied the supplied schema.
 - `session`: immutable continuation object; absent on failed ops.
 - `sessionId`: diagnostic conversation ID; never a checkpoint key.
 - `assistantSummary`
@@ -175,10 +183,10 @@ Execution metadata example (the full op output also includes its opaque `session
 }
 ```
 
-## Scoped development recipes
+## Development workspace
 
-`worktree_path` also selects Codex's starting directory. The shared evolve
-workflow intentionally overrides it with the cell worktree plus `.c2j`, while
-leaving runtime and artifact paths at their defaults. Build retains all defaults.
-Both omit op sandbox configuration. A subdirectory working directory does not
-enforce write isolation.
+Build and consultation use the native managed worktree root. A task's target
+directory is supplied as context and does not redefine cell ownership. Consultation
+and planning use read-only ops; implementation uses the same helper's mutating
+branch. Session checkpoints preserve dialogue, not Git state; native workspaces
+and snapshots carry the candidate separately.

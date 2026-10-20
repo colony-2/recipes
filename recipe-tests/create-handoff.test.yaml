@@ -1,0 +1,127 @@
+recipe: fixtures/create-handoff.yaml
+cases:
+- id: creation-resumes-consultant-and-publishes-independent-history
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          PURPOSE.md: Project root
+          keep.txt: original
+      alpha: {}
+      beta: {}
+    responses:
+    - node_path: create-handoff/create/root/root/review/review/creation-review/review/sequence/review/kernel-review/ask
+      fields:
+        decision: approve
+  mocks:
+    ops:
+    - match:
+        node_path: create-handoff/starter
+      behavior:
+        mode: return
+        outputs:
+          success: true
+        artifacts:
+          conversation.json: '{"outcome":"agreed","thinking":"Approved root eligibility consultation"}'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: root-consultant
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: review
+            summary: Creation proposal
+            cells:
+            - name: alpha
+              repo: alpha
+              purpose_path: cells/alpha/PURPOSE.md
+            - name: beta
+              repo: beta
+              purpose_path: cells/beta/PURPOSE.md
+            files:
+            - path: proposal.md
+              description: Review document
+            - path: cells/alpha/PURPOSE.md
+              description: Review document
+            - path: cells/beta/PURPOSE.md
+              description: Review document
+            questions: []
+        artifacts:
+          proposal.md: |-
+            # Proposed cells
+            Project fit, excluded alternatives, technology guidance and root catalog entries.
+          cells/alpha/PURPOSE.md: |
+            # alpha
+            Approved responsibilities.
+          cells/beta/PURPOSE.md: |
+            # beta
+            Approved responsibilities.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: creation-review
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            completed: true
+            summary: Registered published cells
+        artifacts:
+          completion.md: |-
+            # Created cells
+            Continue with feature consultations.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: registered
+          worktree:
+            CELL_DESCRIPTIONS.md: |-
+              # Cells
+              alpha and beta: approved responsibilities.
+            .c2j/config.yaml: |
+              dependents:
+                - repo: alpha
+                  ref: main
+                - repo: beta
+                  ref: main
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.result.disposition == "created"
+  - type: cel_true
+    expr: size(calls.filter(c, c.op == "squashrebasemerge")) == 3
+  - type: cel_true
+    expr: calls.filter(c, c.op == "extension_execution")[0].inputs.inputs.session == calls.filter(c, c.node_path
+      == "create-handoff/starter")[0].outputs.session
+  - type: cel_true
+    expr: '!("instructions" in calls.filter(c, c.op == "extension_execution")[0].inputs.inputs)'
+  - type: cel_true
+    expr: calls.filter(c, c.op == "extension_execution")[0].artifacts["consultation/conversation.json"].contains("root
+      eligibility")
+  - type: cel_true
+    expr: calls.filter(c, c.op == "extension_execution")[0].inputs.inputs.prompt.contains("cell creation
+      decision")
+  - type: cel_true
+    expr: '!calls.filter(c, c.op == "extension_execution")[0].inputs.inputs.prompt.contains("This cell
+      encompasses")'

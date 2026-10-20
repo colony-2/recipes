@@ -1,0 +1,52 @@
+recipe: fixtures/consultation-kernel-invalid-resume.yaml
+cases:
+- id: invalid-direction-cannot-open-retry-budget
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          PURPOSE.md: Client application
+          candidate.txt: original
+      B:
+        files:
+          PURPOSE.md: Serving API
+          candidate.txt: target
+    observe_files:
+    - candidate.txt
+    - experiment.txt
+  mocks:
+    ops:
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: B
+      behavior:
+        mode: fail
+        error:
+          message: Transient model failure
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: first.outcome
+    value: failed
+  - type: output_equals
+    path: invalid.outcome
+    value: failed
+  - type: output_equals
+    path: invalid.state.retryable
+    value: false
+  - type: output_equals
+    path: invalid.state.round
+    value: 1
+  - type: output_equals
+    path: retry_invalid.outcome
+    value: failed
+  - type: output_equals
+    path: retry_invalid.state.round
+    value: 1
+  - type: cel_true
+    expr: size(calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@"))) == 1

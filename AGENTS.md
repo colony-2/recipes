@@ -1,11 +1,12 @@
 ## Purpose
 You are an agent responsible for implementing and maintaining recipes for the c2 software development system.
 
-Read [.c2j/mandate.md](.c2j/mandate.md) before design or ownership assessment.
-It is this cell's authoritative responsibility boundary. Classify requests as
-fitting, partially fitting, or outside that mandate, and identify the owners of
-external outcomes. Nested instructions specialize working practices without
-redefining ownership. See [the mandate specification](guides/CELL_MANDATE_SPEC.md).
+Read root [PURPOSE.md](PURPOSE.md) when present before design or ownership
+assessment; otherwise infer responsibilities from repository evidence and history.
+Classify requests as fitting, partially fitting, or outside this cell's purpose,
+and identify the owners of external outcomes. A missing purpose file does not
+require initialization or block work. Nested instructions specialize working
+practices without redefining ownership.
 
 ## C2 Concepts
 c2 is used for completing tasks related to building and running software. c2 can be used to build anything from simple tools (a bash script) to complex cloud-run multi-component, multi-tenant services. c2 is responsible for creating, validating, debugging software. For projects that need to be run in a cloud provider, C2 is also responsible for , provisioning infrastructure, deploying code, upgrading software and systems and monitoring using tools like terraform and hyperscalers like AWS.
@@ -14,7 +15,7 @@ c2 is designed to be an adaptive, extensible system that is built using the foll
 
 - actor: any entity working to move a c2 project forward. an entity may be an llm-based agent, a human or some kind of external process.
 - project: a specific software initiative. May be an operationally complex SaaS service or a simple CLI tool. Each project is associated with a specific git repository (subcomponents, what c2 may be in other repositories).
-- cell: a responsibility boundary encompassing the entire repository in which a job operates. Cells decompose a software project into distinct components with separate repositories. A task's target directory does not redefine the cell. The mandate describes responsibilities, not which files belong to the cell, and need not comprehensively cover dependencies. Discover dependencies through the project's normal dependency system; c2j also lists cells we likely have influence over.
+- cell: a responsibility boundary encompassing the entire repository in which a job operates. Cells decompose a software project into distinct components with separate repositories. A task's target directory does not redefine the cell. PURPOSE.md describes responsibilities, not which files belong to the cell, and need not comprehensively cover dependencies. Discover dependencies through the project's normal dependency system; c2j also lists cells we likely have influence over.
 - recipe: a recipe is a c2 workflow that will be completed in a durable way. a recipe is composed of ops (operations), sequences and state machines. Recipes are authored from yaml files and validated directly with `c2j submit --recipe-file ... --run --embed`. See guides/RECIPE_AUTHORING_GUIDE.md for the recommended authoring flow
 - op: an op or operation is the building block of a recipe. Ops are combined together to achieve arbitrary goals. Ops include things like consulting an llm, running a bash command, merging some git code into a repo, starting and/or consuming execution of other recipes, delegating to GitHub Actions workflows and having a coding agent build some code. Ops defined input and output structured types. See guides/ops/* for information about available ops, including guides/ops/OP_GITHUB_ACTIONS.md.
 - template: recipes support the use of CEL-based template expansion and referencing of both global context and specific op/state/sequence outputs in a recipe. (see )
@@ -24,7 +25,7 @@ c2 is designed to be an adaptive, extensible system that is built using the foll
 
 ## Cells: Purpose and Parameters
 
-Cells are a fundamental concept in c2.  Each artifact/line of code/etc of a project must belong to one and only one cell. As a project grows in complexity, the cell count for a project increases. Over time cells are added, cells subdivide, cells merge and cells are removed. Cell size is targeted to <10000 lines of code including production code, scripts, documentation, tests, etc. Each cell must have a clear mandate. Cells are responsible for ensuring they maintain their mandate by triaging incoming tasks against that mandate. A cells mandate can change but needs to go through an evaluation proces to do so. Cells serve several critical purposes:
+Cells are a fundamental concept in c2.  Each artifact/line of code/etc of a project must belong to one and only one cell. As a project grows in complexity, the cell count for a project increases. Over time cells are added, cells subdivide, cells merge and cells are removed. Cell size is targeted to <10000 lines of code including production code, scripts, documentation, tests, etc. Each cell has a responsibility boundary encompassing its whole repository. Use root PURPOSE.md when present and infer context when absent. Triage incoming work against those responsibilities; evaluate proposed ownership changes with affected cells. Cells serve several critical purposes:
 
 1. Keep context size manageable to maximize effectiveness of work being done by agents
 2. Create a natural checkpoint for broad-reaching changes, ensuring that architectural and design standards are maintained.

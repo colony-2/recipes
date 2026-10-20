@@ -9,6 +9,7 @@ inputs:
 sequence:
 - id: execute
   op: command_execution
+  const: true
   inputs:
     continue_on_error: true
     env:
@@ -24,6 +25,7 @@ sequence:
       bash ./build.sh > "$OUTBOX/build.log" 2>&1
 - id: report
   op: command_execution
+  const: true
   inputs:
     env:
       OUTBOX: '{{ context.environment.op.outbox }}'
@@ -38,13 +40,18 @@ sequence:
         printf '# Verification\n\nbuild.sh success: %s; exit code: %s; timed out: %s. See build.log.\n' "$OK" "$CODE" "$TIMED_OUT"
       fi > "$OUTBOX/verification.md"
 outputs:
-  ok: ${{ sequence.execute.outputs.success }}
-  result: '${{ {"ok": sequence.execute.outputs.success, "status": sequence.execute.outputs.stdout == "skipped" ?
-    "skipped" : (sequence.execute.outputs.success ? "passed" : "failed"), "exit_code": sequence.execute.outputs.exit_code,
-    "timed_out": sequence.execute.outputs.timed_out} }}'
+  ok: ${{ sequence.execute.outputs.success && sequence.execute.outputs.stdout != "skipped" }}
+  result: >-
+    ${{ {"ok": sequence.execute.outputs.success && sequence.execute.outputs.stdout != "skipped", "status":
+    sequence.execute.outputs.stdout == "skipped" ? "skipped" : (sequence.execute.outputs.success ? "passed"
+    : "failed"), "exit_code": sequence.execute.outputs.exit_code, "timed_out": sequence.execute.outputs.timed_out}
+    }}
   review_documents: '${{ {"verification": sequence.report.artifacts["verification.md"]} }}'
-  artifact_refs: ${{ jq(json_parse('[' + json_stringify(sequence.execute.artifacts) + "," + json_stringify(sequence.report.artifacts)
-    + ']'), "add | with_entries(select(.key == \"verification.md\" or .key == \"build.log\"))") }}
-  evidence: '${{ {"ok": sequence.execute.outputs.success, "status": sequence.execute.outputs.stdout == "skipped"
-    ? "skipped" : (sequence.execute.outputs.success ? "passed" : "failed"), "exit_code": sequence.execute.outputs.exit_code,
-    "timed_out": sequence.execute.outputs.timed_out} }}'
+  artifact_refs: >-
+    ${{ jq([{'verification.md': sequence.report.artifacts['verification.md']}, 'build.log' in sequence.execute.artifacts
+    ? {'build.log': sequence.execute.artifacts['build.log']} : {}], 'add') }}
+  evidence: >-
+    ${{ {"ok": sequence.execute.outputs.success && sequence.execute.outputs.stdout != "skipped", "status":
+    sequence.execute.outputs.stdout == "skipped" ? "skipped" : (sequence.execute.outputs.success ? "passed"
+    : "failed"), "exit_code": sequence.execute.outputs.exit_code, "timed_out": sequence.execute.outputs.timed_out}
+    }}

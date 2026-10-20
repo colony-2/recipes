@@ -1,0 +1,234 @@
+recipe: fixtures/consultation-kernel-review.yaml
+cases:
+- id: native-expert-review-and-attachments
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          PURPOSE.md: Client application
+          candidate.txt: original
+      B:
+        files:
+          PURPOSE.md: Serving API
+          candidate.txt: target
+    observe_files:
+    - candidate.txt
+    - experiment.txt
+    responses:
+    - node_path: consultation-kernel-review/discuss/consultation/expert/input
+      fields:
+        question_1: Preserve compatibility and add opt-in strict validation.
+      attachments:
+        attachments: fixtures/consultation-expert-direction.md
+    - node_path: consultation-kernel-review/discuss/consultation/expert/input
+      fields:
+        question_1: Use a staged rollout with monitoring.
+  mocks:
+    ops:
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: B
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: continue
+            thinking: 'consultant reply 1: continue'
+            files: []
+            assessment: not_applicable
+        artifacts: {}
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                session_id: consultant
+                iteration: 1
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            summary: 'Recorded consultation outcome: needs_review'
+            final_paths: []
+            questions:
+            - Which compatibility constraint should govern the feature?
+        artifacts:
+          review.md: |-
+            # Disagreement
+
+            Both positions, evidence, and tradeoffs.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                session_id: summary
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: continue
+            thinking: 'requester reply 2: continue'
+            files: []
+            assessment: not_applicable
+        artifacts: {}
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                session_id: requester
+                iteration: 2
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: B
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: continue
+            thinking: 'consultant reply 2: agreed'
+            files:
+            - path: iter2/consultant/spec.md
+              description: Consultation document
+            assessment: not_applicable
+        artifacts:
+          iter2/consultant/spec.md: '# Compatible opt-in design'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                session_id: consultant
+                iteration: 2
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            summary: 'Recorded consultation outcome: needs_review'
+            final_paths: []
+            questions:
+            - Which compatibility constraint should govern the feature?
+        artifacts:
+          review.md: |-
+            # Disagreement
+
+            Both positions, evidence, and tradeoffs.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                session_id: summary
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: continue
+            thinking: 'requester reply 3: continue'
+            files: []
+            assessment: not_applicable
+        artifacts: {}
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                session_id: requester
+                iteration: 3
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: B
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: agreed
+            thinking: 'consultant reply 3: agreed'
+            files:
+            - path: iter3/consultant/spec.md
+              description: Consultation document
+            assessment: not_applicable
+        artifacts:
+          iter3/consultant/spec.md: '# Agreed after second expert review'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                session_id: consultant
+                iteration: 3
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: result.outcome
+    value: agreed
+  - type: output_equals
+    path: result.state.round
+    value: 3
+  - type: review_document_exists
+    node_path: consultation-kernel-review/discuss/consultation/expert/input
+    path: discussion
+  - type: cel_true
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@"))[2].inputs.inputs.prompt.contains("Preserve
+      compatibility")
+  - type: cel_true
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@"))[3].inputs.inputs.prompt.contains("Preserve
+      compatibility")
+  - type: cel_true
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@"))[2].artifacts.exists(p,
+      calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@"))[2].artifacts[p].contains("Strict
+      validation must be opt-in"))
+  - type: cel_true
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@"))[3].artifacts.exists(p,
+      calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@"))[3].artifacts[p].contains("Strict
+      validation must be opt-in"))
+  - type: cel_true
+    expr: size(reviews) == 2
+  - type: cel_true
+    expr: size(outputs.result.state.transcript.filter(t, t.participant == "expert")) == 2
+  - type: cel_true
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@"))[6].inputs.inputs.session
+      == calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@"))[3].outputs.session
+  - type: cel_true
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@"))[5].inputs.inputs.session
+      == calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@"))[2].outputs.session
+  - type: cel_true
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@"))[5].inputs.inputs.prompt.contains("staged
+      rollout")
+  - type: cel_true
+    expr: '!calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@"))[5].inputs.inputs.prompt.contains("Preserve
+      compatibility")'
+  - type: cel_true
+    expr: '!calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@"))[6].inputs.inputs.prompt.contains("Purpose:")'

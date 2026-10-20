@@ -1,84 +1,34 @@
-# Build/evolve document reviews
+# Build document reviews
 
-Build and evolve use c2j's native `input` op with `form.kind: review`. The runtime
-owns request identity, stored documents, input validation, response attachments,
-and receipts. There is no recipe-specific review transport or schema.
+Build uses native `input` forms with `kind: review`: documents alongside focused
+questions and structured choices. The shared helper is
+[`recipes/kernel/review.yaml`](../recipes/kernel/review.yaml).
 
-Use c2j `614bfac82f15` or later on workers and authoring tools. This includes the
-simplified review API and portable JSON output fixes. Codex requirements remain
-those in [the session migration guide](CODEX_OBJECT_SESSION_MIGRATION.md).
+Plan review presents design, test statements, and expert evidence. The reviewer
+can approve, request changes, or cancel. Outcome review adds implementation and
+verification evidence; acceptance authorizes squash merge of the tested candidate.
+The reviewer can instead request implementation revision, change the design, or
+cancel. These are actual decisions, not one-choice acknowledgments of JSON dumps.
 
-## Checkpoints
+Both reviews accept optional text and annotated files. Guidance or uploads require
+revision and another review even when the selected decision is approval. A revision
+without either repeats the review with an explanation of the missing direction.
+Clarification requests use the agent's focused questions and supporting documents,
+then resume the same phase. Answers and attachments are delivered as artifacts;
+`feedback.json` preserves the exact questions and response. Technical control
+artifacts are excluded from the human document list.
 
-- Plan approval presents the design and Markdown test statements, after independent
-  design and test-plan reviews. Its summary includes the mandate assessment and
-  agreed external work.
-- Outcome acceptance presents those documents plus the implementation summary and
-  verification report for the tested candidate. Satisfied approval allows the
-  verification result and acceptance gates and squash merge.
-- Clarification and outside-mandate checkpoints use the same native form pattern,
-  exposing whichever documents are available.
+Independent assessments run through consultation. The consultant decides agreement
+and reports a separate `assessment` verdict. Agreement that a defect exists cannot
+pass the build. Iteration exhaustion or deconfliction invokes the consultation's
+own synthesis and human direction step before further negotiation.
 
-The document IDs are `design`, `test_statements`, `implement`, and `verification`.
-Values are complete stored artifact references, passed with `${{ ... }}`. Each
-producer writes its Markdown as part of its normal output. Reviews require no
-preparation recipe. Original document references remain on the frozen form.
+A successful review is insufficient to merge on its own. The candidate needs a
+passing independent outcome assessment, successful executable verification, all
+approved prerequisites completed, and explicit outcome acceptance. Changed work
+returns through inspection and verification. Changed scope returns through design
+and plan approval.
 
-## Responses and revision
-
-All forms have a required `decision` field, optional `feedback`, and optional
-`annotated_design` and `annotated_test_statements` uploads. Outcome and
-implementation feedback forms also offer `annotated_outcome`. Decision options
-are specific to the checkpoint; no decision is selected automatically.
-
-A revision with text or files goes directly to the appropriate phase. A revision
-without either opens a clarification review. Text-only and attachment-only
-responses are supported. Uploaded edits accompanying approval require revision
-and another review; they never approve a silently modified candidate. Text notes
-accompanying approval are recorded, and do not themselves request changes.
-
-The selected transition carries that exact response to the next phase. Returned
-artifacts enter the agent inbox under `prior/review/`, separate from verification
-logs. Agents read annotations, including CriticMarkup, as requested changes.
-c2j does not apply them. Scope/requirement changes require redesign and renewed
-plan approval. Implementation revisions explicitly resume the last successful
-Codex session object. Design authors and critics retain their existing session
-policies.
-
-Changes produce new artifact references and another review occurrence. Earlier
-feedback is not selected merely because its state still exists. Every occurrence
-and its receipt remain in runtime history. Root `reviews` exports the most recent
-receipt at each named checkpoint; `review_documents` exports current document
-references. Existing `artifact_refs` continues to export verification evidence.
-
-## Clients and tests
-
-Clients discover reviews through c2j's `GetForm`/`GetDetails` library and submit
-`fields` with the pending `request_id`, a submission ID, and an application-owned
-actor using `SubmitFormResponse`. Optional upload fields may be absent. Runtime
-`artifact_refs` contains returned attachments, not original review documents.
-
-The ordinary interactive CLI does not render document reviews. Use
-`--input-mode ops` to expose the pending form, submit through a review-capable
-client, and continue the job. Submission IDs are correlation identifiers, not an
-idempotency guarantee. Historical receipt lookup and ambiguous completion recovery
-retain the limitations documented by c2j.
-
-`recipe-tests/verify-native-reviews.py` runs both committed local defaults with a
-separate ephemeral JobDB and a client using the public c2j input library. It
-scripts model decisions but exercises real review publication, invalid and stale
-submissions, uploaded bytes, worker replacement, sessions, gates, verification,
-and squash merges. Production forms have no autofill.
-
-The earlier [review handoff proposal](NATIVE_REVIEW_HANDOFF_PROPOSAL.md) and
-`contracts/review` fixtures are historical design material. They are not the
-implemented native review protocol or a prerequisite for these recipes.
-
-## Document storage
-
-Design and implementation summaries are authored directly in outbox, then bound
-to downstream inboxes. They are never stored as per-job files in the repository.
-The maintained `.c2j/test-plan.md` is tracked in Git and copied byte-for-byte to
-`test-statements.md` for review. Verification reports and logs are runtime artifacts.
-Native review preserves reviewed revisions and attachments without a recipe-owned
-document history, ID catalog, or hash ledger.
+The build exports `reviews` receipts, `artifact_refs`, `verification`, and its latest
+session checkpoint. Native review response transport and attachment persistence
+remain c2j/Cortex responsibilities; the recipe tests exercise their supported API.

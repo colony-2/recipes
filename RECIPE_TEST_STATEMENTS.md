@@ -1,6 +1,10 @@
 # Recipe Test Statements
 
-These statements are intended to drive `c2j test` cases.
+The active build contract is in [build kernel statements](recipe-tests/build-kernel-statements.md);
+the consultation contract is in [consultation statements](recipe-tests/consultation-kernel-statements.md).
+Those replace the historical build/evolve, mandate bootstrap, duplicate-schema,
+and ad hoc dialogue statements below. Other recipe families retain their statements.
+See [the coverage map](guides/NATIVE_TEST_MIGRATION.md) for executable suites.
 
 ## Development timeout removal
 
@@ -275,6 +279,9 @@ a fresh job and cannot be imported by the new op revision.
 
 
 ## Native test ownership and migration
+
+Cell creation expectations and native coverage are maintained in
+[the creation test statements](recipe-tests/create-statements.md).
 
 CLI/runtime guarantees TS-024–027, TS-049–050, TS-146, TS-163–165 and TS-168
 are retained above as transferred expectations, not recipe test requirements.

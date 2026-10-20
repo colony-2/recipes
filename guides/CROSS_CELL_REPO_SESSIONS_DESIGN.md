@@ -1,5 +1,8 @@
 # Cross-cell conversations within one job
 
+> Historical design: current build uses optional root PURPOSE.md, the shared
+> consultation kernel, and one build entrypoint. See [current workflow](../README.md).
+
 A job in cell A can ask an agent in cell B to evaluate ownership, refine a design,
 explain an interface, or diagnose a missing dependency. Discussion alone does not
 need a separate job. Actual implementation in B still belongs to a B job.

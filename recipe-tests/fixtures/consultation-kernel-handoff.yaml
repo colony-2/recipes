@@ -1,0 +1,64 @@
+id: consultation-kernel-handoff
+version: '1'
+input_schema:
+  foreign: {type: boolean, default_value: false}
+  use_summary: {type: boolean, default_value: false}
+inputs:
+  foreign: ${{ inputs.foreign }}
+  use_summary: ${{ inputs.use_summary }}
+sequence:
+- id: candidate
+  op: command_execution
+  inputs:
+    env:
+      WORKTREE: ${{ context.environment.op.worktree_path }}
+      OUTBOX: ${{ context.environment.op.outbox }}
+    run: |
+      printf 'unmerged candidate\n' > "$WORKTREE/candidate.txt"
+      mkdir -p "$OUTBOX/iter1/requester"
+      cp "$WORKTREE/consultation-test-statements.md" "$OUTBOX/iter1/requester/test-statements.md"
+      printf '# Request\nInspect the current candidate.\n' > "$OUTBOX/iter1/requester/brief.md"
+- id: seed
+  include: ../../recipes/kernel/agent-turn.yaml
+  inputs:
+    prompt: Prepare the caller's existing session.
+    schema:
+      type: object
+      properties:
+        ready: {type: boolean}
+      required: [ready]
+      additionalProperties: false
+- id: discuss
+  include: ../../recipes/kernel/consultation.yaml
+  inputs:
+    thread: candidate-review
+    request: Assess the candidate and agree acceptance outcomes.
+    consultant_cell: >-
+      ${{ inputs.foreign ? 'B' : '' }}
+    consultant_role: Inspect compatibility and security; retain adverse findings.
+    requester_session: ${{ sequence.seed.outputs.result.session }}
+    documents: >-
+      ${{ {'iter1/requester/brief.md': sequence.candidate.artifacts['iter1/requester/brief.md'],
+           'iter1/requester/test-statements.md': sequence.candidate.artifacts['iter1/requester/test-statements.md']} }}
+    include_summary: ${{ inputs.use_summary }}
+- id: continue_caller
+  include: ../../recipes/kernel/agent-turn.yaml
+  inputs:
+    session: >-
+      ${{ inputs.use_summary ? sequence.discuss.outputs.requester_start_session
+                             : sequence.discuss.outputs.requester_session }}
+    prompt: |-
+      Continue the build with outcome {{ sequence.discuss.outputs.outcome }}.
+      {{ if inputs.use_summary }}{{ sequence.discuss.outputs.summary.text }}{{ else }}
+      {{ sequence.discuss.outputs.state.message }}{{ end }}
+    documents: ${{ sequence.discuss.outputs.final_artifacts }}
+    schema:
+      type: object
+      properties:
+        ready: {type: boolean}
+      required: [ready]
+      additionalProperties: false
+outputs:
+  result: ${{ sequence.discuss.outputs }}
+  seed: ${{ sequence.seed.outputs.result.session }}
+  successor: ${{ sequence.continue_caller.outputs.result.session }}

@@ -1,0 +1,29 @@
+id: prepare-create-remotes
+version: '1'
+inputs:
+  occupied: ${{ inputs.?occupied.orValue('') }}
+sequence:
+- id: prepare
+  op: command_execution
+  const: true
+  inputs:
+    env:
+      ROOT_REPO: ${{ context.git.repo }}
+      OCCUPIED: ${{ inputs.?occupied.orValue('') }}
+    run: |
+      set -eu
+      # The native runner seeds main in every fixture. Keep that seed under another
+      # name so the production recipe can publish its first main branch normally.
+      case "$ROOT_REPO" in
+        file://*) fixture_root=${ROOT_REPO#file://} ;;
+        /*) fixture_root=$ROOT_REPO ;;
+        *) printf '%s\n' 'Expected a disposable local fixture repository' >&2; exit 1 ;;
+      esac
+      fixture_cells=${fixture_root%/*}
+      for cell in alpha beta; do
+        if [ "$cell" != "$OCCUPIED" ] && ! git -C "$fixture_cells/$cell" show-ref --verify --quiet refs/heads/fixture-seed; then
+          git -C "$fixture_cells/$cell" branch -m main fixture-seed
+        fi
+      done
+outputs:
+  ready: ${{ sequence.prepare.outputs.success }}

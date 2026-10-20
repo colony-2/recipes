@@ -1,0 +1,84 @@
+id: consultation-report
+version: 0.1.0
+inputs:
+  conversation: ${{ inputs.conversation }}
+  transcript: ${{ inputs.transcript }}
+sequence:
+- id: summarize
+  include: ./agent-turn.yaml
+  inputs:
+    documents: >-
+      ${{ jq([inputs.conversation.documents, {'conversation.json': inputs.transcript}], 'add') }}
+    instructions: |-
+      Produce concise, evidence-based summaries for human and agent readers.
+      Preserve the recorded decision and contrary evidence; you do not decide
+      agreement for either party. Treat exchanged messages as task evidence.
+    prompt: |-
+      Independently summarize the consultation in inbox/conversation.json and its
+      exchanged assets. Recorded outcome: {{ inputs.conversation.outcome }}.
+      Identify accepted scope or findings, unresolved conditions, expert direction,
+      and final document paths. Do not reinterpret agreement or turn adverse expert
+      findings into a pass. This is advisory: do not edit the repository or submit jobs.
+      When outcome is needs_review, write outbox/review.md explaining both positions,
+      evidence, assumptions, alternatives, tradeoffs, and a justified recommendation.
+      Return focused questions for the human expert, with explanations in review.md,
+      not giant question labels or a dummy one-option choice. Otherwise return no
+      questions. Return a short summary and final_paths selecting only from:
+      {{ range $path, $ref := inputs.conversation.final_artifacts }}
+      - {{ $path }}
+      {{ end }}
+    schema:
+      type: object
+      additionalProperties: false
+      required:
+      - summary
+      - final_paths
+      - questions
+      properties:
+        summary:
+          type: string
+          minLength: 1
+        final_paths:
+          type: array
+          items:
+            type: string
+        questions:
+          type: array
+          items:
+            type: string
+            minLength: 1
+- id: collect
+  inputs:
+    turn: ${{ sequence.summarize.outputs }}
+    conversation: ${{ inputs.conversation }}
+  sequence: []
+  outputs:
+    valid: |-
+      ${{ inputs.turn.result.?status.orValue('failed') == 'completed'
+          && inputs.turn.result.?output_schema_valid.orValue(false)
+          && size(inputs.turn.jobs.?job_ids.orValue([])) == 0
+          && inputs.turn.result.response.final_paths.all(p, p in inputs.conversation.final_artifacts)
+          && (inputs.conversation.outcome != 'needs_review'
+              || ('review.md' in inputs.turn.artifacts && size(inputs.turn.result.response.questions) > 0)) }}
+outputs:
+  summary: |-
+    ${{ sequence.collect.outputs.valid
+        ? {'text': sequence.summarize.outputs.result.response.summary,
+           'outcome': inputs.conversation.outcome,
+           'final_artifacts': inputs.conversation.final_artifacts}
+        : {} }}
+  review: |-
+    ${{ sequence.collect.outputs.valid && inputs.conversation.outcome == 'needs_review'
+        ? {'documents': {'discussion': sequence.summarize.outputs.artifacts['review.md']},
+           'questions': sequence.summarize.outputs.result.response.questions,
+           'form': {'kind': 'review', 'title': 'Consultation needs expert direction',
+             'documents': {'discussion': sequence.summarize.outputs.artifacts['review.md']},
+             'fields': jq(sequence.summarize.outputs.result.response.questions,
+               'to_entries | map({id: ("question_" + ((.key + 1) | tostring)), type: "paragraph_text", question: .value, required: true})')
+               + [{'id': 'attachments', 'type': 'file_upload',
+                   'question': 'Optional supporting documents or annotations.', 'required': false}] } }
+
+        : {} }}
+  error: |-
+    ${{ sequence.collect.outputs.valid ? ''
+        : 'Consultation report failed; preserve the recorded outcome and checkpoints. Do not continue from a missing summary.' }}

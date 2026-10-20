@@ -1,0 +1,308 @@
+recipe: fixtures/build-coordinate.yaml
+cases:
+- id: parallel-consultations-and-checkpoint-handoff
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          candidate.txt: original
+        file_sources:
+          .c2j/recipes: ../recipes/kernel
+          .c2j/recipes/dependency.yaml: fixtures/build-dependency.yaml
+      B:
+        files:
+          PURPOSE.md: API owner
+      R:
+        files:
+          PURPOSE.md: Project root
+    observe_files:
+    - candidate.txt
+  mocks:
+    ops:
+    - match:
+        node_path: coordination-fixture/seed
+      behavior:
+        mode: return
+        outputs:
+          success: true
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: seed
+          worktree:
+            candidate.txt: unmerged requester work
+    - match:
+        node_path: coordination-fixture/independent
+      behavior:
+        mode: return
+        outputs:
+          success: true
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: independent
+          worktree:
+            candidate.txt: later independent work
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: B
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: agreed
+            thinking: 'consultant reply 1: agreed'
+            files:
+            - path: iter1/consultant/spec.md
+              description: Consultation document
+            assessment: not_applicable
+        artifacts:
+          iter1/consultant/spec.md: '# Agreed API'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                session_id: consultant
+                iteration: 1
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: R
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: agreed
+            thinking: 'consultant reply 1: agreed'
+            files:
+            - path: iter1/consultant/spec.md
+              description: Consultation document
+            assessment: not_applicable
+        artifacts:
+          iter1/consultant/spec.md: '# Worker purpose, alternatives, and technology guidance'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                session_id: consultant
+                iteration: 1
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            summary: 'Recorded consultation outcome: agreed'
+            final_paths: []
+            questions: []
+        artifacts: {}
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                session_id: summary
+      repeat: true
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: valid
+    value: true
+  - type: cel_true
+    expr: size(outputs.flow.threads) == 2
+  - type: cel_true
+    expr: size(outputs.flow.jobs) == 2
+  - type: cel_true
+    expr: outputs.flow.session == outputs.independent_session
+  - type: cel_true
+    expr: outputs.flow.jobs.api.result.starter == outputs.flow.threads.api.result.consultant_session
+  - type: cel_true
+    expr: outputs.flow.jobs.worker.result.starter == outputs.flow.threads.worker.result.consultant_session
+  - type: cel_true
+    expr: '"consultation/conversation.json" in outputs.flow.jobs.api.result.documents'
+  - type: cel_true
+    expr: outputs.flow.threads.worker.request.cell == "R"
+  - type: cel_true
+    expr: size(calls.filter(c, c.op == "recipes.run")) == 4
+  - type: cel_true
+    expr: repositories.root.new_commits == 0
+  - type: cel_true
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).filter(c,
+      c.cell == "R")[0].inputs.inputs.instructions.contains("existing owners for overlap")
+  - type: cel_true
+    expr: '"consultations/api/iter1/consultant/spec.md" in outputs.flow.documents && "consultations/worker/iter1/consultant/spec.md"
+      in outputs.flow.documents'
+  - type: cel_true
+    expr: outputs.flow.documents["consultations/api/iter1/consultant/spec.md"].stored == outputs.flow.threads.api.result.final_artifacts["iter1/consultant/spec.md"].stored
+  - type: cel_true
+    expr: '"jobs/api/dependency.md" in outputs.flow.documents && "jobs/worker/dependency.md" in outputs.flow.documents'
+- id: child-failure-is-preserved-without-resubmission
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          candidate.txt: original
+        file_sources:
+          .c2j/recipes: ../recipes/kernel
+          .c2j/recipes/dependency.yaml: fixtures/build-dependency.yaml
+      B:
+        files:
+          PURPOSE.md: API owner
+          fail: fail
+      R:
+        files:
+          PURPOSE.md: Project root
+    observe_files:
+    - candidate.txt
+  mocks:
+    ops:
+    - match:
+        node_path: coordination-fixture/seed
+      behavior:
+        mode: return
+        outputs:
+          success: true
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: seed
+          worktree:
+            candidate.txt: unmerged requester work
+    - match:
+        node_path: coordination-fixture/independent
+      behavior:
+        mode: return
+        outputs:
+          success: true
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: independent
+          worktree:
+            candidate.txt: later independent work
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: B
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: agreed
+            thinking: 'consultant reply 1: agreed'
+            files:
+            - path: iter1/consultant/spec.md
+              description: Consultation document
+            assessment: not_applicable
+        artifacts:
+          iter1/consultant/spec.md: '# Agreed API'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                session_id: consultant
+                iteration: 1
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: R
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: agreed
+            thinking: 'consultant reply 1: agreed'
+            files:
+            - path: iter1/consultant/spec.md
+              description: Consultation document
+            assessment: not_applicable
+        artifacts:
+          iter1/consultant/spec.md: '# Worker purpose, alternatives, and technology guidance'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                session_id: consultant
+                iteration: 1
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            summary: 'Recorded consultation outcome: agreed'
+            final_paths: []
+            questions: []
+        artifacts: {}
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                session_id: summary
+      repeat: true
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: valid
+    value: true
+  - type: cel_true
+    expr: size(outputs.flow.threads) == 2
+  - type: cel_true
+    expr: size(outputs.flow.jobs) == 2
+  - type: cel_true
+    expr: outputs.flow.session == outputs.independent_session
+  - type: cel_true
+    expr: outputs.flow.jobs.worker.result.starter == outputs.flow.threads.worker.result.consultant_session
+  - type: cel_true
+    expr: outputs.flow.threads.worker.request.cell == "R"
+  - type: cel_true
+    expr: size(calls.filter(c, c.op == "recipes.run")) == 4
+  - type: cel_true
+    expr: repositories.root.new_commits == 0
+  - type: cel_true
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).filter(c,
+      c.cell == "R")[0].inputs.inputs.instructions.contains("existing owners for overlap")
+  - type: cel_true
+    expr: '"consultations/api/iter1/consultant/spec.md" in outputs.flow.documents && "consultations/worker/iter1/consultant/spec.md"
+      in outputs.flow.documents'
+  - type: cel_true
+    expr: outputs.flow.documents["consultations/api/iter1/consultant/spec.md"].stored == outputs.flow.threads.api.result.final_artifacts["iter1/consultant/spec.md"].stored
+  - type: output_equals
+    path: flow.jobs.api.status
+    value: failed
+  - type: cel_true
+    expr: outputs.flow.jobs.api.failure != "" && outputs.flow.jobs.worker.status == "completed"

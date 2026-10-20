@@ -1,5 +1,8 @@
 # Cell mandate
 
+> Historical design: current build uses optional root PURPOSE.md, the shared
+> consultation kernel, and one build entrypoint. See [current workflow](../README.md).
+
 A cell encompasses the entire repository in which its job operates. Every file
 in that repository belongs to the cell. A task's target directory narrows the
 work requested; it does not narrow the cell or establish another cell.

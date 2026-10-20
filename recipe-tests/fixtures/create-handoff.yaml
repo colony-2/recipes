@@ -1,0 +1,70 @@
+id: create-handoff
+version: '1'
+sequence:
+- id: prepare
+  include: ./prepare-create-remotes.yaml
+- id: starter
+  op: command_execution
+  inputs:
+    run: 'true'
+- id: namespace
+  include: ../../recipes/kernel/artifact-namespace.yaml
+  inputs:
+    prefix: consultation/
+    documents: '${{ {''conversation.json'': sequence.starter.artifacts[''conversation.json'']} }}'
+- id: create
+  include: ../../create.yaml
+  inputs:
+    prompt: Create alpha and beta as agreed.
+    session: ${{ sequence.starter.outputs.session }}
+    documents: ${{ sequence.namespace.outputs.documents }}
+- id: verify_alpha
+  workspace:
+    cell: alpha
+    ref: main
+  op: command_execution
+  const: true
+  inputs:
+    working_directory: ${{ context.environment.op.worktree_path }}
+    env:
+      EXPECTED: |-
+        # alpha
+        Approved responsibilities.
+    run: |
+      set -eu
+      test "$(cat PURPOSE.md)" = "$EXPECTED"
+      test "$(git rev-list --count HEAD)" = 1
+      test "$(git ls-tree --name-only HEAD)" = PURPOSE.md
+      test "$(git log -1 --format='%an <%ae>')" = 'Recipe Test <recipe-test@example.com>'
+      test "$(git log -1 --format='%cn <%ce>')" = 'Recipe Test <recipe-test@example.com>'
+- id: verify_beta
+  workspace:
+    cell: beta
+    ref: main
+  op: command_execution
+  const: true
+  inputs:
+    working_directory: ${{ context.environment.op.worktree_path }}
+    env:
+      EXPECTED: |-
+        # beta
+        Approved responsibilities.
+    run: |
+      set -eu
+      test "$(cat PURPOSE.md)" = "$EXPECTED"
+      test "$(git rev-list --count HEAD)" = 1
+      test "$(git ls-tree --name-only HEAD)" = PURPOSE.md
+      test "$(git log -1 --format='%an <%ae>')" = 'Recipe Test <recipe-test@example.com>'
+      test "$(git log -1 --format='%cn <%ce>')" = 'Recipe Test <recipe-test@example.com>'
+- id: verify_root
+  op: command_execution
+  const: true
+  inputs:
+    working_directory: ${{ context.environment.op.worktree_path }}
+    run: |
+      set -eu
+      test "$(cat keep.txt)" = original
+      test "$(cat PURPOSE.md)" = 'Project root'
+      test "$(git rev-list --count HEAD)" = 1
+outputs:
+  result: ${{ sequence.create.outputs }}

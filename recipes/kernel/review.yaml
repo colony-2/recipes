@@ -1,0 +1,37 @@
+id: kernel-review
+version: 0.1.0
+inputs:
+  title: ${{ inputs.title }}
+  documents: ${{ inputs.documents }}
+  fields: ${{ inputs.fields }}
+sequence:
+- id: ask
+  op: input
+  inputs:
+    form:
+      kind: review
+      title: ${{ inputs.title }}
+      documents: >-
+        ${{ jq(inputs.documents, 'with_entries(select((.key | split("/") | last) as $name | ["context.json",
+        "feedback.json", "conversation.json"] | index($name) | not))') }}
+      fields: >-
+        ${{ jq(inputs.fields, 'map(if .type == "multiple_choice" or .type == "checkboxes"
+        then . else del(.options) end)') }}
+- id: feedback
+  op: command_execution
+  const: true
+  inputs:
+    env:
+      OUTBOX: ${{ context.environment.op.outbox }}
+      FEEDBACK: '${{ json_stringify({''questions'': inputs.fields, ''response'': sequence.ask.outputs})
+        }}'
+    run: |
+      printf '%s\n' "$FEEDBACK" > "$OUTBOX/feedback.json"
+outputs:
+  response: ${{ sequence.ask.outputs }}
+  documents: |-
+    ${{ jq([sequence.ask.outputs.?artifact_refs.orValue({}),
+             {'feedback.json': sequence.feedback.artifacts['feedback.json']}], 'add') }}
+  changed: |-
+    ${{ nonempty(sequence.ask.outputs.fields.?feedback.orValue(''))
+        || size(sequence.ask.outputs.?artifact_refs.orValue({})) > 0 }}

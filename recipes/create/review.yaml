@@ -1,0 +1,329 @@
+id: creation-review
+version: 1.0.0
+inputs:
+  prompt: ${{ inputs.prompt }}
+  session: ${{ inputs.?session.orValue({}) }}
+  documents: ${{ inputs.?documents.orValue({}) }}
+vars:
+  schema:
+    type: object
+    additionalProperties: false
+    required:
+    - outcome
+    - summary
+    - cells
+    - files
+    - questions
+    properties:
+      outcome:
+        type: string
+        enum:
+        - review
+        - ask_user
+        - declined
+        - redirected
+      summary:
+        type: string
+        minLength: 1
+      cells:
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          required:
+          - name
+          - repo
+          - purpose_path
+          properties:
+            name:
+              type: string
+              minLength: 1
+              pattern: ^[a-zA-Z0-9][a-zA-Z0-9_-]*$
+            repo:
+              type: string
+              minLength: 1
+            purpose_path:
+              type: string
+              minLength: 1
+      files:
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          required:
+          - path
+          - description
+          properties:
+            path:
+              type: string
+              minLength: 1
+            description:
+              type: string
+              minLength: 1
+      questions:
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          required:
+          - id
+          - type
+          - question
+          - required
+          - options
+          properties:
+            id:
+              type: string
+              minLength: 1
+            type:
+              type: string
+              enum:
+              - paragraph_text
+              - short_answer
+              - multiple_choice
+              - checkboxes
+            question:
+              type: string
+              minLength: 1
+            required:
+              type: boolean
+            options:
+              type: array
+              items:
+                type: object
+                additionalProperties: false
+                required:
+                - value
+                - label
+                properties:
+                  value:
+                    type: string
+                  label:
+                    type: string
+  instructions: |
+    This cell encompasses the entire repository. Read AGENTS.md and root PURPOSE.md
+    when present; otherwise infer responsibilities from repository evidence. Discover
+    dependencies through normal project tooling and use c2j's catalog for related cells.
+  setup: |
+    You are preparing a cell creation decision in the project root. Continue the
+    serving consultation using the supplied documents and checkpoint. Inspect the
+    current cell catalog and project purpose. Reuse the consultation's analysis;
+    recheck project fit and plausible existing owners, explaining exclusions and
+    technology choices. Prefer extending existing cells when that serves the purpose.
+
+    Prepare one outbox/proposal.md for the entire proposed set, including each repository
+    URL, purpose, excluded alternatives, technology guidance, and the root
+    catalog changes. Write each initial purpose to outbox/cells/<name>/PURPOSE.md and list
+    these files in your response. Ask focused questions alongside documents if needed.
+    Return declined or redirected when creation is inappropriate. Creation initializes
+    responsibilities only; product features need their own subsequent consultation.
+    New cells always start on main; branch selection is fixed by the workflow.
+
+    Do not push or provision repositories, submit jobs, or modify the root repository.
+    The workflow owns initialization and integration after approval. Gitvend creates
+    an allowed missing repository on an ordinary Git push; there is no separate
+    creation API or dry-run step. Use the project's existing Git URL and credential
+    configuration. Do not invent a gateway address or include credentials in documents.
+state:
+  initial: start
+  states:
+    start:
+      inputs:
+        prompt: ${{ inputs.prompt }}
+        session: ${{ inputs.session }}
+        documents: ${{ inputs.documents }}
+      sequence: []
+      outputs:
+        flow: >-
+          ${{ {'session': inputs.session, 'documents': inputs.documents, 'message': inputs.prompt, 'first':
+          true} }}
+      transitions:
+      - to: propose
+        when: true
+        payload:
+          flow: ${{ outputs.flow }}
+    propose:
+      inputs:
+        flow: ${{ transition.payload.flow }}
+      sequence:
+      - id: agent
+        include: ../kernel/agent-turn.yaml
+        inputs:
+          instructions: ${{ vars.instructions + '\n' + vars.setup }}
+          prompt: >-
+            ${{ (inputs.flow.first && size(inputs.flow.session) > 0 ? vars.setup + '\n' : '') + inputs.flow.message
+            + '\nRead the inbox documents and any feedback.json. Return the current creation proposal.'
+            }}
+          schema: ${{ vars.schema }}
+          session: ${{ inputs.flow.session }}
+          documents: ${{ inputs.flow.documents }}
+      outputs:
+        flow: ${{ inputs.flow }}
+        turn: ${{ sequence.agent.outputs }}
+      transitions:
+      - to: record
+        when: true
+    record:
+      inputs:
+        flow: ${{ states.propose.outputs.flow }}
+        turn: ${{ states.propose.outputs.turn }}
+      sequence: []
+      outputs:
+        valid: |-
+          ${{ inputs.turn.result.?status.orValue('failed') == 'completed'
+           && inputs.turn.result.?output_schema_valid.orValue(false)
+           && inputs.turn.result.?session.orValue(null) != null
+           && size(inputs.turn.jobs.?job_ids.orValue([])) == 0
+           && inputs.turn.result.response.files.all(f, f.path in inputs.turn.artifacts
+               && !f.path.startsWith('/') && !f.path.contains('..') && !f.path.contains('\\'))
+           && (inputs.turn.result.response.outcome != 'review' ||
+               (size(inputs.turn.result.response.cells) > 0
+                && inputs.turn.result.response.files.exists(f, f.path == 'proposal.md')
+                && inputs.turn.result.response.cells.all(c, c.purpose_path == 'cells/' + c.name + '/PURPOSE.md'
+                    && inputs.turn.result.response.files.exists(f, f.path == c.purpose_path))
+                && size(inputs.turn.result.response.cells) == size(jq(inputs.turn.result.response.cells, 'map(.name) | unique'))
+                && size(inputs.turn.result.response.cells) == size(jq(inputs.turn.result.response.cells, 'map(.repo) | unique'))))
+           && (inputs.turn.result.response.outcome != 'ask_user' ||
+               (size(inputs.turn.result.response.questions) > 0 && size(inputs.turn.result.response.files) > 0
+                && inputs.turn.result.response.questions.all(q, q.id != 'annotations'))) }}
+        flow: >-
+          ${{ jq([inputs.flow, {'session': inputs.turn.result.?session.orValue(inputs.flow.session), 'first':
+          false, 'result': inputs.turn.result.?response.orValue({}), 'documents': jq([inputs.flow.documents,
+          jq({'files': inputs.turn.result.?response.orValue({}).?files.orValue([]), 'artifacts': inputs.turn.artifacts},
+          '. as $v | $v.files | map(select(.path as $p | $v.artifacts | has($p)) | {key: .path, value:
+          $v.artifacts[.path]}) | from_entries')], 'add')}], 'add') }}
+      transitions:
+      - to: failed
+        when: '!outputs.valid'
+      - to: stopped
+        when: outputs.flow.result.outcome in ['declined', 'redirected']
+        payload:
+          flow: ${{ outputs.flow }}
+      - to: questions
+        when: outputs.flow.result.outcome == 'ask_user'
+        payload:
+          flow: ${{ outputs.flow }}
+      - to: review
+        when: true
+        payload:
+          flow: ${{ outputs.flow }}
+    review:
+      inputs:
+        flow: ${{ transition.payload.flow }}
+      sequence:
+      - id: review
+        include: ../kernel/review.yaml
+        inputs:
+          title: Review proposed cells
+          documents: ${{ inputs.flow.documents }}
+          fields:
+          - id: decision
+            type: multiple_choice
+            question: Approve creation of the proposed cells and their root catalog entries?
+            required: true
+            options:
+            - value: approve
+              label: Approve creation
+            - value: revise
+              label: Request changes
+            - value: cancel
+              label: Do not create
+          - id: feedback
+            type: paragraph_text
+            question: >-
+              ${{ inputs.flow.?review_hint.orValue('Changes or guidance; required when requesting revision.')
+              }}
+            required: false
+          - id: annotations
+            type: file_upload
+            question: Optional annotated documents; uploads require revision.
+            required: false
+      outputs:
+        response: ${{ sequence.review.outputs.response }}
+        changed: ${{ sequence.review.outputs.changed }}
+        flow: >-
+          ${{ jq([inputs.flow, {'documents': jq([inputs.flow.documents, sequence.review.outputs.documents],
+          'add'), 'message': 'Read feedback.json and any annotations. Revise the creation proposal for
+          another review.'}], 'add') }}
+      transitions:
+      - to: stopped
+        when: outputs.response.fields.decision == 'cancel'
+        payload:
+          flow: '${{ jq([outputs.flow, {''disposition'': ''cancelled''}], ''add'') }}'
+      - to: approved
+        when: outputs.response.fields.decision == 'approve' && !outputs.changed
+        payload:
+          flow: ${{ outputs.flow }}
+          receipt: ${{ outputs.response.?receipt.orValue({}) }}
+      - to: propose
+        when: outputs.changed
+        payload:
+          flow: ${{ outputs.flow }}
+      - to: review
+        when: true
+        payload:
+          flow: >-
+            ${{ jq([outputs.flow, {'review_hint': 'Describe the changes or attach annotations before requesting
+            revision.'}], 'add') }}
+    questions:
+      inputs:
+        flow: ${{ transition.payload.flow }}
+      sequence:
+      - id: review
+        include: ../kernel/review.yaml
+        inputs:
+          title: Clarify proposed cells
+          documents: ${{ inputs.flow.documents }}
+          fields: >-
+            ${{ inputs.flow.result.questions + [{'id': 'annotations', 'type': 'file_upload', 'question':
+            'Optional supporting documents.', 'required': false}] }}
+      outputs:
+        response: ${{ sequence.review.outputs.response }}
+        changed: ${{ sequence.review.outputs.changed }}
+        flow: >-
+          ${{ jq([inputs.flow, {'documents': jq([inputs.flow.documents, sequence.review.outputs.documents],
+          'add'), 'message': 'Read feedback.json and any annotations. Revise the creation proposal for
+          another review.'}], 'add') }}
+      transitions:
+      - to: propose
+        when: true
+        payload:
+          flow: ${{ outputs.flow }}
+    approved:
+      inputs:
+        flow: ${{ transition.payload.flow }}
+        receipt: ${{ transition.payload.receipt }}
+      sequence: []
+      outputs:
+        flow: ${{ inputs.flow }}
+        receipt: ${{ inputs.receipt }}
+    stopped:
+      inputs:
+        flow: ${{ transition.payload.flow }}
+      sequence: []
+      outputs:
+        flow: ${{ inputs.flow }}
+    failed:
+      inputs:
+        flow: ${{ states.record.outputs.flow }}
+      sequence: []
+      outputs:
+        flow: >-
+          ${{ jq([inputs.flow, {'disposition': 'invalid'}], 'add') }}
+      transitions:
+      - to: stopped
+        when: true
+        payload:
+          flow: ${{ outputs.flow }}
+outputs:
+  approved: ${{ state_exists('approved') }}
+  session: ${{ state_output('approved', 'flow', state_output('stopped', 'flow', {})).session }}
+  cells: ${{ state_output('approved', 'flow', {}).?result.orValue({}).?cells.orValue([]) }}
+  summary: >-
+    ${{ state_output('approved', 'flow', state_output('stopped', 'flow', {})).result.?summary.orValue('Invalid creation proposal or missing review documents.') }}
+  disposition: >-
+    ${{ state_exists('approved') ? 'approved' : state_output('approved', 'flow', state_output('stopped',
+    'flow', {})).?disposition.orValue(state_output('approved', 'flow', state_output('stopped', 'flow',
+    {})).result.?outcome.orValue('invalid')) }}
+  documents: ${{ state_output('approved', 'flow', state_output('stopped', 'flow', {})).documents }}
+  review: ${{ state_output('approved', 'receipt', {}) }}

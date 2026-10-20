@@ -1,0 +1,75 @@
+id: publish-cells
+version: 1.0.0
+inputs:
+  cells: ${{ inputs.cells }}
+  documents: ${{ inputs.documents }}
+state:
+  initial: publish
+  states:
+    publish:
+      inputs:
+        index: ${{ int(transition.payload.?index.orValue(0)) }}
+        created: ${{ transition.payload.?created.orValue([]) }}
+        cells: ${{ inputs.cells }}
+        documents: ${{ inputs.documents }}
+      sequence:
+      - id: cell
+        workspace:
+          cell: ${{ inputs.cells[inputs.index].repo }}
+          ref: main
+          initial: empty
+        inputs:
+          cell: ${{ inputs.cells[inputs.index] }}
+          purpose: ${{ inputs.documents[inputs.cells[inputs.index].purpose_path] }}
+        outputs:
+          error: |-
+            ${{ !states.write.outputs.success ? 'Could not copy a nonempty approved PURPOSE.md.'
+              : states.publish.outputs.?error.orValue('') }}
+          published: |-
+            ${{ states.write.outputs.success && states.publish.outputs.?error.orValue('') == ''
+              ? {'cell': inputs.cell.name, 'repo': context.git.repo,
+                 'ref': states.publish.outputs.target_branch,
+                 'revision': states.publish.outputs.merged_hash} : {} }}
+        state:
+          initial: write
+          states:
+            write:
+              op: command_execution
+              artifacts:
+                PURPOSE.md: ${{ inputs.purpose }}
+              inputs:
+                continue_on_error: true
+                working_directory: ${{ context.environment.op.worktree_path }}
+                env:
+                  INBOX: ${{ context.environment.op.inbox }}
+                run: |
+                  set -eu
+                  test -s "$INBOX/PURPOSE.md"
+                  cp "$INBOX/PURPOSE.md" PURPOSE.md
+              transitions:
+              - to: publish
+                when: outputs.success
+            publish:
+              op: squashrebasemerge
+              inputs:
+                commit_message: ${{ 'Create cell ' + inputs.cell.name + ' with approved purpose' }}
+              catch:
+              - when: true
+                continue:
+                  outputs:
+                    error: ${{ failure.message }}
+      outputs:
+        index: ${{ inputs.index }}
+        error: ${{ sequence.cell.outputs.?error.orValue('') }}
+        created: |-
+          ${{ sequence.cell.outputs.?error.orValue('') == ''
+            ? inputs.created + [sequence.cell.outputs.published] : inputs.created }}
+      transitions:
+      - to: publish
+        when: outputs.error == '' && int(outputs.index) + 1 < size(inputs.cells)
+        payload:
+          index: ${{ int(outputs.index) + 1 }}
+          created: ${{ outputs.created }}
+outputs:
+  created: ${{ states.publish.outputs.created }}
+  error: ${{ states.publish.outputs.error }}

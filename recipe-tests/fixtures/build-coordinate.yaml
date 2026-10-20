@@ -1,0 +1,95 @@
+id: coordination-fixture
+version: '1'
+workspace:
+  cell: ${{ context.git.repo }}
+  ref: ${{ context.git.ref }}
+sequence:
+- id: seed
+  op: command_execution
+  inputs:
+    run: 'true'
+- id: launch
+  include: ../../recipes/develop/coordinate.yaml
+  inputs:
+    action: consult
+    flow:
+      phase: design
+      session: ${{ sequence.seed.outputs.session }}
+      documents: ${{ {} }}
+      threads: ${{ {} }}
+      jobs: ${{ {} }}
+      approved: []
+      root_cell: R
+      root_ref: main
+      consultation_recipe: consultation
+      build_recipe: dependency
+      create_recipe: dependency
+    requests:
+    - key: api
+      kind: feature
+      cell: B
+      ref: main
+      request: Agree a compatible API.
+      role: Assess scope and compatibility.
+    - key: worker
+      kind: create
+      cell: ''
+      ref: main
+      request: Evaluate a worker cell.
+      role: Assess the need for a new cell.
+- id: independent
+  op: command_execution
+  inputs:
+    run: 'true'
+- id: await_consultations
+  include: ../../recipes/develop/coordinate.yaml
+  inputs:
+    action: blocked
+    keys:
+    - api
+    - worker
+    flow: >-
+      ${{ jq([sequence.launch.outputs.flow, {'session': sequence.independent.outputs.session}], 'add')
+      }}
+- id: submit
+  include: ../../recipes/develop/coordinate.yaml
+  inputs:
+    action: submit
+    keys:
+    - api
+    - worker
+    flow: >-
+      ${{ jq([sequence.await_consultations.outputs.flow, {'phase': 'implement', 'approved': ['api', 'worker']}],
+      'add') }}
+- id: repeat_submit
+  include: ../../recipes/develop/coordinate.yaml
+  inputs:
+    action: submit
+    keys:
+    - api
+    - worker
+    flow: ${{ sequence.submit.outputs.flow }}
+- id: await_jobs
+  include: ../../recipes/develop/coordinate.yaml
+  inputs:
+    action: blocked
+    keys:
+    - api
+    - worker
+    flow: ${{ sequence.repeat_submit.outputs.flow }}
+- id: read_evidence
+  op: command_execution
+  const: true
+  artifacts:
+    ./: ${{ sequence.await_jobs.outputs.flow.documents }}
+  inputs:
+    env:
+      INBOX: ${{ context.environment.op.inbox }}
+    run: |
+      test -f "$INBOX/consultations/api/iter1/consultant/spec.md"
+      test -f "$INBOX/consultations/worker/iter1/consultant/spec.md"
+      ! cmp -s "$INBOX/consultations/api/iter1/consultant/spec.md" "$INBOX/consultations/worker/iter1/consultant/spec.md"
+outputs:
+  valid: ${{ sequence.await_jobs.outputs.valid }}
+  flow: ${{ sequence.await_jobs.outputs.flow }}
+  independent_session: ${{ sequence.independent.outputs.session }}

@@ -1,0 +1,94 @@
+id: kernel-agent-turn
+version: 0.1.0
+inputs:
+  prompt: ${{ inputs.prompt }}
+  instructions: ${{ inputs.?instructions.orValue('') }}
+  schema: ${{ inputs.schema }}
+  session: ${{ inputs.?session.orValue({}) }}
+  documents: ${{ inputs.?documents.orValue({}) }}
+  read_only: ${{ inputs.?read_only.orValue(true) }}
+state:
+  initial:
+  - to: read_resume
+    when: inputs.read_only && size(inputs.session) > 0
+  - to: read_fresh
+    when: inputs.read_only
+  - to: resume
+    when: size(inputs.session) > 0
+  - to: fresh
+    when: true
+  states:
+    fresh:
+      op: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+      artifacts:
+        ./: ${{ inputs.documents }}
+      inputs:
+        prompt: ${{ inputs.prompt }}
+        instructions: ${{ inputs.instructions }}
+        output:
+          schema: ${{ inputs.schema }}
+      catch:
+      - when: true
+        continue:
+          outputs:
+            status: failed
+            errorMessage: ${{ failure.message }}
+    resume:
+      op: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+      artifacts:
+        ./: ${{ inputs.documents }}
+      inputs:
+        prompt: ${{ inputs.prompt }}
+        session: ${{ inputs.session }}
+        output:
+          schema: ${{ inputs.schema }}
+      catch:
+      - when: true
+        continue:
+          outputs:
+            status: failed
+            errorMessage: ${{ failure.message }}
+    read_fresh:
+      op: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+      const: true
+      artifacts:
+        ./: ${{ inputs.documents }}
+      inputs:
+        prompt: ${{ inputs.prompt }}
+        instructions: ${{ inputs.instructions }}
+        output:
+          schema: ${{ inputs.schema }}
+      catch:
+      - when: true
+        continue:
+          outputs:
+            status: failed
+            errorMessage: ${{ failure.message }}
+    read_resume:
+      op: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+      const: true
+      artifacts:
+        ./: ${{ inputs.documents }}
+      inputs:
+        prompt: ${{ inputs.prompt }}
+        session: ${{ inputs.session }}
+        output:
+          schema: ${{ inputs.schema }}
+      catch:
+      - when: true
+        continue:
+          outputs:
+            status: failed
+            errorMessage: ${{ failure.message }}
+outputs:
+  result: >-
+    ${{ (inputs.read_only ? (size(inputs.session) > 0 ? states.read_resume : states.read_fresh) : (size(inputs.session)
+    > 0 ? states.resume : states.fresh)).outputs }}
+  artifacts: >-
+    ${{ (inputs.read_only ? (size(inputs.session) > 0 ? states.read_resume : states.read_fresh) : (size(inputs.session)
+    > 0 ? states.resume : states.fresh)).artifacts }}
+  jobs: >-
+    ${{ (inputs.read_only ? (size(inputs.session) > 0 ? states.read_resume : states.read_fresh) : (size(inputs.session)
+    > 0 ? states.resume : states.fresh)).?jobs.orValue({}) }}
+  cell: ${{ context.workspace.cell }}
+  base_hash: ${{ context.git.resolved_hash }}

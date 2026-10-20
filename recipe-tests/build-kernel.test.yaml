@@ -1,0 +1,2472 @@
+recipe: ../build.yaml
+cases:
+- id: build-without-purpose
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          candidate.txt: original
+    observe_files:
+    - candidate.txt
+    - unapproved.txt
+    responses:
+    - node_path: build/develop/root/approval/sequence/plan_review/kernel-review/ask
+      fields:
+        decision: approve
+    - node_path: build/develop/root/accept/sequence/outcome_review/kernel-review/ask
+      fields:
+        decision: accept
+  inputs:
+    prompt: Improve the requested behavior.
+  mocks:
+    ops:
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: design response
+            files:
+            - path: design.md
+              description: Review evidence
+            questions: []
+            consultations: []
+            keys: []
+        artifacts:
+          design.md: '# design evidence'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: design
+                turn: 1review
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: test-plan response
+            files:
+            - path: test-statements.md
+              description: Review evidence
+            questions: []
+            consultations: []
+            keys: []
+        artifacts: {}
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: test-plan
+                turn: 1review
+          artifact_files:
+            test-statements.md: build-kernel-statements.md
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: agreed
+            thinking: Independent plan assessment
+            assessment: pass
+            files:
+            - path: iter1/consultant/plan-review.md
+              description: Review evidence
+        artifacts:
+          iter1/consultant/plan-review.md: '# Independent findings'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                expert: plan
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: implement response
+            files:
+            - path: implementation.md
+              description: Review evidence
+            questions: []
+            consultations: []
+            keys: []
+        artifacts:
+          implementation.md: '# implement evidence'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: implement
+                turn: 1review
+          worktree:
+            candidate.txt: implemented behavior
+            build.sh: |
+              #!/bin/sh
+              test "$(cat candidate.txt)" = "implemented behavior"
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: agreed
+            thinking: Independent outcome assessment
+            assessment: pass
+            files:
+            - path: iter1/consultant/outcome-review.md
+              description: Review evidence
+        artifacts:
+          iter1/consultant/outcome-review.md: '# Independent findings'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                expert: outcome
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: merged
+    value: true
+  - type: output_equals
+    path: disposition
+    value: implemented
+  - type: output_equals
+    path: verification.status
+    value: passed
+  - type: cel_true
+    expr: repositories.root.new_commits == 1
+  - type: cel_true
+    expr: repositories.root.files["candidate.txt"] == "implemented behavior"
+  - type: cel_true
+    expr: '!calls.exists(c, c.op == "extension_execution" && c.inputs.selector.contains("rule_gate"))'
+  - type: cel_true
+    expr: '!calls.exists(c, c.op.startsWith("recipe.run") || c.op == "recipes.run")'
+  - type: cel_true
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@"))[0].inputs.inputs.instructions.contains("root
+      PURPOSE.md")
+  - type: cel_true
+    expr: '!("instructions" in calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@"))[1].inputs.inputs)'
+  - type: cel_true
+    expr: '!("instructions" in calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@"))[3].inputs.inputs)'
+  - type: cel_true
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@"))[3].inputs.inputs.session
+      == calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@"))[1].outputs.session
+  - type: cel_true
+    expr: '!calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@"))[0].inputs.inputs.prompt.contains("result.json")'
+  - type: cel_true
+    expr: size(reviews) == 2
+  - type: cel_true
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@"))[3].artifacts["test-statements.md"].contains("Build
+      kernel test statements")
+  - type: cel_true
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@"))[4].worktree["candidate.txt"]
+      == "implemented behavior"
+- id: existing-purpose-and-cli-type
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          candidate.txt: original
+          PURPOSE.md: Build useful software
+    observe_files:
+    - candidate.txt
+    - unapproved.txt
+    responses:
+    - node_path: build/develop/root/approval/sequence/plan_review/kernel-review/ask
+      fields:
+        decision: approve
+    - node_path: build/develop/root/accept/sequence/outcome_review/kernel-review/ask
+      fields:
+        decision: accept
+  inputs:
+    prompt: Improve the requested behavior.
+    type: build
+  mocks:
+    ops:
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: design response
+            files:
+            - path: design.md
+              description: Review evidence
+            questions: []
+            consultations: []
+            keys: []
+        artifacts:
+          design.md: '# design evidence'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: design
+                turn: 1review
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: test-plan response
+            files:
+            - path: test-statements.md
+              description: Review evidence
+            questions: []
+            consultations: []
+            keys: []
+        artifacts:
+          test-statements.md: '# test-plan evidence'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: test-plan
+                turn: 1review
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: agreed
+            thinking: Independent plan assessment
+            assessment: pass
+            files:
+            - path: iter1/consultant/plan-review.md
+              description: Review evidence
+        artifacts:
+          iter1/consultant/plan-review.md: '# Independent findings'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                expert: plan
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: implement response
+            files:
+            - path: implementation.md
+              description: Review evidence
+            questions: []
+            consultations: []
+            keys: []
+        artifacts:
+          implementation.md: '# implement evidence'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: implement
+                turn: 1review
+          worktree:
+            candidate.txt: implemented behavior
+            build.sh: |
+              #!/bin/sh
+              test "$(cat candidate.txt)" = "implemented behavior"
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: agreed
+            thinking: Independent outcome assessment
+            assessment: pass
+            files:
+            - path: iter1/consultant/outcome-review.md
+              description: Review evidence
+        artifacts:
+          iter1/consultant/outcome-review.md: '# Independent findings'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                expert: outcome
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: merged
+    value: true
+  - type: output_equals
+    path: disposition
+    value: implemented
+  - type: output_equals
+    path: verification.status
+    value: passed
+  - type: cel_true
+    expr: repositories.root.new_commits == 1
+  - type: cel_true
+    expr: repositories.root.files["candidate.txt"] == "implemented behavior"
+  - type: cel_true
+    expr: '!calls.exists(c, c.op == "extension_execution" && c.inputs.selector.contains("rule_gate"))'
+  - type: cel_true
+    expr: '!calls.exists(c, c.op.startsWith("recipe.run") || c.op == "recipes.run")'
+- id: plan-cancellation-stops-before-implementation
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          candidate.txt: original
+    observe_files:
+    - candidate.txt
+    - unapproved.txt
+    responses:
+    - node_path: build/develop/root/approval/sequence/plan_review/kernel-review/ask
+      fields:
+        decision: cancel
+  inputs:
+    prompt: Improve the requested behavior.
+  mocks:
+    ops:
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: design response
+            files:
+            - path: design.md
+              description: Review evidence
+            questions: []
+            consultations: []
+            keys: []
+        artifacts:
+          design.md: '# design evidence'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: design
+                turn: 1review
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: test-plan response
+            files:
+            - path: test-statements.md
+              description: Review evidence
+            questions: []
+            consultations: []
+            keys: []
+        artifacts:
+          test-statements.md: '# test-plan evidence'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: test-plan
+                turn: 1review
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: agreed
+            thinking: Independent plan assessment
+            assessment: pass
+            files:
+            - path: iter1/consultant/plan-review.md
+              description: Review evidence
+        artifacts:
+          iter1/consultant/plan-review.md: '# Independent findings'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                expert: plan
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: merged
+    value: false
+  - type: output_equals
+    path: disposition
+    value: cancelled
+  - type: cel_true
+    expr: '!calls.exists(c, c.op == "squashrebasemerge")'
+  - type: cel_true
+    expr: size(calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")))
+      == 3
+- id: outside-request-does-not-implement
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          candidate.txt: original
+    observe_files:
+    - candidate.txt
+    - unapproved.txt
+    responses: []
+  inputs:
+    prompt: Improve the requested behavior.
+  mocks:
+    ops:
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: outside
+            summary: design response
+            files:
+            - path: design.md
+              description: Review evidence
+            questions: []
+            consultations: []
+            keys: []
+        artifacts:
+          design.md: '# design evidence'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: design
+                turn: 1outside
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: merged
+    value: false
+  - type: output_equals
+    path: disposition
+    value: outside
+  - type: cel_true
+    expr: '!calls.exists(c, c.op == "squashrebasemerge")'
+- id: schema-enforcement-failure
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          candidate.txt: original
+    observe_files:
+    - candidate.txt
+    - unapproved.txt
+    responses: []
+    expect_error: 'command execution failed: exit status 1'
+  inputs:
+    prompt: Improve the requested behavior.
+  mocks:
+    ops:
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: false
+          response:
+            next: review
+            summary: design response
+            files:
+            - path: design.md
+              description: Review evidence
+            questions: []
+            consultations: []
+            keys: []
+        artifacts:
+          design.md: '# design evidence'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: design
+                turn: 1review
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: '!calls.exists(c, c.op == "squashrebasemerge")'
+- id: missing-design-cannot-request-approval
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          candidate.txt: original
+    observe_files:
+    - candidate.txt
+    - unapproved.txt
+    responses: []
+    expect_error: 'command execution failed: exit status 1'
+  inputs:
+    prompt: Improve the requested behavior.
+  mocks:
+    ops:
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: design response
+            files: []
+            questions: []
+            consultations: []
+            keys: []
+        artifacts: {}
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: design
+                turn: 0review
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: '!calls.exists(c, c.op == "squashrebasemerge")'
+- id: unknown-blocked-key-is-rejected
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          candidate.txt: original
+    observe_files:
+    - candidate.txt
+    - unapproved.txt
+    responses: []
+    expect_error: 'command execution failed: exit status 1'
+  inputs:
+    prompt: Improve the requested behavior.
+  mocks:
+    ops:
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: blocked
+            summary: design response
+            files:
+            - path: design.md
+              description: Review evidence
+            questions: []
+            consultations: []
+            keys:
+            - unknown
+        artifacts:
+          design.md: '# design evidence'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: design
+                turn: 1blocked
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: '!calls.exists(c, c.op == "squashrebasemerge")'
+- id: unapproved-submission-is-rejected
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          candidate.txt: original
+    observe_files:
+    - candidate.txt
+    - unapproved.txt
+    responses: []
+    expect_error: 'command execution failed: exit status 1'
+  inputs:
+    prompt: Improve the requested behavior.
+  mocks:
+    ops:
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: submit
+            summary: design response
+            files:
+            - path: design.md
+              description: Review evidence
+            questions: []
+            consultations: []
+            keys:
+            - api
+        artifacts:
+          design.md: '# design evidence'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: design
+                turn: 1submit
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: '!calls.exists(c, c.op == "squashrebasemerge")'
+- id: focused-answer-resumes-requesting-phase
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          candidate.txt: original
+    observe_files:
+    - candidate.txt
+    - unapproved.txt
+    responses:
+    - node_path: build/develop/root/questions/sequence/review/kernel-review/ask
+      fields:
+        compatibility: preserve
+    - node_path: build/develop/root/approval/sequence/plan_review/kernel-review/ask
+      fields:
+        decision: cancel
+  inputs:
+    prompt: Improve the requested behavior.
+  mocks:
+    ops:
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: ask_user
+            summary: design response
+            files:
+            - path: design.md
+              description: Review evidence
+            questions:
+            - id: compatibility
+              type: multiple_choice
+              question: Which compatibility behavior is required?
+              required: true
+              options:
+              - value: preserve
+                label: Preserve existing behavior
+              - value: replace
+                label: Replace existing behavior
+            consultations: []
+            keys: []
+        artifacts:
+          design.md: '# design evidence'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: design
+                turn: 1ask_user
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: design response
+            files:
+            - path: design.md
+              description: Review evidence
+            questions: []
+            consultations: []
+            keys: []
+        artifacts:
+          design.md: '# design evidence'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: design
+                turn: 1review
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: test-plan response
+            files:
+            - path: test-statements.md
+              description: Review evidence
+            questions: []
+            consultations: []
+            keys: []
+        artifacts:
+          test-statements.md: '# test-plan evidence'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: test-plan
+                turn: 1review
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: agreed
+            thinking: Independent plan assessment
+            assessment: pass
+            files:
+            - path: iter1/consultant/plan-review.md
+              description: Review evidence
+        artifacts:
+          iter1/consultant/plan-review.md: '# Independent findings'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                expert: plan
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: merged
+    value: false
+  - type: output_equals
+    path: disposition
+    value: cancelled
+  - type: cel_true
+    expr: '!calls.exists(c, c.op == "squashrebasemerge")'
+  - type: cel_true
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@"))[1].artifacts["feedback.json"].contains("preserve")
+  - type: cel_true
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@"))[1].inputs.inputs.session
+      == calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@"))[0].outputs.session
+  - type: cel_true
+    expr: '!calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@"))[1].inputs.inputs.prompt.contains("Which
+      compatibility")'
+  - type: cel_true
+    expr: size(reviews[0].form.fields) == 2
+- id: annotated-approval-requires-revision
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          candidate.txt: original
+    observe_files:
+    - candidate.txt
+    - unapproved.txt
+    responses:
+    - node_path: build/develop/root/approval/sequence/plan_review/kernel-review/ask
+      fields:
+        decision: approve
+      attachments:
+        annotations: fixtures/design-edits.md
+    - node_path: build/develop/root/approval/sequence/plan_review/kernel-review/ask
+      fields:
+        decision: cancel
+  inputs:
+    prompt: Improve the requested behavior.
+  mocks:
+    ops:
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: design response
+            files:
+            - path: design.md
+              description: Review evidence
+            questions: []
+            consultations: []
+            keys: []
+        artifacts:
+          design.md: '# design evidence'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: design
+                turn: 1review
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: test-plan response
+            files:
+            - path: test-statements.md
+              description: Review evidence
+            questions: []
+            consultations: []
+            keys: []
+        artifacts:
+          test-statements.md: '# test-plan evidence'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: test-plan
+                turn: 1review
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: agreed
+            thinking: Independent plan assessment
+            assessment: pass
+            files:
+            - path: iter1/consultant/plan-review.md
+              description: Review evidence
+        artifacts:
+          iter1/consultant/plan-review.md: '# Independent findings'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                expert: plan
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: design response
+            files:
+            - path: design.md
+              description: Review evidence
+            questions: []
+            consultations: []
+            keys: []
+        artifacts:
+          design.md: '# design evidence'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: design
+                turn: 1review
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: test-plan response
+            files:
+            - path: test-statements.md
+              description: Review evidence
+            questions: []
+            consultations: []
+            keys: []
+        artifacts:
+          test-statements.md: '# test-plan evidence'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: test-plan
+                turn: 1review
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: agreed
+            thinking: Independent plan assessment
+            assessment: pass
+            files:
+            - path: iter1/consultant/plan-review.md
+              description: Review evidence
+        artifacts:
+          iter1/consultant/plan-review.md: '# Independent findings'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                expert: plan
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: merged
+    value: false
+  - type: output_equals
+    path: disposition
+    value: cancelled
+  - type: cel_true
+    expr: '!calls.exists(c, c.op == "squashrebasemerge")'
+  - type: cel_true
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@"))[3].artifacts.exists(k,k.endsWith("design-edits.md"))
+  - type: cel_true
+    expr: size(reviews) == 2
+  - type: cel_true
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")).all(c,
+      c.inputs.inputs.prompt.contains("Implement the human-approved") == false)
+- id: agreement-on-adverse-findings-requires-revision
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          candidate.txt: original
+    observe_files:
+    - candidate.txt
+    - unapproved.txt
+    responses:
+    - node_path: build/develop/root/approval/sequence/plan_review/kernel-review/ask
+      fields:
+        decision: cancel
+  inputs:
+    prompt: Improve the requested behavior.
+  mocks:
+    ops:
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: design response
+            files:
+            - path: design.md
+              description: Review evidence
+            questions: []
+            consultations: []
+            keys: []
+        artifacts:
+          design.md: '# design evidence'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: design
+                turn: 1review
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: test-plan response
+            files:
+            - path: test-statements.md
+              description: Review evidence
+            questions: []
+            consultations: []
+            keys: []
+        artifacts:
+          test-statements.md: '# test-plan evidence'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: test-plan
+                turn: 1review
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: agreed
+            thinking: Independent plan assessment
+            assessment: revise
+            files:
+            - path: iter1/consultant/plan-review.md
+              description: Review evidence
+        artifacts:
+          iter1/consultant/plan-review.md: '# Independent findings'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                expert: plan
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: design response
+            files:
+            - path: design.md
+              description: Review evidence
+            questions: []
+            consultations: []
+            keys: []
+        artifacts:
+          design.md: '# design evidence'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: design
+                turn: 1review
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: test-plan response
+            files:
+            - path: test-statements.md
+              description: Review evidence
+            questions: []
+            consultations: []
+            keys: []
+        artifacts:
+          test-statements.md: '# test-plan evidence'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: test-plan
+                turn: 1review
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: agreed
+            thinking: Independent plan assessment
+            assessment: pass
+            files:
+            - path: iter1/consultant/plan-review.md
+              description: Review evidence
+        artifacts:
+          iter1/consultant/plan-review.md: '# Independent findings'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                expert: plan
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: merged
+    value: false
+  - type: output_equals
+    path: disposition
+    value: cancelled
+  - type: cel_true
+    expr: '!calls.exists(c, c.op == "squashrebasemerge")'
+  - type: cel_true
+    expr: size(reviews) == 1
+  - type: cel_true
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@"))[3].inputs.inputs.prompt.contains("Revise
+      the design")
+- id: adverse-outcome-is-fixed-before-acceptance
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          candidate.txt: original
+    observe_files:
+    - candidate.txt
+    - unapproved.txt
+    responses:
+    - node_path: build/develop/root/approval/sequence/plan_review/kernel-review/ask
+      fields:
+        decision: approve
+    - node_path: build/develop/root/accept/sequence/outcome_review/kernel-review/ask
+      fields:
+        decision: accept
+  inputs:
+    prompt: Improve the requested behavior.
+  mocks:
+    ops:
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: design response
+            files:
+            - path: design.md
+              description: Review evidence
+            questions: []
+            consultations: []
+            keys: []
+        artifacts:
+          design.md: '# design evidence'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: design
+                turn: 1review
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: test-plan response
+            files:
+            - path: test-statements.md
+              description: Review evidence
+            questions: []
+            consultations: []
+            keys: []
+        artifacts:
+          test-statements.md: '# test-plan evidence'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: test-plan
+                turn: 1review
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: agreed
+            thinking: Independent plan assessment
+            assessment: pass
+            files:
+            - path: iter1/consultant/plan-review.md
+              description: Review evidence
+        artifacts:
+          iter1/consultant/plan-review.md: '# Independent findings'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                expert: plan
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: implement response
+            files:
+            - path: implementation.md
+              description: Review evidence
+            questions: []
+            consultations: []
+            keys: []
+        artifacts:
+          implementation.md: '# implement evidence'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: implement
+                turn: 1review
+          worktree:
+            candidate.txt: implemented behavior
+            build.sh: |
+              #!/bin/sh
+              test "$(cat candidate.txt)" = "implemented behavior"
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: agreed
+            thinking: Independent outcome assessment
+            assessment: revise
+            files:
+            - path: iter1/consultant/outcome-review.md
+              description: Review evidence
+        artifacts:
+          iter1/consultant/outcome-review.md: '# Independent findings'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                expert: outcome
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: implement response
+            files:
+            - path: implementation.md
+              description: Review evidence
+            questions: []
+            consultations: []
+            keys: []
+        artifacts:
+          implementation.md: '# Revised implementation'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: implement
+                turn: 1review
+          worktree:
+            candidate.txt: implemented behavior
+            build.sh: |
+              #!/bin/sh
+              test "$(cat candidate.txt)" = "implemented behavior"
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: agreed
+            thinking: Independent outcome assessment
+            assessment: pass
+            files:
+            - path: iter1/consultant/outcome-review.md
+              description: Review evidence
+        artifacts:
+          iter1/consultant/outcome-review.md: '# Independent findings'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                expert: outcome
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: merged
+    value: true
+  - type: output_equals
+    path: disposition
+    value: implemented
+  - type: output_equals
+    path: verification.status
+    value: passed
+  - type: cel_true
+    expr: repositories.root.new_commits == 1
+  - type: cel_true
+    expr: repositories.root.files["candidate.txt"] == "implemented behavior"
+  - type: cel_true
+    expr: '!calls.exists(c, c.op == "extension_execution" && c.inputs.selector.contains("rule_gate"))'
+  - type: cel_true
+    expr: '!calls.exists(c, c.op.startsWith("recipe.run") || c.op == "recipes.run")'
+  - type: cel_true
+    expr: size(calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@")))
+      == 7
+  - type: cel_true
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@"))[5].artifacts["iter1/consultant/outcome-review.md"].contains("Independent
+      findings")
+- id: failed-verification-requires-repair
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          candidate.txt: original
+    observe_files:
+    - candidate.txt
+    - unapproved.txt
+    responses:
+    - node_path: build/develop/root/approval/sequence/plan_review/kernel-review/ask
+      fields:
+        decision: approve
+    - node_path: build/develop/root/accept/sequence/outcome_review/kernel-review/ask
+      fields:
+        decision: accept
+  inputs:
+    prompt: Improve the requested behavior.
+  mocks:
+    ops:
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: design response
+            files:
+            - path: design.md
+              description: Review evidence
+            questions: []
+            consultations: []
+            keys: []
+        artifacts:
+          design.md: '# design evidence'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: design
+                turn: 1review
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: test-plan response
+            files:
+            - path: test-statements.md
+              description: Review evidence
+            questions: []
+            consultations: []
+            keys: []
+        artifacts:
+          test-statements.md: '# test-plan evidence'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: test-plan
+                turn: 1review
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: agreed
+            thinking: Independent plan assessment
+            assessment: pass
+            files:
+            - path: iter1/consultant/plan-review.md
+              description: Review evidence
+        artifacts:
+          iter1/consultant/plan-review.md: '# Independent findings'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                expert: plan
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: implement response
+            files:
+            - path: implementation.md
+              description: Review evidence
+            questions: []
+            consultations: []
+            keys: []
+        artifacts:
+          implementation.md: '# implement evidence'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: implement
+                turn: 1review
+          worktree:
+            candidate.txt: implemented behavior
+            build.sh: |
+              exit 1
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: agreed
+            thinking: Independent outcome assessment
+            assessment: pass
+            files:
+            - path: iter1/consultant/outcome-review.md
+              description: Review evidence
+        artifacts:
+          iter1/consultant/outcome-review.md: '# Independent findings'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                expert: outcome
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: implement response
+            files:
+            - path: implementation.md
+              description: Review evidence
+            questions: []
+            consultations: []
+            keys: []
+        artifacts:
+          implementation.md: '# implement evidence'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: implement
+                turn: 1review
+          worktree:
+            candidate.txt: implemented behavior
+            build.sh: |
+              #!/bin/sh
+              test "$(cat candidate.txt)" = "implemented behavior"
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: agreed
+            thinking: Independent outcome assessment
+            assessment: pass
+            files:
+            - path: iter1/consultant/outcome-review.md
+              description: Review evidence
+        artifacts:
+          iter1/consultant/outcome-review.md: '# Independent findings'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                expert: outcome
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: merged
+    value: true
+  - type: output_equals
+    path: disposition
+    value: implemented
+  - type: output_equals
+    path: verification.status
+    value: passed
+  - type: cel_true
+    expr: repositories.root.new_commits == 1
+  - type: cel_true
+    expr: repositories.root.files["candidate.txt"] == "implemented behavior"
+  - type: cel_true
+    expr: '!calls.exists(c, c.op == "extension_execution" && c.inputs.selector.contains("rule_gate"))'
+  - type: cel_true
+    expr: '!calls.exists(c, c.op.startsWith("recipe.run") || c.op == "recipes.run")'
+  - type: cel_true
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@"))[5].artifacts["verification.md"].contains("false")
+- id: missing-verification-is-not-a-pass
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          candidate.txt: original
+    observe_files:
+    - candidate.txt
+    - unapproved.txt
+    responses:
+    - node_path: build/develop/root/approval/sequence/plan_review/kernel-review/ask
+      fields:
+        decision: approve
+    - node_path: build/develop/root/accept/sequence/outcome_review/kernel-review/ask
+      fields:
+        decision: accept
+  inputs:
+    prompt: Improve the requested behavior.
+  mocks:
+    ops:
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: design response
+            files:
+            - path: design.md
+              description: Review evidence
+            questions: []
+            consultations: []
+            keys: []
+        artifacts:
+          design.md: '# design evidence'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: design
+                turn: 1review
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: test-plan response
+            files:
+            - path: test-statements.md
+              description: Review evidence
+            questions: []
+            consultations: []
+            keys: []
+        artifacts:
+          test-statements.md: '# test-plan evidence'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: test-plan
+                turn: 1review
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: agreed
+            thinking: Independent plan assessment
+            assessment: pass
+            files:
+            - path: iter1/consultant/plan-review.md
+              description: Review evidence
+        artifacts:
+          iter1/consultant/plan-review.md: '# Independent findings'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                expert: plan
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: implement response
+            files:
+            - path: implementation.md
+              description: Review evidence
+            questions: []
+            consultations: []
+            keys: []
+        artifacts:
+          implementation.md: '# implement evidence'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: implement
+                turn: 1review
+          worktree:
+            candidate.txt: implemented behavior
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: agreed
+            thinking: Independent outcome assessment
+            assessment: pass
+            files:
+            - path: iter1/consultant/outcome-review.md
+              description: Review evidence
+        artifacts:
+          iter1/consultant/outcome-review.md: '# Independent findings'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                expert: outcome
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: implement response
+            files:
+            - path: implementation.md
+              description: Review evidence
+            questions: []
+            consultations: []
+            keys: []
+        artifacts:
+          implementation.md: '# implement evidence'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: implement
+                turn: 1review
+          worktree:
+            candidate.txt: implemented behavior
+            build.sh: |
+              #!/bin/sh
+              test "$(cat candidate.txt)" = "implemented behavior"
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: agreed
+            thinking: Independent outcome assessment
+            assessment: pass
+            files:
+            - path: iter1/consultant/outcome-review.md
+              description: Review evidence
+        artifacts:
+          iter1/consultant/outcome-review.md: '# Independent findings'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                expert: outcome
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: merged
+    value: true
+  - type: output_equals
+    path: disposition
+    value: implemented
+  - type: output_equals
+    path: verification.status
+    value: passed
+  - type: cel_true
+    expr: repositories.root.new_commits == 1
+  - type: cel_true
+    expr: repositories.root.files["candidate.txt"] == "implemented behavior"
+  - type: cel_true
+    expr: '!calls.exists(c, c.op == "extension_execution" && c.inputs.selector.contains("rule_gate"))'
+  - type: cel_true
+    expr: '!calls.exists(c, c.op.startsWith("recipe.run") || c.op == "recipes.run")'
+  - type: cel_true
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@"))[5].artifacts["verification.md"].contains("Skipped")
+- id: annotated-outcome-requires-reinspection
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          candidate.txt: original
+    observe_files:
+    - candidate.txt
+    - unapproved.txt
+    responses:
+    - node_path: build/develop/root/approval/sequence/plan_review/kernel-review/ask
+      fields:
+        decision: approve
+    - node_path: build/develop/root/accept/sequence/outcome_review/kernel-review/ask
+      fields:
+        decision: accept
+      attachments:
+        annotations: fixtures/outcome-edits.md
+    - node_path: build/develop/root/accept/sequence/outcome_review/kernel-review/ask
+      fields:
+        decision: accept
+  inputs:
+    prompt: Improve the requested behavior.
+  mocks:
+    ops:
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: design response
+            files:
+            - path: design.md
+              description: Review evidence
+            questions: []
+            consultations: []
+            keys: []
+        artifacts:
+          design.md: '# design evidence'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: design
+                turn: 1review
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: test-plan response
+            files:
+            - path: test-statements.md
+              description: Review evidence
+            questions: []
+            consultations: []
+            keys: []
+        artifacts:
+          test-statements.md: '# test-plan evidence'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: test-plan
+                turn: 1review
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: agreed
+            thinking: Independent plan assessment
+            assessment: pass
+            files:
+            - path: iter1/consultant/plan-review.md
+              description: Review evidence
+        artifacts:
+          iter1/consultant/plan-review.md: '# Independent findings'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                expert: plan
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: implement response
+            files:
+            - path: implementation.md
+              description: Review evidence
+            questions: []
+            consultations: []
+            keys: []
+        artifacts:
+          implementation.md: '# implement evidence'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: implement
+                turn: 1review
+          worktree:
+            candidate.txt: implemented behavior
+            build.sh: |
+              #!/bin/sh
+              test "$(cat candidate.txt)" = "implemented behavior"
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: agreed
+            thinking: Independent outcome assessment
+            assessment: pass
+            files:
+            - path: iter1/consultant/outcome-review.md
+              description: Review evidence
+        artifacts:
+          iter1/consultant/outcome-review.md: '# Independent findings'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                expert: outcome
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: implement response
+            files:
+            - path: implementation.md
+              description: Review evidence
+            questions: []
+            consultations: []
+            keys: []
+        artifacts:
+          implementation.md: '# implement evidence'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: implement
+                turn: 1review
+          worktree:
+            candidate.txt: implemented behavior
+            build.sh: |
+              #!/bin/sh
+              test "$(cat candidate.txt)" = "implemented behavior"
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: agreed
+            thinking: Independent outcome assessment
+            assessment: pass
+            files:
+            - path: iter1/consultant/outcome-review.md
+              description: Review evidence
+        artifacts:
+          iter1/consultant/outcome-review.md: '# Independent findings'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                expert: outcome
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: merged
+    value: true
+  - type: output_equals
+    path: disposition
+    value: implemented
+  - type: output_equals
+    path: verification.status
+    value: passed
+  - type: cel_true
+    expr: repositories.root.new_commits == 1
+  - type: cel_true
+    expr: repositories.root.files["candidate.txt"] == "implemented behavior"
+  - type: cel_true
+    expr: '!calls.exists(c, c.op == "extension_execution" && c.inputs.selector.contains("rule_gate"))'
+  - type: cel_true
+    expr: '!calls.exists(c, c.op.startsWith("recipe.run") || c.op == "recipes.run")'
+  - type: cel_true
+    expr: size(reviews) == 3
+  - type: cel_true
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@"))[5].artifacts.exists(k,k.endsWith("outcome-edits.md"))
+- id: revision-without-direction-repeats-focused-review
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          candidate.txt: original
+    observe_files:
+    - candidate.txt
+    - unapproved.txt
+    responses:
+    - node_path: build/develop/root/approval/sequence/plan_review/kernel-review/ask
+      fields:
+        decision: revise
+    - node_path: build/develop/root/approval/sequence/plan_review/kernel-review/ask
+      fields:
+        decision: approve
+    - node_path: build/develop/root/accept/sequence/outcome_review/kernel-review/ask
+      fields:
+        decision: accept
+  inputs:
+    prompt: Improve the requested behavior.
+  mocks:
+    ops:
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: design response
+            files:
+            - path: design.md
+              description: Review evidence
+            questions: []
+            consultations: []
+            keys: []
+        artifacts:
+          design.md: '# design evidence'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: design
+                turn: 1review
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: test-plan response
+            files:
+            - path: test-statements.md
+              description: Review evidence
+            questions: []
+            consultations: []
+            keys: []
+        artifacts: {}
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: test-plan
+                turn: 1review
+          artifact_files:
+            test-statements.md: build-kernel-statements.md
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: agreed
+            thinking: Independent plan assessment
+            assessment: pass
+            files:
+            - path: iter1/consultant/plan-review.md
+              description: Review evidence
+        artifacts:
+          iter1/consultant/plan-review.md: '# Independent findings'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                expert: plan
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: implement response
+            files:
+            - path: implementation.md
+              description: Review evidence
+            questions: []
+            consultations: []
+            keys: []
+        artifacts:
+          implementation.md: '# implement evidence'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: implement
+                turn: 1review
+          worktree:
+            candidate.txt: implemented behavior
+            build.sh: |
+              #!/bin/sh
+              test "$(cat candidate.txt)" = "implemented behavior"
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: agreed
+            thinking: Independent outcome assessment
+            assessment: pass
+            files:
+            - path: iter1/consultant/outcome-review.md
+              description: Review evidence
+        artifacts:
+          iter1/consultant/outcome-review.md: '# Independent findings'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                expert: outcome
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: merged
+    value: true
+  - type: output_equals
+    path: disposition
+    value: implemented
+  - type: output_equals
+    path: verification.status
+    value: passed
+  - type: cel_true
+    expr: repositories.root.new_commits == 1
+  - type: cel_true
+    expr: repositories.root.files["candidate.txt"] == "implemented behavior"
+  - type: cel_true
+    expr: '!calls.exists(c, c.op == "extension_execution" && c.inputs.selector.contains("rule_gate"))'
+  - type: cel_true
+    expr: '!calls.exists(c, c.op.startsWith("recipe.run") || c.op == "recipes.run")'
+  - type: cel_true
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@"))[0].inputs.inputs.instructions.contains("root
+      PURPOSE.md")
+  - type: cel_true
+    expr: '!("instructions" in calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@"))[1].inputs.inputs)'
+  - type: cel_true
+    expr: '!("instructions" in calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@"))[3].inputs.inputs)'
+  - type: cel_true
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@"))[3].inputs.inputs.session
+      == calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@"))[1].outputs.session
+  - type: cel_true
+    expr: '!calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@"))[0].inputs.inputs.prompt.contains("result.json")'
+  - type: cel_true
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@"))[3].artifacts["test-statements.md"].contains("Build
+      kernel test statements")
+  - type: cel_true
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.contains("//codex@"))[4].worktree["candidate.txt"]
+      == "implemented behavior"
+  - type: cel_true
+    expr: size(reviews) == 3
+  - type: cel_true
+    expr: calls.filter(c, c.op == "input")[1].inputs.form.fields[1].question.contains("Please describe")
+- id: unknown-plan-prerequisite-rejects-approval
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          candidate.txt: original
+    observe_files:
+    - candidate.txt
+    - unapproved.txt
+    expect_error: 'command execution failed: exit status 1'
+  inputs:
+    prompt: Improve the requested behavior.
+  mocks:
+    ops:
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: design response
+            files:
+            - path: design.md
+              description: Review evidence
+            questions: []
+            consultations: []
+            keys:
+            - unknown
+        artifacts:
+          design.md: '# design evidence'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: design
+                turn: 1review
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: test-plan response
+            files:
+            - path: test-statements.md
+              description: Review evidence
+            questions: []
+            consultations: []
+            keys: []
+        artifacts: {}
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: test-plan
+                turn: 1review
+          artifact_files:
+            test-statements.md: build-kernel-statements.md
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: '!calls.exists(c, c.op == "input" || c.op == "squashrebasemerge")'
+  - type: cel_true
+    expr: repositories.root.new_commits == 0
