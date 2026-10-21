@@ -83,7 +83,7 @@ cases:
             CELL_DESCRIPTIONS.md: |-
               # Cells
               alpha and beta: approved responsibilities.
-            .c2j/config.yaml: |
+            .c2/config.yaml: |
               dependents:
                 - repo: alpha
                   ref: main
@@ -102,14 +102,13 @@ cases:
   - type: cel_true
     expr: repositories.root.new_commits == 1 && !("PURPOSE.md" in repositories.root.changed_files)
   - type: cel_true
-    expr: repositories.root.files[".c2j/config.yaml"].contains("alpha")
+    expr: repositories.root.files[".c2/config.yaml"].contains("alpha")
   - type: cel_true
     expr: size(calls.filter(c, c.op == "squashrebasemerge")) == 3
   - type: cel_true
     expr: calls.filter(c, c.op == "extension_execution")[1].artifacts["created.json"].contains("revision")
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution")[1].inputs.inputs.session == calls.filter(c, c.op
-      == "extension_execution")[0].outputs.session
+    expr: calls.filter(c, c.op == "extension_execution")[1].inputs.inputs.session == calls.filter(c, c.op == "extension_execution")[0].outputs.session
   - type: cel_true
     expr: outputs.created_cells.all(c, c.ref == "refs/heads/main")
   - type: cel_true
@@ -287,7 +286,11 @@ cases:
           keep.txt: original
       alpha: {}
       beta: {}
-    responses: []
+    responses:
+    - node_path: create-main/run/create/root/review/review/creation-review/repair/sequence/repair/result-repair/review/review/kernel-review/ask
+      fields:
+        decision: cancel
+        feedback: ''
   mocks:
     ops:
     - match:
@@ -320,6 +323,7 @@ cases:
               type: c2ops.codex.session/v1
               metadata:
                 phase: creation-review
+      repeat: true
     - repeat: true
       match:
         op: command_execution
@@ -327,7 +331,7 @@ cases:
         mode: passthrough
   assertions:
   - type: cel_true
-    expr: outputs.disposition == "invalid" && !outputs.merged
+    expr: outputs.disposition == "cancelled" && !outputs.merged
 - id: duplicate-destination
   type: integration_case
   inputs:
@@ -340,7 +344,11 @@ cases:
           keep.txt: original
       alpha: {}
       beta: {}
-    responses: []
+    responses:
+    - node_path: create-main/run/create/root/review/review/creation-review/repair/sequence/repair/result-repair/review/review/kernel-review/ask
+      fields:
+        decision: cancel
+        feedback: ''
   mocks:
     ops:
     - match:
@@ -379,6 +387,7 @@ cases:
               type: c2ops.codex.session/v1
               metadata:
                 phase: creation-review
+      repeat: true
     - repeat: true
       match:
         op: command_execution
@@ -386,7 +395,7 @@ cases:
         mode: passthrough
   assertions:
   - type: cel_true
-    expr: outputs.disposition == "invalid" && !outputs.merged
+    expr: outputs.disposition == "cancelled" && !outputs.merged
 - id: existing-branch
   type: integration_case
   inputs:
@@ -548,11 +557,9 @@ cases:
   - type: cel_true
     expr: size(reviews) == 2 && !calls.exists(c, c.op == "squashrebasemerge")
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution")[1].inputs.inputs.session == calls.filter(c, c.op
-      == "extension_execution")[0].outputs.session
+    expr: calls.filter(c, c.op == "extension_execution")[1].inputs.inputs.session == calls.filter(c, c.op == "extension_execution")[0].outputs.session
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution")[1].artifacts["feedback.json"].contains("simpler
-      technology")
+    expr: calls.filter(c, c.op == "extension_execution")[1].artifacts["feedback.json"].contains("simpler technology")
   - type: cel_true
     expr: '!("instructions" in calls.filter(c, c.op == "extension_execution")[1].inputs.inputs)'
 - id: annotations-require-revision
@@ -735,7 +742,7 @@ cases:
             CELL_DESCRIPTIONS.md: |-
               # Cells
               alpha and beta: approved responsibilities.
-            .c2j/config.yaml: |
+            .c2/config.yaml: |
               dependents:
                 - repo: alpha
                   ref: main
@@ -1086,5 +1093,449 @@ cases:
     expr: size(outputs.created_cells) == 0
   - type: cel_true
     expr: repositories.alpha.new_commits == 0 && repositories.root.new_commits == 0
+  - type: cel_true
+    expr: '!calls.exists(c, c.op == "squashrebasemerge")'
+- id: creation-resolves-linked-purpose-references
+  type: integration_case
+  inputs:
+    prompt: Create the approved cells.
+  runtime:
+    cells:
+      root:
+        files:
+          PURPOSE.md: Project root
+          keep.txt: original
+      alpha: {}
+      beta: {}
+    responses:
+    - node_path: create-main/run/create/root/review/review/creation-review/review/sequence/review/kernel-review/ask
+      fields:
+        decision: approve
+  mocks:
+    ops:
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: review
+            summary: Creation proposal
+            cells:
+            - name: alpha
+              repo: alpha
+              purpose_path: /scratch/job/outbox/cells/alpha/PURPOSE.md
+            - name: beta
+              repo: beta
+              purpose_path: /scratch/job/outbox/cells/beta/PURPOSE.md
+            files:
+            - path: outbox/proposal.md
+              description: Review document
+            - path: outbox/cells/alpha/PURPOSE.md
+              description: Review document
+            - path: outbox/cells/beta/PURPOSE.md
+              description: Review document
+            questions: []
+        artifacts:
+          proposal.md: |-
+            # Proposed cells
+            Project fit, excluded alternatives, technology guidance and root catalog entries.
+          cells/alpha/PURPOSE.md: |
+            # alpha
+            Approved responsibilities.
+          cells/beta/PURPOSE.md: |
+            # beta
+            Approved responsibilities.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: creation-review
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            completed: true
+            summary: Registered published cells
+        artifacts:
+          completion.md: |-
+            # Created cells
+            Continue with feature consultations.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: registered
+          worktree:
+            CELL_DESCRIPTIONS.md: |-
+              # Cells
+              alpha and beta: approved responsibilities.
+            .c2/config.yaml: |
+              dependents:
+                - repo: alpha
+                  ref: main
+                - repo: beta
+                  ref: main
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.disposition == "created" && size(outputs.created_cells) == 2
+  - type: cel_true
+    expr: size(reviews) == 1
+  - type: cel_true
+    expr: repositories.root.new_commits == 1 && !("PURPOSE.md" in repositories.root.changed_files)
+  - type: cel_true
+    expr: repositories.root.files[".c2/config.yaml"].contains("alpha")
+  - type: cel_true
+    expr: size(calls.filter(c, c.op == "squashrebasemerge")) == 3
+  - type: cel_true
+    expr: calls.filter(c, c.op == "extension_execution")[1].artifacts["created.json"].contains("revision")
+  - type: cel_true
+    expr: calls.filter(c, c.op == "extension_execution")[1].inputs.inputs.session == calls.filter(c, c.op == "extension_execution")[0].outputs.session
+  - type: cel_true
+    expr: outputs.created_cells.all(c, c.ref == "refs/heads/main")
+  - type: cel_true
+    expr: '!("ref" in calls.filter(c, c.op == "extension_execution")[0].inputs.inputs.output.schema.properties.cells.items.properties)'
+- id: registration-evidence-repair-does-not-republish
+  type: integration_case
+  inputs:
+    prompt: Create the approved cells.
+  runtime:
+    cells:
+      root:
+        files:
+          PURPOSE.md: Project root
+          keep.txt: original
+      alpha: {}
+      beta: {}
+    responses:
+    - node_path: create-main/run/create/root/review/review/creation-review/review/sequence/review/kernel-review/ask
+      fields:
+        decision: approve
+  mocks:
+    ops:
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: review
+            summary: Creation proposal
+            cells:
+            - name: alpha
+              repo: alpha
+              purpose_path: cells/alpha/PURPOSE.md
+            - name: beta
+              repo: beta
+              purpose_path: cells/beta/PURPOSE.md
+            files:
+            - path: proposal.md
+              description: Review document
+            - path: cells/alpha/PURPOSE.md
+              description: Review document
+            - path: cells/beta/PURPOSE.md
+              description: Review document
+            questions: []
+        artifacts:
+          proposal.md: |-
+            # Proposed cells
+            Project fit, excluded alternatives, technology guidance and root catalog entries.
+          cells/alpha/PURPOSE.md: |
+            # alpha
+            Approved responsibilities.
+          cells/beta/PURPOSE.md: |
+            # beta
+            Approved responsibilities.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: creation-review
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            completed: true
+            summary: Registered published cells
+        artifacts: {}
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: registered
+          worktree:
+            CELL_DESCRIPTIONS.md: |-
+              # Cells
+              alpha and beta: approved responsibilities.
+            .c2/config.yaml: |
+              dependents:
+                - repo: alpha
+                  ref: main
+                - repo: beta
+                  ref: main
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            completed: true
+            summary: Registered published cells
+        artifacts:
+          completion.md: |-
+            # Created cells
+            Continue with feature consultations.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: registered
+          worktree:
+            unapproved-repair.txt: must not merge
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.disposition == "created" && outputs.merged
+  - type: cel_true
+    expr: size(calls.filter(c, c.op == "squashrebasemerge")) == 3
+  - type: cel_true
+    expr: size(calls.filter(c, c.op == "extension_execution")) == 3
+  - type: cel_true
+    expr: calls.filter(c, c.op == "extension_execution")[2].inputs.inputs.session == calls.filter(c, c.op == "extension_execution")[1].outputs.session
+  - type: cel_true
+    expr: '!("unapproved-repair.txt" in repositories.root.files)'
+- id: clarification-without-artifacts
+  type: integration_case
+  inputs:
+    prompt: Create the approved cells.
+  runtime:
+    cells:
+      root:
+        files:
+          PURPOSE.md: Project root
+          keep.txt: original
+      alpha: {}
+      beta: {}
+    responses:
+    - node_path: create-main/run/create/root/review/review/creation-review/questions/sequence/review/kernel-review/ask
+      fields:
+        technology: Existing Go toolchain
+    - node_path: create-main/run/create/root/review/review/creation-review/review/sequence/review/kernel-review/ask
+      fields:
+        decision: cancel
+  mocks:
+    ops:
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: ask_user
+            summary: Creation proposal
+            cells: []
+            files: []
+            questions:
+            - id: technology
+              type: short_answer
+              question: Which existing runtime should this cell use?
+              required: true
+              options: []
+        artifacts: {}
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: creation-review
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: review
+            summary: Creation proposal
+            cells:
+            - name: alpha
+              repo: alpha
+              purpose_path: cells/alpha/PURPOSE.md
+            files:
+            - path: proposal.md
+              description: Review document
+            - path: cells/alpha/PURPOSE.md
+              description: Review document
+            questions: []
+        artifacts:
+          proposal.md: |-
+            # Proposed cells
+            Project fit, excluded alternatives, technology guidance and root catalog entries.
+          cells/alpha/PURPOSE.md: |
+            # alpha
+            Approved responsibilities.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: creation-review
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: size(reviews) == 2 && !outputs.merged
+  - type: cel_true
+    expr: calls.filter(c, c.op == "extension_execution")[1].artifacts["feedback.json"].contains("Go toolchain")
+  - type: cel_true
+    expr: '!has(reviews[0].form.documents) || size(reviews[0].form.documents) == 0'
+  - type: cel_true
+    expr: '!calls.exists(c, c.node_path.contains("/repair/"))'
+  - type: cel_true
+    expr: calls.filter(c, c.op == "extension_execution")[1].inputs.inputs.session == calls.filter(c, c.op == "extension_execution")[0].outputs.session
+  - type: cel_true
+    expr: calls.filter(c, c.op == "input")[0].node_path.contains("/questions/")
+  - type: cel_true
+    expr: '!calls.exists(c, c.op == "squashrebasemerge")'
+- id: clarification-with-unresolved-optional-references
+  type: integration_case
+  inputs:
+    prompt: Create the approved cells.
+  runtime:
+    cells:
+      root:
+        files:
+          PURPOSE.md: Project root
+          keep.txt: original
+      alpha: {}
+      beta: {}
+    responses:
+    - node_path: create-main/run/create/root/review/review/creation-review/questions/sequence/review/kernel-review/ask
+      fields:
+        technology: Existing Go toolchain
+    - node_path: create-main/run/create/root/review/review/creation-review/review/sequence/review/kernel-review/ask
+      fields:
+        decision: cancel
+  mocks:
+    ops:
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: ask_user
+            summary: Creation proposal
+            cells:
+            - name: alpha
+              repo: alpha
+              purpose_path: missing-purpose.md
+            files:
+            - path: missing.md
+              description: Not available yet
+            - path: reply.md
+              description: Ambiguous reference
+            questions:
+            - id: technology
+              type: short_answer
+              question: Which existing runtime should this cell use?
+              required: true
+              options: []
+        artifacts:
+          a/reply.md: First draft
+          b/reply.md: Second draft
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: creation-review
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: review
+            summary: Creation proposal
+            cells:
+            - name: alpha
+              repo: alpha
+              purpose_path: cells/alpha/PURPOSE.md
+            files:
+            - path: proposal.md
+              description: Review document
+            - path: cells/alpha/PURPOSE.md
+              description: Review document
+            questions: []
+        artifacts:
+          proposal.md: |-
+            # Proposed cells
+            Project fit, excluded alternatives, technology guidance and root catalog entries.
+          cells/alpha/PURPOSE.md: |
+            # alpha
+            Approved responsibilities.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: creation-review
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: size(reviews) == 2 && !outputs.merged
+  - type: cel_true
+    expr: calls.filter(c, c.op == "extension_execution")[1].artifacts["feedback.json"].contains("Go toolchain")
+  - type: cel_true
+    expr: '!has(reviews[0].form.documents) || size(reviews[0].form.documents) == 0'
+  - type: cel_true
+    expr: '!calls.exists(c, c.node_path.contains("/repair/"))'
+  - type: cel_true
+    expr: calls.filter(c, c.op == "extension_execution")[1].inputs.inputs.session == calls.filter(c, c.op == "extension_execution")[0].outputs.session
+  - type: cel_true
+    expr: calls.filter(c, c.op == "input")[0].node_path.contains("/questions/")
   - type: cel_true
     expr: '!calls.exists(c, c.op == "squashrebasemerge")'

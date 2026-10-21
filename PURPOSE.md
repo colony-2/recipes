@@ -34,7 +34,7 @@ their authoring guidance so projects can use and specialize these workflows.
 - c2ops supplies selector-backed operations used by recipes.
   Missing capabilities or defects are specified and reported to their owners.
 - Project cells consume shared defaults or specialize them under
-  `.c2j/recipes/`; their own purposes and applicable instructions govern local work.
+  `.c2/recipes/`; their own purposes and applicable instructions govern local work.
 
 ## Boundary examples
 

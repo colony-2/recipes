@@ -1,0 +1,81 @@
+id: result-repair
+version: 1.0.0
+inputs:
+  turn: ${{ inputs.turn }}
+  issues: ${{ inputs.issues }}
+  documents: ${{ inputs.documents }}
+  session: ${{ inputs.?session.orValue({}) }}
+  attempts: ${{ int(inputs.?attempts.orValue(0)) }}
+state:
+  initial: evidence
+  states:
+    evidence:
+      op: command_execution
+      const: true
+      inputs:
+        env:
+          OUTBOX: ${{ context.environment.op.outbox }}
+          ISSUES: ${{ jq(inputs.issues, 'map("- " + .) | join("\n")') }}
+          DETAILS: |-
+            ${{ json_stringify({'issues': inputs.issues,
+              'previous_response': inputs.turn.result.?response.orValue({}),
+              'original_response': inputs.turn.?original_response.orValue({}),
+              'matches': inputs.turn.?matches.orValue([]),
+              'available_artifacts': inputs.turn.artifacts.map(k, k)}) }}
+        run: |
+          printf '%s\n' "$DETAILS" > "$OUTBOX/repair.json"
+          printf '# Agent result needs correction\n\n%s\n\nThe work and documents are preserved. Give direction for another correction attempt, or cancel. This review does not approve the proposed work.\n' "$ISSUES" > "$OUTBOX/repair.md"
+      transitions:
+      - to: automatic
+        when: inputs.attempts < 2 && size(inputs.turn.result.?session.orValue(inputs.session)) > 0 && size(inputs.turn.jobs.?job_ids.orValue([]))
+          == 0
+      - to: review
+        when: true
+    automatic:
+      sequence: []
+    review:
+      include: ./review.yaml
+      inputs:
+        title: Agent result needs correction
+        documents: |-
+          ${{ jq([inputs.documents, inputs.turn.artifacts,
+            {'repair.md': states.evidence.artifacts['repair.md']}], 'add') }}
+        fields:
+        - id: decision
+          type: multiple_choice
+          question: How should this result be corrected?
+          required: true
+          options:
+          - value: retry
+            label: Give direction and retry
+          - value: cancel
+            label: Cancel this work
+        - id: feedback
+          type: paragraph_text
+          question: Direction for correction; required to retry.
+          required: false
+        - id: annotations
+          type: file_upload
+          question: Optional corrected documents or annotations.
+          required: false
+      transitions:
+      - to: review
+        when: outputs.response.fields.decision == 'retry' && !outputs.changed
+outputs:
+  retry: ${{ state_exists('automatic') || states.review.outputs.response.fields.decision == 'retry' }}
+  attempts: '${{ state_exists(''automatic'') ? int(inputs.attempts) + 1 : 0 }}'
+  session: ${{ inputs.turn.result.?session.orValue(inputs.turn.?checkpoint.orValue(inputs.session)) }}
+  artifacts: >-
+    ${{ jq([inputs.turn.artifacts, state_output('review', 'response', {}).?artifact_refs.orValue({})], 'add') }}
+  documents: |-
+    ${{ jq([inputs.documents, inputs.turn.artifacts,
+      {'repair.json': states.evidence.artifacts['repair.json'], 'repair.md': states.evidence.artifacts['repair.md']},
+      state_output('review', 'documents', {})], 'add') }}
+  prompt: |
+    Correct the previous response using inbox/repair.json and the preserved documents.
+    Resolve the listed issues and return the full corrected response using the same schema.
+    Existing output documents are available in inbox and remain eligible: reference them
+    by their artifact names, or write corrected/missing documents to this turn's outbox.
+    Read feedback.json if human direction was provided. Stay in the same workflow phase.
+    Do not repeat implementation, submit jobs, push, or treat this correction as approval.
+  base_hash: ${{ inputs.turn.?base_hash.orValue('') }}

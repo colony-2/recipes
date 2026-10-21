@@ -1,0 +1,55 @@
+# Resolve declared references without changing stored artifact identities.
+# JSON normalization at CEL/jq boundaries handles native artifact refs and empty CEL lists.
+id: artifact-result
+version: 1.0.0
+inputs:
+  result: ${{ inputs.result }}
+  artifacts: ${{ inputs.artifacts }}
+  fields: ${{ inputs.?fields.orValue(['files.*.path']) }}
+sequence:
+- id: inventory
+  sequence: []
+  outputs:
+    artifacts: ${{ jq(inputs.artifacts, vars.inventory_filter) }}
+    references: >-
+      ${{ jq({'response': inputs.result.?response.orValue({}), 'fields': inputs.fields}, vars.reference_query) }}
+  inputs:
+    artifacts: ${{ inputs.artifacts }}
+    result: ${{ inputs.result }}
+    fields: ${{ inputs.fields }}
+- id: match
+  sequence: []
+  outputs:
+    matches: |-
+      ${{ inputs.references.map(r,
+        {'location': r.location, 'reference': r.reference,
+         'match': path_match(r.reference, jq(inputs.artifacts, 'keys'))}) }}
+  inputs:
+    references: ${{ sequence.inventory.outputs.references }}
+    artifacts: ${{ sequence.inventory.outputs.artifacts }}
+outputs:
+  result: >-
+    ${{ jq(json_parse(json_stringify({'result': inputs.result, 'matches': sequence.match.outputs.matches})), vars.apply_matches)
+    }}
+  artifacts: ${{ sequence.inventory.outputs.artifacts }}
+  matches: ${{ jq(json_parse(json_stringify(sequence.match.outputs.matches)), '. // []') }}
+  issues: ${{ jq(json_parse(json_stringify(sequence.match.outputs.matches)), vars.issue_query) }}
+vars:
+  inventory_filter: |-
+    with_entries(select(.key as $k |
+      (["__git_state_thin_pack__", "diff_from_parent.diff", "diff_from_base.diff",
+        "stdout.jsonl", "stderr.txt", "codex-progress.jsonl"] | index($k) | not)
+      and ($k | startswith("__c2j_objects__/") | not)))
+  reference_query: |-
+    .fields as $fields | .response |
+    [paths(strings) as $p |
+     ($p | map(if type == "number" then "*" else . end) | join(".")) as $field |
+     select($fields | index($field)) | {location: $p, reference: getpath($p)}]
+  apply_matches: |-
+    (.matches // []) as $matches | .result |
+    reduce ($matches[] | select(.match.status == "matched")) as $m
+    (.; .response |= setpath($m.location; $m.match.path))
+  issue_query: |-
+    (. // []) | map(select(.match.status != "matched")) |
+    map("Artifact reference \"" + .reference + "\": " + .match.status +
+        (if (.match.candidates | length) > 0 then "; candidates: " + (.match.candidates | tojson) else "" end))

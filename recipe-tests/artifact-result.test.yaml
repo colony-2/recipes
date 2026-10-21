@@ -1,0 +1,155 @@
+recipe: fixtures/artifact-result.yaml
+cases:
+- id: prefix-keeps-published-identity
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          documents/design.md: '# Design'
+  inputs:
+    response_json: '{"files": [{"path": "outbox/design.md"}]}'
+  mocks:
+    ops:
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.resolved.result.response.files[0].path == "design.md" && size(outputs.resolved.issues) == 0
+  - type: cel_true
+    expr: outputs.resolved.artifacts["design.md"] == outputs.published["design.md"]
+- id: ambiguous-does-not-guess
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          documents/a/reply.md: A
+          documents/b/reply.md: B
+  inputs:
+    response_json: '{"files": [{"path": "reply.md"}]}'
+  mocks:
+    ops:
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.resolved.result.response.files[0].path == "reply.md"
+  - type: cel_true
+    expr: outputs.resolved.matches[0].match.status == "ambiguous" && size(outputs.resolved.issues) == 1
+  - type: cel_true
+    expr: outputs.resolved.matches[0].match.candidates == ["a/reply.md", "b/reply.md"]
+- id: linked-purpose-references-agree
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          documents/cells/a/PURPOSE.md: '# A'
+  inputs:
+    response_json: '{"files": [{"path": "outbox/cells/a/PURPOSE.md"}], "cells": [{"name": "a", "purpose_path": "/scratch/job/outbox/cells/a/PURPOSE.md"}]}'
+    fields_json: '["files.*.path", "cells.*.purpose_path"]'
+  mocks:
+    ops:
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.resolved.result.response.files[0].path == "cells/a/PURPOSE.md"
+  - type: cel_true
+    expr: outputs.resolved.result.response.cells[0].purpose_path == outputs.resolved.result.response.files[0].path
+  - type: cel_true
+    expr: size(outputs.resolved.issues) == 0
+- id: logs-are-not-deliverables
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          documents/stdout.jsonl: log
+          documents/design.md: design
+  inputs:
+    response_json: '{"files": [{"path": "outbox/stdout.jsonl"}]}'
+  mocks:
+    ops:
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.resolved.matches[0].match.status == "not_found"
+  - type: cel_true
+    expr: '!("stdout.jsonl" in outputs.resolved.artifacts)'
+- id: escaping-reference-needs-correction
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          documents/design.md: design
+  inputs:
+    response_json: '{"files": [{"path": "../design.md"}]}'
+  mocks:
+    ops:
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.resolved.matches[0].match.status == "invalid" && size(outputs.resolved.issues) == 1
+- id: exact-name-wins
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          documents/design.md: current
+          documents/archive/design.md: old
+  inputs:
+    response_json: '{"files": [{"path": "design.md"}]}'
+  mocks:
+    ops:
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.resolved.result.response.files[0].path == "design.md" && size(outputs.resolved.issues) == 0
+  - type: cel_true
+    expr: outputs.resolved.artifacts["design.md"] == outputs.published["design.md"]
+- id: empty-inventory-needs-correction
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          documents/stdout.jsonl: log
+  inputs:
+    response_json: '{"files": [{"path": "outbox/stdout.jsonl"}]}'
+  mocks:
+    ops:
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.resolved.matches[0].match.status == "not_found"
+  - type: cel_true
+    expr: '!("stdout.jsonl" in outputs.resolved.artifacts)'

@@ -44,7 +44,7 @@ Use `ops/README.md` as the entrypoint to the per-op guides.
 
 ### Confirm cell resolution
 
-`c2j submit` targets the current cell by default. That works when the repo has a usable `.c2j/config.yaml`.
+`c2j submit` targets the current cell by default. That works when the repo has a usable `.c2/config.yaml`.
 
 Useful commands:
 
@@ -56,7 +56,7 @@ c2j init --stdout
 
 If the current directory does not resolve cleanly as a cell, either:
 
-- create or update `.c2j/config.yaml`, or
+- create or update `.c2/config.yaml`, or
 - pass `--cell <repo-or-path>` explicitly on submit
 
 ### Submit the recipe file directly

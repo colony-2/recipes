@@ -50,7 +50,7 @@ Use a git selector when you need an exact remote recipe ref:
 
 ```bash
 c2j test run \
-  --recipe 'git+https://github.com/acme/demo.git//.c2j/recipes/default.yaml@main' \
+  --recipe 'git+https://github.com/acme/demo.git//.c2/recipes/default.yaml@main' \
   --file ./tests/default.scenario.md
 ```
 
@@ -145,7 +145,7 @@ Useful flags:
 Default output directory:
 
 ```text
-.c2j/test-results/<timestamp>/
+.c2/test-results/<timestamp>/
 ```
 
 ## Current c2j Caveats

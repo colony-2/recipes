@@ -4,6 +4,10 @@ This repository maintains shared development recipes, authoring guides, and nati
 c2j tests. [PURPOSE.md](PURPOSE.md) describes its responsibilities. A cell covers
 its entire repository; a task directory does not define a smaller cell.
 
+Cell configuration lives in `.c2/config.yaml` and local recipe overrides in
+`.c2/recipes/`. Move existing configuration and overrides from `.c2j/` when
+upgrading to the current c2j main.
+
 ## Build
 
 [`build.yaml`](build.yaml) is the development entrypoint. It uses root PURPOSE.md
@@ -25,6 +29,16 @@ as artifacts. Questions are focused fields alongside documents. Uploaded edits
 or guidance require revision and another review, including when accompanied by
 an approval selection. Agreement with an expert's adverse findings does not pass
 an assessment: the consultant must explicitly report `assessment: pass`.
+
+Clarification (`ask_user`) requires focused questions, without requiring artifacts.
+Optional documents are included when their references resolve; missing or ambiguous
+references never delay clarification. Answers resume the requesting phase and do
+not approve work. Formal reviews still require their expected artifacts.
+
+Agent file references are resolved against published artifacts with `path_match`.
+For deliverable responses, correctable errors resume the same session with preserved documents;
+after two automatic corrections, the workflow asks for human direction.
+Correction never substitutes for the normal design or outcome approval.
 
 Verification runs `bash ./build.sh` in `target_directory`, retaining `build.log`
 and `verification.md`. Failed or missing verification returns to implementation;
@@ -102,13 +116,13 @@ See [creation behavior and failure handling](recipes/create/README.md).
 Run the current deterministic build and consultation suites:
 
 ```sh
-c2j test run --directory recipe-tests --case-timeout 3m --out-dir .c2j/test-results
+c2j test run --directory recipe-tests --case-timeout 3m --out-dir .c2/test-results
 ```
 
 These suites mock model responses and declare human answers while running native
 Git, artifacts, checkpoints, reviews, child jobs, verification, and merges. The
 current kernel pins a c2ops revision supporting `instructions` and `output.schema`.
-Use current c2j (validated with v0.0.82) and the op's declared execution tools,
+Use the c2j revision in [native testing](guides/NATIVE_RECIPE_TESTING.md) and the op's declared execution tools,
 including Nix. No live model credentials or external repository provisioning are
 needed. See [build test statements](recipe-tests/build-kernel-statements.md),
 [consultation statements](recipe-tests/consultation-kernel-statements.md), and

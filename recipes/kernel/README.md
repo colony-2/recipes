@@ -59,6 +59,45 @@ used to resume work.
 
 Produce transferable documents at paths such as `iter1/requester/brief.md` and
 `iter2/consultant/feature-spec.md`. Agents receive their current output prefix.
+The shared agent turn supplies the actual inbox/outbox directories on every call,
+including resumed sessions. `artifact-result.yaml` uses c2j's `path_match` to resolve
+references against that turn's published documents. Exact matches win; otherwise
+only a unique component-suffix match is accepted. `outbox/design.md` can therefore
+select `design.md` without another agent turn. Stored artifact identities and
+contents are unchanged. Logs and managed Git artifacts are excluded.
+
+The default reference field is `files.*.path`. Callers can declare additional
+`artifact_fields`; creation also resolves `cells.*.purpose_path`. Summary references
+are matched against the conversation's final deliverables. Required documents,
+iteration prefixes, duplicate references, and approval gates still apply after
+matching for deliverable responses.
+
+Build and creation `ask_user` responses request clarification before deliverables
+may exist. They require usable questions, not files or phase documents. Optional
+references are matched best-effort; missing or ambiguous ones are omitted from
+the question form without an agent repair turn. The answer resumes the same
+session and phase. The shared question form can carry supporting documents, but
+clarification does not approve work. Formal reviews and consultation disagreement
+reviews retain their artifact requirements.
+
+For an ambiguous/missing reference or another correctable completed deliverable response,
+`repair.yaml` prepares diagnostics in `repair.json` and preserves the response,
+latest checkpoint, and all eligible output documents. The caller resumes that
+same phase or participant; it does not rerun successful implementation or child
+jobs. Result-only repairs run read-only against the managed Git candidate, including
+registration evidence repairs after publication. Earlier output documents remain
+eligible during repair, so a corrected reference does not require rewriting a valid
+file.
+
+Two automatic corrections are allowed per logical result. Further correction
+requires a human review with the preserved documents and specific issues.
+Direction or an attachment opens another bounded correction round; cancellation
+stops the work. Empty retry feedback leaves the review pending. This review never
+approves a build, authorizes publication, or declares consultation agreement.
+Only a successfully validated consultation reply consumes a negotiation iteration.
+Execution failures and unexpected direct job submission remain failures rather
+than being retried as response corrections.
+
 Supply only intended user documents, excluding managed Git snapshots and diffs.
 Only listed output files are added to the exchange; experiments and logs are not
 implicitly shared. Each turn's selected documents and prior exchanged versions
@@ -170,5 +209,7 @@ native runtime. No live model calls or repository provisioning are required.
 expected outcomes. Worker crashes and low-level replay fault injection remain
 c2j's responsibility; recipe tests cover state continuation across invocations.
 
-Validated on 2026-10-20 with c2j v0.0.82: all 34 consultation runtime cases passed
-using the shared agent-turn helper. Build integration has separate native suites.
+Validated on 2026-10-21 with c2j main `94484c909de1`: all 39 consultation runtime
+cases passed, including approximate references, bounded result repair, summary
+repair, and checkpoint preservation. Build integration and the matching/repair
+helpers have separate native suites.

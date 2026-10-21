@@ -89,7 +89,7 @@ Do not put `inputs` under `include`. The include object only identifies the reci
 `include.recipe` uses the same recipe reference vocabulary as recipe submission:
 
 - Local file references such as `./phase.yaml` and `../shared/check.yaml`.
-- Git recipe selectors such as `git+https://github.com/acme/cell.git//.c2j/recipes/check.yaml@main`.
+- Git recipe selectors such as `git+https://github.com/acme/cell.git//.c2/recipes/check.yaml@main`.
 - Server/cell recipe refs when the configured recipe resolver supports them.
 
 Relative local file includes are resolved relative to the including recipe file.

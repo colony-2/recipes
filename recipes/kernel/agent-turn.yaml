@@ -7,6 +7,8 @@ inputs:
   session: ${{ inputs.?session.orValue({}) }}
   documents: ${{ inputs.?documents.orValue({}) }}
   read_only: ${{ inputs.?read_only.orValue(true) }}
+  retained_artifacts: ${{ inputs.?retained_artifacts.orValue({}) }}
+  artifact_fields: ${{ inputs.?artifact_fields.orValue(['files.*.path']) }}
 state:
   initial:
   - to: read_resume
@@ -23,7 +25,16 @@ state:
       artifacts:
         ./: ${{ inputs.documents }}
       inputs:
-        prompt: ${{ inputs.prompt }}
+        prompt: |
+          {{ inputs.prompt }}
+
+          Artifact directories for this turn:
+          inbox: {{ context.environment.op.inbox }}
+          outbox: {{ context.environment.op.outbox }}
+          References to inbox/ and outbox/ mean these directories, outside the repository.
+          Write deliverables in this outbox. In structured output, use paths relative to
+          the outbox, such as design.md or iter1/consultant/reply.md. Omit the outbox/
+          prefix and absolute directory from returned artifact paths.
         instructions: ${{ inputs.instructions }}
         output:
           schema: ${{ inputs.schema }}
@@ -33,12 +44,24 @@ state:
           outputs:
             status: failed
             errorMessage: ${{ failure.message }}
+      transitions:
+      - to: normalize
+        when: true
     resume:
       op: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
       artifacts:
         ./: ${{ inputs.documents }}
       inputs:
-        prompt: ${{ inputs.prompt }}
+        prompt: |
+          {{ inputs.prompt }}
+
+          Artifact directories for this turn:
+          inbox: {{ context.environment.op.inbox }}
+          outbox: {{ context.environment.op.outbox }}
+          References to inbox/ and outbox/ mean these directories, outside the repository.
+          Write deliverables in this outbox. In structured output, use paths relative to
+          the outbox, such as design.md or iter1/consultant/reply.md. Omit the outbox/
+          prefix and absolute directory from returned artifact paths.
         session: ${{ inputs.session }}
         output:
           schema: ${{ inputs.schema }}
@@ -48,13 +71,25 @@ state:
           outputs:
             status: failed
             errorMessage: ${{ failure.message }}
+      transitions:
+      - to: normalize
+        when: true
     read_fresh:
       op: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
       const: true
       artifacts:
         ./: ${{ inputs.documents }}
       inputs:
-        prompt: ${{ inputs.prompt }}
+        prompt: |
+          {{ inputs.prompt }}
+
+          Artifact directories for this turn:
+          inbox: {{ context.environment.op.inbox }}
+          outbox: {{ context.environment.op.outbox }}
+          References to inbox/ and outbox/ mean these directories, outside the repository.
+          Write deliverables in this outbox. In structured output, use paths relative to
+          the outbox, such as design.md or iter1/consultant/reply.md. Omit the outbox/
+          prefix and absolute directory from returned artifact paths.
         instructions: ${{ inputs.instructions }}
         output:
           schema: ${{ inputs.schema }}
@@ -64,13 +99,25 @@ state:
           outputs:
             status: failed
             errorMessage: ${{ failure.message }}
+      transitions:
+      - to: normalize
+        when: true
     read_resume:
       op: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
       const: true
       artifacts:
         ./: ${{ inputs.documents }}
       inputs:
-        prompt: ${{ inputs.prompt }}
+        prompt: |
+          {{ inputs.prompt }}
+
+          Artifact directories for this turn:
+          inbox: {{ context.environment.op.inbox }}
+          outbox: {{ context.environment.op.outbox }}
+          References to inbox/ and outbox/ mean these directories, outside the repository.
+          Write deliverables in this outbox. In structured output, use paths relative to
+          the outbox, such as design.md or iter1/consultant/reply.md. Omit the outbox/
+          prefix and absolute directory from returned artifact paths.
         session: ${{ inputs.session }}
         output:
           schema: ${{ inputs.schema }}
@@ -80,15 +127,31 @@ state:
           outputs:
             status: failed
             errorMessage: ${{ failure.message }}
+      transitions:
+      - to: normalize
+        when: true
+    normalize:
+      include: ./artifact-result.yaml
+      inputs:
+        result: >-
+          ${{ (inputs.read_only ? (size(inputs.session) > 0 ? states.read_resume : states.read_fresh) : (size(inputs.session)
+          > 0 ? states.resume : states.fresh)).outputs }}
+        artifacts: >-
+          ${{ jq(json_parse(json_stringify([inputs.retained_artifacts, (inputs.read_only ? (size(inputs.session)
+          > 0 ? states.read_resume : states.read_fresh) : (size(inputs.session) > 0 ? states.resume : states.fresh)).artifacts])),
+          'add') }}
+        fields: ${{ inputs.artifact_fields }}
 outputs:
-  result: >-
-    ${{ (inputs.read_only ? (size(inputs.session) > 0 ? states.read_resume : states.read_fresh) : (size(inputs.session)
-    > 0 ? states.resume : states.fresh)).outputs }}
-  artifacts: >-
-    ${{ (inputs.read_only ? (size(inputs.session) > 0 ? states.read_resume : states.read_fresh) : (size(inputs.session)
-    > 0 ? states.resume : states.fresh)).artifacts }}
+  result: ${{ states.normalize.outputs.result }}
+  artifacts: ${{ states.normalize.outputs.artifacts }}
   jobs: >-
     ${{ (inputs.read_only ? (size(inputs.session) > 0 ? states.read_resume : states.read_fresh) : (size(inputs.session)
     > 0 ? states.resume : states.fresh)).?jobs.orValue({}) }}
   cell: ${{ context.workspace.cell }}
   base_hash: ${{ context.git.resolved_hash }}
+  issues: ${{ states.normalize.outputs.issues }}
+  matches: ${{ states.normalize.outputs.matches }}
+  original_response: >-
+    ${{ (inputs.read_only ? (size(inputs.session) > 0 ? states.read_resume : states.read_fresh) : (size(inputs.session)
+    > 0 ? states.resume : states.fresh)).outputs.?response.orValue({}) }}
+  checkpoint: ${{ states.normalize.outputs.result.?session.orValue(inputs.session) }}

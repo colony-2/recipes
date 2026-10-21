@@ -40,8 +40,7 @@ inputs:
   thread: ${{ inputs.thread }}
   request: ${{ inputs.request }}
   consultant: >-
-    ${{ {'cell': inputs.consultant_cell, 'role': inputs.consultant_role, 'ref': inputs.consultant_ref}
-    }}
+    ${{ {'cell': inputs.consultant_cell, 'role': inputs.consultant_role, 'ref': inputs.consultant_ref} }}
   requester_session: ${{ inputs.?requester_session.orValue({}) }}
   documents: ${{ inputs.documents }}
   max_iterations: ${{ inputs.max_iterations }}
@@ -131,8 +130,7 @@ state:
     current:
       inputs:
         negotiated: ${{ state_output('record', 'conversation', states.start.outputs.conversation) }}
-        reviewed: ${{ state_output('expert_record', 'conversation', states.start.outputs.conversation)
-          }}
+        reviewed: ${{ state_output('expert_record', 'conversation', states.start.outputs.conversation) }}
       sequence: []
       outputs:
         conversation: |-
@@ -151,8 +149,7 @@ state:
           conversation: ${{ inputs.conversation }}
         vars:
           prefix: >-
-            ${{ 'iter' + string(int(inputs.conversation.iteration) + 1) + '/' + inputs.conversation.next
-            + '/' }}
+            ${{ 'iter' + string(int(inputs.conversation.iteration) + 1) + '/' + inputs.conversation.next + '/' }}
           session: |-
             ${{ inputs.conversation.next == 'consultant'
                 ? inputs.conversation.consultant_session : inputs.conversation.requester_session }}
@@ -179,8 +176,7 @@ state:
               thinking:
                 type: string
                 minLength: 1
-                description: Concise response and shareable explanation, including questions and remaining
-                  disagreements.
+                description: Concise response and shareable explanation, including questions and remaining disagreements.
               files:
                 type: array
                 items:
@@ -202,8 +198,7 @@ state:
                 - pass
                 - revise
                 - not_applicable
-                description: For an expert assessment, report its verdict independently of agreement on
-                  the findings.
+                description: For an expert assessment, report its verdict independently of agreement on the findings.
           started: >-
             ${{ int(inputs.conversation.?seen.orValue({'requester': 0, 'consultant': 0})[inputs.conversation.next])
             > 0 }}
@@ -243,27 +238,31 @@ state:
             foreign:
               workspace:
                 cell: ${{ inputs.conversation.consultant.cell }}
-                ref: ${{ inputs.conversation.consultant.ref }}
+                ref: ${{ state_output('repair', 'base_hash', inputs.conversation.consultant.ref) }}
               include: ./agent-turn.yaml
               inputs:
-                prompt: '${{ (size(vars.session) > 0 && !vars.started ? vars.setup + ''\n\n'' : '''')
-                  + vars.prompt }}'
+                prompt: >-
+                  ${{ state_exists('repair') ? states.repair.outputs.prompt : (size(vars.session) > 0 && !vars.started
+                  ? vars.setup + '\n\n' : '') + vars.prompt }}
                 instructions: ${{ vars.instructions + '\n\n' + vars.setup }}
                 schema: ${{ vars.schema }}
-                session: ${{ vars.session }}
-                documents: ${{ inputs.conversation.documents }}
+                session: ${{ state_output('repair', 'session', vars.session) }}
+                documents: ${{ state_output('repair', 'documents', inputs.conversation.documents) }}
+                retained_artifacts: ${{ state_output('repair', 'artifacts', {}) }}
               transitions:
               - to: collect
                 when: true
             local:
               include: ./agent-turn.yaml
               inputs:
-                prompt: '${{ (size(vars.session) > 0 && !vars.started ? vars.setup + ''\n\n'' : '''')
-                  + vars.prompt }}'
+                prompt: >-
+                  ${{ state_exists('repair') ? states.repair.outputs.prompt : (size(vars.session) > 0 && !vars.started
+                  ? vars.setup + '\n\n' : '') + vars.prompt }}
                 instructions: ${{ vars.instructions + '\n\n' + vars.setup }}
                 schema: ${{ vars.schema }}
-                session: ${{ vars.session }}
-                documents: ${{ inputs.conversation.documents }}
+                session: ${{ state_output('repair', 'session', vars.session) }}
+                documents: ${{ state_output('repair', 'documents', inputs.conversation.documents) }}
+                retained_artifacts: ${{ state_output('repair', 'artifacts', {}) }}
               transitions:
               - to: collect
                 when: true
@@ -276,7 +275,7 @@ state:
               outputs:
                 turn: ${{ inputs.turn }}
                 valid: |-
-                  ${{ inputs.turn.result.?status.orValue('failed') == 'completed'
+                  ${{ size(inputs.turn.?issues.orValue([])) == 0 && inputs.turn.result.?status.orValue('failed') == 'completed'
                       && inputs.turn.result.?session.orValue(null) != null
                       && inputs.turn.result.?output_schema_valid.orValue(false)
                       && size(inputs.turn.jobs.?job_ids.orValue([])) == 0
@@ -289,9 +288,37 @@ state:
                            && f.path in inputs.turn.artifacts)
                       && size(inputs.turn.result.response.files.map(f, f.path))
                            == size(jq(inputs.turn.result.response.files, 'map(.path) | unique')) }}
+                issues: >-
+                  ${{ inputs.turn.?issues.orValue([]) + ['Return a completed response with a session checkpoint.
+                  List each artifact once, using the current reply prefix ' + inputs.prefix + '. Only the consultant
+                  may declare agreement. Do not submit jobs during consultation.'] }}
+              transitions:
+              - to: repair
+                when: '!outputs.valid && outputs.turn.result.?status.orValue(''failed'') == ''completed'' && size(outputs.turn.jobs.?job_ids.orValue([]))
+                  == 0'
+            repair:
+              include: ./repair.yaml
+              inputs:
+                turn: ${{ states.collect.outputs.turn }}
+                issues: ${{ states.collect.outputs.issues }}
+                documents: ${{ state_output('repair', 'documents', inputs.conversation.documents) }}
+                session: ${{ state_output('repair', 'session', vars.session) }}
+                attempts: ${{ state_output('repair', 'attempts', 0) }}
+              transitions:
+              - to: abandoned
+                when: '!outputs.retry'
+              - to: foreign
+                when: inputs.conversation.next == 'consultant' && inputs.conversation.consultant.cell != ''
+              - to: local
+                when: true
+            abandoned:
+              sequence: []
         outputs:
           valid: ${{ states.collect.outputs.valid }}
-          turn: ${{ states.collect.outputs.turn }}
+          turn: >-
+            ${{ jq([states.collect.outputs.turn, state_exists('repair') ? {'repair_documents': states.repair.outputs.documents}
+            : {}, state_exists('abandoned') ? {'repair_cancelled': true, 'artifacts': states.repair.outputs.artifacts}
+            : {}], 'add') }}
         id: exchange
       outputs:
         valid: ${{ sequence.exchange.outputs.valid }}
@@ -358,8 +385,15 @@ state:
       sequence: []
       outputs:
         conversation: |-
-          ${{ jq([inputs.previous, {'outcome': 'failed', 'retryable': true,
-                 'error': inputs.turn.result.?errorMessage.orValue('Consultation turn did not complete with valid artifacts and session; no agreement accepted.')}], 'add') }}
+          ${{ jq([inputs.previous, {
+           'outcome': inputs.turn.?repair_cancelled.orValue(false) ? 'cancelled' : 'failed',
+           'retryable': !inputs.turn.?repair_cancelled.orValue(false),
+           'requester_session': inputs.previous.next == 'requester' ? inputs.turn.?checkpoint.orValue(inputs.previous.requester_session) : inputs.previous.requester_session,
+           'consultant_session': inputs.previous.next == 'consultant' ? inputs.turn.?checkpoint.orValue(inputs.previous.consultant_session) : inputs.previous.consultant_session,
+           'documents': jq([inputs.previous.documents, inputs.turn.artifacts, inputs.turn.?repair_documents.orValue({})], 'add'),
+           'pending_response': inputs.turn.result.?response.orValue({}),
+           'error': inputs.turn.?repair_cancelled.orValue(false) ? 'Result correction cancelled by the reviewer; no agreement accepted.' : inputs.turn.result.?errorMessage.orValue('Consultation turn did not complete; no agreement accepted.')
+           }], 'add') }}
       transitions:
       - to: publish
         when: true

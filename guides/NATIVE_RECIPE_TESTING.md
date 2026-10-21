@@ -1,8 +1,15 @@
 # Native recipe testing
 
-Use current c2j; the build and consultation kernel are validated with v0.0.82.
-Cell creation requires main commit `a058abe015e556ee7264ded665c47efe95959235`
-or later for empty workspaces. Run `recipe-tests/create.test.yaml` and
+Use c2j main commit `94484c909de14a2fe2b2a62dfbd82d31595b5b75` or later
+for `path_match`, `.c2/` configuration, and empty workspaces. This commit is on
+main and is not yet released. Install it with:
+
+```sh
+go install github.com/colony-2/c2j/cmd/c2j@94484c909de14a2fe2b2a62dfbd82d31595b5b75
+```
+
+Ensure the installed Go binary is first on `PATH` when running tests.
+Run `recipe-tests/create.test.yaml` and
 `recipe-tests/create-handoff.test.yaml` for its review, publication, and handoff
 coverage; these use disposable repositories and do not create GitHub repositories.
 Configure the op's declared tools, including Nix, as described in
@@ -11,7 +18,7 @@ Runtime cases still resolve op manifests when model responses are mocked.
 
 ```sh
 c2j test validate --directory .
-c2j test run --directory . --case-timeout 5m --out-dir .c2j/test-results
+c2j test run --directory . --case-timeout 5m --out-dir .c2/test-results
 c2j test run --file recipe-tests/build-kernel.test.yaml --case build-without-purpose
 ```
 
@@ -73,7 +80,7 @@ Live suites declare `live: true` and are reported as `excluded_live` by default.
 They require the recipe's normal credentials, skill sources, and execution tools:
 
 ```sh
-c2j test run --directory . --include-live --case-timeout 45m --out-dir .c2j/live-results
+c2j test run --directory . --include-live --case-timeout 45m --out-dir .c2/live-results
 ```
 
 Only run this when live model work is intended. A missing credential or tool

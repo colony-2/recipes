@@ -1,0 +1,30 @@
+id: artifact-result-fixture
+version: '1'
+input_schema:
+  response_json:
+    type: string
+    required: true
+  fields_json:
+    type: string
+    default_value: '["files.*.path"]'
+inputs:
+  response_json: ${{ inputs.response_json }}
+  fields_json: ${{ inputs.fields_json }}
+sequence:
+- id: publish
+  op: command_execution
+  const: true
+  inputs:
+    env:
+      OUTBOX: ${{ context.environment.op.outbox }}
+    run: |
+      cp -R documents/. "$OUTBOX/"
+- id: resolve
+  include: ../../recipes/kernel/artifact-result.yaml
+  inputs:
+    result: '${{ {''status'': ''completed'', ''response'': json_parse(inputs.response_json)} }}'
+    artifacts: ${{ json_parse(json_stringify(sequence.publish.artifacts)) }}
+    fields: ${{ json_parse(inputs.fields_json) }}
+outputs:
+  resolved: ${{ sequence.resolve.outputs }}
+  published: ${{ sequence.publish.artifacts }}

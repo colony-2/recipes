@@ -1,0 +1,250 @@
+recipe: fixtures/result-repair.yaml
+cases:
+- id: automatic-preserves-session-and-documents
+  type: integration_case
+  runtime: {}
+  inputs:
+    attempts: 0
+  mocks:
+    ops:
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            summary: Existing design
+        artifacts:
+          design.md: '# Existing design'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: 1
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: result.retry
+    value: true
+  - type: output_equals
+    path: result.attempts
+    value: 1
+  - type: cel_true
+    expr: outputs.result.session == outputs.seed
+  - type: cel_true
+    expr: outputs.evidence.contains("# Existing design") && outputs.evidence.contains("Existing design")
+  - type: cel_true
+    expr: '"design.md" in outputs.result.artifacts'
+  - type: cel_true
+    expr: '!calls.exists(c, c.op == "input")'
+- id: exhaustion-cancel-preserves-work
+  type: integration_case
+  runtime:
+    responses:
+    - node_path: repair-fixture/repair/result-repair/review/review/kernel-review/ask
+      fields:
+        decision: cancel
+        feedback: ''
+  inputs:
+    attempts: 2
+  mocks:
+    ops:
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            summary: Existing design
+        artifacts:
+          design.md: '# Existing design'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: 1
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: result.retry
+    value: false
+  - type: output_equals
+    path: result.attempts
+    value: 0
+  - type: cel_true
+    expr: outputs.result.session == outputs.seed
+  - type: cel_true
+    expr: outputs.evidence.contains("# Existing design") && outputs.evidence.contains("Existing design")
+  - type: cel_true
+    expr: '"design.md" in outputs.result.artifacts'
+  - type: cel_true
+    expr: size(reviews) == 1
+- id: direction-opens-bounded-repair
+  type: integration_case
+  runtime:
+    responses:
+    - node_path: repair-fixture/repair/result-repair/review/review/kernel-review/ask
+      fields:
+        decision: retry
+        feedback: Select design.md.
+  inputs:
+    attempts: 2
+  mocks:
+    ops:
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            summary: Existing design
+        artifacts:
+          design.md: '# Existing design'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: 1
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: result.retry
+    value: true
+  - type: output_equals
+    path: result.attempts
+    value: 0
+  - type: cel_true
+    expr: outputs.result.session == outputs.seed
+  - type: cel_true
+    expr: outputs.evidence.contains("# Existing design") && outputs.evidence.contains("Existing design")
+  - type: cel_true
+    expr: '"design.md" in outputs.result.artifacts'
+  - type: cel_true
+    expr: size(reviews) == 1
+- id: retry-without-direction-stays-in-review
+  type: integration_case
+  runtime:
+    responses:
+    - node_path: repair-fixture/repair/result-repair/review/review/kernel-review/ask
+      fields:
+        decision: retry
+        feedback: ''
+    - node_path: repair-fixture/repair/result-repair/review/review/kernel-review/ask
+      fields:
+        decision: retry
+        feedback: Select design.md.
+  inputs:
+    attempts: 2
+  mocks:
+    ops:
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            summary: Existing design
+        artifacts:
+          design.md: '# Existing design'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: 1
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: result.retry
+    value: true
+  - type: output_equals
+    path: result.attempts
+    value: 0
+  - type: cel_true
+    expr: outputs.result.session == outputs.seed
+  - type: cel_true
+    expr: outputs.evidence.contains("# Existing design") && outputs.evidence.contains("Existing design")
+  - type: cel_true
+    expr: '"design.md" in outputs.result.artifacts'
+  - type: cel_true
+    expr: size(reviews) == 2
+- id: human-attachments-are-retained-for-correction
+  type: integration_case
+  runtime:
+    responses:
+    - node_path: repair-fixture/repair/result-repair/review/review/kernel-review/ask
+      fields:
+        decision: retry
+        feedback: Select design.md.
+      attachments:
+        annotations: fixtures/consultation-expert-direction.md
+  inputs:
+    attempts: 2
+  mocks:
+    ops:
+    - match:
+        selector: git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            summary: Existing design
+        artifacts:
+          design.md: '# Existing design'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: 1
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: result.retry
+    value: true
+  - type: output_equals
+    path: result.attempts
+    value: 0
+  - type: cel_true
+    expr: outputs.result.session == outputs.seed
+  - type: cel_true
+    expr: outputs.evidence.contains("# Existing design") && outputs.evidence.contains("Existing design")
+  - type: cel_true
+    expr: '"design.md" in outputs.result.artifacts'
+  - type: cel_true
+    expr: size(reviews) == 1
+  - type: cel_true
+    expr: outputs.result.artifacts.exists(k, k.endsWith("consultation-expert-direction.md"))

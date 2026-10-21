@@ -114,7 +114,9 @@ vars:
     Prepare one outbox/proposal.md for the entire proposed set, including each repository
     URL, purpose, excluded alternatives, technology guidance, and the root
     catalog changes. Write each initial purpose to outbox/cells/<name>/PURPOSE.md and list
-    these files in your response. Ask focused questions alongside documents if needed.
+    these files in your response. If clarification is needed before preparing the proposal,
+    return ask_user with focused questions; files and cells may be empty. Documents
+    are optional for clarification and required for review.
     Return declined or redirected when creation is inappropriate. Creation initializes
     responsibilities only; product features need their own subsequent consultation.
     New cells always start on main; branch selection is fixed by the workflow.
@@ -135,8 +137,8 @@ state:
       sequence: []
       outputs:
         flow: >-
-          ${{ {'session': inputs.session, 'documents': inputs.documents, 'message': inputs.prompt, 'first':
-          true} }}
+          ${{ {'session': inputs.session, 'documents': inputs.documents, 'message': inputs.prompt, 'first': true}
+          }}
       transitions:
       - to: propose
         when: true
@@ -152,11 +154,14 @@ state:
           instructions: ${{ vars.instructions + '\n' + vars.setup }}
           prompt: >-
             ${{ (inputs.flow.first && size(inputs.flow.session) > 0 ? vars.setup + '\n' : '') + inputs.flow.message
-            + '\nRead the inbox documents and any feedback.json. Return the current creation proposal.'
-            }}
+            + '\nRead the inbox documents and any feedback.json. Return the current creation proposal.' }}
           schema: ${{ vars.schema }}
           session: ${{ inputs.flow.session }}
           documents: ${{ inputs.flow.documents }}
+          artifact_fields:
+          - files.*.path
+          - cells.*.purpose_path
+          retained_artifacts: ${{ inputs.flow.?repair_artifacts.orValue({}) }}
       outputs:
         flow: ${{ inputs.flow }}
         turn: ${{ sequence.agent.outputs }}
@@ -170,12 +175,12 @@ state:
       sequence: []
       outputs:
         valid: |-
-          ${{ inputs.turn.result.?status.orValue('failed') == 'completed'
+          ${{ (vars.clarification || size(inputs.turn.?issues.orValue([])) == 0) && inputs.turn.result.?status.orValue('failed') == 'completed'
            && inputs.turn.result.?output_schema_valid.orValue(false)
            && inputs.turn.result.?session.orValue(null) != null
            && size(inputs.turn.jobs.?job_ids.orValue([])) == 0
-           && inputs.turn.result.response.files.all(f, f.path in inputs.turn.artifacts
-               && !f.path.startsWith('/') && !f.path.contains('..') && !f.path.contains('\\'))
+           && (vars.clarification || inputs.turn.result.response.files.all(f, f.path in inputs.turn.artifacts
+               && !f.path.startsWith('/') && !f.path.contains('..') && !f.path.contains('\\')))
            && (inputs.turn.result.response.outcome != 'review' ||
                (size(inputs.turn.result.response.cells) > 0
                 && inputs.turn.result.response.files.exists(f, f.path == 'proposal.md')
@@ -184,17 +189,32 @@ state:
                 && size(inputs.turn.result.response.cells) == size(jq(inputs.turn.result.response.cells, 'map(.name) | unique'))
                 && size(inputs.turn.result.response.cells) == size(jq(inputs.turn.result.response.cells, 'map(.repo) | unique'))))
            && (inputs.turn.result.response.outcome != 'ask_user' ||
-               (size(inputs.turn.result.response.questions) > 0 && size(inputs.turn.result.response.files) > 0
+               (size(inputs.turn.result.response.questions) > 0
                 && inputs.turn.result.response.questions.all(q, q.id != 'annotations'))) }}
         flow: >-
-          ${{ jq([inputs.flow, {'session': inputs.turn.result.?session.orValue(inputs.flow.session), 'first':
-          false, 'result': inputs.turn.result.?response.orValue({}), 'documents': jq([inputs.flow.documents,
+          ${{ inputs.turn.result.?output_schema_valid.orValue(false) ? (jq([inputs.flow, {'repair_attempts': 0,
+          'repair_artifacts': {}, 'session': inputs.turn.result.?session.orValue(inputs.flow.session), 'first':
+          false, 'result': inputs.turn.result.?response.orValue({}), 'documents': jq([inputs.flow.?repair_base_documents.orValue(inputs.flow.documents),
           jq({'files': inputs.turn.result.?response.orValue({}).?files.orValue([]), 'artifacts': inputs.turn.artifacts},
-          '. as $v | $v.files | map(select(.path as $p | $v.artifacts | has($p)) | {key: .path, value:
-          $v.artifacts[.path]}) | from_entries')], 'add')}], 'add') }}
+          '. as $v | $v.files | map(select(.path as $p | $v.artifacts | has($p)) | {key: .path, value: $v.artifacts[.path]})
+          | from_entries')], 'add')}], 'add | del(.repair_base_documents)')) : inputs.flow }}
+        issues: >-
+          ${{ inputs.turn.?issues.orValue([]) + ['Correct the creation proposal: review needs proposal.md, unique
+          cell names and repositories, and each cells/<name>/PURPOSE.md referenced in both cells and files. Clarification
+          needs focused questions, without requiring documents; annotations is reserved. No jobs may be submitted
+          by the agent.'] }}
+        turn: ${{ inputs.turn }}
+        previous_flow: ${{ inputs.flow }}
       transitions:
       - to: failed
+        when: '!outputs.valid && (outputs.turn.result.?status.orValue(''failed'') != ''completed'' || size(outputs.turn.jobs.?job_ids.orValue([]))
+          > 0)'
+      - to: repair
         when: '!outputs.valid'
+        payload:
+          flow: '${{ jq([outputs.previous_flow, {''first'': false}], ''add'') }}'
+          turn: ${{ outputs.turn }}
+          issues: ${{ outputs.issues }}
       - to: stopped
         when: outputs.flow.result.outcome in ['declined', 'redirected']
         payload:
@@ -207,6 +227,9 @@ state:
         when: true
         payload:
           flow: ${{ outputs.flow }}
+      vars:
+        clarification: ${{ states.propose.outputs.turn.result.?response.orValue({}).?outcome.orValue('') == 'ask_user'
+          }}
     review:
       inputs:
         flow: ${{ transition.payload.flow }}
@@ -230,8 +253,7 @@ state:
               label: Do not create
           - id: feedback
             type: paragraph_text
-            question: >-
-              ${{ inputs.flow.?review_hint.orValue('Changes or guidance; required when requesting revision.')
+            question: ${{ inputs.flow.?review_hint.orValue('Changes or guidance; required when requesting revision.')
               }}
             required: false
           - id: annotations
@@ -242,9 +264,9 @@ state:
         response: ${{ sequence.review.outputs.response }}
         changed: ${{ sequence.review.outputs.changed }}
         flow: >-
-          ${{ jq([inputs.flow, {'documents': jq([inputs.flow.documents, sequence.review.outputs.documents],
-          'add'), 'message': 'Read feedback.json and any annotations. Revise the creation proposal for
-          another review.'}], 'add') }}
+          ${{ jq([inputs.flow, {'documents': jq([inputs.flow.documents, sequence.review.outputs.documents], 'add'),
+          'message': 'Read feedback.json and any annotations. Revise the creation proposal for another review.'}],
+          'add') }}
       transitions:
       - to: stopped
         when: outputs.response.fields.decision == 'cancel'
@@ -275,15 +297,15 @@ state:
           title: Clarify proposed cells
           documents: ${{ inputs.flow.documents }}
           fields: >-
-            ${{ inputs.flow.result.questions + [{'id': 'annotations', 'type': 'file_upload', 'question':
-            'Optional supporting documents.', 'required': false}] }}
+            ${{ inputs.flow.result.questions + [{'id': 'annotations', 'type': 'file_upload', 'question': 'Optional
+            supporting documents.', 'required': false}] }}
       outputs:
         response: ${{ sequence.review.outputs.response }}
         changed: ${{ sequence.review.outputs.changed }}
         flow: >-
-          ${{ jq([inputs.flow, {'documents': jq([inputs.flow.documents, sequence.review.outputs.documents],
-          'add'), 'message': 'Read feedback.json and any annotations. Revise the creation proposal for
-          another review.'}], 'add') }}
+          ${{ jq([inputs.flow, {'documents': jq([inputs.flow.documents, sequence.review.outputs.documents], 'add'),
+          'message': 'Read feedback.json and any annotations. Use the answers to continue preparing the creation
+          proposal.'}], 'add') }}
       transitions:
       - to: propose
         when: true
@@ -308,22 +330,53 @@ state:
         flow: ${{ states.record.outputs.flow }}
       sequence: []
       outputs:
-        flow: >-
-          ${{ jq([inputs.flow, {'disposition': 'invalid'}], 'add') }}
+        flow: '${{ jq([inputs.flow, {''disposition'': ''invalid''}], ''add'') }}'
       transitions:
       - to: stopped
         when: true
         payload:
           flow: ${{ outputs.flow }}
+    repair:
+      inputs:
+        flow: ${{ transition.payload.flow }}
+        turn: ${{ transition.payload.turn }}
+        issues: ${{ transition.payload.issues }}
+      sequence:
+      - id: repair
+        include: ../kernel/repair.yaml
+        inputs:
+          turn: ${{ inputs.turn }}
+          issues: ${{ inputs.issues }}
+          documents: ${{ inputs.flow.documents }}
+          session: ${{ inputs.flow.session }}
+          attempts: ${{ inputs.flow.?repair_attempts.orValue(0) }}
+      outputs:
+        retry: ${{ sequence.repair.outputs.retry }}
+        flow: >-
+          ${{ jq([inputs.flow, {'result': inputs.turn.result.?response.orValue(inputs.flow.?result.orValue({})),
+          'session': sequence.repair.outputs.session, 'documents': sequence.repair.outputs.documents, 'repair_base_documents':
+          inputs.flow.?repair_base_documents.orValue(inputs.flow.documents), 'repair_artifacts': sequence.repair.outputs.artifacts,
+          'repair_attempts': sequence.repair.outputs.attempts, 'message': sequence.repair.outputs.prompt}], 'add')
+          }}
+      transitions:
+      - to: propose
+        when: outputs.retry
+        payload:
+          flow: ${{ outputs.flow }}
+      - to: stopped
+        when: true
+        payload:
+          flow: '${{ jq([outputs.flow, {''disposition'': ''cancelled''}], ''add'') }}'
 outputs:
   approved: ${{ state_exists('approved') }}
   session: ${{ state_output('approved', 'flow', state_output('stopped', 'flow', {})).session }}
   cells: ${{ state_output('approved', 'flow', {}).?result.orValue({}).?cells.orValue([]) }}
   summary: >-
-    ${{ state_output('approved', 'flow', state_output('stopped', 'flow', {})).result.?summary.orValue('Invalid creation proposal or missing review documents.') }}
+    ${{ state_output('approved', 'flow', state_output('stopped', 'flow', {})).?result.orValue({}).?summary.orValue('Invalid
+    creation proposal or missing review documents.') }}
   disposition: >-
-    ${{ state_exists('approved') ? 'approved' : state_output('approved', 'flow', state_output('stopped',
-    'flow', {})).?disposition.orValue(state_output('approved', 'flow', state_output('stopped', 'flow',
-    {})).result.?outcome.orValue('invalid')) }}
+    ${{ state_exists('approved') ? 'approved' : state_output('approved', 'flow', state_output('stopped', 'flow',
+    {})).?disposition.orValue(state_output('approved', 'flow', state_output('stopped', 'flow', {})).?result.orValue({}).?outcome.orValue('invalid'))
+    }}
   documents: ${{ state_output('approved', 'flow', state_output('stopped', 'flow', {})).documents }}
   review: ${{ state_output('approved', 'receipt', {}) }}

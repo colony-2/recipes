@@ -26,10 +26,8 @@ inputs:
 sequence:
 - id: root
   workspace:
-    cell: >-
-      ${{ inputs.root_cell != '' ? inputs.root_cell : context.git.repo }}
-    ref: >-
-      ${{ inputs.root_ref != '' ? inputs.root_ref : context.git.ref }}
+    cell: '${{ inputs.root_cell != '''' ? inputs.root_cell : context.git.repo }}'
+    ref: '${{ inputs.root_ref != '''' ? inputs.root_ref : context.git.ref }}'
   inputs:
     prompt: ${{ inputs.prompt }}
     session: ${{ inputs.session }}
@@ -57,8 +55,11 @@ sequence:
       register:
         inputs:
           created: ${{ states.publish.outputs.created }}
-          documents: ${{ states.review.outputs.documents }}
-          session: ${{ states.review.outputs.session }}
+          documents: ${{ state_output('registration_repair', 'documents', states.review.outputs.documents) }}
+          session: ${{ state_output('registration_repair', 'session', states.review.outputs.session) }}
+          read_only: ${{ state_exists('registration_repair') }}
+          prompt: ${{ state_output('registration_repair', 'prompt', vars.initial_prompt) }}
+          retained_artifacts: ${{ state_output('registration_repair', 'artifacts', {}) }}
         sequence:
         - id: records
           op: command_execution
@@ -72,44 +73,52 @@ sequence:
         - id: agent
           include: ./recipes/kernel/agent-turn.yaml
           inputs:
-            read_only: false
+            read_only: ${{ inputs.read_only }}
             session: ${{ inputs.session }}
-            documents: >-
-              ${{ jq([inputs.documents, {'created.json': sequence.records.artifacts['created.json']}], 'add') }}
-            prompt: |
-              The approved cells have been published. Read created.json for the actual
-              repository URLs, branches, and revisions. Apply only the root catalog
-              changes described in the approved proposal, preserving existing entries.
-              Register these cells through the project's existing .c2j/config.yaml
-              dependents format; update existing cell descriptions if appropriate.
-              Do not introduce a second catalog. Check the configuration is valid and
-              the created cells can be resolved through it.
-
-              Do not create repositories, push commits, submit jobs, or implement
-              product features. The workflow owns publication. Write completion.md
-              in the outbox describing registered cells and any remaining work.
-              Return completed=false if registration cannot be completed as approved.
+            documents: '${{ jq([inputs.documents, {''created.json'': sequence.records.artifacts[''created.json'']}],
+              ''add'') }}'
+            prompt: ${{ inputs.prompt }}
             schema:
               type: object
               additionalProperties: false
-              required: [completed, summary]
+              required:
+              - completed
+              - summary
               properties:
-                completed: {type: boolean}
-                summary: {type: string, minLength: 1}
+                completed:
+                  type: boolean
+                summary:
+                  type: string
+                  minLength: 1
+            retained_artifacts: ${{ inputs.retained_artifacts }}
         outputs:
           turn: ${{ sequence.agent.outputs }}
           records: ${{ sequence.records.artifacts['created.json'] }}
         transitions:
         - to: merge
-          when: >-
-            outputs.turn.result.?status.orValue('failed') == 'completed'
-            && outputs.turn.result.?output_schema_valid.orValue(false)
-            && outputs.turn.result.?response.orValue({}).?completed.orValue(false)
-            && outputs.turn.result.?session.orValue(null) != null
-            && size(outputs.turn.jobs.?job_ids.orValue([])) == 0
-            && 'completion.md' in outputs.turn.artifacts
+          when: outputs.turn.result.?status.orValue('failed') == 'completed' && outputs.turn.result.?output_schema_valid.orValue(false)
+            && outputs.turn.result.?response.orValue({}).?completed.orValue(false) && outputs.turn.result.?session.orValue(null)
+            != null && size(outputs.turn.jobs.?job_ids.orValue([])) == 0 && 'completion.md' in outputs.turn.artifacts
+        - to: registration_repair
+          when: outputs.turn.result.?status.orValue('failed') == 'completed' && (!outputs.turn.result.?output_schema_valid.orValue(false)
+            || outputs.turn.result.?response.orValue({}).?completed.orValue(false)) && size(outputs.turn.jobs.?job_ids.orValue([]))
+            == 0
         - to: failed
           when: true
+        vars:
+          initial_prompt: |
+            The approved cells have been published. Read created.json for the actual
+            repository URLs, branches, and revisions. Apply only the root catalog
+            changes described in the approved proposal, preserving existing entries.
+            Register these cells through the project's existing .c2/config.yaml
+            dependents format; update existing cell descriptions if appropriate.
+            Do not introduce a second catalog. Check the configuration is valid and
+            the created cells can be resolved through it.
+
+            Do not create repositories, push commits, submit jobs, or implement
+            product features. The workflow owns publication. Write completion.md
+            in the outbox describing registered cells and any remaining work.
+            Return completed=false if registration cannot be completed as approved.
       merge:
         op: squashrebasemerge
         inputs:
@@ -121,8 +130,26 @@ sequence:
               error: ${{ failure.message }}
       failed:
         sequence: []
+      registration_repair:
+        include: ./recipes/kernel/repair.yaml
+        inputs:
+          turn: ${{ states.register.outputs.turn }}
+          issues:
+          - 'Registration evidence is incomplete. The cell repositories have already been published: do not publish
+            them again. Return a valid completion response and completion.md documenting registration; return completed=false
+            if registration cannot be completed.'
+          documents: >-
+            ${{ jq([states.review.outputs.documents, {'created.json': states.register.outputs.records}], 'add')
+            }}
+          session: ${{ states.review.outputs.session }}
+          attempts: ${{ state_output('registration_repair', 'attempts', 0) }}
+        transitions:
+        - to: register
+          when: outputs.retry
+        - to: failed
+          when: true
   outputs:
-    disposition: >-
+    disposition: |-
       ${{ state_exists('merge') ? (states.merge.outputs.?error.orValue('') == '' ? 'created' : 'registration_failed')
         : state_exists('register') ? 'registration_failed'
         : state_exists('publish') ? 'publication_failed' : states.review.outputs.disposition }}
@@ -130,15 +157,17 @@ sequence:
     merged: ${{ state_exists('merge') && states.merge.outputs.?error.orValue('') == '' }}
     merged_hash: ${{ state_output('merge', 'merged_hash', '') }}
     session: >-
-      ${{ state_exists('register') ? states.register.outputs.turn.result.?session.orValue(states.review.outputs.session) : states.review.outputs.session }}
+      ${{ state_exists('register') ? states.register.outputs.turn.result.?session.orValue(states.review.outputs.session)
+      : states.review.outputs.session }}
     summary: >-
-      ${{ state_exists('register') ? states.register.outputs.turn.result.?response.orValue({}).?summary.orValue('Root registration did not complete.') : states.review.outputs.summary }}
-    error: >-
+      ${{ state_exists('register') ? states.register.outputs.turn.result.?response.orValue({}).?summary.orValue('Root
+      registration did not complete.') : states.review.outputs.summary }}
+    error: |-
       ${{ state_exists('merge') ? states.merge.outputs.?error.orValue('')
         : state_exists('register') ? 'Cell repositories were published, but root registration did not complete.'
         : state_output('publish', 'error', '') }}
     review: ${{ states.review.outputs.review }}
-    artifact_refs: >-
+    artifact_refs: |-
       ${{ jq([states.review.outputs.documents, state_exists('register')
         ? jq([{'created.json': states.register.outputs.records},
             jq(states.register.outputs.turn.artifacts, 'with_entries(select(.key == "completion.md"))')], 'add')

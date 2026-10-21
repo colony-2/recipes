@@ -10,7 +10,7 @@ Use `c2j` for day-to-day recipe authoring in this repo.
 - `c2j cells`
 - `c2j init --stdout`
 
-`c2j submit` targets the current cell by default. If that does not resolve cleanly, create `.c2j/config.yaml` or pass `--cell <repo-or-path>`.
+`c2j submit` targets the current cell by default. If that does not resolve cleanly, create `.c2/config.yaml` or pass `--cell <repo-or-path>`.
 
 ### Submit and run a local recipe file
 

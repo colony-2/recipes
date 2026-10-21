@@ -13,6 +13,9 @@ kept executable solely to satisfy old fixtures.
 | Concurrent consultation jobs, later caller progress, target checkpoint handoff, root eligibility, duplicate submission, child failure, artifact collisions | `build-coordination.test.yaml` |
 | Approval and agreement gates, stable keys, missing root/provisioning configuration, retained failures | `build-coordination-gates.test.yaml` |
 | Verification success, failure, external timeout, missing hook, retained logs | `verification.test.yaml` |
+| Artifact matching, exact preference, ambiguity, linked references, invalid paths and empty inventories | `artifact-result.test.yaml` |
+| Bounded correction, human direction, cancellation, preserved sessions and documents | `result-repair.test.yaml` |
+| Reviewed creation, first publication, registration evidence repair without repeated publication | `create.test.yaml`, `create-handoff.test.yaml` |
 | Consultant-owned agreement, bounded exchanges, document validation, expert escalation and adverse outcomes | `consultation-kernel.test.yaml` |
 | Candidate isolation, immutable checkpoints, caller and serving-cell continuation | `consultation-kernel-handoff.test.yaml` |
 | Human-directed continuation, repeated review, attachments, failed-turn retry, invalid resumption | `consultation-kernel-{resume,review,retry,invalid-resume}.test.yaml` |
@@ -34,8 +37,18 @@ enforcement internals belong to c2ops. Recipe tests check routing and observable
 contracts without implementing substitute infrastructure or a second schema validator.
 
 ```sh
-c2j test run --directory recipe-tests --case-timeout 3m --out-dir .c2j/test-results
+c2j test run --directory recipe-tests --case-timeout 3m --out-dir .c2/test-results
 ```
 
-Validated with c2j v0.0.82 on 2026-10-20: 67 native integration cases passed
-(34 consultation, 17 build lifecycle, 12 coordination/handoff, and 4 verification).
+Validated with c2j main `94484c909de14a2fe2b2a62dfbd82d31595b5b75` on
+2026-10-21: all 107 native integration cases in `recipe-tests/*.test.yaml` passed
+(39 consultation, 22 build lifecycle, 12 coordination/handoff, 18 creation,
+7 artifact matching, 5 result repair, and 4 verification). The directory run also
+passed the existing scenario suites; live suites were excluded. Coverage includes
+root discovery through `.c2/config.yaml`, local child recipes under `.c2/recipes/`,
+creation catalog updates under `.c2/`, approximate reference resolution, bounded
+human-directed repair, and preservation of checkpoints and published work.
+
+Clarification follow-up on the same c2j revision: all 43 build and creation cases
+passed, including four new regressions for questions without artifacts and unresolved
+optional references. Those additions bring native coverage to 111 cases.
