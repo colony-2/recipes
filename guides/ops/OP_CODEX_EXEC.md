@@ -148,8 +148,8 @@ typed `response` and require `output_schema_valid: true`. The execution envelope
 into the prompt or run a second schema validator over a JSON artifact. Recipe-level
 checks still enforce routing, artifact existence, and authorization semantics.
 
-The shared kernel pins
-`git+https://github.com/colony-2/c2ops.git//codex@5166aec516e5a1958601121d5a3753072acf8dd3`,
+The shared kernel uses
+`nix:github:colony-2/c2ops/published#codex`,
 which supports `instructions` and `output.schema`; use a revision or published
 package containing that contract. See [agent-turn.yaml](../../recipes/kernel/agent-turn.yaml).
 

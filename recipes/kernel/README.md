@@ -189,8 +189,10 @@ participant roles, workspace selection, and file checks inline; there is no sepa
 consultation-turn wrapper. `consultation-report.yaml` prepares summaries and expert
 reviews. `review.yaml` supplies build document reviews and feedback artifacts.
 These helpers are internal includes, not standalone entrypoints. Their caller
-supplies the structured inputs. The Codex selector is pinned to the published
-revision supporting output schemas and initial-only instructions.
+supplies the structured inputs. The Codex selector follows c2ops' `published`
+Nix package, with output schemas and initial-only instructions. The channel
+advances after c2ops verifies its Linux packages and public cache downloads;
+c2j records the resolved package for each invocation.
 
 ### Execution failures
 

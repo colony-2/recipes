@@ -121,7 +121,8 @@ c2j test run --directory recipe-tests --case-timeout 3m --out-dir .c2/test-resul
 
 These suites mock model responses and declare human answers while running native
 Git, artifacts, checkpoints, reviews, child jobs, verification, and merges. The
-current kernel pins a c2ops revision supporting `instructions` and `output.schema`.
+current kernel uses c2ops' `published` Nix packages, including Codex's
+`instructions` and `output.schema` contracts.
 Install the latest c2j release with `npm install --global @colony2/c2j@latest`
 and provide the op's declared execution tools,
 including Nix. No live model credentials or external repository provisioning are
