@@ -43,9 +43,10 @@ Do not rely on ambient shell state, ad hoc temp files, or the assumption that on
   Use for explicit waits or retry backoff in orchestration flows.
   Reference: `OP_SLEEP.md`
 
-- `thinpackrebase`, `squashrebasemerge`
-  Use when the workflow is ready to integrate git changes back onto the latest upstream state.
-  References: `OP_THINPACKREBASE.md`, `OP_SQUASHREBASEMERGE.md`
+- `rebase`, `squash`, `merge`
+  Use separate steps to prepare, review, and publish a candidate. `thinpackrebase`
+  and the composite `squashrebasemerge` remain available.
+  References: `OP_GIT_INTEGRATION.md`, `OP_THINPACKREBASE.md`, `OP_SQUASHREBASEMERGE.md`
 
 - selector-based extension ops
   Use when the repo needs custom packaged behavior behind a stable op interface.

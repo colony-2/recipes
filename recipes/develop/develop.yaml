@@ -181,6 +181,10 @@ state:
             ${{ ['Prerequisite gate rejected this result. Review context.json: plan keys must have serving-cell
             agreement; implementation review requires every approved dependency to have completed successfully.']
             }}
+      - to: rebase
+        when: outputs.flow.phase == 'implement'
+        payload:
+          flow: ${{ outputs.flow }}
       - to: assessment
         when: true
         payload:
@@ -411,6 +415,31 @@ state:
         when: true
         payload:
           flow: ${{ outputs.flow }}
+    rebase:
+      inputs:
+        flow: ${{ transition.payload.flow }}
+      sequence:
+      - id: upstream
+        op: command_execution
+        const: true
+        inputs:
+          env:
+            REPO: ${{ context.git.repo }}
+            BRANCH: ${{ context.git.ref }}
+          run: |
+            set -eu
+            git ls-remote --exit-code -- "$REPO" "refs/heads/${BRANCH#refs/heads/}"
+      - id: rebase
+        op: rebase
+        inputs:
+          target_base_hash: ${{ jq(sequence.upstream.outputs.stdout, 'split("\t")[0]') }}
+      outputs:
+        flow: ${{ inputs.flow }}
+      transitions:
+      - to: assessment
+        when: true
+        payload:
+          flow: ${{ outputs.flow }}
     verify:
       inputs:
         flow: ${{ transition.payload.flow }}
@@ -426,8 +455,32 @@ state:
           sequence.verify.outputs.artifact_refs], 'add'), 'message': 'Verification did not pass. Read verification.md
           and build.log, resolve the issue, and request inspection again.'}], 'add') }}
       transitions:
-      - to: accept
+      - to: accounting
         when: outputs.ok
+        payload:
+          flow: ${{ outputs.flow }}
+      - to: work
+        when: true
+        payload:
+          flow: ${{ outputs.flow }}
+    accounting:
+      inputs:
+        flow: ${{ transition.payload.flow }}
+      sequence:
+      - id: review
+        include: ./merge-review.yaml
+        inputs:
+          request: ${{ inputs.flow.request }}
+          documents: ${{ inputs.flow.documents }}
+      outputs:
+        approved: ${{ sequence.review.outputs.approved }}
+        flow: >-
+          ${{ jq([inputs.flow, {'commit_message': sequence.review.outputs.commit_message,
+          'documents': jq([inputs.flow.documents, sequence.review.outputs.documents], 'add'),
+          'message': 'The independent file accounting requested revision. Read merge-review.md, correct the inappropriate changes, and request inspection again.'}], 'add') }}
+      transitions:
+      - to: accept
+        when: outputs.approved
         payload:
           flow: ${{ outputs.flow }}
       - to: work
@@ -441,12 +494,12 @@ state:
       - id: outcome_review
         include: ../kernel/review.yaml
         inputs:
-          title: Review verified outcome
+          title: Review verified outcome and file accounting
           documents: ${{ inputs.flow.documents }}
           fields:
           - id: decision
             type: multiple_choice
-            question: Accept this verified outcome and squash-merge this candidate into the target branch?
+            question: Accept the file accounting and proposed commit message in merge-review.md, and merge this verified candidate into the target branch?
             required: true
             options:
             - value: accept
@@ -503,19 +556,17 @@ state:
       inputs:
         flow: ${{ transition.payload.flow }}
       sequence:
+      - id: squash
+        op: squash
+        inputs:
+          author: ${{ context.git.?author.orValue('') }}
+          commit_message: ${{ inputs.flow.commit_message }}
       - id: merge
-        op: squashrebasemerge
+        op: merge
         inputs:
           repo_path: ${{ context.environment.op.worktree_path }}
-          local_hash: ${{ context.git.hash }}
           upstream_repo: ${{ context.git.repo }}
           upstream_branch: ${{ context.git.ref }}
-          rebase: false
-          author: ${{ context.git.?author.orValue('') }}
-          commit_message: |-
-            Complete approved build
-
-            {{ inputs.flow.result.summary }}
       outputs:
         flow: '${{ jq([inputs.flow, {''disposition'': ''implemented''}], ''add'') }}'
         merged_hash: ${{ sequence.merge.outputs.merged_hash }}

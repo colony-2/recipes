@@ -21,8 +21,10 @@ The shared [development workflow](recipes/develop/develop.yaml) runs:
 2. Independent assessment through the consultation kernel, then human plan review.
 3. Implementation and approved prerequisite jobs, continuing independent work
    before waiting for named dependencies.
-4. Independent inspection of the actual candidate and executable verification.
-5. Human outcome acceptance, then squash merge of that candidate.
+4. Rebase onto the current target branch, independent inspection, and executable verification.
+5. A fresh Codex session accounts for every changed file and proposes the commit message;
+   inappropriate changes return to implementation.
+6. Human outcome acceptance, then separate squash and fast-forward merge operations.
 
 Design, test statements, implementation summaries, reviews, and feedback travel
 as artifacts. Questions are focused fields alongside documents. Uploaded edits
@@ -44,8 +46,26 @@ Verification runs `bash ./build.sh` in `target_directory`, retaining `build.log`
 and `verification.md`. Failed or missing verification returns to implementation;
 a missing hook is reported as skipped and cannot authorize merge. Projects can
 specialize this include to use their own verification op. Verification is read
-only with respect to the managed Git candidate. Merge uses native
-`squashrebasemerge` with `rebase: false`; upstream advancement stops integration.
+only with respect to the managed Git candidate. Build uses the native `rebase`,
+`squash`, and `merge` ops (c2j v0.0.104 or later). Rebase happens before inspection,
+verification, and file accounting. Squash happens after human acceptance and preserves the reviewed
+tree. Merge publishes that prepared commit without rewriting it; upstream advancement
+after review stops publication if it prevents a fast-forward.
+
+The [file accounting include](recipes/develop/merge-review.yaml) declares pinned
+Nix Python through `execution_needs.packages` on its inventory and Markdown-rendering
+commands. c2j prepares Python and adds it to each command's PATH; host Python is
+not required for these steps. Its independent, read-only Codex session
+explains every added, changed, and deleted file against the approved scope, including
+files outside `target_directory`. Renames appear as deletion/addition pairs. The recipe
+checks complete inventory coverage and attaches `merge-review.md`, `merge-candidate.json`,
+and `merge-candidate.diff` to the existing outcome review. A `revise` verdict returns
+the findings to the original build session and repeats rebase, inspection, verification,
+and accounting. Execution errors propagate normally.
+
+The document shows the proposed squash subject and review message. The recipe appends
+`https://jobs.colony2.com/<tenant>/jobs/<jobid>` using c2j's current-job environment,
+so the reviewed message and published commit link to the actual originating job.
 
 ```sh
 c2j submit --recipe-file ./build.yaml \

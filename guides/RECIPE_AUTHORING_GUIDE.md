@@ -35,7 +35,7 @@ Start with the smallest op that matches the job:
 - c2ops `gha` / `gha-many` selectors: reuse existing GitHub Actions workflows instead of rebuilding them in shell
 - `recipe.run_and_get_result` / `recipes.run*`: delegate work to child recipes
 - `input`: explicit human approval or structured user input
-- `thinpackrebase` / `squashrebasemerge`: integrate git changes back to the base repo
+- `rebase` / `squash` / `merge`: prepare and publish Git changes through separate durable steps
 - extension ops: package repo-specific behavior behind a stable op interface
 
 Use `ops/README.md` as the entrypoint to the per-op guides.

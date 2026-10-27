@@ -1,0 +1,43 @@
+id: build-merge-fixture
+sequence:
+- id: prepare
+  op: command_execution
+  inputs:
+    run: |
+      rm obsolete.txt
+      printf 'Supporting documentation\n' > 'added document.md'
+- id: advance_upstream
+  op: command_execution
+  const: true
+  inputs:
+    env:
+      REPO: ${{ context.git.repo }}
+    run: |
+      set -eu
+      printf 'Concurrent upstream work\n' > "$REPO/upstream.txt"
+      git -C "$REPO" add upstream.txt
+      git -C "$REPO" commit -m 'Advance upstream during implementation'
+- id: develop
+  include: ../../recipes/develop/develop.yaml
+  inputs:
+    prompt: Improve the requested behavior, remove the obsolete file, and document the change.
+    target_directory: .
+    session: {}
+    documents: {}
+    root_cell: ''
+    root_ref: ''
+    consultation_recipe: consultation
+    build_recipe: build
+    create_recipe: create
+- id: inspect_commit
+  op: command_execution
+  const: true
+  artifacts:
+    ./: ${{ sequence.develop.outputs.artifact_refs }}
+  inputs:
+    env:
+      REPO: ${{ context.git.repo }}
+    run: git -C "$REPO" log -1 --format=%B
+outputs:
+  build: ${{ sequence.develop.outputs }}
+  commit_message: ${{ sequence.inspect_commit.outputs.stdout }}
