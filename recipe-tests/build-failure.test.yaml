@@ -1,0 +1,259 @@
+recipe: fixtures/build-failure.yaml
+cases:
+- id: build-agent-error-keeps-origin
+  type: recipe_case
+  options:
+    validation_mode: path_only
+  mocks:
+    ops:
+    - match:
+        op: command_execution
+      behavior:
+        mode: return
+        outputs:
+          stdout: '{}'
+          success: true
+    - match:
+        op: command_execution
+      behavior:
+        mode: return
+        outputs:
+          stdout: '{}'
+          success: true
+        artifacts:
+          context.json: '{}'
+    - match:
+        op: extension_execution
+      behavior:
+        mode: fail
+        error:
+          message: Agent transport unavailable
+  assertions:
+  - type: output_equals
+    path: propagated
+    value: true
+  - type: output_equals
+    path: failure.message
+    value: Agent transport unavailable
+  - type: cel_true
+    expr: outputs.failure.node.path.contains("kernel-agent-turn/read_fresh/")
+  - type: cel_true
+    expr: '!calls.exists(c, c.node_path.contains("/failed/") || c.node_path.contains("/rejected/"))'
+- id: invalid-directory-reports-reason
+  type: integration_case
+  runtime: {}
+  inputs:
+    target_directory: ../outside
+  mocks:
+    ops:
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: propagated
+    value: true
+  - type: output_equals
+    path: failure.code
+    value: BUILD_REJECTED
+  - type: output_equals
+    path: failure.message
+    value: Target directory must be a nonempty repository-relative path without parent traversal.
+  - type: cel_true
+    expr: '!calls.exists(c, c.op == "extension_execution" || c.op == "squashrebasemerge")'
+- id: assessment-error-keeps-origin
+  type: recipe_case
+  options:
+    validation_mode: path_only
+  mocks:
+    ops:
+    - match:
+        op: command_execution
+      behavior:
+        mode: return
+        outputs:
+          stdout: '{}'
+          success: true
+    - match:
+        op: command_execution
+      behavior:
+        mode: return
+        outputs:
+          stdout: '{}'
+          success: true
+        artifacts:
+          context.json: '{}'
+    - match:
+        op: extension_execution
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          session: &id001
+            $c2j_object: v1
+            type: c2ops.codex.session/v1
+            tenant_id: test
+            sha256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+            artifact:
+              jobId: seed
+              taskOrdinal: 1
+              name: __c2j_objects__/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.tar
+              sizeBytes: 100
+          response:
+            next: review
+            summary: design ready
+            files:
+            - path: design.md
+              description: Review evidence
+            questions: []
+            consultations: []
+            keys: []
+        artifacts:
+          design.md: '# Review evidence'
+    - match:
+        op: command_execution
+      behavior:
+        mode: return
+        outputs:
+          stdout: '{}'
+          success: true
+        artifacts:
+          context.json: '{}'
+    - match:
+        op: extension_execution
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          session: *id001
+          response:
+            next: review
+            summary: test-plan ready
+            files:
+            - path: test-statements.md
+              description: Review evidence
+            questions: []
+            consultations: []
+            keys: []
+        artifacts:
+          test-statements.md: '# Review evidence'
+    - match:
+        op: extension_execution
+      behavior:
+        mode: fail
+        error:
+          message: Agent transport unavailable
+  assertions:
+  - type: output_equals
+    path: propagated
+    value: true
+  - type: output_equals
+    path: failure.message
+    value: Agent transport unavailable
+  - type: cel_true
+    expr: outputs.failure.node.path.contains("/assessment/") && outputs.failure.node.path.contains("kernel-agent-turn/read_fresh/")
+  - type: cel_true
+    expr: '!calls.exists(c, c.node_path.contains("/failed/") || c.node_path.contains("/rejected/"))'
+- id: returned-failure-reports-agent-message
+  type: recipe_case
+  options:
+    validation_mode: path_only
+  mocks:
+    ops:
+    - match:
+        op: command_execution
+      behavior:
+        mode: return
+        outputs:
+          stdout: '{}'
+          success: true
+    - match:
+        op: command_execution
+      behavior:
+        mode: return
+        outputs:
+          stdout: '{}'
+          success: true
+        artifacts:
+          context.json: '{}'
+    - match:
+        op: extension_execution
+      behavior:
+        mode: return
+        outputs:
+          status: failed
+          errorMessage: Agent stopped before completing the request.
+    - match:
+        op: command_execution
+      behavior:
+        mode: fail
+        error:
+          message: 'command execution failed: exit status 1'
+  assertions:
+  - type: output_equals
+    path: failure.code
+    value: BUILD_REJECTED
+  - type: cel_true
+    expr: outputs.failure.message.contains("Agent stopped before completing the request.") && !outputs.failure.message.contains("exit
+      status 1")
+  - type: cel_true
+    expr: '!calls.exists(c, c.op == "squashrebasemerge")'
+- id: completed-agent-result-keeps-normal-routing
+  type: recipe_case
+  options:
+    validation_mode: path_only
+  mocks:
+    ops:
+    - match:
+        op: command_execution
+      behavior:
+        mode: return
+        outputs:
+          stdout: '{}'
+          success: true
+    - match:
+        op: command_execution
+      behavior:
+        mode: return
+        outputs:
+          stdout: '{}'
+          success: true
+        artifacts:
+          context.json: '{}'
+    - match:
+        op: extension_execution
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          session:
+            $c2j_object: v1
+            type: c2ops.codex.session/v1
+            tenant_id: test
+            sha256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+            artifact:
+              jobId: seed
+              taskOrdinal: 1
+              name: __c2j_objects__/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.tar
+              sizeBytes: 100
+          response:
+            next: outside
+            summary: Request belongs to another cell.
+            files: []
+            questions: []
+            consultations: []
+            keys: []
+  assertions:
+  - type: output_equals
+    path: propagated
+    value: false
+  - type: output_equals
+    path: build.disposition
+    value: outside
+  - type: cel_true
+    expr: '!calls.exists(c, c.op == "squashrebasemerge" || c.node_path.contains("/rejected/"))'

@@ -154,12 +154,13 @@ requires another human review before another round; feedback never establishes
 agreement automatically. When a requested final summary is produced, it reflects
 the final outcome rather than the earlier disagreement.
 
-If review preparation fails, the atom returns `needs_review` with `report_error`
+If review preparation returns an unsuccessful result, the atom returns
+`needs_review` with `report_error`
 and saved state. Supplying its `continuation` retries review preparation and
 waits for direction without restarting negotiation. A caller that already
 obtained expert direction may instead supply `direction` and attachment
 references in `documents` to open a bounded round explicitly.
-Resubmitting a failed-turn continuation retries the same participant
+Resubmitting a continuation from a returned unsuccessful turn retries the same participant
 from the last accepted checkpoint without consuming or resetting iterations.
 Invalid initial inputs are not retryable continuations. A caller that advanced
 independently may also supply its current
@@ -190,6 +191,34 @@ reviews. `review.yaml` supplies build document reviews and feedback artifacts.
 These helpers are internal includes, not standalone entrypoints. Their caller
 supplies the structured inputs. The Codex selector is pinned to the published
 revision supporting output schemas and initial-only instructions.
+
+### Execution failures
+
+`agent-turn.yaml` propagates execution failures, preserving the
+original message, originating node, and structured failure. Build work,
+independent assessment, and same-candidate expert calls use this behavior.
+They do not route execution errors through a later shell command to fail again.
+Completed responses with correctable schema or artifact problems still use
+the normal result-repair loop.
+
+Consultations, consultation reports, and creation calls use the same propagation
+behavior. A caller that has a specific recovery action can use the existing
+`catch` mechanism on its include; the shared helpers have no failure-mode switch.
+Returned unsuccessful agent results remain distinct from execution errors and
+can still follow the existing result-handling and continuation paths.
+
+Build's `rejected` state is only for invalid requests or rejected returned
+results, where there is no unhandled execution exception to propagate. Current
+c2j has no standalone failure node, so this deliberate rejection still uses a
+command with `catch.fail`, publishing `BUILD_REJECTED` and the specific reason.
+It cannot replace an execution failure from an agent or assessment.
+
+Focused regression suites are `agent-failure.test.yaml`,
+`build-failure.test.yaml`, `consultation-failure.test.yaml`, and
+`consultation-report-failure.test.yaml` in `recipe-tests`.
+They cover propagation through includes to a caller catch, consultation and
+assessment errors, rejection diagnostics, and normal completed-result routing. Their fast
+cases mock operations; the invalid-directory case uses the native runtime.
 
 Run the native suites with a current c2j and the op's declared tools available:
 

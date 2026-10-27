@@ -6,6 +6,12 @@ and mocked Codex responses. Creation handoff uses a stand-in child recipe.
 
 | Priority | Kind / dependencies | Files | Expected outcome |
 | --- | --- | --- | --- |
+| Critical | Integration / c2j | `recipes/kernel/agent-turn.yaml`, `recipes/develop/develop.yaml` | Unhandled agent execution failures retain their original message and originating node; build executes no replacement failure command. |
+| Critical | Integration / c2j | `recipes/kernel/consultation.yaml`, `recipes/kernel/consultation-report.yaml` | Agent execution failures propagate through build assessments, consultations, and reports; callers can handle them with an ordinary catch. |
+| High | Integration / c2j | `recipes/develop/develop.yaml` | Invalid build requests and rejected agent results report specific reasons instead of a generic shell exit message. |
+| Critical | Integration / c2j, c2ops | `recipes/kernel/agent-turn.yaml` | Fresh and resumed agents can resolve the explicitly authorized Codex credential; an absent optional credential retains provider fallback. |
+| Critical | Integration / c2j | `recipes/kernel/agent-turn.yaml` | A caller's permission ceiling cannot be widened by an agent turn requesting Codex credentials. |
+| Critical | Integration / c2j jobs | `recipes/develop/coordinate.yaml` | Dependency waits target the recorded job and preserve its failure without waiting indefinitely for a replacement attempt. |
 | Critical | Integration / c2j | `build.yaml` | Builds infer repository purpose when PURPOSE.md is absent; they never bootstrap a mandate or select an evolve mode. |
 | Critical | Integration / c2j, c2ops | `recipes/kernel/agent-turn.yaml` | Fresh sessions receive instructions once; resumed build and consultation turns use their exact checkpoints and enforced output schemas. |
 | Critical | Integration / c2j | `recipes/develop/develop.yaml` | Implementation begins only after current design and test statements pass independent assessment and human approval. |

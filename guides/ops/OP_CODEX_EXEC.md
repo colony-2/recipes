@@ -14,6 +14,55 @@ Both packages retain the object-session contract. See
 In deterministic tests, mock model responses by selector or node path, or match
 `extension_execution` when unambiguous. Package metadata still requires Nix.
 
+## API configuration and secret references
+
+Bind the Codex API secret explicitly in each calling recipe node:
+
+```yaml
+inputs:
+  api:
+    api_key: ${{ context.secrets.?codex_api_key.orValue(null) }}
+```
+
+With c2j's trusted-input permissions model, references authored in the root
+recipe repository, including its same-repository includes, resolve without a
+`perms` block. This applies to both Codex selectors. Optional references preserve
+the default provider when API settings are absent. Leave `api.base_url` to the
+op manifest's default config reference; config references require neither a
+permission grant nor an explicit recipe binding.
+
+Bind `api.api_key` explicitly: the c2ops manifest's secret default originates in
+another repository and still requires a grant if used implicitly. The trust root
+is the repository containing the root recipe, regardless of the target workspace.
+
+Supplying the credential as an input does not grant the op permission to retrieve
+it again through `c2j secret get`. Omitting `perms` preserves the normal delegated
+Git-profile and child-job submission defaults. Add delegated grants only when an
+op actually needs those additional runtime capabilities. Enclosing ceilings
+still constrain secret references.
+
+When a project recipe includes these recipes across a repository boundary, the
+caller must authorize `codex_api_key` at that include, for example:
+
+```yaml
+include: git+https://github.com/colony-2/recipes.git//build.yaml@main
+perms:
+  jobdb:
+    secrets:
+      resolve: [codex_api_key]
+    jobs:
+      submit: true
+```
+
+That include policy authorizes the included recipe's input references and bounds
+its delegated capabilities; it does not itself put the model secret into every
+op's lease. Add any required concrete Git-profile secret names to the boundary
+policy. Submitting the shared recipe directly establishes its repository as the
+trust root and needs no such include policy.
+
+See c2j's [node permission guide](https://github.com/colony-2/c2j/blob/main/GUIDE-Node-Permissions.md)
+for the runtime contract.
+
 This op also emits output artifacts:
 - `stdout.jsonl`
 - `stderr.txt`
@@ -71,6 +120,8 @@ Session objects exclude credentials, config.toml, and installed skills.
 - id: run_codex
   op: nix:github:colony-2/c2ops/published#codex
   inputs:
+    api:
+      api_key: ${{ context.secrets.?codex_api_key.orValue(null) }}
     prompt: "Summarize the changes in this repo."
 ```
 
@@ -80,6 +131,8 @@ Session objects exclude credentials, config.toml, and installed skills.
 - id: run_codex_skill
   op: nix:github:colony-2/c2ops/published#skill-run
   inputs:
+    api:
+      api_key: ${{ context.secrets.?codex_api_key.orValue(null) }}
     prompt: "Use my-skill."
     skill: "my-skill"
     skills:

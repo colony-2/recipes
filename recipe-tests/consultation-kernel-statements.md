@@ -15,7 +15,7 @@ as a c2 artifact before consultation.
 | Critical | Integration / c2j, Git | `recipes/kernel/consultation.yaml` | Foreign consultants inspect their target repository without replacing the requester's candidate. |
 | High | Integration / c2j, c2ops manifests | `recipes/kernel/consultation.yaml` | Each participant receives consultation purpose and roles once, including an existing requester session; follow-ups carry new messages and file pointers. |
 | Critical | Integration / c2j | `recipes/kernel/consultation.yaml` | Failed or incomplete agent turns cannot establish agreement or consume a successful negotiation iteration. |
-| Critical | Integration / c2j objects | `recipes/kernel/consultation.yaml` | Retrying failed turns preserves participant checkpoints and the existing iteration budget. |
+| Critical | Integration / c2j objects | `recipes/kernel/consultation.yaml` | Retrying returned unsuccessful turns preserves participant checkpoints and the existing iteration budget. |
 | High | Integration / c2j | `recipes/kernel/consultation.yaml` | Declines, redirects, and cancellations terminate; either participant's deconfliction request waits for human direction without submitting implementation jobs. |
 | High | Integration / c2j artifacts | `recipes/kernel/consultation-report.yaml` | Requested summaries preserve consultant outcomes and point to exact final document revisions. |
 | Critical | Integration / c2j objects | `recipes/kernel/consultation.yaml` | Summary consumers can continue the original requester checkpoint independently of the consultation's successor checkpoint. |
@@ -25,3 +25,4 @@ as a c2 artifact before consultation.
 | Critical | Integration / c2j artifacts | `recipes/kernel/consultation.yaml` | Human answers and attachments reach both participants; each receives new direction once, and only the consultant can subsequently establish agreement. |
 | Critical | Integration / c2j | `recipes/kernel/consultation.yaml` | Repeated disagreement requires another human review before another bounded round; prior answers and sessions remain recorded. |
 | High | Integration / c2j | `recipes/kernel/consultation-report.yaml` | Missing review documents preserve unresolved state with an explicit error; negotiation cannot continue without expert direction. |
+| Critical | Integration / c2j | `recipes/kernel/consultation.yaml`, `recipes/kernel/consultation-report.yaml` | Execution errors stop consultation and report generation with the original diagnostic; they do not become successful results containing failed status. |

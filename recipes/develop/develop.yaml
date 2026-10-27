@@ -56,8 +56,10 @@ state:
           'consultation_recipe': inputs.consultation_recipe, 'build_recipe': inputs.build_recipe, 'create_recipe':
           inputs.create_recipe} }}
       transitions:
-      - to: failed
+      - to: rejected
         when: '!outputs.valid'
+        payload:
+          reason: Target directory must be a nonempty repository-relative path without parent traversal.
       - to: work
         when: true
         payload:
@@ -108,9 +110,11 @@ state:
         turn: ${{ inputs.turn }}
         previous: ${{ inputs.previous }}
       transitions:
-      - to: failed
+      - to: rejected
         when: '!outputs.valid && (outputs.turn.result.?status.orValue(''failed'') != ''completed'' || size(outputs.turn.jobs.?job_ids.orValue([]))
           > 0)'
+        payload:
+          reason: ${{ jq(outputs.issues, 'join("; ")') }}
       - to: repair
         when: '!outputs.valid'
         payload:
@@ -312,8 +316,12 @@ state:
           sequence.consult.outputs.final_artifacts], 'add'), 'message': sequence.consult.outputs.state.message,
           'assessment': sequence.consult.outputs.assessment}], 'add') }}
       transitions:
-      - to: failed
+      - to: rejected
         when: outputs.result.outcome in ['failed', 'needs_review']
+        payload:
+          reason: >-
+            ${{ outputs.result.report_error != '' ? outputs.result.report_error
+              : outputs.result.state.?error.orValue('Independent assessment did not complete.') }}
       - to: approval
         when: outputs.result.outcome == 'agreed' && outputs.result.assessment == 'pass' && outputs.flow.phase ==
           'test-plan'
@@ -518,12 +526,18 @@ state:
       sequence: []
       outputs:
         flow: ${{ inputs.flow }}
-    failed:
+    # Only semantic rejections reach this state. Execution errors propagate directly.
+    # c2j currently has no standalone fail node; classify this deliberate rejection
+    # with catch.fail so the terminal diagnostic is the rejection reason.
+    rejected:
       op: command_execution
       inputs:
-        run: |
-          printf '%s\n' 'Build stopped: invalid agent result, coordination request, or unmet approval/dependency gate.' >&2
-          exit 1
+        run: exit 1
+      catch:
+      - when: true
+        fail:
+          code: BUILD_REJECTED
+          message: ${{ transition.payload.reason }}
     repair:
       inputs:
         flow: ${{ transition.payload.flow }}
