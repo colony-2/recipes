@@ -1,14 +1,16 @@
 # Native recipe testing
 
-Use c2j main commit `94484c909de14a2fe2b2a62dfbd82d31595b5b75` or later
-for `path_match`, `.c2/` configuration, and empty workspaces. This commit is on
-main and is not yet released. Install it with:
+Install the latest published c2j package (CI uses Node.js 24):
 
 ```sh
-go install github.com/colony-2/c2j/cmd/c2j@94484c909de14a2fe2b2a62dfbd82d31595b5b75
+npm install --global @colony2/c2j@latest
+c2j version
 ```
 
-Ensure the installed Go binary is first on `PATH` when running tests.
+The package installs the appropriate release binary for your platform. Ensure
+the installed command is first on `PATH`, including for recipes that invoke
+`c2j` themselves. CI installs the latest package at the start of each run and
+records the CLI and npm package versions alongside the test reports.
 Run `recipe-tests/create.test.yaml` and
 `recipe-tests/create-handoff.test.yaml` for its review, publication, and handoff
 coverage; these use disposable repositories and do not create GitHub repositories.
@@ -18,7 +20,7 @@ Runtime cases still resolve op manifests when model responses are mocked.
 
 ```sh
 c2j test validate --directory .
-c2j test run --directory . --case-timeout 5m --out-dir .c2/test-results
+c2j test run --directory . --case-timeout 10m --out-dir .c2/test-results
 c2j test run --file recipe-tests/build-kernel.test.yaml --case build-without-purpose
 ```
 
@@ -27,6 +29,15 @@ Discovery recursively finds `*.test.yaml`, `*.test.yml`, `*.test.json`, and
 are text declarations; adding one does not require editing a manifest or runner.
 The result directory includes aggregate and per-suite/per-case reports. Any
 required failure returns nonzero; the runner attempts the remaining suites.
+
+[GitHub Actions](../.github/workflows/recipes.yml) runs this repository-wide
+`test run` command on Linux for pushes to `main` and pull requests. Existing
+setup actions provide Nix, the public `colony2` Cachix cache, Node.js, pnpm,
+Python, and uv. Ops provision their declared tools through Nix. No model
+credentials or cache upload credentials are required. The
+`recipe-test-results` artifact retains the selected c2j release, complete log,
+and runner reports for 14 days, including failed runs. A manual workflow run is
+also available for checking a new c2j release without changing this repository.
 
 For example:
 

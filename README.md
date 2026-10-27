@@ -122,11 +122,20 @@ c2j test run --directory recipe-tests --case-timeout 3m --out-dir .c2/test-resul
 These suites mock model responses and declare human answers while running native
 Git, artifacts, checkpoints, reviews, child jobs, verification, and merges. The
 current kernel pins a c2ops revision supporting `instructions` and `output.schema`.
-Use the c2j revision in [native testing](guides/NATIVE_RECIPE_TESTING.md) and the op's declared execution tools,
+Install the latest c2j release with `npm install --global @colony2/c2j@latest`
+and provide the op's declared execution tools,
 including Nix. No live model credentials or external repository provisioning are
 needed. See [build test statements](recipe-tests/build-kernel-statements.md),
 [consultation statements](recipe-tests/consultation-kernel-statements.md), and
 [coverage ownership](guides/NATIVE_TEST_MIGRATION.md).
+
+[Recipe CI](.github/workflows/recipes.yml) runs on pushes to `main` and pull
+requests using the latest stable c2j Linux release, Nix, and the public `colony2`
+Cachix cache. It discovers deterministic suites across the entire repository,
+including the examples and superpowers recipes. Live suites remain excluded.
+Each run records the selected c2j version and uploads test reports and logs as
+`recipe-test-results`, including when tests fail. See the
+[CI test statements](recipe-tests/ci-statements.md).
 
 ## Other recipes and authoring
 
