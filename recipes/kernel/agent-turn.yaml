@@ -11,16 +11,17 @@ inputs:
   artifact_fields: ${{ inputs.?artifact_fields.orValue(['files.*.path']) }}
 state:
   initial:
-  - to: read_resume
+  - to: resume_read_only_session
     when: inputs.read_only && size(inputs.session) > 0
-  - to: read_fresh
+  - to: start_read_only_session
     when: inputs.read_only
-  - to: resume
+  - to: resume_implementation_session
     when: size(inputs.session) > 0
-  - to: fresh
+  - to: start_implementation_session
     when: true
   states:
-    fresh:
+    start_implementation_session:
+      id: start_implementation_session
       op: nix:github:colony-2/c2ops/published#codex
       artifacts:
         ./: ${{ inputs.documents }}
@@ -43,7 +44,8 @@ state:
       transitions:
       - to: normalize
         when: true
-    resume:
+    resume_implementation_session:
+      id: resume_implementation_session
       op: nix:github:colony-2/c2ops/published#codex
       artifacts:
         ./: ${{ inputs.documents }}
@@ -66,7 +68,8 @@ state:
       transitions:
       - to: normalize
         when: true
-    read_fresh:
+    start_read_only_session:
+      id: start_read_only_session
       op: nix:github:colony-2/c2ops/published#codex
       const: true
       artifacts:
@@ -90,7 +93,8 @@ state:
       transitions:
       - to: normalize
         when: true
-    read_resume:
+    resume_read_only_session:
+      id: resume_read_only_session
       op: nix:github:colony-2/c2ops/published#codex
       const: true
       artifacts:
@@ -118,24 +122,24 @@ state:
       include: ./artifact-result.yaml
       inputs:
         result: >-
-          ${{ (inputs.read_only ? (size(inputs.session) > 0 ? states.read_resume : states.read_fresh) : (size(inputs.session)
-          > 0 ? states.resume : states.fresh)).outputs }}
+          ${{ (inputs.read_only ? (size(inputs.session) > 0 ? states.resume_read_only_session : states.start_read_only_session) : (size(inputs.session)
+          > 0 ? states.resume_implementation_session : states.start_implementation_session)).outputs }}
         artifacts: >-
           ${{ jq(json_parse(json_stringify([inputs.retained_artifacts, (inputs.read_only ? (size(inputs.session)
-          > 0 ? states.read_resume : states.read_fresh) : (size(inputs.session) > 0 ? states.resume : states.fresh)).artifacts])),
+          > 0 ? states.resume_read_only_session : states.start_read_only_session) : (size(inputs.session) > 0 ? states.resume_implementation_session : states.start_implementation_session)).artifacts])),
           'add') }}
         fields: ${{ inputs.artifact_fields }}
 outputs:
   result: ${{ states.normalize.outputs.result }}
   artifacts: ${{ states.normalize.outputs.artifacts }}
   jobs: >-
-    ${{ (inputs.read_only ? (size(inputs.session) > 0 ? states.read_resume : states.read_fresh) : (size(inputs.session)
-    > 0 ? states.resume : states.fresh)).?jobs.orValue({}) }}
+    ${{ (inputs.read_only ? (size(inputs.session) > 0 ? states.resume_read_only_session : states.start_read_only_session) : (size(inputs.session)
+    > 0 ? states.resume_implementation_session : states.start_implementation_session)).?jobs.orValue({}) }}
   cell: ${{ context.workspace.cell }}
   base_hash: ${{ context.git.resolved_hash }}
   issues: ${{ states.normalize.outputs.issues }}
   matches: ${{ states.normalize.outputs.matches }}
   original_response: >-
-    ${{ (inputs.read_only ? (size(inputs.session) > 0 ? states.read_resume : states.read_fresh) : (size(inputs.session)
-    > 0 ? states.resume : states.fresh)).outputs.?response.orValue({}) }}
+    ${{ (inputs.read_only ? (size(inputs.session) > 0 ? states.resume_read_only_session : states.start_read_only_session) : (size(inputs.session)
+    > 0 ? states.resume_implementation_session : states.start_implementation_session)).outputs.?response.orValue({}) }}
   checkpoint: ${{ states.normalize.outputs.result.?session.orValue(inputs.session) }}

@@ -8,14 +8,15 @@ input_schema:
 inputs:
   commands: '${{ first_nonempty(inputs.?commands, "") }}'
 state:
-  initial: detect
+  initial: detect_validation_command
   states:
-    detect:
+    detect_validation_command:
+      id: detect_validation_command
       op: command_execution
       transitions:
-        - to: run_provided
+        - to: run_provided_validation
           when: 'nonempty(inputs.?commands.orValue(""))'
-        - to: choose_mode
+        - to: choose_validation_mode
           when: "true"
       inputs:
         timeout: 15m
@@ -50,21 +51,22 @@ state:
         env:
           WT: "{{ context.environment.op.worktree_path }}"
 
-    choose_mode:
+    choose_validation_mode:
+      id: choose_validation_mode
       op: input
       transitions:
         switch: outputs.response
         cases:
           - value: use_suggested
-            to: run_suggested
+            to: run_suggested_validation
         default:
-          to: prompt_custom
+          to: collect_validation_command
       inputs:
         form:
           title: "Validation commands"
           question: |
             Suggestions (detected):
-            ${{ json_parse(states.detect.outputs.stdout).suggested_commands }}
+            ${{ json_parse(states.detect_validation_command.outputs.stdout).suggested_commands }}
           type: multiple_choice
           options:
             - value: use_suggested
@@ -72,10 +74,11 @@ state:
             - value: provide_custom
               label: Provide custom commands
 
-    prompt_custom:
+    collect_validation_command:
+      id: collect_validation_command
       op: input
       transitions:
-        - to: run_custom
+        - to: run_custom_validation
           when: "true"
       inputs:
         form:
@@ -84,10 +87,11 @@ state:
             Enter the validation commands to run (newline-separated).
 
             Suggestions (detected):
-            ${{ json_parse(states.detect.outputs.stdout).suggested_commands }}
+            ${{ json_parse(states.detect_validation_command.outputs.stdout).suggested_commands }}
           type: paragraph_text
 
-    run_provided:
+    run_provided_validation:
+      id: run_provided_validation
       op: command_execution
       transitions: []
       inputs:
@@ -115,7 +119,8 @@ state:
           tail -n 120 "$OUT/validation/output.txt" > "$OUT/validation/output-tail.txt" || true
           exit $RC
 
-    run_suggested:
+    run_suggested_validation:
+      id: run_suggested_validation
       op: command_execution
       transitions: []
       inputs:
@@ -133,7 +138,7 @@ state:
           cd "$DIR"
 
           cat > "$OUT/validation/commands.sh" <<EOF
-          ${{ json_parse(states.detect.outputs.stdout).suggested_commands }}
+          ${{ json_parse(states.detect_validation_command.outputs.stdout).suggested_commands }}
           EOF
 
           set +e
@@ -143,7 +148,8 @@ state:
           tail -n 120 "$OUT/validation/output.txt" > "$OUT/validation/output-tail.txt" || true
           exit $RC
 
-    run_custom:
+    run_custom_validation:
+      id: run_custom_validation
       op: command_execution
       transitions: []
       inputs:
@@ -161,7 +167,7 @@ state:
           cd "$DIR"
 
           cat > "$OUT/validation/commands.sh" <<'EOF'
-          {{ states.prompt_custom.outputs.response }}
+          {{ states.collect_validation_command.outputs.response }}
           EOF
 
           set +e
@@ -172,8 +178,8 @@ state:
           exit $RC
 
 outputs:
-  exit_code: "${{ state_exists('run_provided') ? state_output('run_provided', 'exit_code', 1) : (state_exists('run_suggested') ? state_output('run_suggested', 'exit_code', 1) : state_output('run_custom', 'exit_code', 1)) }}"
-  passed: "${{ state_exists('run_provided') ? state_output('run_provided', 'exit_code', 1) == 0 : (state_exists('run_suggested') ? state_output('run_suggested', 'exit_code', 1) == 0 : state_output('run_custom', 'exit_code', 1) == 0) }}"
-  suggested_commands: "${{ json_parse(state_output('detect', 'stdout', '{\"suggested_commands\":\"\"}')).suggested_commands }}"
+  exit_code: "${{ state_exists('run_provided_validation') ? state_output('run_provided_validation', 'exit_code', 1) : (state_exists('run_suggested_validation') ? state_output('run_suggested_validation', 'exit_code', 1) : state_output('run_custom_validation', 'exit_code', 1)) }}"
+  passed: "${{ state_exists('run_provided_validation') ? state_output('run_provided_validation', 'exit_code', 1) == 0 : (state_exists('run_suggested_validation') ? state_output('run_suggested_validation', 'exit_code', 1) == 0 : state_output('run_custom_validation', 'exit_code', 1) == 0) }}"
+  suggested_commands: "${{ json_parse(state_output('detect_validation_command', 'stdout', '{\"suggested_commands\":\"\"}')).suggested_commands }}"
   output_tail_artifact: "validation/output-tail.txt"
   output_artifact: "validation/output.txt"

@@ -38,7 +38,7 @@ state:
         when: inputs.action == 'consult'
       - to: invalid
         when: '!(outputs.key in outputs.flow.jobs)'
-      - to: wait_job
+      - to: await_child_build
         when: outputs.flow.jobs[outputs.key].status == 'running'
       - to: skip
         when: true
@@ -68,7 +68,7 @@ state:
         inputs:
           prefix: consultation/
           documents: '${{ {''conversation.json'': inputs.thread.result.continuation} }}'
-      - id: launch
+      - id: launch_child_build
         op: recipes.run
         inputs:
           recipes: '${{ [{''cell_name'': context.workspace.cell, ''git'': {''base_repo'': context.git.repo,
@@ -77,7 +77,7 @@ state:
             ''documents'': jq([inputs.thread.result.final_artifacts, sequence.starter.outputs.documents],
             ''add''), ''root_cell'': inputs.flow.root_cell, ''root_ref'': inputs.flow.root_ref} }] }}'
       outputs:
-        job_id: ${{ sequence.launch.outputs.job_ids[0] }}
+        job_id: ${{ sequence.launch_child_build.outputs.job_ids[0] }}
       transitions:
       - to: record
         when: true
@@ -86,7 +86,8 @@ state:
             ''documents'': states.consult.outputs.final_artifacts, ''jobs'': jq([states.pick.outputs.flow.jobs,
             {states.pick.outputs.key: {''job_id'': outputs.job_id, ''status'': ''running'', ''kind'': ''feature'',
             ''cell'': states.pick.outputs.item.cell} }], ''add'')} }}'
-    wait_job:
+    await_child_build:
+      id: await_child_build
       op: recipe.await_result
       inputs:
         target:

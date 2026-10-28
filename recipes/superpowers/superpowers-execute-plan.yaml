@@ -19,15 +19,16 @@ state:
   initial: select_task
   states:
     select_task:
+      id: select_task
       op: command_execution
       transitions:
-        - to: child_boundary_required
+        - to: report_required_child_boundary
           when: json_parse(outputs.stdout).selected == true && json_parse(outputs.stdout).requires_child_job == true
         - to: run_tdd_task_boundary
           when: json_parse(outputs.stdout).selected == true && json_parse(outputs.stdout).selected_task.?requires_tdd.orValue(false) == true
         - to: run_task_boundary
           when: json_parse(outputs.stdout).selected == true && json_parse(outputs.stdout).requires_child_job != true
-        - to: no_task_selected
+        - to: report_no_selected_task
           when: true
       inputs:
         timeout: 30s
@@ -84,7 +85,8 @@ state:
           print(json.dumps(result, sort_keys=True))
           PY
 
-    child_boundary_required:
+    report_required_child_boundary:
+      id: report_required_child_boundary
       op: command_execution
       transitions: []
       inputs:
@@ -97,7 +99,8 @@ state:
           printf '%s\n' "$SELECTED_TASK_JSON" > "{{ context.environment.op.outbox }}/superpowers/execution/child-boundary-required.json"
           printf '%s\n' "$SELECTED_TASK_JSON"
 
-    no_task_selected:
+    report_no_selected_task:
+      id: report_no_selected_task
       op: command_execution
       transitions: []
       inputs:
@@ -118,6 +121,7 @@ state:
         initial: implement_task
         states:
           implement_task:
+            id: implement_task
             op: nix:github:colony-2/c2ops/published#skill-run
             transitions:
               - to: spec_review
@@ -175,6 +179,7 @@ state:
                 additionalProperties: true
 
           spec_review:
+            id: spec_review
             op: nix:github:colony-2/c2ops/published#skill-run
             transitions:
               - to: quality_review
@@ -223,6 +228,7 @@ state:
                 additionalProperties: true
 
           quality_review:
+            id: quality_review
             op: nix:github:colony-2/c2ops/published#skill-run
             transitions:
               - to: task_gate
@@ -255,6 +261,7 @@ state:
               schema: *review_result_schema
 
           revise_after_spec:
+            id: revise_after_spec
             op: nix:github:colony-2/c2ops/published#skill-run
             transitions:
               - to: spec_review_after_revision
@@ -285,6 +292,7 @@ state:
               schema: *task_result_schema
 
           revise_after_quality:
+            id: revise_after_quality
             op: nix:github:colony-2/c2ops/published#skill-run
             transitions:
               - to: spec_review_after_revision
@@ -316,11 +324,12 @@ state:
               schema: *task_result_schema
 
           spec_review_after_revision:
+            id: spec_review_after_revision
             op: nix:github:colony-2/c2ops/published#skill-run
             transitions:
               - to: quality_review_after_revision
                 when: outputs.parsed_output.?ok.orValue(false)
-              - to: task_needs_revision
+              - to: report_task_revision_required
                 when: true
             inputs:
               api:
@@ -346,11 +355,12 @@ state:
               schema: *review_result_schema
 
           quality_review_after_revision:
+            id: quality_review_after_revision
             op: nix:github:colony-2/c2ops/published#skill-run
             transitions:
               - to: task_gate_after_revision
                 when: outputs.parsed_output.?ok.orValue(false)
-              - to: task_needs_revision
+              - to: report_task_revision_required
                 when: true
             inputs:
               api:
@@ -376,6 +386,7 @@ state:
               schema: *review_result_schema
 
           task_gate:
+            id: task_gate
             op: nix:github:colony-2/c2ops/published#rule_gate
             transitions: []
             inputs:
@@ -394,6 +405,7 @@ state:
                   message: Quality review must pass.
 
           task_gate_after_revision:
+            id: task_gate_after_revision
             op: nix:github:colony-2/c2ops/published#rule_gate
             transitions: []
             inputs:
@@ -411,7 +423,8 @@ state:
                   value: '${{ states.quality_review_after_revision.outputs.parsed_output.?ok.orValue(false) }}'
                   message: Quality review must pass after revision.
 
-          task_needs_revision:
+          report_task_revision_required:
+            id: report_task_revision_required
             op: command_execution
             transitions: []
             inputs:
@@ -447,6 +460,7 @@ state:
         initial: collect_tdd_plan
         states:
           collect_tdd_plan:
+            id: collect_tdd_plan
             op: command_execution
             transitions:
               - to: write_red_test
@@ -508,6 +522,7 @@ state:
                 PY
 
           write_red_test:
+            id: write_red_test
             op: nix:github:colony-2/c2ops/published#skill-run
             transitions:
               - to: run_red_test
@@ -554,6 +569,7 @@ state:
                 additionalProperties: true
 
           run_red_test:
+            id: run_red_test
             op: command_execution
             transitions:
               - to: assert_red
@@ -591,11 +607,12 @@ state:
                 exit "$RC"
 
           assert_red:
+            id: assert_red
             op: nix:github:colony-2/c2ops/published#rule_gate
             transitions:
               - to: write_green_code
                 when: outputs.?ok.orValue(false)
-              - to: tdd_failed
+              - to: report_failed_test_cycle
                 when: true
             inputs:
               rules:
@@ -617,6 +634,7 @@ state:
                   message: RED phase must write the expected result artifact.
 
           write_green_code:
+            id: write_green_code
             op: nix:github:colony-2/c2ops/published#skill-run
             transitions:
               - to: run_green_test
@@ -673,6 +691,7 @@ state:
                 additionalProperties: true
 
           run_green_test:
+            id: run_green_test
             op: command_execution
             transitions:
               - to: assert_green
@@ -710,11 +729,12 @@ state:
                 exit "$RC"
 
           assert_green:
+            id: assert_green
             op: nix:github:colony-2/c2ops/published#rule_gate
             transitions:
               - to: refactor_task
                 when: outputs.?ok.orValue(false)
-              - to: tdd_failed
+              - to: report_failed_test_cycle
                 when: true
             inputs:
               rules:
@@ -736,6 +756,7 @@ state:
                   message: GREEN phase must report task status done.
 
           refactor_task:
+            id: refactor_task
             op: nix:github:colony-2/c2ops/published#skill-run
             transitions:
               - to: run_refactor_verification
@@ -790,6 +811,7 @@ state:
                 additionalProperties: true
 
           run_refactor_verification:
+            id: run_refactor_verification
             op: command_execution
             transitions:
               - to: assert_refactor
@@ -827,11 +849,12 @@ state:
                 exit "$RC"
 
           assert_refactor:
+            id: assert_refactor
             op: nix:github:colony-2/c2ops/published#rule_gate
             transitions:
               - to: spec_review
                 when: outputs.?ok.orValue(false)
-              - to: tdd_failed
+              - to: report_failed_test_cycle
                 when: true
             inputs:
               rules:
@@ -853,6 +876,7 @@ state:
                   message: REFACTOR phase must report task status done.
 
           spec_review:
+            id: spec_review
             op: nix:github:colony-2/c2ops/published#skill-run
             transitions:
               - to: revise_tdd_after_spec
@@ -902,6 +926,7 @@ state:
                 additionalProperties: true
 
           quality_review:
+            id: quality_review
             op: nix:github:colony-2/c2ops/published#skill-run
             transitions:
               - to: revise_tdd_after_quality
@@ -950,6 +975,7 @@ state:
                 additionalProperties: true
 
           revise_tdd_after_spec:
+            id: revise_tdd_after_spec
             op: nix:github:colony-2/c2ops/published#skill-run
             transitions:
               - to: run_revision_green_test
@@ -1009,6 +1035,7 @@ state:
                 additionalProperties: true
 
           revise_tdd_after_quality:
+            id: revise_tdd_after_quality
             op: nix:github:colony-2/c2ops/published#skill-run
             transitions:
               - to: run_revision_green_test
@@ -1069,6 +1096,7 @@ state:
                 additionalProperties: true
 
           run_revision_green_test:
+            id: run_revision_green_test
             op: command_execution
             transitions:
               - to: assert_revision_green
@@ -1106,11 +1134,12 @@ state:
                 exit "$RC"
 
           assert_revision_green:
+            id: assert_revision_green
             op: nix:github:colony-2/c2ops/published#rule_gate
             transitions:
               - to: run_revision_refactor_verification
                 when: outputs.?ok.orValue(false)
-              - to: tdd_failed
+              - to: report_failed_test_cycle
                 when: true
             inputs:
               rules:
@@ -1132,6 +1161,7 @@ state:
                   message: TDD revision phase must report task status done.
 
           run_revision_refactor_verification:
+            id: run_revision_refactor_verification
             op: command_execution
             transitions:
               - to: assert_revision_refactor
@@ -1169,11 +1199,12 @@ state:
                 exit "$RC"
 
           assert_revision_refactor:
+            id: assert_revision_refactor
             op: nix:github:colony-2/c2ops/published#rule_gate
             transitions:
               - to: spec_review_after_revision
                 when: outputs.?ok.orValue(false)
-              - to: tdd_failed
+              - to: report_failed_test_cycle
                 when: true
             inputs:
               rules:
@@ -1191,11 +1222,12 @@ state:
                   message: TDD revision phase must report task status done before re-review.
 
           spec_review_after_revision:
+            id: spec_review_after_revision
             op: nix:github:colony-2/c2ops/published#skill-run
             transitions:
               - to: quality_review_after_revision
                 when: outputs.parsed_output.?ok.orValue(false) && !outputs.parsed_output.?requires_revision.orValue(false)
-              - to: tdd_failed
+              - to: report_failed_test_cycle
                 when: true
             inputs:
               api:
@@ -1240,11 +1272,12 @@ state:
                 additionalProperties: true
 
           quality_review_after_revision:
+            id: quality_review_after_revision
             op: nix:github:colony-2/c2ops/published#skill-run
             transitions:
               - to: task_gate_after_revision
                 when: outputs.parsed_output.?ok.orValue(false) && !outputs.parsed_output.?requires_revision.orValue(false)
-              - to: tdd_failed
+              - to: report_failed_test_cycle
                 when: true
             inputs:
               api:
@@ -1289,6 +1322,7 @@ state:
                 additionalProperties: true
 
           task_gate_after_revision:
+            id: task_gate_after_revision
             op: nix:github:colony-2/c2ops/published#rule_gate
             transitions: []
             inputs:
@@ -1315,6 +1349,7 @@ state:
                   message: Quality review must pass after TDD revision.
 
           task_gate:
+            id: task_gate
             op: nix:github:colony-2/c2ops/published#rule_gate
             transitions: []
             inputs:
@@ -1340,7 +1375,8 @@ state:
                   value: '${{ states.quality_review.outputs.parsed_output.?ok.orValue(false) }}'
                   message: Quality review must pass.
 
-          tdd_failed:
+          report_failed_test_cycle:
+            id: report_failed_test_cycle
             op: command_execution
             transitions: []
             inputs:

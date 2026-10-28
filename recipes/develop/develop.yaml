@@ -13,9 +13,10 @@ inputs:
   prior_dependencies: ${{ inputs.?prior_dependencies.orValue({}) }}
   prior_consultations: ${{ inputs.?prior_consultations.orValue({}) }}
 state:
-  initial: prepare
+  initial: discover_root_cell
   states:
-    prepare:
+    discover_root_cell:
+      id: discover_root_cell
       op: command_execution
       const: true
       inputs:
@@ -38,10 +39,10 @@ state:
           != "__git_state_thin_pack__" and .key != "diff_from_parent.diff" and .key != "diff_from_base.diff"))')
           }}
         root_cell: >-
-          ${{ inputs.root_cell != '' ? inputs.root_cell : json_parse(states.prepare.outputs.stdout).?root_repo.orValue('')
+          ${{ inputs.root_cell != '' ? inputs.root_cell : json_parse(states.discover_root_cell.outputs.stdout).?root_repo.orValue('')
           }}
         root_ref: >-
-          ${{ inputs.root_ref != '' ? inputs.root_ref : json_parse(states.prepare.outputs.stdout).?root_ref.orValue('main')
+          ${{ inputs.root_ref != '' ? inputs.root_ref : json_parse(states.discover_root_cell.outputs.stdout).?root_ref.orValue('main')
           }}
         consultation_recipe: ${{ inputs.consultation_recipe }}
         build_recipe: ${{ inputs.build_recipe }}
@@ -61,7 +62,7 @@ state:
           'consultation_recipe': inputs.consultation_recipe, 'build_recipe': inputs.build_recipe, 'create_recipe':
           inputs.create_recipe} }}
       transitions:
-      - to: rejected
+      - to: reject_invalid_build_request
         when: '!outputs.valid'
         payload:
           reason: Target directory must be a nonempty repository-relative path without parent traversal.
@@ -73,7 +74,7 @@ state:
       inputs:
         flow: ${{ jq(transition.payload.flow, 'del(.review_hint)') }}
       sequence:
-      - id: context
+      - id: write_build_context
         op: command_execution
         const: true
         inputs:
@@ -87,7 +88,7 @@ state:
         inputs:
           flow: ${{ inputs.flow }}
           documents: >-
-            ${{ jq([inputs.flow.documents, {'context.json': sequence.context.artifacts['context.json']}], 'add')
+            ${{ jq([inputs.flow.documents, {'context.json': sequence.write_build_context.artifacts['context.json']}], 'add')
             }}
       outputs:
         flow: ${{ inputs.flow }}
@@ -115,7 +116,7 @@ state:
         turn: ${{ inputs.turn }}
         previous: ${{ inputs.previous }}
       transitions:
-      - to: rejected
+      - to: reject_invalid_build_request
         when: '!outputs.valid && (outputs.turn.result.?status.orValue(''failed'') != ''completed'' || size(outputs.turn.jobs.?job_ids.orValue([]))
           > 0)'
         payload:
@@ -149,10 +150,6 @@ state:
         when: outputs.flow.result.next == 'continue'
         payload:
           flow: '${{ jq([outputs.flow, {''message'': ''Continue the current phase.''}], ''add'') }}'
-      - to: test_next
-        when: outputs.flow.phase == 'design'
-        payload:
-          flow: ${{ outputs.flow }}
       - to: coordinate
         when: outputs.flow.threads.exists(k, outputs.flow.threads[k].status == 'running') || outputs.flow.jobs.exists(k,
           outputs.flow.jobs[k].status == 'running')
@@ -176,16 +173,21 @@ state:
             }}
       - to: repair
         when: |-
-          outputs.flow.phase == 'test-plan' && !outputs.flow.plan_keys.all(k,
+          outputs.flow.phase in ['design', 'test-plan'] && !outputs.flow.plan_keys.all(k,
             k in outputs.flow.threads && outputs.flow.threads[k].request.kind != 'expert'
             && outputs.flow.threads[k].?result.orValue({}).?outcome.orValue('') == 'agreed')
         payload:
           flow: ${{ outputs.previous }}
           turn: ${{ outputs.turn }}
           issues: >-
-            ${{ ['Prerequisite gate rejected this result. Review context.json: plan keys must have serving-cell
-            agreement; implementation review requires every approved dependency to have completed successfully.']
-            }}
+            ${{ ["Design prerequisite keys must identify this build's agreed non-expert serving requests in context.json. "
+            + "Parent request identifiers are not local prerequisites. Return keys: [] when none are needed. "
+            + (outputs.flow.phase == 'design' ? "Correct the design review response before advancing to test-plan."
+            : "Return next: redesign to correct the design's prerequisite list before requesting test-plan review again.")] }}
+      - to: test_next
+        when: outputs.flow.phase == 'design'
+        payload:
+          flow: ${{ outputs.flow }}
       - to: rebase
         when: outputs.flow.phase == 'implement'
         payload:
@@ -325,7 +327,7 @@ state:
           sequence.consult.outputs.final_artifacts], 'add'), 'message': sequence.consult.outputs.state.message,
           'assessment': sequence.consult.outputs.assessment}], 'add') }}
       transitions:
-      - to: rejected
+      - to: reject_invalid_build_request
         when: outputs.result.outcome in ['failed', 'needs_review']
         payload:
           reason: >-
@@ -424,7 +426,7 @@ state:
       inputs:
         flow: ${{ transition.payload.flow }}
       sequence:
-      - id: upstream
+      - id: resolve_upstream_head
         op: command_execution
         const: true
         inputs:
@@ -434,10 +436,10 @@ state:
           run: |
             set -eu
             git ls-remote --exit-code -- "$REPO" "refs/heads/${BRANCH#refs/heads/}"
-      - id: rebase
+      - id: rebase_candidate
         op: rebase
         inputs:
-          target_base_hash: ${{ jq(sequence.upstream.outputs.stdout, 'split("\t")[0]') }}
+          target_base_hash: ${{ jq(sequence.resolve_upstream_head.outputs.stdout, 'split("\t")[0]') }}
       outputs:
         flow: ${{ inputs.flow }}
       transitions:
@@ -454,7 +456,7 @@ state:
         inputs:
           target_directory: ${{ inputs.flow.target_directory }}
       outputs:
-        ok: ${{ sequence.verify.outputs.ok }}
+        ok: ${{ sequence.verify.outputs.result.status in ['passed', 'skipped'] }}
         flow: >-
           ${{ jq([inputs.flow, {'verification': sequence.verify.outputs.evidence, 'documents': jq([inputs.flow.documents,
           sequence.verify.outputs.artifact_refs], 'add'), 'message': 'Verification did not pass. Read verification.md
@@ -499,12 +501,12 @@ state:
       - id: outcome_review
         include: ../kernel/review.yaml
         inputs:
-          title: Review verified outcome and file accounting
+          title: Review outcome, verification evidence, and file accounting
           documents: ${{ inputs.flow.documents }}
           fields:
           - id: decision
             type: multiple_choice
-            question: Accept the file accounting and proposed commit message in merge-review.md, and merge this verified candidate into the target branch?
+            question: Accept the file accounting, reported verification status, and proposed commit message in merge-review.md, and merge this candidate into the target branch?
             required: true
             options:
             - value: accept
@@ -540,7 +542,7 @@ state:
           flow: '${{ jq([outputs.flow, {''disposition'': ''cancelled''}], ''add'') }}'
       - to: merge
         when: outputs.response.fields.decision == 'accept' && !outputs.changed && outputs.flow.verification.status
-          == 'passed' && outputs.flow.assessment == 'pass'
+          in ['passed', 'skipped'] && outputs.flow.assessment == 'pass'
         payload:
           flow: ${{ outputs.flow }}
       - to: design_next
@@ -561,12 +563,12 @@ state:
       inputs:
         flow: ${{ transition.payload.flow }}
       sequence:
-      - id: squash
+      - id: squash_reviewed_candidate
         op: squash
         inputs:
           author: ${{ context.git.?author.orValue('') }}
           commit_message: ${{ inputs.flow.commit_message }}
-      - id: merge
+      - id: merge_reviewed_candidate
         op: merge
         inputs:
           repo_path: ${{ context.environment.op.worktree_path }}
@@ -574,8 +576,8 @@ state:
           upstream_branch: ${{ context.git.ref }}
       outputs:
         flow: '${{ jq([inputs.flow, {''disposition'': ''implemented''}], ''add'') }}'
-        merged_hash: ${{ sequence.merge.outputs.merged_hash }}
-        target_branch: ${{ sequence.merge.outputs.target_branch }}
+        merged_hash: ${{ sequence.merge_reviewed_candidate.outputs.merged_hash }}
+        target_branch: ${{ sequence.merge_reviewed_candidate.outputs.target_branch }}
     stopped:
       inputs:
         flow: ${{ transition.payload.flow }}
@@ -585,7 +587,8 @@ state:
     # Only semantic rejections reach this state. Execution errors propagate directly.
     # c2j currently has no standalone fail node; classify this deliberate rejection
     # with catch.fail so the terminal diagnostic is the rejection reason.
-    rejected:
+    reject_invalid_build_request:
+      id: reject_invalid_build_request
       op: command_execution
       inputs:
         run: exit 1

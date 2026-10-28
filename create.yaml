@@ -61,7 +61,7 @@ sequence:
           prompt: ${{ state_output('registration_repair', 'prompt', vars.initial_prompt) }}
           retained_artifacts: ${{ state_output('registration_repair', 'artifacts', {}) }}
         sequence:
-        - id: records
+        - id: write_created_cells_manifest
           op: command_execution
           const: true
           inputs:
@@ -75,7 +75,7 @@ sequence:
           inputs:
             read_only: ${{ inputs.read_only }}
             session: ${{ inputs.session }}
-            documents: '${{ jq([inputs.documents, {''created.json'': sequence.records.artifacts[''created.json'']}],
+            documents: '${{ jq([inputs.documents, {''created.json'': sequence.write_created_cells_manifest.artifacts[''created.json'']}],
               ''add'') }}'
             prompt: ${{ inputs.prompt }}
             schema:
@@ -93,9 +93,9 @@ sequence:
             retained_artifacts: ${{ inputs.retained_artifacts }}
         outputs:
           turn: ${{ sequence.agent.outputs }}
-          records: ${{ sequence.records.artifacts['created.json'] }}
+          records: ${{ sequence.write_created_cells_manifest.artifacts['created.json'] }}
         transitions:
-        - to: merge
+        - to: publish_cell_catalog
           when: outputs.turn.result.?status.orValue('failed') == 'completed' && outputs.turn.result.?output_schema_valid.orValue(false)
             && outputs.turn.result.?response.orValue({}).?completed.orValue(false) && outputs.turn.result.?session.orValue(null)
             != null && size(outputs.turn.jobs.?job_ids.orValue([])) == 0 && 'completion.md' in outputs.turn.artifacts
@@ -119,7 +119,8 @@ sequence:
             product features. The workflow owns publication. Write completion.md
             in the outbox describing registered cells and any remaining work.
             Return completed=false if registration cannot be completed as approved.
-      merge:
+      publish_cell_catalog:
+        id: publish_cell_catalog
         op: squashrebasemerge
         inputs:
           commit_message: Register approved new cells
@@ -150,12 +151,12 @@ sequence:
           when: true
   outputs:
     disposition: |-
-      ${{ state_exists('merge') ? (states.merge.outputs.?error.orValue('') == '' ? 'created' : 'registration_failed')
+      ${{ state_exists('publish_cell_catalog') ? (states.publish_cell_catalog.outputs.?error.orValue('') == '' ? 'created' : 'registration_failed')
         : state_exists('register') ? 'registration_failed'
         : state_exists('publish') ? 'publication_failed' : states.review.outputs.disposition }}
     created_cells: ${{ state_output('publish', 'created', []) }}
-    merged: ${{ state_exists('merge') && states.merge.outputs.?error.orValue('') == '' }}
-    merged_hash: ${{ state_output('merge', 'merged_hash', '') }}
+    merged: ${{ state_exists('publish_cell_catalog') && states.publish_cell_catalog.outputs.?error.orValue('') == '' }}
+    merged_hash: ${{ state_output('publish_cell_catalog', 'merged_hash', '') }}
     session: >-
       ${{ state_exists('register') ? states.register.outputs.turn.result.?session.orValue(states.review.outputs.session)
       : states.review.outputs.session }}
@@ -163,7 +164,7 @@ sequence:
       ${{ state_exists('register') ? states.register.outputs.turn.result.?response.orValue({}).?summary.orValue('Root
       registration did not complete.') : states.review.outputs.summary }}
     error: |-
-      ${{ state_exists('merge') ? states.merge.outputs.?error.orValue('')
+      ${{ state_exists('publish_cell_catalog') ? states.publish_cell_catalog.outputs.?error.orValue('')
         : state_exists('register') ? 'Cell repositories were published, but root registration did not complete.'
         : state_output('publish', 'error', '') }}
     review: ${{ states.review.outputs.review }}

@@ -23,17 +23,18 @@ state:
           purpose: ${{ inputs.documents[inputs.cells[inputs.index].purpose_path] }}
         outputs:
           error: |-
-            ${{ !states.write.outputs.success ? 'Could not copy a nonempty approved PURPOSE.md.'
-              : states.publish.outputs.?error.orValue('') }}
+            ${{ !states.write_approved_purpose.outputs.success ? 'Could not copy a nonempty approved PURPOSE.md.'
+              : states.publish_new_cell.outputs.?error.orValue('') }}
           published: |-
-            ${{ states.write.outputs.success && states.publish.outputs.?error.orValue('') == ''
+            ${{ states.write_approved_purpose.outputs.success && states.publish_new_cell.outputs.?error.orValue('') == ''
               ? {'cell': inputs.cell.name, 'repo': context.git.repo,
-                 'ref': states.publish.outputs.target_branch,
-                 'revision': states.publish.outputs.merged_hash} : {} }}
+                 'ref': states.publish_new_cell.outputs.target_branch,
+                 'revision': states.publish_new_cell.outputs.merged_hash} : {} }}
         state:
-          initial: write
+          initial: write_approved_purpose
           states:
-            write:
+            write_approved_purpose:
+              id: write_approved_purpose
               op: command_execution
               artifacts:
                 PURPOSE.md: ${{ inputs.purpose }}
@@ -47,9 +48,10 @@ state:
                   test -s "$INBOX/PURPOSE.md"
                   cp "$INBOX/PURPOSE.md" PURPOSE.md
               transitions:
-              - to: publish
+              - to: publish_new_cell
                 when: outputs.success
-            publish:
+            publish_new_cell:
+              id: publish_new_cell
               op: squashrebasemerge
               inputs:
                 commit_message: ${{ 'Create cell ' + inputs.cell.name + ' with approved purpose' }}

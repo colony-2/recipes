@@ -3,7 +3,7 @@ version: 1.0.0
 inputs:
   request: ${{ inputs.request }}
 sequence:
-- id: context
+- id: read_repository_context
   op: command_execution
   const: true
   execution_needs:
@@ -37,15 +37,15 @@ sequence:
                         'repository_architecture': architecture + '\n\n' + readme,
                         'usable': complete and bool(purpose.strip() or readme.strip())}))
       PY
-- id: classify
+- id: classify_request_complexity
   op: nix:github:colony-2/c2ops/published#jev
   const: true
   inputs:
     api_key: ${{ context.secrets.jev_api_key }}
     timeout_seconds: 60
     state:
-      repository_purpose: ${{ json_parse(sequence.context.outputs.stdout).repository_purpose }}
-      repository_architecture: ${{ json_parse(sequence.context.outputs.stdout).repository_architecture }}
+      repository_purpose: ${{ json_parse(sequence.read_repository_context.outputs.stdout).repository_purpose }}
+      repository_architecture: ${{ json_parse(sequence.read_repository_context.outputs.stdout).repository_architecture }}
       request: ${{ inputs.request }}
     questions:
       is_heavy:
@@ -82,7 +82,7 @@ sequence:
         error: ${{ failure.message }}
 outputs:
   light: >-
-    ${{ json_parse(sequence.context.outputs.stdout).usable &&
-    jq(sequence.classify.outputs, 'try (.answers.is_heavy | .type == "noul" and (.noul | type == "number" and . >= 0 and . <= 0.10)) catch false') == true }}
-  assessment: ${{ sequence.classify.outputs }}
-  context_usable: ${{ json_parse(sequence.context.outputs.stdout).usable }}
+    ${{ json_parse(sequence.read_repository_context.outputs.stdout).usable &&
+    jq(sequence.classify_request_complexity.outputs, 'try (.answers.is_heavy | .type == "noul" and (.noul | type == "number" and . >= 0 and . <= 0.10)) catch false') == true }}
+  assessment: ${{ sequence.classify_request_complexity.outputs }}
+  context_usable: ${{ json_parse(sequence.read_repository_context.outputs.stdout).usable }}

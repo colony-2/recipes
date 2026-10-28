@@ -27,14 +27,15 @@ vars:
   prompt: '${{ first_nonempty(inputs.?prompt.orValue(""), "") }}'
   local_hash: '${{ first_nonempty(context.git.?hash.orValue(""), inputs.?local_hash.orValue(""), "") }}'
 state:
-  initial: triage
+  initial: triage_ticket
   states:
-    triage:
+    triage_ticket:
+      id: triage_ticket
       op: recipe.run_and_get_result
       transitions:
-        - to: reassign_create
-          when: '!states["triage"]["outputs"]["outputs"].cell_is_appropriate && states["triage"]["outputs"]["outputs"].recommended_cell_is_valid'
-        - to: requirements_planning
+        - to: launch_reassigned_ticket
+          when: '!states["triage_ticket"]["outputs"]["outputs"].cell_is_appropriate && states["triage_ticket"]["outputs"]["outputs"].recommended_cell_is_valid'
+        - to: plan_ticket_requirements
           when: "true"
       inputs:
         name: new-ticket-triage
@@ -42,44 +43,47 @@ state:
         inputs:
           prompt: "${{ vars.prompt }}"
 
-    reassign_create:
+    launch_reassigned_ticket:
+      id: launch_reassigned_ticket
       op: recipes.run
       transitions:
-        - to: reassign_done
+        - to: finish_ticket_reassignment
           when: "true"
       inputs:
         git_ref: '${{ has(context.git.hash) && context.git.hash != "" ? context.git.hash : context.git.ref }}'
         recipes:
           - name: new-ticket
-            cell_name: '${{ state_output("triage", "outputs.recommended_cell_final", context.workflow.cell) }}'
+            cell_name: '${{ state_output("triage_ticket", "outputs.recommended_cell_final", context.workflow.cell) }}'
             inputs:
               prompt: "${{ vars.prompt }}"
             artifacts: '${{ context.artifacts.map(k, context.artifacts[k]) }}'
 
-    reassign_done:
+    finish_ticket_reassignment:
+      id: finish_ticket_reassignment
       op: sleep
       transitions: []
       inputs:
         duration: 1ms
 
-    requirements_planning:
+    plan_ticket_requirements:
+      id: plan_ticket_requirements
       op: recipe.run_and_get_result
       vars:
         user_feedback: '${{ transition.?payload.user_feedback.orValue("") }}'
       transitions:
-        - to: pre_implementation_review
+        - to: review_implementation_plan
           when: "has(outputs.api_review_ok) && !outputs.api_review_ok"
-        - to: implementation_planning
+        - to: plan_ticket_implementation
           when: "true"
       inputs:
         name: new-ticket-requirements-planning
         artifacts: >-
           ${{
             context.artifacts.map(k, context.artifacts[k]) +
-            (state_exists("requirements_planning")
+            (state_exists("plan_ticket_requirements")
               ? [
-                  states.requirements_planning.artifacts["requirements/plan.json"],
-                  states.requirements_planning.artifacts["requirements/api-review.json"]
+                  states.plan_ticket_requirements.artifacts["requirements/plan.json"],
+                  states.plan_ticket_requirements.artifacts["requirements/api-review.json"]
                 ]
               : [])
           }}
@@ -88,16 +92,17 @@ state:
             ${{ vars.prompt }}
           user_feedback: "${{ vars.user_feedback }}"
 
-    implementation_planning:
+    plan_ticket_implementation:
+      id: plan_ticket_implementation
       op: recipe.run_and_get_result
       vars:
         user_feedback: '${{ transition.?payload.user_feedback.orValue("") }}'
       transitions:
-        - to: pre_implementation_review
+        - to: review_implementation_plan
           when: "has(outputs.compat_review_ok) && !outputs.compat_review_ok"
-        - to: spawn_dependency_jobs
+        - to: launch_prerequisite_jobs
           when: "has(outputs.requires_dependency_jobs) && outputs.requires_dependency_jobs"
-        - to: outcome_determination
+        - to: define_ticket_outcomes
           when: "true"
       inputs:
         name: new-ticket-implementation-planning
@@ -105,8 +110,8 @@ state:
           ${{
             context.artifacts.map(k, context.artifacts[k]) +
             [
-              states.requirements_planning.artifacts["requirements/plan.json"],
-              states.requirements_planning.artifacts["requirements/index.md"]
+              states.plan_ticket_requirements.artifacts["requirements/plan.json"],
+              states.plan_ticket_requirements.artifacts["requirements/index.md"]
             ]
           }}
         inputs:
@@ -114,12 +119,13 @@ state:
             ${{ vars.prompt }}
           user_feedback: "${{ vars.user_feedback }}"
 
-    outcome_determination:
+    define_ticket_outcomes:
+      id: define_ticket_outcomes
       op: recipe.run_and_get_result
       vars:
         user_feedback: '${{ transition.?payload.user_feedback.orValue("") }}'
       transitions:
-        - to: pre_implementation_review
+        - to: review_implementation_plan
           when: "true"
       inputs:
         name: new-ticket-outcome-determination
@@ -127,10 +133,10 @@ state:
           ${{
             context.artifacts.map(k, context.artifacts[k]) +
             [
-              states.requirements_planning.artifacts["requirements/plan.json"],
-              states.requirements_planning.artifacts["requirements/index.md"],
-              states.implementation_planning.artifacts["implementation/plan.json"],
-              states.implementation_planning.artifacts["implementation/index.md"]
+              states.plan_ticket_requirements.artifacts["requirements/plan.json"],
+              states.plan_ticket_requirements.artifacts["requirements/index.md"],
+              states.plan_ticket_implementation.artifacts["implementation/plan.json"],
+              states.plan_ticket_implementation.artifacts["implementation/index.md"]
             ]
           }}
         inputs:
@@ -138,12 +144,13 @@ state:
             ${{ vars.prompt }}
           user_feedback: "${{ vars.user_feedback }}"
 
-    spawn_dependency_jobs:
+    launch_prerequisite_jobs:
+      id: launch_prerequisite_jobs
       op: recipes.run
       transitions:
-        - to: dependency_wait_note
+        - to: record_dependency_wait
           when: 'has(context.workflow.job_id) && context.workflow.job_id != ""'
-        - to: dependency_wait_hold
+        - to: hold_for_dependencies
           when: "true"
       inputs:
         git_ref: '${{ has(context.git.hash) && context.git.hash != "" ? context.git.hash : context.git.ref }}'
@@ -156,60 +163,63 @@ state:
                 ',"job_id":' +
                 json_stringify(has(context.workflow.job_id) ? context.workflow.job_id : "") +
                 ',"plan":' +
-                states.implementation_planning.outputs.outputs.plan_json +
+                states.plan_ticket_implementation.outputs.outputs.plan_json +
                 '}'
               ),
               '. as $root | ($root.current_cell // "") as $current_cell | ($root.job_id // "") as $job_id | ($root.plan.dependency_job_specs // []) | map(select((.target_cell // "") != "" and .target_cell != $current_cell) | {name:"new-ticket", cell_name:.target_cell, inputs:{prompt:("Parent job: " + $job_id + "\n\nDependency work: " + (((.id // "") | if . != "" then "[" + . + "] " else "" end) + ((.title // "") | if . != "" then . else "Dependency work" end)) + "\n\nRequirement ID: " + (.id // "(none)") + "\n\nDepends on requirement IDs:\n" + ((.depends_on_markdown // "- (none)")) + "\n\n## Scope\n" + ((.scope // "(tbd)")) + "\n\n## Acceptance criteria\n" + ((.acceptance_criteria_markdown // "- (none)")) + "\n\n## Risks\n" + ((.risks_markdown // "- (none)")) + "\n\n## Notes\n" + ((.notes // "(none)")))}, artifacts:[]})'
             )
           }}
 
-    dependency_wait_note:
+    record_dependency_wait:
+      id: record_dependency_wait
       op: sleep
       transitions:
-        - to: dependency_wait_hold
+        - to: hold_for_dependencies
           when: "true"
       inputs:
         duration: 1ms
 
-    dependency_wait_hold:
+    hold_for_dependencies:
+      id: hold_for_dependencies
       op: sleep
       transitions: []
       inputs:
         duration: 1ms
 
-    pre_implementation_review:
+    review_implementation_plan:
+      id: review_implementation_plan
       op: input
       transitions:
         switch: outputs.fields.decision
         cases:
           - value: cancel_job
-            to: cancel_job_route
+            to: route_ticket_cancellation
           - value: revise_current_stage
             switch:
               switch: outputs.fields.target_stage
               cases:
                 - value: requirements
-                  to: requirements_planning
+                  to: plan_ticket_requirements
                   payload:
                     user_feedback: "${{ outputs.fields.feedback }}"
                     reason: revise_current_stage
                 - value: implementation_planning
-                  to: implementation_planning
+                  to: plan_ticket_implementation
                   payload:
                     user_feedback: "${{ outputs.fields.feedback }}"
                     reason: revise_current_stage
               default:
-                to: outcome_determination
+                to: define_ticket_outcomes
                 payload:
                   user_feedback: "${{ outputs.fields.feedback }}"
                   reason: revise_current_stage
           - value: back_up_requirements
-            to: requirements_planning
+            to: plan_ticket_requirements
             payload:
               user_feedback: "${{ outputs.fields.feedback }}"
               reason: back_up_requirements
           - value: back_up_implementation_planning
-            to: implementation_planning
+            to: plan_ticket_implementation
             payload:
               user_feedback: "${{ outputs.fields.feedback }}"
               reason: back_up_implementation_planning
@@ -225,27 +235,27 @@ state:
                 Review status before implementation:
 
                 Requirements summary:
-                ${{ state_output("requirements_planning", "outputs.summary", "") }}
+                ${{ state_output("plan_ticket_requirements", "outputs.summary", "") }}
                 Requirements API review ok:
-                ${{ state_output("requirements_planning", "outputs.api_review_ok", false) }}
+                ${{ state_output("plan_ticket_requirements", "outputs.api_review_ok", false) }}
                 Requirements blocking issues:
-                ${{ state_output("requirements_planning", "outputs.api_review_blocking_issues", []) }}
+                ${{ state_output("plan_ticket_requirements", "outputs.api_review_blocking_issues", []) }}
 
                 Implementation plan summary:
-                ${{ state_output("implementation_planning", "outputs.summary", "") }}
+                ${{ state_output("plan_ticket_implementation", "outputs.summary", "") }}
                 Implementation compat review ok:
-                ${{ state_output("implementation_planning", "outputs.compat_review_ok", false) }}
+                ${{ state_output("plan_ticket_implementation", "outputs.compat_review_ok", false) }}
                 Implementation blocking issues:
-                ${{ state_output("implementation_planning", "outputs.compat_review_blocking_issues", []) }}
+                ${{ state_output("plan_ticket_implementation", "outputs.compat_review_blocking_issues", []) }}
 
                 Outcome summary:
-                ${{ state_output("outcome_determination", "outputs.summary", "") }}
+                ${{ state_output("define_ticket_outcomes", "outputs.summary", "") }}
                 Outcome review ok:
-                ${{ state_output("outcome_determination", "outputs.review_ok", false) }}
+                ${{ state_output("define_ticket_outcomes", "outputs.review_ok", false) }}
                 Outcome blocking issues:
-                ${{ state_output("outcome_determination", "outputs.review_blocking_issues", []) }}
+                ${{ state_output("define_ticket_outcomes", "outputs.review_blocking_issues", []) }}
                 Test statements location:
-                ${{ state_output("outcome_determination", "outputs.test_statement_repo_glob", ".c2/tests/*.md") }}
+                ${{ state_output("define_ticket_outcomes", "outputs.test_statement_repo_glob", ".c2/tests/*.md") }}
 
                 Implementation clarification request (if any):
                 ${{
@@ -285,13 +295,14 @@ state:
               question: "If Codex requested clarification, provide numbered answers (optional)"
               required: false
 
-    pre_implementation_followup_review:
+    review_revised_plan:
+      id: review_revised_plan
       op: input
       transitions:
         switch: outputs.fields.decision
         cases:
           - value: cancel_job
-            to: cancel_job_route
+            to: route_ticket_cancellation
           - value: continue
             to: implement_resume
             when: 'nonempty(outputs.fields.implementation_answers)'
@@ -345,29 +356,30 @@ state:
           }}
         review_artifacts:
           submitted/: ${{ context.artifacts }}
-          requirements/plan.json: ${{ states.requirements_planning.artifacts["requirements/plan.json"] }}
-          requirements/index.md: ${{ states.requirements_planning.artifacts["requirements/index.md"] }}
-          implementation/plan.json: ${{ states.implementation_planning.artifacts["implementation/plan.json"] }}
-          implementation/index.md: ${{ states.implementation_planning.artifacts["implementation/index.md"] }}
-          outcome/plan.json: ${{ states.outcome_determination.artifacts["outcome/plan.json"] }}
-          outcome/tests-index.md: ${{ states.outcome_determination.artifacts["outcome/tests-index.md"] }}
-          outcome/validation-commands.txt: ${{ states.outcome_determination.artifacts["outcome/validation-commands.txt"]
+          requirements/plan.json: ${{ states.plan_ticket_requirements.artifacts["requirements/plan.json"] }}
+          requirements/index.md: ${{ states.plan_ticket_requirements.artifacts["requirements/index.md"] }}
+          implementation/plan.json: ${{ states.plan_ticket_implementation.artifacts["implementation/plan.json"] }}
+          implementation/index.md: ${{ states.plan_ticket_implementation.artifacts["implementation/index.md"] }}
+          outcome/plan.json: ${{ states.define_ticket_outcomes.artifacts["outcome/plan.json"] }}
+          outcome/tests-index.md: ${{ states.define_ticket_outcomes.artifacts["outcome/tests-index.md"] }}
+          outcome/validation-commands.txt: ${{ states.define_ticket_outcomes.artifacts["outcome/validation-commands.txt"]
             }}
         ticket_prompt: ${{ vars.prompt }}
-        had_validate: ${{ state_exists("validate") }}
+        had_validate: ${{ state_exists("validate_ticket_implementation") }}
         previous_reason: ${{ state_output("implement", "incompleteReason", "") }}
-        answers: ${{ first_nonempty(transition.?payload.implementation_answers, state_field("pre_implementation_review",
+        answers: ${{ first_nonempty(transition.?payload.implementation_answers, state_field("review_implementation_plan",
           "implementation_answers", ""), "") }}
-        guidance: ${{ first_nonempty(transition.?payload.guidance, state_field("pre_implementation_followup_review",
+        guidance: ${{ first_nonempty(transition.?payload.guidance, state_field("review_revised_plan",
           "feedback", ""), "") }}
       state:
         initial:
-        - to: resume
+        - to: resume_implementation_session
           when: inputs.session != null
-        - to: fresh
+        - to: start_implementation_session
           when: true
         states:
-          fresh:
+          start_implementation_session:
+            id: start_implementation_session
             op: nix:github:colony-2/c2ops/published#skill-run
             artifacts:
               submitted/: ${{ inputs.review_artifacts["submitted/"] }}
@@ -426,7 +438,8 @@ state:
                 \ proceed safely.\n- Update/add tests if appropriate.\n- Prefer small, safe changes.\n\nDeliverables:\n\
                 - Make the code changes in-repo.\n- Leave the workspace in a state where validation commands are likely\
                 \ to pass.\n"
-          resume:
+          resume_implementation_session:
+            id: resume_implementation_session
             op: nix:github:colony-2/c2ops/published#skill-run
             artifacts:
               submitted/: ${{ inputs.review_artifacts["submitted/"] }}
@@ -487,38 +500,39 @@ state:
                 \ to pass.\n"
               session: ${{ inputs.session }}
       outputs:
-        status: '${{ state_exists("resume") ? states.resume.outputs.?status.orValue("error") : states.fresh.outputs.?status.orValue("error")
+        status: '${{ state_exists("resume_implementation_session") ? states.resume_implementation_session.outputs.?status.orValue("error") : states.start_implementation_session.outputs.?status.orValue("error")
           }}'
-        session: '${{ state_exists("resume") ? states.resume.outputs.?session.orValue(null) : states.fresh.outputs.?session.orValue(null)
+        session: '${{ state_exists("resume_implementation_session") ? states.resume_implementation_session.outputs.?session.orValue(null) : states.start_implementation_session.outputs.?session.orValue(null)
           }}'
-        sessionId: '${{ state_exists("resume") ? states.resume.outputs.?sessionId.orValue("") : states.fresh.outputs.?sessionId.orValue("")
+        sessionId: '${{ state_exists("resume_implementation_session") ? states.resume_implementation_session.outputs.?sessionId.orValue("") : states.start_implementation_session.outputs.?sessionId.orValue("")
           }}'
-        assistantSummary: '${{ state_exists("resume") ? states.resume.outputs.?assistantSummary.orValue("") : states.fresh.outputs.?assistantSummary.orValue("")
+        assistantSummary: '${{ state_exists("resume_implementation_session") ? states.resume_implementation_session.outputs.?assistantSummary.orValue("") : states.start_implementation_session.outputs.?assistantSummary.orValue("")
           }}'
-        incompleteReason: '${{ state_exists("resume") ? states.resume.outputs.?incompleteReason.orValue("") : states.fresh.outputs.?incompleteReason.orValue("")
+        incompleteReason: '${{ state_exists("resume_implementation_session") ? states.resume_implementation_session.outputs.?incompleteReason.orValue("") : states.start_implementation_session.outputs.?incompleteReason.orValue("")
           }}'
-        incompleteCategory: '${{ state_exists("resume") ? states.resume.outputs.?incompleteCategory.orValue("") : states.fresh.outputs.?incompleteCategory.orValue("")
+        incompleteCategory: '${{ state_exists("resume_implementation_session") ? states.resume_implementation_session.outputs.?incompleteCategory.orValue("") : states.start_implementation_session.outputs.?incompleteCategory.orValue("")
           }}'
-        pendingDependencies: '${{ state_exists("resume") ? states.resume.outputs.?pendingDependencies.orValue([]) :
-          states.fresh.outputs.?pendingDependencies.orValue([]) }}'
+        pendingDependencies: '${{ state_exists("resume_implementation_session") ? states.resume_implementation_session.outputs.?pendingDependencies.orValue([]) :
+          states.start_implementation_session.outputs.?pendingDependencies.orValue([]) }}'
       transitions:
-      - to: pre_implementation_followup_review
+      - to: review_revised_plan
         when: has(outputs.incompleteCategory) && outputs.incompleteCategory == "needs_user_input"
-      - to: pre_implementation_followup_review
+      - to: review_revised_plan
         when: has(outputs.incompleteCategory) && outputs.incompleteCategory == "needs_test_statement_update"
-      - to: pre_implementation_followup_review
+      - to: review_revised_plan
         when: has(outputs.incompleteCategory) && outputs.incompleteCategory == "blocked"
-      - to: implement_bugs
+      - to: launch_implementation_bug_jobs
         when: has(outputs.incompleteCategory) && outputs.incompleteCategory == "needs_dependency_jobs"
-      - to: implement_bugs
+      - to: launch_implementation_bug_jobs
         when: has(outputs.pendingDependencies) && size(outputs.pendingDependencies) > 0
-      - to: validate
+      - to: validate_ticket_implementation
         when: 'true'
 
-    implement_bugs:
+    launch_implementation_bug_jobs:
+      id: launch_implementation_bug_jobs
       op: recipes.run
       transitions:
-        - to: validate
+        - to: validate_ticket_implementation
           when: "true"
       inputs:
         git_ref: '${{ has(context.git.hash) && context.git.hash != "" ? context.git.hash : context.git.ref }}'
@@ -546,29 +560,30 @@ state:
           }}
         review_artifacts:
           submitted/: ${{ context.artifacts }}
-          requirements/plan.json: ${{ states.requirements_planning.artifacts["requirements/plan.json"] }}
-          requirements/index.md: ${{ states.requirements_planning.artifacts["requirements/index.md"] }}
-          implementation/plan.json: ${{ states.implementation_planning.artifacts["implementation/plan.json"] }}
-          implementation/index.md: ${{ states.implementation_planning.artifacts["implementation/index.md"] }}
-          outcome/plan.json: ${{ states.outcome_determination.artifacts["outcome/plan.json"] }}
-          outcome/tests-index.md: ${{ states.outcome_determination.artifacts["outcome/tests-index.md"] }}
-          outcome/validation-commands.txt: ${{ states.outcome_determination.artifacts["outcome/validation-commands.txt"]
+          requirements/plan.json: ${{ states.plan_ticket_requirements.artifacts["requirements/plan.json"] }}
+          requirements/index.md: ${{ states.plan_ticket_requirements.artifacts["requirements/index.md"] }}
+          implementation/plan.json: ${{ states.plan_ticket_implementation.artifacts["implementation/plan.json"] }}
+          implementation/index.md: ${{ states.plan_ticket_implementation.artifacts["implementation/index.md"] }}
+          outcome/plan.json: ${{ states.define_ticket_outcomes.artifacts["outcome/plan.json"] }}
+          outcome/tests-index.md: ${{ states.define_ticket_outcomes.artifacts["outcome/tests-index.md"] }}
+          outcome/validation-commands.txt: ${{ states.define_ticket_outcomes.artifacts["outcome/validation-commands.txt"]
             }}
         ticket_prompt: ${{ vars.prompt }}
-        had_validate: ${{ state_exists("validate") }}
+        had_validate: ${{ state_exists("validate_ticket_implementation") }}
         previous_reason: ${{ state_output("implement", "incompleteReason", "") }}
-        answers: ${{ first_nonempty(transition.?payload.implementation_answers, state_field("pre_implementation_followup_review",
+        answers: ${{ first_nonempty(transition.?payload.implementation_answers, state_field("review_revised_plan",
           "implementation_answers", ""), "") }}
-        guidance: ${{ first_nonempty(transition.?payload.guidance, state_field("pre_implementation_followup_review",
+        guidance: ${{ first_nonempty(transition.?payload.guidance, state_field("review_revised_plan",
           "feedback", ""), "") }}
       state:
         initial:
-        - to: resume
+        - to: resume_implementation_session
           when: inputs.session != null
-        - to: fresh
+        - to: start_implementation_session
           when: true
         states:
-          fresh:
+          start_implementation_session:
+            id: start_implementation_session
             op: nix:github:colony-2/c2ops/published#skill-run
             artifacts:
               submitted/: ${{ inputs.review_artifacts["submitted/"] }}
@@ -615,7 +630,8 @@ state:
 
                 Guidance:
                 ${{ inputs.guidance }}
-          resume:
+          resume_implementation_session:
+            id: resume_implementation_session
             op: nix:github:colony-2/c2ops/published#skill-run
             artifacts:
               submitted/: ${{ inputs.review_artifacts["submitted/"] }}
@@ -664,38 +680,39 @@ state:
                 ${{ inputs.guidance }}
               session: ${{ inputs.session }}
       outputs:
-        status: '${{ state_exists("resume") ? states.resume.outputs.?status.orValue("error") : states.fresh.outputs.?status.orValue("error")
+        status: '${{ state_exists("resume_implementation_session") ? states.resume_implementation_session.outputs.?status.orValue("error") : states.start_implementation_session.outputs.?status.orValue("error")
           }}'
-        session: '${{ state_exists("resume") ? states.resume.outputs.?session.orValue(null) : states.fresh.outputs.?session.orValue(null)
+        session: '${{ state_exists("resume_implementation_session") ? states.resume_implementation_session.outputs.?session.orValue(null) : states.start_implementation_session.outputs.?session.orValue(null)
           }}'
-        sessionId: '${{ state_exists("resume") ? states.resume.outputs.?sessionId.orValue("") : states.fresh.outputs.?sessionId.orValue("")
+        sessionId: '${{ state_exists("resume_implementation_session") ? states.resume_implementation_session.outputs.?sessionId.orValue("") : states.start_implementation_session.outputs.?sessionId.orValue("")
           }}'
-        assistantSummary: '${{ state_exists("resume") ? states.resume.outputs.?assistantSummary.orValue("") : states.fresh.outputs.?assistantSummary.orValue("")
+        assistantSummary: '${{ state_exists("resume_implementation_session") ? states.resume_implementation_session.outputs.?assistantSummary.orValue("") : states.start_implementation_session.outputs.?assistantSummary.orValue("")
           }}'
-        incompleteReason: '${{ state_exists("resume") ? states.resume.outputs.?incompleteReason.orValue("") : states.fresh.outputs.?incompleteReason.orValue("")
+        incompleteReason: '${{ state_exists("resume_implementation_session") ? states.resume_implementation_session.outputs.?incompleteReason.orValue("") : states.start_implementation_session.outputs.?incompleteReason.orValue("")
           }}'
-        incompleteCategory: '${{ state_exists("resume") ? states.resume.outputs.?incompleteCategory.orValue("") : states.fresh.outputs.?incompleteCategory.orValue("")
+        incompleteCategory: '${{ state_exists("resume_implementation_session") ? states.resume_implementation_session.outputs.?incompleteCategory.orValue("") : states.start_implementation_session.outputs.?incompleteCategory.orValue("")
           }}'
-        pendingDependencies: '${{ state_exists("resume") ? states.resume.outputs.?pendingDependencies.orValue([]) :
-          states.fresh.outputs.?pendingDependencies.orValue([]) }}'
+        pendingDependencies: '${{ state_exists("resume_implementation_session") ? states.resume_implementation_session.outputs.?pendingDependencies.orValue([]) :
+          states.start_implementation_session.outputs.?pendingDependencies.orValue([]) }}'
       transitions:
-      - to: pre_implementation_followup_review
+      - to: review_revised_plan
         when: has(outputs.incompleteCategory) && outputs.incompleteCategory == "needs_user_input"
-      - to: pre_implementation_followup_review
+      - to: review_revised_plan
         when: has(outputs.incompleteCategory) && outputs.incompleteCategory == "needs_test_statement_update"
-      - to: pre_implementation_followup_review
+      - to: review_revised_plan
         when: has(outputs.incompleteCategory) && outputs.incompleteCategory == "blocked"
-      - to: implement_resume_bugs
+      - to: launch_followup_bug_jobs
         when: has(outputs.incompleteCategory) && outputs.incompleteCategory == "needs_dependency_jobs"
-      - to: implement_resume_bugs
+      - to: launch_followup_bug_jobs
         when: has(outputs.pendingDependencies) && size(outputs.pendingDependencies) > 0
-      - to: validate
+      - to: validate_ticket_implementation
         when: 'true'
 
-    implement_resume_bugs:
+    launch_followup_bug_jobs:
+      id: launch_followup_bug_jobs
       op: recipes.run
       transitions:
-        - to: validate
+        - to: validate_ticket_implementation
           when: "true"
       inputs:
         git_ref: '${{ has(context.git.hash) && context.git.hash != "" ? context.git.hash : context.git.ref }}'
@@ -713,10 +730,11 @@ state:
             )
           }}
 
-    validate:
+    validate_ticket_implementation:
+      id: validate_ticket_implementation
       op: recipe.run_and_get_result
       transitions:
-        - to: ready_to_merge_review
+        - to: review_ticket_outcome
           when: "true"
       inputs:
         name: job-validate
@@ -725,30 +743,31 @@ state:
             ${{
               first_nonempty(
                 inputs.?validate_commands.orValue(""),
-                state_output("outcome_determination", "outputs.validation_commands", ""),
+                state_output("define_ticket_outcomes", "outputs.validation_commands", ""),
                 ""
               )
             }}
 
-    ready_to_merge_review:
+    review_ticket_outcome:
+      id: review_ticket_outcome
       op: input
       transitions:
         switch: outputs.fields.decision
         cases:
           - value: cancel_job
-            to: cancel_job_route
+            to: route_ticket_cancellation
           - value: back_up_requirements
-            to: requirements_planning
+            to: plan_ticket_requirements
             payload:
               user_feedback: "${{ outputs.fields.feedback }}"
               reason: back_up_requirements
           - value: back_up_implementation_planning
-            to: implementation_planning
+            to: plan_ticket_implementation
             payload:
               user_feedback: "${{ outputs.fields.feedback }}"
               reason: back_up_implementation_planning
           - value: back_up_outcome
-            to: outcome_determination
+            to: define_ticket_outcomes
             payload:
               user_feedback: "${{ outputs.fields.feedback }}"
               reason: back_up_outcome
@@ -758,7 +777,7 @@ state:
               guidance: "${{ outputs.fields.feedback }}"
               reason: revise_current_stage
           - value: merge
-            to: merge
+            to: publish_ticket_changes
             when: 'nonempty(first_nonempty(context.git.?hash.orValue(""), inputs.?local_hash.orValue(""), ""))'
             payload:
               upstream_repo: "${{ outputs.fields.upstream_repo }}"
@@ -776,7 +795,7 @@ state:
             - id: decision
               type: multiple_choice
               question: |
-                Validation passed: ${{ state_output("validate", "outputs.passed", false) }}
+                Validation passed: ${{ state_output("validate_ticket_implementation", "outputs.passed", false) }}
 
                 Validation artifacts:
                 - `validation/output-tail.txt`
@@ -819,14 +838,15 @@ state:
               question: "Squash commit message override (optional)"
               required: false
 
-    merge:
+    publish_ticket_changes:
+      id: publish_ticket_changes
       op: squashrebasemerge
       vars:
         upstream_repo: '${{ first_nonempty(transition.?payload.upstream_repo, inputs.?upstream_repo.orValue(""), "") }}'
         upstream_branch: '${{ first_nonempty(transition.?payload.upstream_branch, inputs.?upstream_branch.orValue(""), "") }}'
         commit_message: '${{ first_nonempty(transition.?payload.commit_message, "Update") }}'
       transitions:
-        - to: complete_done_route
+        - to: route_ticket_completion
           when: "true"
       inputs:
         repo_path: "{{ context.environment.op.worktree_path }}"
@@ -837,83 +857,89 @@ state:
         author: '${{ context.git.?author.orValue("") }}'
         commit_message: "${{ vars.commit_message }}"
 
-    cancel_job_route:
+    route_ticket_cancellation:
+      id: route_ticket_cancellation
       op: sleep
       transitions:
-        - to: cancel_job_update
+        - to: record_ticket_cancellation
           when: "true"
       inputs:
         duration: 1ms
 
-    cancel_job_update:
+    record_ticket_cancellation:
+      id: record_ticket_cancellation
       op: sleep
       transitions:
-        - to: cancel_job_done
+        - to: complete_ticket_cancellation
           when: "true"
       inputs:
         duration: 1ms
 
-    cancel_job_done:
+    complete_ticket_cancellation:
+      id: complete_ticket_cancellation
       op: sleep
       transitions: []
       inputs:
         duration: 1ms
 
-    complete_done_route:
+    route_ticket_completion:
+      id: route_ticket_completion
       op: sleep
       transitions:
-        - to: complete_done_update
+        - to: record_ticket_completion
           when: "true"
       inputs:
         duration: 1ms
 
-    complete_done_update:
+    record_ticket_completion:
+      id: record_ticket_completion
       op: sleep
       transitions:
-        - to: complete_done_noop
+        - to: finish_completed_ticket
           when: "true"
       inputs:
         duration: 1ms
 
-    complete_done_noop:
+    finish_completed_ticket:
+      id: finish_completed_ticket
       op: sleep
       transitions: []
       inputs:
         duration: 1ms
 
 outputs:
-  cell_is_appropriate: "${{ state_output('triage', 'outputs.cell_is_appropriate', false) }}"
-  recommended_cell: "${{ state_output('triage', 'outputs.recommended_cell', '') }}"
-  recommended_cell_is_valid: "${{ state_output('triage', 'outputs.recommended_cell_is_valid', false) }}"
-  recommended_cell_final: "${{ state_output('triage', 'outputs.recommended_cell_final', '') }}"
-  rationale: "${{ state_output('triage', 'outputs.rationale', '') }}"
-  reassign_performed: "${{ state_exists('triage') ? (!state_output('triage', 'outputs.cell_is_appropriate', false) && state_output('triage', 'outputs.recommended_cell_is_valid', false)) : false }}"
-  reassigned_job_id: "${{ size(state_output('reassign_create', 'job_ids', [])) > 0 ? state_output('reassign_create', 'job_ids', [])[0] : \"\" }}"
-  requirements_plan_json: "${{ state_output('requirements_planning', 'outputs.plan_json', '') }}"
-  requirements_dependency_order: "${{ state_output('requirements_planning', 'outputs.dependency_order', []) }}"
-  requirements: "${{ state_output('requirements_planning', 'outputs.requirements', []) }}"
-  requirements_approved: "${{ state_exists('implementation_planning') || state_exists('outcome_determination') || state_exists('implement') || state_exists('validate') || state_exists('ready_to_merge_review') || state_exists('merge') }}"
-  requirements_user_feedback: "${{ (state_field('pre_implementation_review', 'decision', '') == \"back_up_requirements\" || (state_field('pre_implementation_review', 'decision', '') == \"revise_current_stage\" && state_field('pre_implementation_review', 'target_stage', '') == \"requirements\")) ? state_field('pre_implementation_review', 'feedback', '') : (state_field('ready_to_merge_review', 'decision', '') == \"back_up_requirements\" ? state_field('ready_to_merge_review', 'feedback', '') : \"\") }}"
-  cross_cell_required: "${{ state_output('requirements_planning', 'outputs.requirements', []).exists(r, has(r.target_cell) && r.target_cell != \"\" && r.target_cell != context.workflow.cell) }}"
-  implementation_plan_json: "${{ state_output('implementation_planning', 'outputs.plan_json', '') }}"
-  implementation_dependency_order: "${{ state_output('implementation_planning', 'outputs.dependency_order', []) }}"
-  implementation_requires_dependency_jobs: "${{ state_output('implementation_planning', 'outputs.requires_dependency_jobs', false) }}"
-  implementation_dependency_job_specs: "${{ state_output('implementation_planning', 'outputs.dependency_job_specs', []) }}"
-  outcome_plan_json: "${{ state_output('outcome_determination', 'outputs.plan_json', '') }}"
-  outcome_current_test_statements_summary: "${{ state_output('outcome_determination', 'outputs.current_test_statements_summary', '') }}"
-  outcome_test_statement_updates_required: "${{ state_output('outcome_determination', 'outputs.test_statement_updates_required', false) }}"
-  outcome_test_statement_repo_glob: "${{ state_output('outcome_determination', 'outputs.test_statement_repo_glob', \".c2/tests/*.md\") }}"
-  outcome_validation_commands: "${{ state_output('outcome_determination', 'outputs.validation_commands', '') }}"
-  outcome_review_ok: "${{ state_output('outcome_determination', 'outputs.review_ok', false) }}"
-  outcome_approved: "${{ state_field('pre_implementation_review', 'decision', '') == \"continue\" }}"
+  cell_is_appropriate: "${{ state_output('triage_ticket', 'outputs.cell_is_appropriate', false) }}"
+  recommended_cell: "${{ state_output('triage_ticket', 'outputs.recommended_cell', '') }}"
+  recommended_cell_is_valid: "${{ state_output('triage_ticket', 'outputs.recommended_cell_is_valid', false) }}"
+  recommended_cell_final: "${{ state_output('triage_ticket', 'outputs.recommended_cell_final', '') }}"
+  rationale: "${{ state_output('triage_ticket', 'outputs.rationale', '') }}"
+  reassign_performed: "${{ state_exists('triage_ticket') ? (!state_output('triage_ticket', 'outputs.cell_is_appropriate', false) && state_output('triage_ticket', 'outputs.recommended_cell_is_valid', false)) : false }}"
+  reassigned_job_id: "${{ size(state_output('launch_reassigned_ticket', 'job_ids', [])) > 0 ? state_output('launch_reassigned_ticket', 'job_ids', [])[0] : \"\" }}"
+  requirements_plan_json: "${{ state_output('plan_ticket_requirements', 'outputs.plan_json', '') }}"
+  requirements_dependency_order: "${{ state_output('plan_ticket_requirements', 'outputs.dependency_order', []) }}"
+  requirements: "${{ state_output('plan_ticket_requirements', 'outputs.requirements', []) }}"
+  requirements_approved: "${{ state_exists('plan_ticket_implementation') || state_exists('define_ticket_outcomes') || state_exists('implement') || state_exists('validate_ticket_implementation') || state_exists('review_ticket_outcome') || state_exists('publish_ticket_changes') }}"
+  requirements_user_feedback: "${{ (state_field('review_implementation_plan', 'decision', '') == \"back_up_requirements\" || (state_field('review_implementation_plan', 'decision', '') == \"revise_current_stage\" && state_field('review_implementation_plan', 'target_stage', '') == \"requirements\")) ? state_field('review_implementation_plan', 'feedback', '') : (state_field('review_ticket_outcome', 'decision', '') == \"back_up_requirements\" ? state_field('review_ticket_outcome', 'feedback', '') : \"\") }}"
+  cross_cell_required: "${{ state_output('plan_ticket_requirements', 'outputs.requirements', []).exists(r, has(r.target_cell) && r.target_cell != \"\" && r.target_cell != context.workflow.cell) }}"
+  implementation_plan_json: "${{ state_output('plan_ticket_implementation', 'outputs.plan_json', '') }}"
+  implementation_dependency_order: "${{ state_output('plan_ticket_implementation', 'outputs.dependency_order', []) }}"
+  implementation_requires_dependency_jobs: "${{ state_output('plan_ticket_implementation', 'outputs.requires_dependency_jobs', false) }}"
+  implementation_dependency_job_specs: "${{ state_output('plan_ticket_implementation', 'outputs.dependency_job_specs', []) }}"
+  outcome_plan_json: "${{ state_output('define_ticket_outcomes', 'outputs.plan_json', '') }}"
+  outcome_current_test_statements_summary: "${{ state_output('define_ticket_outcomes', 'outputs.current_test_statements_summary', '') }}"
+  outcome_test_statement_updates_required: "${{ state_output('define_ticket_outcomes', 'outputs.test_statement_updates_required', false) }}"
+  outcome_test_statement_repo_glob: "${{ state_output('define_ticket_outcomes', 'outputs.test_statement_repo_glob', \".c2/tests/*.md\") }}"
+  outcome_validation_commands: "${{ state_output('define_ticket_outcomes', 'outputs.validation_commands', '') }}"
+  outcome_review_ok: "${{ state_output('define_ticket_outcomes', 'outputs.review_ok', false) }}"
+  outcome_approved: "${{ state_field('review_implementation_plan', 'decision', '') == \"continue\" }}"
   implementation_requested_test_statement_update: "${{ state_output('implement', 'incompleteCategory', '') == \"needs_test_statement_update\" || state_output('implement_resume', 'incompleteCategory', '') == \"needs_test_statement_update\" }}"
-  implementation_bug_job_ids_initial: "${{ state_output('implement_bugs', 'job_ids', []) }}"
-  implementation_bug_job_ids_resume: "${{ state_output('implement_resume_bugs', 'job_ids', []) }}"
+  implementation_bug_job_ids_initial: "${{ state_output('launch_implementation_bug_jobs', 'job_ids', []) }}"
+  implementation_bug_job_ids_resume: "${{ state_output('launch_followup_bug_jobs', 'job_ids', []) }}"
   implementation_user_questions_requested: "${{ state_output('implement', 'incompleteCategory', '') == \"needs_user_input\" || state_output('implement_resume', 'incompleteCategory', '') == \"needs_user_input\" }}"
-  dependency_waiting: "${{ state_exists('dependency_wait_hold') }}"
-  validation_selected_commands: "${{ first_nonempty(inputs.?validate_commands.orValue(''), state_output('outcome_determination', 'outputs.validation_commands', ''), '') }}"
-  validation_passed: "${{ state_output('validate', 'outputs.passed', false) }}"
-  merged: "${{ nonempty(state_output('merge', 'merged_hash', '')) }}"
-  merged_hash: "${{ state_output('merge', 'merged_hash', '') }}"
-  canceled: "${{ state_exists('cancel_job_done') }}"
-  job_done: "${{ state_exists('complete_done_noop') }}"
+  dependency_waiting: "${{ state_exists('hold_for_dependencies') }}"
+  validation_selected_commands: "${{ first_nonempty(inputs.?validate_commands.orValue(''), state_output('define_ticket_outcomes', 'outputs.validation_commands', ''), '') }}"
+  validation_passed: "${{ state_output('validate_ticket_implementation', 'outputs.passed', false) }}"
+  merged: "${{ nonempty(state_output('publish_ticket_changes', 'merged_hash', '')) }}"
+  merged_hash: "${{ state_output('publish_ticket_changes', 'merged_hash', '') }}"
+  canceled: "${{ state_exists('complete_ticket_cancellation') }}"
+  job_done: "${{ state_exists('finish_completed_ticket') }}"

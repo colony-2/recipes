@@ -5,7 +5,7 @@ inputs:
 sequence:
 - id: candidate
   include: ../kernel/git-candidate.yaml
-- id: document
+- id: render_change_synopsis
   op: command_execution
   const: true
   execution_needs:
@@ -26,13 +26,17 @@ sequence:
       subject, message = response['subject'].strip(), response['review_message'].strip()
       if not subject or len(subject) > 72 or '\n' in subject or '\r' in subject or not message:
           raise ValueError('Synopsis requires a one-line subject (<=72 characters) and review message')
-      if verification['status'] != 'passed':
-          raise ValueError('Synopsis requires passing verification')
+      if verification['status'] not in ('passed', 'skipped'):
+          raise ValueError('Synopsis cannot proceed after failed verification')
+      verification_note = (
+          'Verification passed. See verification.md and build.log for commands and results.'
+          if verification['status'] == 'passed' else
+          'Verification skipped: no build.sh or explicit check command. See verification.md. No automated verification was performed.')
       commit = subject + '\n\n' + message + '\n\nJob: ' + candidate['job_url']
       lines = ['# Change synopsis', '', response['summary'], '', '## Proposed squash commit', '', commit,
-               '', '## Verified candidate', '', 'Base: `' + candidate['base'] + '`',
+               '', '## Candidate and verification', '', 'Base: `' + candidate['base'] + '`',
                'Candidate: `' + candidate['head'] + '`', '',
-               'Verification passed. See verification.md and build.log for the command and results.',
+               verification_note,
                '', '## Files included', '']
       for f in candidate['files']:
           lines.append('- ' + f['change'] + ': ' + json.dumps(f['path'], ensure_ascii=False))
@@ -40,6 +44,6 @@ sequence:
       print(json.dumps({'commit_message': commit}))
       PY
 outputs:
-  commit_message: ${{ json_parse(sequence.document.outputs.stdout).commit_message }}
+  commit_message: ${{ json_parse(sequence.render_change_synopsis.outputs.stdout).commit_message }}
   documents: >-
-    ${{ jq([sequence.candidate.outputs.documents, {'synopsis.md': sequence.document.artifacts['synopsis.md']}], 'add') }}
+    ${{ jq([sequence.candidate.outputs.documents, {'synopsis.md': sequence.render_change_synopsis.artifacts['synopsis.md']}], 'add') }}

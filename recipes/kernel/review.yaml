@@ -5,7 +5,7 @@ inputs:
   documents: ${{ inputs.documents }}
   fields: ${{ inputs.fields }}
 sequence:
-- id: ask
+- id: request_human_review
   op: input
   inputs:
     form:
@@ -17,21 +17,21 @@ sequence:
       fields: >-
         ${{ jq(inputs.fields, 'map(if .type == "multiple_choice" or .type == "checkboxes"
         then . else del(.options) end)') }}
-- id: feedback
+- id: write_review_feedback
   op: command_execution
   const: true
   inputs:
     env:
       OUTBOX: ${{ context.environment.op.outbox }}
-      FEEDBACK: '${{ json_stringify({''questions'': inputs.fields, ''response'': sequence.ask.outputs})
+      FEEDBACK: '${{ json_stringify({''questions'': inputs.fields, ''response'': sequence.request_human_review.outputs})
         }}'
     run: |
       printf '%s\n' "$FEEDBACK" > "$OUTBOX/feedback.json"
 outputs:
-  response: ${{ sequence.ask.outputs }}
+  response: ${{ sequence.request_human_review.outputs }}
   documents: |-
-    ${{ jq([sequence.ask.outputs.?artifact_refs.orValue({}),
-             {'feedback.json': sequence.feedback.artifacts['feedback.json']}], 'add') }}
+    ${{ jq([sequence.request_human_review.outputs.?artifact_refs.orValue({}),
+             {'feedback.json': sequence.write_review_feedback.artifacts['feedback.json']}], 'add') }}
   changed: |-
-    ${{ nonempty(sequence.ask.outputs.fields.?feedback.orValue(''))
-        || size(sequence.ask.outputs.?artifact_refs.orValue({})) > 0 }}
+    ${{ nonempty(sequence.request_human_review.outputs.fields.?feedback.orValue(''))
+        || size(sequence.request_human_review.outputs.?artifact_refs.orValue({})) > 0 }}

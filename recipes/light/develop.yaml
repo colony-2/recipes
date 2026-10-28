@@ -9,9 +9,10 @@ inputs:
   root_ref: ${{ inputs.root_ref }}
   build_recipe: ${{ inputs.build_recipe }}
 state:
-  initial: prepare
+  initial: discover_root_cell
   states:
-    prepare:
+    discover_root_cell:
+      id: discover_root_cell
       op: command_execution
       const: true
       inputs:
@@ -32,9 +33,9 @@ state:
         documents: ${{ jq([json_parse(json_stringify(context.artifacts)), inputs.documents], 'add | with_entries(select(.key
           != "__git_state_thin_pack__" and .key != "diff_from_parent.diff" and .key != "diff_from_base.diff"))')
           }}
-        root_cell: '${{ inputs.root_cell != '''' ? inputs.root_cell : json_parse(states.prepare.outputs.stdout).?root_repo.orValue('''')
+        root_cell: '${{ inputs.root_cell != '''' ? inputs.root_cell : json_parse(states.discover_root_cell.outputs.stdout).?root_repo.orValue('''')
           }}'
-        root_ref: '${{ inputs.root_ref != '''' ? inputs.root_ref : json_parse(states.prepare.outputs.stdout).?root_ref.orValue(''main'')
+        root_ref: '${{ inputs.root_ref != '''' ? inputs.root_ref : json_parse(states.discover_root_cell.outputs.stdout).?root_ref.orValue(''main'')
           }}'
         build_recipe: ${{ inputs.build_recipe }}
       sequence: []
@@ -46,7 +47,7 @@ state:
           {}, ''root_cell'': inputs.root_cell, ''root_ref'': inputs.root_ref, ''build_recipe'': inputs.build_recipe}
           }}'
       transitions:
-      - to: rejected
+      - to: reject_invalid_build_request
         when: '!outputs.valid'
         payload:
           reason: Target directory must be a nonempty repository-relative path without parent traversal.
@@ -58,7 +59,7 @@ state:
       inputs:
         flow: ${{ jq(transition.payload.flow, 'del(.review_hint)') }}
       sequence:
-      - id: context
+      - id: write_build_context
         op: command_execution
         const: true
         inputs:
@@ -71,7 +72,7 @@ state:
         include: ./agent.yaml
         inputs:
           flow: ${{ inputs.flow }}
-          documents: '${{ jq([inputs.flow.documents, {''context.json'': sequence.context.artifacts[''context.json'']}],
+          documents: '${{ jq([inputs.flow.documents, {''context.json'': sequence.write_build_context.artifacts[''context.json'']}],
             ''add'') }}'
       outputs:
         flow: ${{ inputs.flow }}
@@ -98,7 +99,7 @@ state:
         turn: ${{ inputs.turn }}
         previous: ${{ inputs.previous }}
       transitions:
-      - to: rejected
+      - to: reject_invalid_build_request
         when: '!outputs.valid && (outputs.turn.result.?status.orValue(''failed'') != ''completed'' || size(outputs.turn.jobs.?job_ids.orValue([]))
           > 0)'
         payload:
@@ -199,7 +200,7 @@ state:
       inputs:
         flow: ${{ transition.payload.flow }}
       sequence:
-      - id: upstream
+      - id: resolve_upstream_head
         op: command_execution
         const: true
         inputs:
@@ -209,10 +210,10 @@ state:
           run: |
             set -eu
             git ls-remote --exit-code -- "$REPO" "refs/heads/${BRANCH#refs/heads/}"
-      - id: rebase
+      - id: rebase_candidate
         op: rebase
         inputs:
-          target_base_hash: ${{ jq(sequence.upstream.outputs.stdout, 'split("\t")[0]') }}
+          target_base_hash: ${{ jq(sequence.resolve_upstream_head.outputs.stdout, 'split("\t")[0]') }}
       outputs:
         flow: ${{ inputs.flow }}
       transitions:
@@ -230,7 +231,7 @@ state:
           target_directory: ${{ inputs.flow.target_directory }}
           command: ${{ inputs.flow.result.verification_command }}
       outputs:
-        ok: ${{ sequence.verify.outputs.ok }}
+        ok: ${{ sequence.verify.outputs.result.status in ['passed', 'skipped'] }}
         flow: '${{ jq([inputs.flow, {''verification'': sequence.verify.outputs.evidence, ''documents'': jq([inputs.flow.documents,
           sequence.verify.outputs.artifact_refs], ''add''), ''message'': ''Verification did not pass. Read
           verification.md and build.log, resolve the issue, and request inspection again.''}], ''add'') }}'
@@ -250,12 +251,12 @@ state:
       - id: outcome_review
         include: ../kernel/review.yaml
         inputs:
-          title: Review verified change synopsis
+          title: Review change synopsis and verification evidence
           documents: ${{ inputs.flow.documents }}
           fields:
           - id: decision
             type: multiple_choice
-            question: Accept the synopsis and proposed commit message, and merge this verified candidate?
+            question: Accept the synopsis, reported verification status, and proposed commit message, and merge this candidate?
             required: true
             options:
             - value: accept
@@ -287,7 +288,7 @@ state:
           flow: '${{ jq([outputs.flow, {''disposition'': ''cancelled''}], ''add'') }}'
       - to: merge
         when: outputs.response.fields.decision == 'accept' && !outputs.changed && outputs.flow.verification.status
-          == 'passed'
+          in ['passed', 'skipped']
         payload:
           flow: ${{ outputs.flow }}
       - to: work
@@ -303,12 +304,12 @@ state:
       inputs:
         flow: ${{ transition.payload.flow }}
       sequence:
-      - id: squash
+      - id: squash_reviewed_candidate
         op: squash
         inputs:
           author: ${{ context.git.?author.orValue('') }}
           commit_message: ${{ inputs.flow.commit_message }}
-      - id: merge
+      - id: merge_reviewed_candidate
         op: merge
         inputs:
           repo_path: ${{ context.environment.op.worktree_path }}
@@ -316,15 +317,16 @@ state:
           upstream_branch: ${{ context.git.ref }}
       outputs:
         flow: '${{ jq([inputs.flow, {''disposition'': ''implemented''}], ''add'') }}'
-        merged_hash: ${{ sequence.merge.outputs.merged_hash }}
-        target_branch: ${{ sequence.merge.outputs.target_branch }}
+        merged_hash: ${{ sequence.merge_reviewed_candidate.outputs.merged_hash }}
+        target_branch: ${{ sequence.merge_reviewed_candidate.outputs.target_branch }}
     stopped:
       inputs:
         flow: ${{ transition.payload.flow }}
       sequence: []
       outputs:
         flow: ${{ inputs.flow }}
-    rejected:
+    reject_invalid_build_request:
+      id: reject_invalid_build_request
       op: command_execution
       inputs:
         run: exit 1
@@ -374,7 +376,7 @@ state:
         when: outputs.flow.jobs.exists(k, outputs.flow.jobs[k].status == 'running')
         payload:
           flow: ${{ outputs.flow }}
-      - to: rejected
+      - to: reject_invalid_build_request
         when: '!outputs.flow.jobs.all(k, outputs.flow.jobs[k].status == ''completed'' && (outputs.flow.jobs[k].result.?merged.orValue(false)
           || outputs.flow.jobs[k].result.?disposition.orValue('''') in [''delegated'', ''unchanged'']))'
         payload:
@@ -454,7 +456,7 @@ state:
       inputs:
         flow: ${{ transition.payload.flow }}
       sequence:
-      - id: evidence
+      - id: write_heavy_handoff
         op: command_execution
         const: true
         inputs:
@@ -465,7 +467,7 @@ state:
             printf '%s\n' "$HANDOFF" > "$OUTBOX/light-handoff.json"
       outputs:
         flow: '${{ jq([inputs.flow, {''disposition'': ''heavy'', ''documents'': jq([inputs.flow.documents,
-          {''light-handoff.json'': sequence.evidence.artifacts[''light-handoff.json'']}], ''add'')}], ''add'')
+          {''light-handoff.json'': sequence.write_heavy_handoff.artifacts[''light-handoff.json'']}], ''add'')}], ''add'')
           }}'
     inspect_rebased:
       inputs:

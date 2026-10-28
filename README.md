@@ -43,8 +43,9 @@ The [light workflow](recipes/light/develop.yaml) runs:
    message. Failure returns to implementation. Human feedback repeats implementation
    and verification; acceptance without feedback permits squash and merge.
 
-Light verification uses the agent's explicit repository check command, falling back
-to `bash ./build.sh`. Missing checks cannot authorize a merge. The light synopsis uses
+Light verification runs `bash ./build.sh` when present, followed by any additional
+repository check command supplied by the agent. Missing checks are reported as skipped
+and allow normal synopsis review and merge. The light synopsis uses
 the implementation session's explanation and the shared Git inventory; it does not
 start an independent file-accounting session. If complexity emerges, the agent can
 escalate to heavy after its children finish, retaining its session, candidate,
@@ -77,9 +78,10 @@ For deliverable responses, correctable errors resume the same session with prese
 after two automatic corrections, the workflow asks for human direction.
 Correction never substitutes for the normal design or outcome approval.
 
-Verification runs `bash ./build.sh` in `target_directory`, retaining `build.log`
-and `verification.md`. Failed or missing verification returns to implementation;
-a missing hook is reported as skipped and cannot authorize merge. Projects can
+Verification runs an existing `build.sh` in `target_directory`, retaining its output
+in `build.log` and its status in `verification.md`. Failed checks return to implementation.
+An absent script is reported as skipped and permits normal review and merge; agents
+do not need to create `build.sh` to satisfy the workflow. Projects can
 specialize this include to use their own verification op. Verification is read
 only with respect to the managed Git candidate. Build uses the native `rebase`,
 `squash`, and `merge` ops (c2j v0.0.104 or later). Rebase happens before inspection,
@@ -150,6 +152,11 @@ newer checkpoint, records failures, and exposes summaries and evidence through
 `context.json` and the inbox. Child documents are namespaced by request key;
 their immutable stored identities remain unchanged. A failed child does not
 silently pass a dependency gate or get resubmitted.
+
+Design review validates prerequisite keys before advancing to test-plan. Invalid keys
+are corrected in the design phase with the latest session and documents retained.
+Keys identify this build's agreed serving-cell requests; the parent's request identifier
+is not a local prerequisite. Builds without external prerequisites return `keys: []`.
 
 Root identity comes from `root_cell`/`root_ref`, falling back to `c2j self --json`.
 Creation eligibility always consults that root about project fit, existing owners,

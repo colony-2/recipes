@@ -18,7 +18,7 @@ and mocked Codex responses. Creation handoff uses a stand-in child recipe.
 | Critical | Integration / c2j artifacts | `recipes/kernel/review.yaml` | Questions use focused fields with optional supporting documents; exact answers and annotations return to the requesting phase as artifacts. |
 | Critical | Integration / c2j | `recipes/develop/develop.yaml` | Uploaded edits or requested revisions require a revised proposal and another review before implementation or merge. |
 | Critical | Integration / c2j | `recipes/develop/develop.yaml` | Expert agreement with adverse findings cannot authorize implementation or merge; an explicit passing assessment is required. |
-| Critical | Integration / c2j, Git | `recipes/develop/develop.yaml` | Passing verification and human acceptance are required to merge the inspected candidate; failures and cancellation never merge. |
+| Critical | Integration / c2j, Git | `recipes/develop/develop.yaml` | Available verification checks must pass before human acceptance and merge; skipped absent checks remain visible, and failures or cancellation never merge. |
 | Critical | Integration / c2j, Git | `recipes/develop/develop.yaml` | Separate rebase, squash, and merge operations publish one approved commit; verification and file accounting inspect the rebased candidate before human acceptance. |
 | Critical | Integration / c2j, Git, Nix | `recipes/develop/merge-review.yaml` | A fresh reviewer accounts for every added, changed, and deleted file; incomplete accounting cannot reach human approval or publication. |
 | High | Integration / c2j, Nix | `recipes/develop/merge-review.yaml` | Inventory and review rendering use declared Nix Python without relying on a working host Python executable. |
@@ -30,6 +30,10 @@ and mocked Codex responses. Creation handoff uses a stand-in child recipe.
 | Critical | Integration / c2j jobs | `recipes/develop/coordinate.yaml` | Stable request keys prevent duplicate jobs; blocked routes wait for named known dependencies and preserve failure outcomes. |
 | Critical | Integration / c2j, Git | `recipes/develop/coordinate.yaml` | Same-candidate experts inspect unmerged work; foreign consultation never replaces the requester's repository or later session progress. |
 | Critical | Integration / c2j | `recipes/develop/develop.yaml` | Only agreed prerequisite keys listed in the approved proposal authorize submission; new external scope requires renewed plan approval. |
+| Critical | Integration / c2j | `recipes/develop/develop.yaml` | Unknown prerequisite keys are corrected during design; returning an empty corrected list advances to test-plan without stale keys or duplicate jobs. |
+| Critical | Integration / c2j | `recipes/develop/agent.yaml` | Parent request identifiers are not treated as the child build's prerequisites; only this build's agreed serving requests belong in design review keys. |
+| High | Integration / c2j | `recipes/develop/develop.yaml`, `recipes/develop/verify.yaml` | Missing build.sh is reported as skipped and permits normal review and merge; an existing failing script still requires repair. |
+| High | Integration / c2j | `recipes/kernel/agent-turn.yaml`, `recipes/develop/develop.yaml` | Execution errors identify the operation's purpose through explicit descriptive node IDs, preserving the original error message. |
 | Critical | Integration / c2j | `recipes/develop/coordinate.yaml` | New-cell eligibility consults configured root; feature implementation requires a separate consultation with the created cell. |
 | High | Integration / c2j artifacts | `recipes/kernel/artifact-namespace.yaml` | Identically named documents from different consultations and jobs remain separately available without changing their stored identities. |
 | High | Integration / c2j | `recipes/develop/develop.yaml` | Builds discover the root cell and its branch from .c2/config.yaml when callers omit explicit root settings. |

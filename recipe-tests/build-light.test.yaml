@@ -13,7 +13,7 @@ cases:
     observe_files:
     - candidate.txt
     responses:
-    - node_path: build/run/light/light/light-develop/accept/sequence/outcome_review/kernel-review/ask
+    - node_path: build/run/light/light/light-develop/accept/sequence/outcome_review/kernel-review/request_human_review
       fields:
         decision: accept
   inputs:
@@ -168,7 +168,7 @@ cases:
     observe_files:
     - candidate.txt
     responses:
-    - node_path: build/run/light/light/light-develop/accept/sequence/outcome_review/kernel-review/ask
+    - node_path: build/run/light/light/light-develop/accept/sequence/outcome_review/kernel-review/request_human_review
       fields:
         decision: accept
   inputs:
@@ -253,7 +253,7 @@ cases:
   - type: cel_true
     expr: size(reviews) == 1
   - type: cel_true
-    expr: size(calls.filter(c, c.node_path.endsWith("/development-verify/execute"))) == 2
+    expr: size(calls.filter(c, c.node_path.endsWith("/development-verify/run_repository_checks"))) == 2
   - type: cel_true
     expr: 'calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex"))[1].artifacts["verification.md"].contains("Success:
       false")'
@@ -270,11 +270,11 @@ cases:
     observe_files:
     - candidate.txt
     responses:
-    - node_path: build/run/light/light/light-develop/accept/sequence/outcome_review/kernel-review/ask
+    - node_path: build/run/light/light/light-develop/accept/sequence/outcome_review/kernel-review/request_human_review
       fields:
         decision: accept
         feedback: Please revise the wording.
-    - node_path: build/run/light/light/light-develop/accept/sequence/outcome_review/kernel-review/ask
+    - node_path: build/run/light/light/light-develop/accept/sequence/outcome_review/kernel-review/request_human_review
       fields:
         decision: accept
   inputs:
@@ -361,7 +361,7 @@ cases:
   - type: cel_true
     expr: repositories.root.files["candidate.txt"] == "revised"
   - type: cel_true
-    expr: size(calls.filter(c, c.node_path.endsWith("/development-verify/execute"))) == 2
+    expr: size(calls.filter(c, c.node_path.endsWith("/development-verify/run_repository_checks"))) == 2
 - id: cancel-does-not-merge
   type: integration_case
   runtime:
@@ -375,7 +375,7 @@ cases:
     observe_files:
     - candidate.txt
     responses:
-    - node_path: build/run/light/light/light-develop/accept/sequence/outcome_review/kernel-review/ask
+    - node_path: build/run/light/light/light-develop/accept/sequence/outcome_review/kernel-review/request_human_review
       fields:
         decision: cancel
   inputs:
@@ -448,10 +448,10 @@ cases:
     observe_files:
     - candidate.txt
     responses:
-    - node_path: build/run/light/light/light-develop/questions/sequence/review/kernel-review/ask
+    - node_path: build/run/light/light/light-develop/questions/sequence/review/kernel-review/request_human_review
       fields:
         scope: corrected
-    - node_path: build/run/light/light/light-develop/accept/sequence/outcome_review/kernel-review/ask
+    - node_path: build/run/light/light/light-develop/accept/sequence/outcome_review/kernel-review/request_human_review
       fields:
         decision: accept
   inputs:
@@ -1149,7 +1149,7 @@ cases:
     observe_files:
     - candidate.txt
     responses:
-    - node_path: build/run/light/light/light-develop/accept/sequence/outcome_review/kernel-review/ask
+    - node_path: build/run/light/light/light-develop/accept/sequence/outcome_review/kernel-review/request_human_review
       fields:
         decision: accept
   inputs:
@@ -1235,8 +1235,8 @@ cases:
   - type: cel_true
     expr: size(reviews) == 1
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex"))[1].node_path.contains("read_resume")
-- id: missing-tests-cannot-authorize-review
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex"))[1].node_path.contains("resume_read_only_session")
+- id: missing-build-script-allows-synopsis-review
   type: integration_case
   runtime:
     secrets:
@@ -1249,7 +1249,7 @@ cases:
     observe_files:
     - candidate.txt
     responses:
-    - node_path: build/run/light/light/light-develop/accept/sequence/outcome_review/kernel-review/ask
+    - node_path: build/run/light/light/light-develop/accept/sequence/outcome_review/kernel-review/request_human_review
       fields:
         decision: accept
   inputs:
@@ -1282,35 +1282,7 @@ cases:
             keys: []
             verification_command: ''
             subject: Correct widget documentation
-            review_message: Correct the documented widget behavior. Verify the updated content with an automated
-              check.
-        effects:
-          objects:
-            session:
-              type: c2ops.codex.session/v1
-              metadata:
-                phase: light
-          worktree:
-            candidate.txt: corrected
-    - match:
-        selector: nix:github:colony-2/c2ops/published#codex
-        cell: root
-      behavior:
-        mode: return
-        outputs:
-          status: completed
-          output_schema_valid: true
-          response:
-            next: review
-            summary: Correct the widget documentation.
-            files: []
-            questions: []
-            consultations: []
-            keys: []
-            verification_command: test "$(cat candidate.txt)" = corrected
-            subject: Correct widget documentation
-            review_message: Correct the documented widget behavior. Verify the updated content with an automated
-              check.
+            review_message: Correct the documentation. No build.sh or additional automated check is configured.
         effects:
           objects:
             session:
@@ -1326,12 +1298,27 @@ cases:
         mode: passthrough
   assertions:
   - type: output_equals
+    path: process
+    value: light
+  - type: output_equals
     path: merged
     value: true
+  - type: output_equals
+    path: verification.status
+    value: skipped
   - type: cel_true
     expr: size(reviews) == 1
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex"))[1].artifacts["verification.md"].contains("Skipped")
+    expr: repositories.root.new_commits == 1
+  - type: cel_true
+    expr: repositories.root.files["candidate.txt"] == "corrected"
+  - type: cel_true
+    expr: size(calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex"))) == 1
+  - type: cel_true
+    expr: size(calls.filter(c, c.op == "squash")) == 1 && size(calls.filter(c, c.op == "rebase")) == 1 && size(calls.filter(c,
+      c.op == "merge")) == 1
+  - type: cel_true
+    expr: calls.filter(c, c.op == "squash")[0].inputs.commit_message.contains("https://jobs.colony2.com/")
 - id: changed-key-requires-repair
   type: integration_case
   runtime:
@@ -1507,7 +1494,7 @@ cases:
     expr: calls.filter(c, c.op == "extension_execution" && c.cell == "B")[0].job_id == calls.filter(c, c.op
       == "extension_execution" && c.cell == "root")[0].job_id
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.cell == "root" && c.inputs.selector.endsWith("#codex"))[2].node_path.contains("read_resume")
+    expr: calls.filter(c, c.op == "extension_execution" && c.cell == "root" && c.inputs.selector.endsWith("#codex"))[2].node_path.contains("resume_read_only_session")
 - id: light-escalates-to-heavy
   type: integration_case
   runtime:
@@ -1525,10 +1512,10 @@ cases:
     - candidate.txt
     - unapproved.txt
     responses:
-    - node_path: build/run/heavy/heavy/develop/approval/sequence/plan_review/kernel-review/ask
+    - node_path: build/run/heavy/heavy/develop/approval/sequence/plan_review/kernel-review/request_human_review
       fields:
         decision: approve
-    - node_path: build/run/heavy/heavy/develop/accept/sequence/outcome_review/kernel-review/ask
+    - node_path: build/run/heavy/heavy/develop/accept/sequence/outcome_review/kernel-review/request_human_review
       fields:
         decision: accept
   inputs:
@@ -1573,7 +1560,7 @@ cases:
             candidate.txt: corrected
     - repeat: true
       match:
-        node_path: build/run/heavy/heavy/develop/accounting/sequence/review/build-merge-review/reviewer/kernel-agent-turn/read_fresh/nix:github:colony-2/c2ops/published#codex
+        node_path: build/run/heavy/heavy/develop/accounting/sequence/review/build-merge-review/reviewer/kernel-agent-turn/start_read_only_session/start_read_only_session
       behavior:
         mode: return
         outputs:
@@ -1765,10 +1752,10 @@ cases:
     - candidate.txt
     - unapproved.txt
     responses:
-    - node_path: build/run/heavy/heavy/develop/approval/sequence/plan_review/kernel-review/ask
+    - node_path: build/run/heavy/heavy/develop/approval/sequence/plan_review/kernel-review/request_human_review
       fields:
         decision: approve
-    - node_path: build/run/heavy/heavy/develop/accept/sequence/outcome_review/kernel-review/ask
+    - node_path: build/run/heavy/heavy/develop/accept/sequence/outcome_review/kernel-review/request_human_review
       fields:
         decision: accept
   inputs:
@@ -1868,7 +1855,7 @@ cases:
             candidate.txt: corrected
     - repeat: true
       match:
-        node_path: build/run/heavy/heavy/develop/accounting/sequence/review/build-merge-review/reviewer/kernel-agent-turn/read_fresh/nix:github:colony-2/c2ops/published#codex
+        node_path: build/run/heavy/heavy/develop/accounting/sequence/review/build-merge-review/reviewer/kernel-agent-turn/start_read_only_session/start_read_only_session
       behavior:
         mode: return
         outputs:

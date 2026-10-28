@@ -10,7 +10,7 @@ cases:
     mocks:
       ops:
         - match:
-            node_path: job-merge/prompt/input
+            node_path: job-merge/collect_merge_details/collect_merge_details
           behavior:
             mode: return
             outputs:
@@ -19,14 +19,14 @@ cases:
                 upstream_branch: main
                 commit_message: Merge feature
         - match:
-            node_path: job-merge/approve/input
+            node_path: job-merge/request_merge_approval/request_merge_approval
           behavior:
             mode: return
             outputs:
               response: cancel
     assertions:
       - type: node_executed
-        node_path: job-merge/prompt/input
+        node_path: job-merge/collect_merge_details/collect_merge_details
       - type: output_equals
         path: merged
         value: false
@@ -41,7 +41,7 @@ cases:
     mocks:
       ops:
         - match:
-            node_path: job-merge/approve/input
+            node_path: job-merge/request_merge_approval/request_merge_approval
           behavior:
             mode: return
             outputs:
@@ -64,13 +64,13 @@ cases:
     mocks:
       ops:
         - match:
-            node_path: job-merge/approve/input
+            node_path: job-merge/request_merge_approval/request_merge_approval
           behavior:
             mode: return
             outputs:
               response: merge
         - match:
-            node_path: job-merge/merge/squashrebasemerge
+            node_path: job-merge/publish_approved_changes/publish_approved_changes
           behavior:
             mode: return
             outputs:
@@ -91,7 +91,7 @@ cases:
     mocks:
       ops:
         - match:
-            node_path: job-merge/prompt/input
+            node_path: job-merge/collect_merge_details/collect_merge_details
           behavior:
             mode: return
             outputs:
@@ -100,13 +100,13 @@ cases:
                 upstream_branch: release
                 commit_message: Prompted merge
         - match:
-            node_path: job-merge/approve/input
+            node_path: job-merge/request_merge_approval/request_merge_approval
           behavior:
             mode: return
             outputs:
               response: merge
         - match:
-            node_path: job-merge/merge/squashrebasemerge
+            node_path: job-merge/publish_approved_changes/publish_approved_changes
           behavior:
             mode: return
             outputs:
@@ -114,7 +114,7 @@ cases:
               target_branch: release
     assertions:
       - type: node_executed
-        node_path: job-merge/merge/squashrebasemerge
+        node_path: job-merge/publish_approved_changes/publish_approved_changes
       - type: output_equals
         path: target_branch
         value: release
@@ -129,13 +129,13 @@ cases:
     mocks:
       ops:
         - match:
-            node_path: job-merge/approve/input
+            node_path: job-merge/request_merge_approval/request_merge_approval
           behavior:
             mode: return
             outputs:
               response: merge
         - match:
-            node_path: job-merge/merge/squashrebasemerge
+            node_path: job-merge/publish_approved_changes/publish_approved_changes
           behavior:
             mode: return
             outputs:
@@ -158,13 +158,13 @@ cases:
     mocks:
       ops:
         - match:
-            node_path: job-merge/approve/input
+            node_path: job-merge/request_merge_approval/request_merge_approval
           behavior:
             mode: return
             outputs:
               response: merge
         - match:
-            node_path: job-merge/skipped_no_changes/sleep
+            node_path: job-merge/complete_unchanged_job/complete_unchanged_job
           behavior:
             mode: return
             outputs:

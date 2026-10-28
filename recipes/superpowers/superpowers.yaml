@@ -76,12 +76,13 @@ inputs:
   commit_message: '${{ first_nonempty(inputs.?commit_message, "Complete Superpowers workflow") }}'
   skill_bundle_ref: '${{ first_nonempty(inputs.?skill_bundle_ref, "") }}'
 state:
-  initial: route
+  initial: select_workflow_stage
   states:
-    route:
+    select_workflow_stage:
+      id: select_workflow_stage
       op: command_execution
       transitions:
-        - to: needs_user_input
+        - to: request_workflow_direction
           when: json_parse(outputs.stdout).workflow_route == "needs_user_input"
         - to: debug_work
           when: json_parse(outputs.stdout).workflow_route == "debug"
@@ -174,7 +175,8 @@ state:
           print(json.dumps(result, sort_keys=True))
           PY
 
-    needs_user_input:
+    request_workflow_direction:
+      id: request_workflow_direction
       op: input
       transitions: []
       inputs:
@@ -183,7 +185,7 @@ state:
           fields:
             - id: response
               type: paragraph_text
-              question: '${{ state_exists("debug_work") && state_output("debug_work", "debug_status", "") == "needs_repro_command" ? "Provide a reproduction command for debugging." : json_parse(state_output("route", "stdout", "{\"user_question\":\"Which Superpowers phase should run next?\"}")).user_question }}'
+              question: '${{ state_exists("debug_work") && state_output("debug_work", "debug_status", "") == "needs_repro_command" ? "Provide a reproduction command for debugging." : json_parse(state_output("select_workflow_stage", "stdout", "{\"user_question\":\"Which Superpowers phase should run next?\"}")).user_question }}'
               required: true
 
     brainstorm_design:
@@ -191,11 +193,11 @@ state:
       transitions:
         - to: write_plan
           when: outputs.?approved_for_planning.orValue(false) == true || outputs.?approved_for_planning.orValue("") == "true"
-        - to: needs_user_input
+        - to: request_workflow_direction
           when: true
       inputs:
         prompt: "{{ inputs.prompt }}"
-        route_json: '${{ state_output("route", "stdout", "{}") }}'
+        route_json: '${{ state_output("select_workflow_stage", "stdout", "{}") }}'
         user_feedback: ""
         skill_bundle_ref: "{{ inputs.skill_bundle_ref }}"
 
@@ -215,7 +217,7 @@ state:
       transitions:
         - to: prepare_execution_plan
           when: outputs.?plan_approved.orValue(false) == true || outputs.?plan_approved.orValue("") == "true"
-        - to: replan_required
+        - to: report_replanning_required
           when: true
       inputs:
         prompt: "{{ inputs.prompt }}"
@@ -223,7 +225,8 @@ state:
         plan_json: '${{ first_nonempty(inputs.?plan_json.orValue(""), state_output("write_plan", "plan_json", "{}"), "{}") }}'
         skill_bundle_ref: "{{ inputs.skill_bundle_ref }}"
 
-    replan_required:
+    report_replanning_required:
+      id: report_replanning_required
       op: command_execution
       transitions: []
       inputs:
@@ -249,6 +252,7 @@ state:
           PY
 
     prepare_execution_plan:
+      id: prepare_execution_plan
       op: command_execution
       transitions:
         - to: execute_plan
@@ -279,20 +283,21 @@ state:
     execute_plan:
       include: ./superpowers-execute-plan.yaml
       transitions:
-        - to: child_boundary_required
+        - to: report_required_child_boundary
           when: outputs.?child_job_required.orValue(false) == true || outputs.?child_job_required.orValue("") == "true"
         - to: mark_plan_after_task
           when: outputs.?task_done.orValue(false) == true || outputs.?task_done.orValue("") == "true"
-        - to: needs_user_input
+        - to: request_workflow_direction
           when: outputs.?selected_task_id.orValue("") == ""
-        - to: task_needs_revision
+        - to: report_task_revision_required
           when: true
       inputs:
         plan_json: '${{ state_output("prepare_execution_plan", "stdout", "{}") }}'
         task_id: "{{ inputs.task_id }}"
         skill_bundle_ref: "{{ inputs.skill_bundle_ref }}"
 
-    child_boundary_required:
+    report_required_child_boundary:
+      id: report_required_child_boundary
       op: command_execution
       transitions: []
       inputs:
@@ -305,7 +310,8 @@ state:
           printf '%s\n' "$SELECTED_TASK_JSON" > "{{ context.environment.op.outbox }}/superpowers/execution/child-boundary-required.json"
           printf '%s\n' "$SELECTED_TASK_JSON"
 
-    task_needs_revision:
+    report_task_revision_required:
+      id: report_task_revision_required
       op: command_execution
       transitions: []
       inputs:
@@ -319,6 +325,7 @@ state:
           cat "{{ context.environment.op.outbox }}/superpowers/execution/action.json"
 
     mark_plan_after_task:
+      id: mark_plan_after_task
       op: command_execution
       transitions:
         - to: prepare_verification_plan
@@ -372,6 +379,7 @@ state:
           PY
 
     prepare_verification_plan:
+      id: prepare_verification_plan
       op: command_execution
       transitions:
         - to: verify_work
@@ -412,7 +420,7 @@ state:
       transitions:
         - to: prepare_finish_inputs
           when: outputs.?verification_gate_ok.orValue(false) == true || outputs.?verification_gate_ok.orValue("") == "true"
-        - to: debug_needed
+        - to: report_debugging_required
           when: true
       inputs:
         plan_json: '${{ state_output("prepare_verification_plan", "stdout", "{}") }}'
@@ -420,7 +428,8 @@ state:
         verification_commands: "{{ inputs.verification_commands }}"
         skill_bundle_ref: "{{ inputs.skill_bundle_ref }}"
 
-    debug_needed:
+    report_debugging_required:
+      id: report_debugging_required
       op: command_execution
       transitions: []
       inputs:
@@ -513,8 +522,8 @@ state:
         skill_bundle_ref: "{{ inputs.skill_bundle_ref }}"
 
 outputs:
-  workflow_status: '${{ state_exists("finish_work") ? state_output("finish_work", "finish_decision", "finished") : (state_exists("debug_work") ? state_output("debug_work", "debug_status", "") : (state_exists("debug_needed") ? "needs_debug" : (state_exists("task_needs_revision") ? "needs_revision" : (state_exists("child_boundary_required") ? "child_job_required" : (state_exists("replan_required") ? "requires_replan" : (state_exists("needs_user_input") ? "needs_user_input" : "incomplete")))))) }}'
-  route: '${{ json_parse(state_output("route", "stdout", "{\"workflow_route\":\"\"}")).workflow_route }}'
+  workflow_status: '${{ state_exists("finish_work") ? state_output("finish_work", "finish_decision", "finished") : (state_exists("debug_work") ? state_output("debug_work", "debug_status", "") : (state_exists("report_debugging_required") ? "needs_debug" : (state_exists("report_task_revision_required") ? "needs_revision" : (state_exists("report_required_child_boundary") ? "child_job_required" : (state_exists("report_replanning_required") ? "requires_replan" : (state_exists("request_workflow_direction") ? "needs_user_input" : "incomplete")))))) }}'
+  route: '${{ json_parse(state_output("select_workflow_stage", "stdout", "{\"workflow_route\":\"\"}")).workflow_route }}'
   selected_task_id: "${{ state_output('execute_plan', 'selected_task_id', '') }}"
   child_job_required: "${{ state_output('execute_plan', 'child_job_required', false) }}"
   child_job_reason: "${{ state_output('execute_plan', 'child_job_reason', '') }}"

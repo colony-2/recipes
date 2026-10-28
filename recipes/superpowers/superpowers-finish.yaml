@@ -216,17 +216,17 @@ state:
                 value: ${{ sequence.write_finish_summary.outputs.parsed_output.?merge_ready.orValue(false) != true || json_parse(sequence.collect_finish_inputs.outputs.stdout).all_tasks_complete == true }}
                 message: Finish cannot be merge-ready until all planned tasks are complete.
       transitions:
-        - to: prompt_action
+        - to: choose_completion_action
           when: outputs.completion_action == "prompt"
-        - to: merge
+        - to: publish_approved_changes
           when: outputs.completion_action == "merge" && outputs.finish_gate_ok && outputs.merge_ready && outputs.local_hash_present && outputs.upstream_repo_present && outputs.upstream_branch_present
-        - to: merge_blocked
+        - to: report_merge_blocker
           when: outputs.completion_action == "merge"
-        - to: cancel
+        - to: cancel_completed_work
           when: outputs.completion_action == "cancel"
-        - to: hold
+        - to: hold_completed_work
           when: outputs.completion_action == "hold_for_user"
-        - to: recommend
+        - to: report_completion_recommendation
           when: true
       outputs:
         completion_action: "${{ json_parse(sequence.collect_finish_inputs.outputs.stdout).completion_action }}"
@@ -248,18 +248,19 @@ state:
         output_schema_valid: "${{ sequence.write_finish_summary.outputs.?output_schema_valid.orValue(false) }}"
         status_contract_valid: "${{ sequence.write_finish_summary.outputs.?status_contract_valid.orValue(false) }}"
 
-    prompt_action:
+    choose_completion_action:
+      id: choose_completion_action
       op: input
       transitions:
-        - to: merge
+        - to: publish_approved_changes
           when: outputs.fields.action == "merge" && state_output("summarize_finish", "finish_gate_ok", false) && state_output("summarize_finish", "merge_ready", false) && state_output("summarize_finish", "local_hash_present", false) && state_output("summarize_finish", "upstream_repo_present", false) && state_output("summarize_finish", "upstream_branch_present", false)
-        - to: merge_blocked
+        - to: report_merge_blocker
           when: outputs.fields.action == "merge"
-        - to: cancel
+        - to: cancel_completed_work
           when: outputs.fields.action == "cancel"
-        - to: hold
+        - to: hold_completed_work
           when: outputs.fields.action == "hold_for_user"
-        - to: recommend
+        - to: report_completion_recommendation
           when: true
       inputs:
         form:
@@ -279,7 +280,8 @@ state:
                 - value: cancel
                   label: "Cancel"
 
-    recommend:
+    report_completion_recommendation:
+      id: report_completion_recommendation
       op: command_execution
       transitions: []
       inputs:
@@ -290,7 +292,8 @@ state:
           printf '{"action_taken":"recommend","merged":false}\n' > "{{ context.environment.op.outbox }}/superpowers/finish/action.json"
           cat "{{ context.environment.op.outbox }}/superpowers/finish/action.json"
 
-    hold:
+    hold_completed_work:
+      id: hold_completed_work
       op: command_execution
       transitions: []
       inputs:
@@ -301,7 +304,8 @@ state:
           printf '{"action_taken":"hold_for_user","merged":false}\n' > "{{ context.environment.op.outbox }}/superpowers/finish/action.json"
           cat "{{ context.environment.op.outbox }}/superpowers/finish/action.json"
 
-    cancel:
+    cancel_completed_work:
+      id: cancel_completed_work
       op: command_execution
       transitions: []
       inputs:
@@ -312,7 +316,8 @@ state:
           printf '{"action_taken":"cancel","merged":false}\n' > "{{ context.environment.op.outbox }}/superpowers/finish/action.json"
           cat "{{ context.environment.op.outbox }}/superpowers/finish/action.json"
 
-    merge_blocked:
+    report_merge_blocker:
+      id: report_merge_blocker
       op: command_execution
       transitions: []
       inputs:
@@ -352,7 +357,8 @@ state:
           print(json.dumps(result, sort_keys=True))
           PY
 
-    merge:
+    publish_approved_changes:
+      id: publish_approved_changes
       op: squashrebasemerge
       transitions: []
       inputs:
@@ -375,12 +381,12 @@ outputs:
   finish_failed_rule_ids: "${{ state_output('summarize_finish', 'finish_failed_rule_ids', []) }}"
   verification_ok: "${{ state_output('summarize_finish', 'verification_ok', false) }}"
   verification_blocking_issues: "${{ state_output('summarize_finish', 'verification_blocking_issues', []) }}"
-  action_taken: '${{ state_exists("merge") ? "merge" : (state_exists("merge_blocked") ? "merge_blocked" : (state_exists("cancel") ? "cancel" : (state_exists("hold") ? "hold_for_user" : "recommend"))) }}'
-  merged: "${{ nonempty(state_output('merge', 'merged_hash', '')) }}"
-  merged_hash: "${{ state_output('merge', 'merged_hash', '') }}"
-  target_branch: "${{ state_output('merge', 'target_branch', '') }}"
-  merge_blocked_reasons: "${{ state_exists('merge_blocked') ? json_parse(state_output('merge_blocked', 'stdout', '{\"blocked_reasons\":[]}')).blocked_reasons : [] }}"
-  merge_blocked_reason_count: "${{ state_exists('merge_blocked') ? size(json_parse(state_output('merge_blocked', 'stdout', '{\"blocked_reasons\":[]}')).blocked_reasons) : 0 }}"
+  action_taken: '${{ state_exists("publish_approved_changes") ? "merge" : (state_exists("report_merge_blocker") ? "merge_blocked" : (state_exists("cancel_completed_work") ? "cancel" : (state_exists("hold_completed_work") ? "hold_for_user" : "recommend"))) }}'
+  merged: "${{ nonempty(state_output('publish_approved_changes', 'merged_hash', '')) }}"
+  merged_hash: "${{ state_output('publish_approved_changes', 'merged_hash', '') }}"
+  target_branch: "${{ state_output('publish_approved_changes', 'target_branch', '') }}"
+  merge_blocked_reasons: "${{ state_exists('report_merge_blocker') ? json_parse(state_output('report_merge_blocker', 'stdout', '{\"blocked_reasons\":[]}')).blocked_reasons : [] }}"
+  merge_blocked_reason_count: "${{ state_exists('report_merge_blocker') ? size(json_parse(state_output('report_merge_blocker', 'stdout', '{\"blocked_reasons\":[]}')).blocked_reasons) : 0 }}"
   finish_session_id: "${{ state_output('summarize_finish', 'finish_session_id', '') }}"
   finish_session: "${{ state_output('summarize_finish', 'finish_session', null) }}"
   output_schema_valid: "${{ state_output('summarize_finish', 'output_schema_valid', false) }}"

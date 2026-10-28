@@ -14,6 +14,10 @@ Treat each op as a remote durable step:
 - pass files between steps through `artifacts`
 - read/write task-local files through `context.environment.op.worktree_path`, `context.environment.op.inbox`, and `context.environment.op.outbox`
 - export anything later nodes need through the enclosing node's `outputs:`
+- Give every op an explicit, action-oriented `id`, such as `write_build_context` or
+  `resume_read_only_session`, so job stories and failures identify the work being done.
+  For a direct op state, use the same name for the state key and its `id`; update
+  transitions, state references, and test node paths together when renaming it.
 
 The most common authoring mistake is assuming a later step can read a path written by an earlier step without artifact plumbing. It cannot.
 

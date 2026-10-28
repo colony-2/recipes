@@ -36,7 +36,7 @@ cases:
           behavior:
             mode: passthrough
         - match:
-            node_path: superpowers-finish/recommend/command_execution
+            node_path: superpowers-finish/report_completion_recommendation/report_completion_recommendation
           behavior:
             mode: passthrough
         - match:
@@ -137,7 +137,7 @@ cases:
           behavior:
             mode: passthrough
         - match:
-            node_path: superpowers-finish/merge_blocked/command_execution
+            node_path: superpowers-finish/report_merge_blocker/report_merge_blocker
           behavior:
             mode: passthrough
         - match:
@@ -235,7 +235,7 @@ cases:
             mode: return
             outputs: *finish_gate_ok
         - match:
-            node_path: superpowers-finish/merge/squashrebasemerge
+            node_path: superpowers-finish/publish_approved_changes/publish_approved_changes
           behavior:
             mode: return
             outputs:
@@ -261,5 +261,5 @@ cases:
         path: target_branch
         value: main
       - type: node_executed
-        node_path: superpowers-finish/merge/squashrebasemerge
+        node_path: superpowers-finish/publish_approved_changes/publish_approved_changes
 ```

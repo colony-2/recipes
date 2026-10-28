@@ -37,10 +37,11 @@ state:
       when: nonempty(inputs.?design_json.orValue(""))
     - to: route_verification
       when: nonempty(inputs.?verification_json.orValue(""))
-    - to: heuristic_route
+    - to: classify_workflow_route
       when: true
   states:
     route_explicit_mode:
+      id: route_explicit_mode
       op: command_execution
       inputs:
         timeout: 30s
@@ -103,6 +104,7 @@ state:
           PY
 
     route_submitted_plan:
+      id: route_submitted_plan
       op: command_execution
       inputs:
         timeout: 30s
@@ -122,6 +124,7 @@ state:
           JSON
 
     route_submitted_design:
+      id: route_submitted_design
       op: command_execution
       inputs:
         timeout: 30s
@@ -141,6 +144,7 @@ state:
           JSON
 
     route_verification:
+      id: route_verification
       op: command_execution
       inputs:
         timeout: 30s
@@ -159,10 +163,11 @@ state:
           }
           JSON
 
-    heuristic_route:
+    classify_workflow_route:
+      id: classify_workflow_route
       op: nix:github:colony-2/c2ops/published#skill-run
       transitions:
-        - to: heuristic_route_gate
+        - to: validate_workflow_route
           when: true
       inputs:
         api:
@@ -247,45 +252,46 @@ state:
                 type: boolean
             additionalProperties: true
 
-    heuristic_route_gate:
+    validate_workflow_route:
+      id: validate_workflow_route
       op: nix:github:colony-2/c2ops/published#rule_gate
       inputs:
         rules:
           - id: route_completed
             type: assert
-            value: ${{ states.heuristic_route.outputs.status == "completed" || states.heuristic_route.outputs.status == "incomplete" }}
+            value: ${{ states.classify_workflow_route.outputs.status == "completed" || states.classify_workflow_route.outputs.status == "incomplete" }}
             message: Route skill must return a normalized Codex status.
           - id: route_output_schema_valid
             type: assert
-            value: ${{ states.heuristic_route.outputs.output_schema_valid }}
+            value: ${{ states.classify_workflow_route.outputs.output_schema_valid }}
             message: Route result artifact must match the route schema.
           - id: route_status_contract_valid
             type: assert
-            value: ${{ states.heuristic_route.outputs.status_contract_present && states.heuristic_route.outputs.status_contract_valid }}
+            value: ${{ states.classify_workflow_route.outputs.status_contract_present && states.classify_workflow_route.outputs.status_contract_valid }}
             message: Route status contract must be present and valid.
           - id: selected_skill_present
             type: assert
-            value: ${{ states.heuristic_route.outputs.parsed_output.selected_skill != "" }}
+            value: ${{ states.classify_workflow_route.outputs.parsed_output.selected_skill != "" }}
             message: Route must select a downstream Superpowers skill.
           - id: user_question_when_needed
             type: assert
-            value: ${{ !states.heuristic_route.outputs.parsed_output.needs_user_input || states.heuristic_route.outputs.parsed_output.user_question != "" }}
+            value: ${{ !states.classify_workflow_route.outputs.parsed_output.needs_user_input || states.classify_workflow_route.outputs.parsed_output.user_question != "" }}
             message: Routes that need user input must include a concrete question.
 
 outputs:
-  route_source: "${{ state_exists('heuristic_route') ? 'heuristic_skill' : 'recipe_state' }}"
-  route_ok: "${{ state_exists('heuristic_route_gate') ? state_output('heuristic_route_gate', 'ok', false) : true }}"
-  route_failed_rule_ids: "${{ state_exists('heuristic_route_gate') ? state_output('heuristic_route_gate', 'failed_rule_ids', []) : [] }}"
-  route_json: "${{ first_nonempty(state_output('route_explicit_mode', 'stdout', ''), state_output('route_submitted_plan', 'stdout', ''), state_output('route_submitted_design', 'stdout', ''), state_output('route_verification', 'stdout', ''), state_output('heuristic_route', 'raw_output', '')) }}"
-  recommended_mode: "${{ json_parse(first_nonempty(state_output('route_explicit_mode', 'stdout', ''), state_output('route_submitted_plan', 'stdout', ''), state_output('route_submitted_design', 'stdout', ''), state_output('route_verification', 'stdout', ''), state_output('heuristic_route', 'raw_output', ''))).recommended_mode }}"
-  selected_skill: "${{ json_parse(first_nonempty(state_output('route_explicit_mode', 'stdout', ''), state_output('route_submitted_plan', 'stdout', ''), state_output('route_submitted_design', 'stdout', ''), state_output('route_verification', 'stdout', ''), state_output('heuristic_route', 'raw_output', ''))).selected_skill }}"
-  required_skills: "${{ json_parse(first_nonempty(state_output('route_explicit_mode', 'stdout', ''), state_output('route_submitted_plan', 'stdout', ''), state_output('route_submitted_design', 'stdout', ''), state_output('route_verification', 'stdout', ''), state_output('heuristic_route', 'raw_output', ''))).required_skills }}"
-  rationale: "${{ json_parse(first_nonempty(state_output('route_explicit_mode', 'stdout', ''), state_output('route_submitted_plan', 'stdout', ''), state_output('route_submitted_design', 'stdout', ''), state_output('route_verification', 'stdout', ''), state_output('heuristic_route', 'raw_output', ''))).rationale }}"
-  needs_user_input: "${{ json_parse(first_nonempty(state_output('route_explicit_mode', 'stdout', ''), state_output('route_submitted_plan', 'stdout', ''), state_output('route_submitted_design', 'stdout', ''), state_output('route_verification', 'stdout', ''), state_output('heuristic_route', 'raw_output', ''))).needs_user_input }}"
-  user_question: "${{ json_parse(first_nonempty(state_output('route_explicit_mode', 'stdout', ''), state_output('route_submitted_plan', 'stdout', ''), state_output('route_submitted_design', 'stdout', ''), state_output('route_verification', 'stdout', ''), state_output('heuristic_route', 'raw_output', ''))).user_question }}"
-  required_artifacts: "${{ json_parse(first_nonempty(state_output('route_explicit_mode', 'stdout', ''), state_output('route_submitted_plan', 'stdout', ''), state_output('route_submitted_design', 'stdout', ''), state_output('route_verification', 'stdout', ''), state_output('heuristic_route', 'raw_output', ''))).required_artifacts }}"
-  human_review_required: "${{ json_parse(first_nonempty(state_output('route_explicit_mode', 'stdout', ''), state_output('route_submitted_plan', 'stdout', ''), state_output('route_submitted_design', 'stdout', ''), state_output('route_verification', 'stdout', ''), state_output('heuristic_route', 'raw_output', ''))).human_review_required }}"
-  route_session_id: "${{ state_output('heuristic_route', 'sessionId', '') }}"
-  route_session: "${{ state_output('heuristic_route', 'session', null) }}"
-  output_schema_valid: "${{ state_exists('heuristic_route') ? state_output('heuristic_route', 'output_schema_valid', false) : true }}"
-  status_contract_valid: "${{ state_exists('heuristic_route') ? state_output('heuristic_route', 'status_contract_valid', false) : true }}"
+  route_source: "${{ state_exists('classify_workflow_route') ? 'heuristic_skill' : 'recipe_state' }}"
+  route_ok: "${{ state_exists('validate_workflow_route') ? state_output('validate_workflow_route', 'ok', false) : true }}"
+  route_failed_rule_ids: "${{ state_exists('validate_workflow_route') ? state_output('validate_workflow_route', 'failed_rule_ids', []) : [] }}"
+  route_json: "${{ first_nonempty(state_output('route_explicit_mode', 'stdout', ''), state_output('route_submitted_plan', 'stdout', ''), state_output('route_submitted_design', 'stdout', ''), state_output('route_verification', 'stdout', ''), state_output('classify_workflow_route', 'raw_output', '')) }}"
+  recommended_mode: "${{ json_parse(first_nonempty(state_output('route_explicit_mode', 'stdout', ''), state_output('route_submitted_plan', 'stdout', ''), state_output('route_submitted_design', 'stdout', ''), state_output('route_verification', 'stdout', ''), state_output('classify_workflow_route', 'raw_output', ''))).recommended_mode }}"
+  selected_skill: "${{ json_parse(first_nonempty(state_output('route_explicit_mode', 'stdout', ''), state_output('route_submitted_plan', 'stdout', ''), state_output('route_submitted_design', 'stdout', ''), state_output('route_verification', 'stdout', ''), state_output('classify_workflow_route', 'raw_output', ''))).selected_skill }}"
+  required_skills: "${{ json_parse(first_nonempty(state_output('route_explicit_mode', 'stdout', ''), state_output('route_submitted_plan', 'stdout', ''), state_output('route_submitted_design', 'stdout', ''), state_output('route_verification', 'stdout', ''), state_output('classify_workflow_route', 'raw_output', ''))).required_skills }}"
+  rationale: "${{ json_parse(first_nonempty(state_output('route_explicit_mode', 'stdout', ''), state_output('route_submitted_plan', 'stdout', ''), state_output('route_submitted_design', 'stdout', ''), state_output('route_verification', 'stdout', ''), state_output('classify_workflow_route', 'raw_output', ''))).rationale }}"
+  needs_user_input: "${{ json_parse(first_nonempty(state_output('route_explicit_mode', 'stdout', ''), state_output('route_submitted_plan', 'stdout', ''), state_output('route_submitted_design', 'stdout', ''), state_output('route_verification', 'stdout', ''), state_output('classify_workflow_route', 'raw_output', ''))).needs_user_input }}"
+  user_question: "${{ json_parse(first_nonempty(state_output('route_explicit_mode', 'stdout', ''), state_output('route_submitted_plan', 'stdout', ''), state_output('route_submitted_design', 'stdout', ''), state_output('route_verification', 'stdout', ''), state_output('classify_workflow_route', 'raw_output', ''))).user_question }}"
+  required_artifacts: "${{ json_parse(first_nonempty(state_output('route_explicit_mode', 'stdout', ''), state_output('route_submitted_plan', 'stdout', ''), state_output('route_submitted_design', 'stdout', ''), state_output('route_verification', 'stdout', ''), state_output('classify_workflow_route', 'raw_output', ''))).required_artifacts }}"
+  human_review_required: "${{ json_parse(first_nonempty(state_output('route_explicit_mode', 'stdout', ''), state_output('route_submitted_plan', 'stdout', ''), state_output('route_submitted_design', 'stdout', ''), state_output('route_verification', 'stdout', ''), state_output('classify_workflow_route', 'raw_output', ''))).human_review_required }}"
+  route_session_id: "${{ state_output('classify_workflow_route', 'sessionId', '') }}"
+  route_session: "${{ state_output('classify_workflow_route', 'session', null) }}"
+  output_schema_valid: "${{ state_exists('classify_workflow_route') ? state_output('classify_workflow_route', 'output_schema_valid', false) : true }}"
+  status_contract_valid: "${{ state_exists('classify_workflow_route') ? state_output('classify_workflow_route', 'status_contract_valid', false) : true }}"

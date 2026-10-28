@@ -32,7 +32,7 @@ cases:
         outputs:
           resolved_selectors: {}
     - match:
-        node_path: job-implement/prepare_context/command_execution
+        node_path: job-implement/prepare_implementation_context/prepare_implementation_context
       behavior:
         mode: return
         outputs:
@@ -46,7 +46,7 @@ cases:
           feedback/prior-session-summary.md: ''
           feedback/extra-instructions.md: ''
     - match:
-        node_path: job-implement/continue_session/nix:github:colony-2/c2ops/published#codex
+        node_path: job-implement/resume_implementation_session/resume_implementation_session
       behavior:
         mode: return
         outputs:
@@ -95,7 +95,7 @@ cases:
         outputs:
           resolved_selectors: {}
     - match:
-        node_path: job-implement/prepare_context/command_execution
+        node_path: job-implement/prepare_implementation_context/prepare_implementation_context
       behavior:
         mode: return
         outputs:
@@ -109,7 +109,7 @@ cases:
           feedback/prior-session-summary.md: ''
           feedback/extra-instructions.md: ''
     - match:
-        node_path: job-implement/new_session/nix:github:colony-2/c2ops/published#codex
+        node_path: job-implement/start_implementation_session/start_implementation_session
       behavior:
         mode: return
         outputs:
@@ -156,7 +156,7 @@ cases:
         outputs:
           resolved_selectors: {}
     - match:
-        node_path: job-implement/prepare_context/command_execution
+        node_path: job-implement/prepare_implementation_context/prepare_implementation_context
       behavior:
         mode: return
         outputs:
@@ -170,7 +170,7 @@ cases:
           feedback/prior-session-summary.md: ''
           feedback/extra-instructions.md: ''
     - match:
-        node_path: job-implement/new_session/nix:github:colony-2/c2ops/published#codex
+        node_path: job-implement/start_implementation_session/start_implementation_session
       behavior:
         mode: return
         outputs:

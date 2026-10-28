@@ -49,12 +49,13 @@ inputs:
   direction: ${{ inputs.direction }}
 state:
   initial:
-  - to: restore
+  - to: restore_consultation_transcript
     when: inputs.continuation != null
   - to: start
     when: true
   states:
-    restore:
+    restore_consultation_transcript:
+      id: restore_consultation_transcript
       op: command_execution
       const: true
       artifacts:
@@ -74,7 +75,7 @@ state:
         requester_session: ${{ inputs.requester_session }}
         documents: ${{ inputs.documents }}
         max_iterations: ${{ inputs.max_iterations }}
-        continuation: ${{ json_parse(state_output('restore', 'stdout', '{}')) }}
+        continuation: ${{ json_parse(state_output('restore_consultation_transcript', 'stdout', '{}')) }}
         direction: ${{ inputs.direction }}
         cell: ${{ context.workspace.cell }}
         topic: ${{ inputs.thread }}
@@ -401,7 +402,7 @@ state:
       inputs:
         previous: |-
           ${{ inputs.continuation == null ? states.start.outputs.conversation
-              : json_parse(states.restore.outputs.stdout) }}
+              : json_parse(states.restore_consultation_transcript.outputs.stdout) }}
       sequence: []
       outputs:
         conversation: |-
@@ -416,7 +417,7 @@ state:
           ${{ state_output('invalid', 'conversation', state_output('failed', 'conversation',
               state_output('current', 'conversation', states.start.outputs.conversation))) }}
       sequence:
-      - id: transcript
+      - id: publish_consultation_transcript
         op: command_execution
         const: true
         inputs:
@@ -427,7 +428,7 @@ state:
             printf '%s\n' "$CONVERSATION" > "$OUTBOX/conversation.json"
       outputs:
         conversation: ${{ inputs.conversation }}
-        transcript: ${{ sequence.transcript.artifacts['conversation.json'] }}
+        transcript: ${{ sequence.publish_consultation_transcript.artifacts['conversation.json'] }}
       transitions:
       - to: report
         when: outputs.conversation.outcome == 'needs_review' || inputs.include_summary
@@ -437,9 +438,10 @@ state:
         conversation: ${{ states.publish.outputs.conversation }}
         transcript: ${{ states.publish.outputs.transcript }}
       transitions:
-      - to: expert
+      - to: request_consultation_direction
         when: states.publish.outputs.conversation.outcome == 'needs_review' && outputs.error == ''
-    expert:
+    request_consultation_direction:
+      id: request_consultation_direction
       op: input
       inputs:
         form: ${{ states.report.outputs.review.form }}
@@ -449,16 +451,16 @@ state:
     expert_record:
       inputs:
         previous: ${{ states.publish.outputs.conversation }}
-        response: ${{ states.expert.outputs }}
+        response: ${{ states.request_consultation_direction.outputs }}
         review: ${{ states.report.outputs.review.documents }}
         direction: |-
           {{ range $field := states.report.outputs.review.form.fields }}
           {{ if ne $field.id "attachments" }}
           {{ $field.question }}
-          {{ index states.expert.outputs.fields $field.id }}
+          {{ index states.request_consultation_direction.outputs.fields $field.id }}
           {{ end }}
           {{ end }}
-          {{ range $path, $ref := states.expert.outputs.artifact_refs }}
+          {{ range $path, $ref := states.request_consultation_direction.outputs.artifact_refs }}
           Inbox: {{ $path }}
           {{ end }}
       sequence: []

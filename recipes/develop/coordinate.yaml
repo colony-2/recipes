@@ -38,7 +38,7 @@ state:
         when: inputs.action == 'consult' && outputs.item.kind == 'expert'
       - to: invalid
         when: inputs.action == 'consult' && (outputs.item.cell == '' || outputs.item.ref == '')
-      - to: consult
+      - to: launch_serving_consultation
         when: inputs.action == 'consult'
       - to: invalid
         when: '!(outputs.key in outputs.flow.threads)'
@@ -53,13 +53,14 @@ state:
           && outputs.flow.create_recipe == ''
       - to: submit
         when: inputs.action == 'submit'
-      - to: wait_job
+      - to: await_prerequisite_result
         when: outputs.key in outputs.flow.jobs && outputs.flow.jobs[outputs.key].status == 'running'
-      - to: wait_consultation
+      - to: await_serving_agreement
         when: '!(outputs.key in outputs.flow.jobs) && outputs.flow.threads[outputs.key].status == ''running'''
       - to: skip
         when: true
-    consult:
+    launch_serving_consultation:
+      id: launch_serving_consultation
       op: recipes.run
       inputs:
         recipes: >-
@@ -111,7 +112,7 @@ state:
         inputs:
           prefix: consultation/
           documents: '${{ {''conversation.json'': inputs.thread.result.continuation} }}'
-      - id: launch
+      - id: launch_prerequisite_build
         op: recipes.run
         inputs:
           recipes: >-
@@ -122,7 +123,7 @@ state:
             sequence.starter.outputs.documents], 'add'), 'root_cell': inputs.flow.root_cell, 'root_ref':
             inputs.flow.root_ref} }] }}
       outputs:
-        job_id: ${{ sequence.launch.outputs.job_ids[0] }}
+        job_id: ${{ sequence.launch_prerequisite_build.outputs.job_ids[0] }}
       transitions:
       - to: record
         when: true
@@ -132,7 +133,8 @@ state:
             'status': 'running', 'kind': states.pick.outputs.flow.threads[states.pick.outputs.key].request.kind,
             'cell': states.pick.outputs.flow.threads[states.pick.outputs.key].request.cell} }], 'add')}
             }}
-    wait_job:
+    await_prerequisite_result:
+      id: await_prerequisite_result
       op: recipe.await_result_soft
       inputs:
         target:
@@ -150,7 +152,8 @@ state:
             {'status': outputs.status, 'result': outputs.outputs, 'failure': outputs.failure_message}],
             'add')}], 'add')}, {'documents': outputs.outputs.?final_artifacts.orValue(outputs.outputs.?artifact_refs.orValue({}))}],
             'add') }}
-    wait_consultation:
+    await_serving_agreement:
+      id: await_serving_agreement
       op: recipe.await_result_soft
       inputs:
         target:

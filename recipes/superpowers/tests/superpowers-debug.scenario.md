@@ -19,7 +19,7 @@ cases:
             outputs:
               resolved_selectors: {}
         - match:
-            node_path: superpowers-debug/collect_debug_inputs/command_execution
+            node_path: superpowers-debug/collect_debug_inputs/collect_debug_inputs
           behavior:
             mode: passthrough
         - match:
@@ -121,11 +121,11 @@ cases:
             outputs:
               resolved_selectors: {}
         - match:
-            node_path: superpowers-debug/collect_debug_inputs/command_execution
+            node_path: superpowers-debug/collect_debug_inputs/collect_debug_inputs
           behavior:
             mode: passthrough
         - match:
-            node_path: superpowers-debug/needs_repro_command/command_execution
+            node_path: superpowers-debug/report_missing_reproduction_command/report_missing_reproduction_command
           behavior:
             mode: passthrough
         - match:
@@ -168,7 +168,7 @@ cases:
     mocks:
       ops:
         - match:
-            node_path: superpowers-debug/collect_debug_inputs/command_execution
+            node_path: superpowers-debug/collect_debug_inputs/collect_debug_inputs
           behavior:
             mode: passthrough
         - match:
@@ -230,7 +230,7 @@ cases:
     mocks:
       ops:
         - match:
-            node_path: superpowers-debug/collect_debug_inputs/command_execution
+            node_path: superpowers-debug/collect_debug_inputs/collect_debug_inputs
           behavior:
             mode: passthrough
         - match:

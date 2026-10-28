@@ -21,7 +21,7 @@ cases:
             outputs:
               resolved_selectors: {}
         - match:
-            node_path: "superpowers-route/heuristic_route/nix:github:colony-2/c2ops/published#skill-run"
+            node_path: "superpowers-route/classify_workflow_route/classify_workflow_route"
           behavior:
             mode: return
             outputs: &route_brainstorm
@@ -62,7 +62,7 @@ cases:
               status_contract_errors: []
               diagnostics: {}
         - match:
-            node_path: "superpowers-route/heuristic_route_gate/nix:github:colony-2/c2ops/published#rule_gate"
+            node_path: "superpowers-route/validate_workflow_route/validate_workflow_route"
           behavior:
             mode: return
             outputs:
@@ -115,7 +115,7 @@ cases:
             outputs:
               resolved_selectors: {}
         - match:
-            node_path: "superpowers-route/heuristic_route/nix:github:colony-2/c2ops/published#skill-run"
+            node_path: "superpowers-route/classify_workflow_route/classify_workflow_route"
           behavior:
             mode: return
             outputs:
@@ -134,7 +134,7 @@ cases:
                 required_artifacts: []
                 human_review_required: false
         - match:
-            node_path: "superpowers-route/heuristic_route_gate/nix:github:colony-2/c2ops/published#rule_gate"
+            node_path: "superpowers-route/validate_workflow_route/validate_workflow_route"
           behavior:
             mode: return
             outputs:
@@ -193,12 +193,12 @@ cases:
             outputs:
               resolved_selectors: {}
         - match:
-            node_path: "superpowers-route/heuristic_route/nix:github:colony-2/c2ops/published#skill-run"
+            node_path: "superpowers-route/classify_workflow_route/classify_workflow_route"
           behavior:
             mode: return
             outputs: *route_brainstorm
         - match:
-            node_path: "superpowers-route/heuristic_route_gate/nix:github:colony-2/c2ops/published#rule_gate"
+            node_path: "superpowers-route/validate_workflow_route/validate_workflow_route"
           behavior:
             mode: return
             outputs:
@@ -254,12 +254,12 @@ cases:
             outputs:
               resolved_selectors: {}
         - match:
-            node_path: "superpowers-route/heuristic_route/nix:github:colony-2/c2ops/published#skill-run"
+            node_path: "superpowers-route/classify_workflow_route/classify_workflow_route"
           behavior:
             mode: return
             outputs: *route_brainstorm
         - match:
-            node_path: "superpowers-route/heuristic_route_gate/nix:github:colony-2/c2ops/published#rule_gate"
+            node_path: "superpowers-route/validate_workflow_route/validate_workflow_route"
           behavior:
             mode: return
             outputs:

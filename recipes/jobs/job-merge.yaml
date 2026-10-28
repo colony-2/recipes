@@ -23,15 +23,16 @@ vars:
   local_hash: '${{ first_nonempty(context.git.?hash.orValue(""), inputs.?local_hash.orValue(""), "") }}'
 state:
   initial:
-    - to: prompt
+    - to: collect_merge_details
       when: '!nonempty(first_nonempty(inputs.?upstream_repo.orValue(""), context.git.?repo.orValue(""), "")) || !nonempty(first_nonempty(inputs.?upstream_branch.orValue(""), context.git.?ref.orValue(""), "")) || !nonempty(inputs.?commit_message.orValue(""))'
-    - to: approve
+    - to: request_merge_approval
       when: "true"
   states:
-    prompt:
+    collect_merge_details:
+      id: collect_merge_details
       op: input
       transitions:
-        - to: approve
+        - to: request_merge_approval
           when: "true"
       inputs:
         form:
@@ -50,17 +51,18 @@ state:
               question: "Squash commit message"
               required: true
 
-    approve:
+    request_merge_approval:
+      id: request_merge_approval
       op: input
       transitions:
-        - to: skipped_no_changes
+        - to: complete_unchanged_job
           when: 'outputs.response == "merge" && !nonempty(vars.local_hash)'
-        - to: merge
+        - to: publish_approved_changes
           when: 'outputs.response == "merge" && nonempty(vars.local_hash)'
           payload:
-            upstream_repo: '${{ state_field("prompt", "upstream_repo", "") }}'
-            upstream_branch: '${{ state_field("prompt", "upstream_branch", "") }}'
-            commit_message: '${{ state_field("prompt", "commit_message", "") }}'
+            upstream_repo: '${{ state_field("collect_merge_details", "upstream_repo", "") }}'
+            upstream_branch: '${{ state_field("collect_merge_details", "upstream_branch", "") }}'
+            commit_message: '${{ state_field("collect_merge_details", "commit_message", "") }}'
       inputs:
         form:
           title: "Approve merge"
@@ -68,10 +70,10 @@ state:
             This will run `squashrebasemerge` and fast-forward merge back to the upstream branch.
 
             Local hash: ${{ vars.local_hash }}
-            Upstream repo: ${{ first_nonempty(state_field("prompt", "upstream_repo", ""), inputs.?upstream_repo.orValue(""), context.git.?repo.orValue(""), "") }}
-            Upstream branch: ${{ first_nonempty(state_field("prompt", "upstream_branch", ""), inputs.?upstream_branch.orValue(""), context.git.?ref.orValue(""), "") }}
+            Upstream repo: ${{ first_nonempty(state_field("collect_merge_details", "upstream_repo", ""), inputs.?upstream_repo.orValue(""), context.git.?repo.orValue(""), "") }}
+            Upstream branch: ${{ first_nonempty(state_field("collect_merge_details", "upstream_branch", ""), inputs.?upstream_branch.orValue(""), context.git.?ref.orValue(""), "") }}
             Commit message:
-            ${{ first_nonempty(state_field("prompt", "commit_message", ""), inputs.?commit_message.orValue(""), "") }}
+            ${{ first_nonempty(state_field("collect_merge_details", "commit_message", ""), inputs.?commit_message.orValue(""), "") }}
           type: multiple_choice
           options:
             - value: merge
@@ -79,13 +81,15 @@ state:
             - value: cancel
               label: Cancel
 
-    skipped_no_changes:
+    complete_unchanged_job:
+      id: complete_unchanged_job
       op: sleep
       transitions: []
       inputs:
         duration: 1ms
 
-    merge:
+    publish_approved_changes:
+      id: publish_approved_changes
       op: squashrebasemerge
       vars:
         upstream_repo: '${{ first_nonempty(transition.?payload.upstream_repo, inputs.?upstream_repo.orValue(""), context.git.?repo.orValue(""), "") }}'
@@ -101,6 +105,6 @@ state:
         commit_message: "${{ vars.commit_message }}"
 
 outputs:
-  merged: "${{ nonempty(state_output('merge', 'merged_hash', '')) }}"
-  merged_hash: "${{ state_output('merge', 'merged_hash', '') }}"
-  target_branch: "${{ state_output('merge', 'target_branch', '') }}"
+  merged: "${{ nonempty(state_output('publish_approved_changes', 'merged_hash', '')) }}"
+  merged_hash: "${{ state_output('publish_approved_changes', 'merged_hash', '') }}"
+  target_branch: "${{ state_output('publish_approved_changes', 'target_branch', '') }}"

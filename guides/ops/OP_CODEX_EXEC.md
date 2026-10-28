@@ -155,10 +155,11 @@ package containing that contract. See [agent-turn.yaml](../../recipes/kernel/age
 
 ## Test Mocks
 
-State-machine selector-backed ops appear in c2j mock diagnostics with the selector in the node path:
+Give selector-backed ops explicit descriptive IDs. For a direct op state, keep its
+state key and `id` aligned; both appear in c2j mock diagnostics:
 
 ```yaml
-node_path: "job-implement/new_session/nix:github:colony-2/c2ops/published#codex"
+node_path: "job-implement/start_implementation_session/start_implementation_session"
 ```
 
 Sequence selector-backed ops generally use the authored node id, for example `new-ticket-triage/assess_cell`.

@@ -21,7 +21,7 @@ cases:
         outputs:
           resolved_selectors: {}
     - match:
-        node_path: new-ticket/triage/recipe.run_and_get_result
+        node_path: new-ticket/triage_ticket/triage_ticket
       behavior:
         mode: return
         outputs:
@@ -32,7 +32,7 @@ cases:
             recommended_cell_final: recipe-tests
             rationale: In-cell
     - match:
-        node_path: new-ticket/requirements_planning/recipe.run_and_get_result
+        node_path: new-ticket/plan_ticket_requirements/plan_ticket_requirements
       behavior:
         mode: return
         outputs:
@@ -76,7 +76,7 @@ cases:
           requirements/index.md: '# Requirements'
           requirements/api-review.json: '{"ok":true}'
     - match:
-        node_path: new-ticket/implementation_planning/recipe.run_and_get_result
+        node_path: new-ticket/plan_ticket_implementation/plan_ticket_implementation
       behavior:
         mode: return
         outputs:
@@ -114,14 +114,14 @@ cases:
           implementation/index.md: '# Implementation'
           implementation/compat-review.json: '{"ok":true}'
     - match:
-        node_path: new-ticket/spawn_dependency_jobs/recipes.run
+        node_path: new-ticket/launch_prerequisite_jobs/launch_prerequisite_jobs
       behavior:
         mode: return
         outputs:
           job_ids:
           - job-dep-1
     - match:
-        node_path: new-ticket/dependency_wait_note/sleep
+        node_path: new-ticket/record_dependency_wait/record_dependency_wait
       behavior:
         mode: return
         outputs:
@@ -130,7 +130,7 @@ cases:
           actual_duration: 1ms
           error_message: ''
     - match:
-        node_path: new-ticket/dependency_wait_hold/sleep
+        node_path: new-ticket/hold_for_dependencies/hold_for_dependencies
       behavior:
         mode: return
         outputs:
@@ -140,7 +140,7 @@ cases:
           error_message: ''
   assertions:
   - type: node_executed
-    node_path: new-ticket/spawn_dependency_jobs/recipes.run
+    node_path: new-ticket/launch_prerequisite_jobs/launch_prerequisite_jobs
   - type: output_equals
     path: dependency_waiting
     value: true
@@ -164,7 +164,7 @@ cases:
         outputs:
           resolved_selectors: {}
     - match:
-        node_path: new-ticket/triage/recipe.run_and_get_result
+        node_path: new-ticket/triage_ticket/triage_ticket
       behavior:
         mode: return
         outputs:
@@ -175,7 +175,7 @@ cases:
             recommended_cell_final: recipe-tests
             rationale: In-cell
     - match:
-        node_path: new-ticket/requirements_planning/recipe.run_and_get_result
+        node_path: new-ticket/plan_ticket_requirements/plan_ticket_requirements
       behavior:
         mode: return
         outputs:
@@ -206,7 +206,7 @@ cases:
           requirements/index.md: '# Requirements'
           requirements/api-review.json: '{"ok":true}'
     - match:
-        node_path: new-ticket/implementation_planning/recipe.run_and_get_result
+        node_path: new-ticket/plan_ticket_implementation/plan_ticket_implementation
       behavior:
         mode: return
         outputs:
@@ -229,7 +229,7 @@ cases:
           implementation/index.md: '# Implementation'
           implementation/compat-review.json: '{"ok":true}'
     - match:
-        node_path: new-ticket/outcome_determination/recipe.run_and_get_result
+        node_path: new-ticket/define_ticket_outcomes/define_ticket_outcomes
       behavior:
         mode: return
         outputs:
@@ -252,7 +252,7 @@ cases:
           outcome/validation-commands.txt: npm test
           outcome/review.json: '{"ok":true}'
     - match:
-        node_path: new-ticket/pre_implementation_review/input
+        node_path: new-ticket/review_implementation_plan/review_implementation_plan
       behavior:
         mode: return
         outputs:
@@ -282,7 +282,7 @@ cases:
           incompleteCategory: ''
           pendingDependencies: []
     - match:
-        node_path: new-ticket/validate/recipe.run_and_get_result
+        node_path: new-ticket/validate_ticket_implementation/validate_ticket_implementation
       behavior:
         mode: return
         outputs:
@@ -293,7 +293,7 @@ cases:
           validation/output.txt: ok
           validation/output-tail.txt: ok-tail
     - match:
-        node_path: new-ticket/ready_to_merge_review/input
+        node_path: new-ticket/review_ticket_outcome/review_ticket_outcome
       behavior:
         mode: return
         outputs:
@@ -304,7 +304,7 @@ cases:
             upstream_branch: ''
             commit_message: ''
     - match:
-        node_path: new-ticket/cancel_job_route/sleep
+        node_path: new-ticket/route_ticket_cancellation/route_ticket_cancellation
       behavior:
         mode: return
         outputs:
@@ -313,7 +313,7 @@ cases:
           actual_duration: 1ms
           error_message: ''
     - match:
-        node_path: new-ticket/cancel_job_update/sleep
+        node_path: new-ticket/record_ticket_cancellation/record_ticket_cancellation
       behavior:
         mode: return
         outputs:
@@ -322,7 +322,7 @@ cases:
           actual_duration: 1ms
           error_message: ''
     - match:
-        node_path: new-ticket/cancel_job_done/sleep
+        node_path: new-ticket/complete_ticket_cancellation/complete_ticket_cancellation
       behavior:
         mode: return
         outputs:
@@ -332,7 +332,7 @@ cases:
           error_message: ''
   assertions:
   - type: node_executed
-    node_path: new-ticket/cancel_job_route/sleep
+    node_path: new-ticket/route_ticket_cancellation/route_ticket_cancellation
   - type: output_equals
     path: canceled
     value: true
@@ -356,7 +356,7 @@ cases:
         outputs:
           resolved_selectors: {}
     - match:
-        node_path: new-ticket/triage/recipe.run_and_get_result
+        node_path: new-ticket/triage_ticket/triage_ticket
       behavior:
         mode: return
         outputs:
@@ -367,7 +367,7 @@ cases:
             recommended_cell_final: recipe-tests
             rationale: In-cell
     - match:
-        node_path: new-ticket/requirements_planning/recipe.run_and_get_result
+        node_path: new-ticket/plan_ticket_requirements/plan_ticket_requirements
       behavior:
         mode: return
         outputs:
@@ -398,7 +398,7 @@ cases:
           requirements/index.md: '# Requirements'
           requirements/api-review.json: '{"ok":true}'
     - match:
-        node_path: new-ticket/implementation_planning/recipe.run_and_get_result
+        node_path: new-ticket/plan_ticket_implementation/plan_ticket_implementation
       behavior:
         mode: return
         outputs:
@@ -421,7 +421,7 @@ cases:
           implementation/index.md: '# Implementation'
           implementation/compat-review.json: '{"ok":true}'
     - match:
-        node_path: new-ticket/outcome_determination/recipe.run_and_get_result
+        node_path: new-ticket/define_ticket_outcomes/define_ticket_outcomes
       behavior:
         mode: return
         outputs:
@@ -444,7 +444,7 @@ cases:
           outcome/validation-commands.txt: npm test
           outcome/review.json: '{"ok":true}'
     - match:
-        node_path: new-ticket/pre_implementation_review/input
+        node_path: new-ticket/review_implementation_plan/review_implementation_plan
       behavior:
         mode: return
         outputs:
@@ -474,7 +474,7 @@ cases:
           incompleteCategory: ''
           pendingDependencies: []
     - match:
-        node_path: new-ticket/validate/recipe.run_and_get_result
+        node_path: new-ticket/validate_ticket_implementation/validate_ticket_implementation
       behavior:
         mode: return
         outputs:
@@ -485,7 +485,7 @@ cases:
           validation/output.txt: ok
           validation/output-tail.txt: ok-tail
     - match:
-        node_path: new-ticket/ready_to_merge_review/input
+        node_path: new-ticket/review_ticket_outcome/review_ticket_outcome
       behavior:
         mode: return
         outputs:
@@ -517,7 +517,7 @@ cases:
           incompleteCategory: needs_user_input
           pendingDependencies: []
     - match:
-        node_path: new-ticket/pre_implementation_followup_review/input
+        node_path: new-ticket/review_revised_plan/review_revised_plan
       behavior:
         mode: return
         outputs:
@@ -526,7 +526,7 @@ cases:
             feedback: ''
             implementation_answers: ''
     - match:
-        node_path: new-ticket/cancel_job_route/sleep
+        node_path: new-ticket/route_ticket_cancellation/route_ticket_cancellation
       behavior:
         mode: return
         outputs:
@@ -535,7 +535,7 @@ cases:
           actual_duration: 1ms
           error_message: ''
     - match:
-        node_path: new-ticket/cancel_job_update/sleep
+        node_path: new-ticket/record_ticket_cancellation/record_ticket_cancellation
       behavior:
         mode: return
         outputs:
@@ -544,7 +544,7 @@ cases:
           actual_duration: 1ms
           error_message: ''
     - match:
-        node_path: new-ticket/cancel_job_done/sleep
+        node_path: new-ticket/complete_ticket_cancellation/complete_ticket_cancellation
       behavior:
         mode: return
         outputs:
@@ -582,7 +582,7 @@ cases:
         outputs:
           resolved_selectors: {}
     - match:
-        node_path: new-ticket/triage/recipe.run_and_get_result
+        node_path: new-ticket/triage_ticket/triage_ticket
       behavior:
         mode: return
         outputs:
@@ -593,7 +593,7 @@ cases:
             recommended_cell_final: recipe-tests
             rationale: In-cell
     - match:
-        node_path: new-ticket/requirements_planning/recipe.run_and_get_result
+        node_path: new-ticket/plan_ticket_requirements/plan_ticket_requirements
       behavior:
         mode: return
         outputs:
@@ -624,7 +624,7 @@ cases:
           requirements/index.md: '# Requirements'
           requirements/api-review.json: '{"ok":true}'
     - match:
-        node_path: new-ticket/implementation_planning/recipe.run_and_get_result
+        node_path: new-ticket/plan_ticket_implementation/plan_ticket_implementation
       behavior:
         mode: return
         outputs:
@@ -647,7 +647,7 @@ cases:
           implementation/index.md: '# Implementation'
           implementation/compat-review.json: '{"ok":true}'
     - match:
-        node_path: new-ticket/outcome_determination/recipe.run_and_get_result
+        node_path: new-ticket/define_ticket_outcomes/define_ticket_outcomes
       behavior:
         mode: return
         outputs:
@@ -670,7 +670,7 @@ cases:
           outcome/validation-commands.txt: npm test
           outcome/review.json: '{"ok":true}'
     - match:
-        node_path: new-ticket/pre_implementation_review/input
+        node_path: new-ticket/review_implementation_plan/review_implementation_plan
       behavior:
         mode: return
         outputs:
@@ -700,7 +700,7 @@ cases:
           incompleteCategory: ''
           pendingDependencies: []
     - match:
-        node_path: new-ticket/validate/recipe.run_and_get_result
+        node_path: new-ticket/validate_ticket_implementation/validate_ticket_implementation
       behavior:
         mode: return
         outputs:
@@ -711,7 +711,7 @@ cases:
           validation/output.txt: ok
           validation/output-tail.txt: ok-tail
     - match:
-        node_path: new-ticket/ready_to_merge_review/input
+        node_path: new-ticket/review_ticket_outcome/review_ticket_outcome
       behavior:
         mode: return
         outputs:
@@ -722,14 +722,14 @@ cases:
             upstream_branch: ''
             commit_message: ''
     - match:
-        node_path: new-ticket/merge/squashrebasemerge
+        node_path: new-ticket/publish_ticket_changes/publish_ticket_changes
       behavior:
         mode: return
         outputs:
           merged_hash: cafebabecafebabecafebabecafebabecafebabe
           target_branch: main
     - match:
-        node_path: new-ticket/complete_done_route/sleep
+        node_path: new-ticket/route_ticket_completion/route_ticket_completion
       behavior:
         mode: return
         outputs:
@@ -738,7 +738,7 @@ cases:
           actual_duration: 1ms
           error_message: ''
     - match:
-        node_path: new-ticket/complete_done_update/sleep
+        node_path: new-ticket/record_ticket_completion/record_ticket_completion
       behavior:
         mode: return
         outputs:
@@ -747,7 +747,7 @@ cases:
           actual_duration: 1ms
           error_message: ''
     - match:
-        node_path: new-ticket/complete_done_noop/sleep
+        node_path: new-ticket/finish_completed_ticket/finish_completed_ticket
       behavior:
         mode: return
         outputs:
@@ -785,7 +785,7 @@ cases:
         outputs:
           resolved_selectors: {}
     - match:
-        node_path: new-ticket/triage/recipe.run_and_get_result
+        node_path: new-ticket/triage_ticket/triage_ticket
       behavior:
         mode: return
         outputs:
@@ -796,7 +796,7 @@ cases:
             recommended_cell_final: recipe-tests
             rationale: In-cell
     - match:
-        node_path: new-ticket/requirements_planning/recipe.run_and_get_result
+        node_path: new-ticket/plan_ticket_requirements/plan_ticket_requirements
       behavior:
         mode: return
         outputs:
@@ -827,7 +827,7 @@ cases:
           requirements/index.md: '# Requirements'
           requirements/api-review.json: '{"ok":true}'
     - match:
-        node_path: new-ticket/implementation_planning/recipe.run_and_get_result
+        node_path: new-ticket/plan_ticket_implementation/plan_ticket_implementation
       behavior:
         mode: return
         outputs:
@@ -850,7 +850,7 @@ cases:
           implementation/index.md: '# Implementation'
           implementation/compat-review.json: '{"ok":true}'
     - match:
-        node_path: new-ticket/outcome_determination/recipe.run_and_get_result
+        node_path: new-ticket/define_ticket_outcomes/define_ticket_outcomes
       behavior:
         mode: return
         outputs:
@@ -873,7 +873,7 @@ cases:
           outcome/validation-commands.txt: npm test
           outcome/review.json: '{"ok":true}'
     - match:
-        node_path: new-ticket/pre_implementation_review/input
+        node_path: new-ticket/review_implementation_plan/review_implementation_plan
       behavior:
         mode: return
         outputs:
@@ -907,14 +907,14 @@ cases:
 
               Repro: send empty payload to /v1/items.'
     - match:
-        node_path: new-ticket/implement_bugs/recipes.run
+        node_path: new-ticket/launch_implementation_bug_jobs/launch_implementation_bug_jobs
       behavior:
         mode: return
         outputs:
           job_ids:
           - job-bug-1
     - match:
-        node_path: new-ticket/validate/recipe.run_and_get_result
+        node_path: new-ticket/validate_ticket_implementation/validate_ticket_implementation
       behavior:
         mode: return
         outputs:
@@ -925,7 +925,7 @@ cases:
           validation/output.txt: ok
           validation/output-tail.txt: ok-tail
     - match:
-        node_path: new-ticket/ready_to_merge_review/input
+        node_path: new-ticket/review_ticket_outcome/review_ticket_outcome
       behavior:
         mode: return
         outputs:
@@ -936,7 +936,7 @@ cases:
             upstream_branch: ''
             commit_message: ''
     - match:
-        node_path: new-ticket/cancel_job_route/sleep
+        node_path: new-ticket/route_ticket_cancellation/route_ticket_cancellation
       behavior:
         mode: return
         outputs:
@@ -945,7 +945,7 @@ cases:
           actual_duration: 1ms
           error_message: ''
     - match:
-        node_path: new-ticket/cancel_job_update/sleep
+        node_path: new-ticket/record_ticket_cancellation/record_ticket_cancellation
       behavior:
         mode: return
         outputs:
@@ -954,7 +954,7 @@ cases:
           actual_duration: 1ms
           error_message: ''
     - match:
-        node_path: new-ticket/cancel_job_done/sleep
+        node_path: new-ticket/complete_ticket_cancellation/complete_ticket_cancellation
       behavior:
         mode: return
         outputs:
@@ -964,7 +964,7 @@ cases:
           error_message: ''
   assertions:
   - type: node_executed
-    node_path: new-ticket/implement_bugs/recipes.run
+    node_path: new-ticket/launch_implementation_bug_jobs/launch_implementation_bug_jobs
   - type: output_equals
     path: canceled
     value: true
@@ -988,7 +988,7 @@ cases:
         outputs:
           resolved_selectors: {}
     - match:
-        node_path: new-ticket/triage/recipe.run_and_get_result
+        node_path: new-ticket/triage_ticket/triage_ticket
       behavior:
         mode: return
         outputs:
@@ -999,7 +999,7 @@ cases:
             recommended_cell_final: recipe-tests
             rationale: In-cell
     - match:
-        node_path: new-ticket/requirements_planning/recipe.run_and_get_result
+        node_path: new-ticket/plan_ticket_requirements/plan_ticket_requirements
       behavior:
         mode: return
         outputs:
@@ -1030,7 +1030,7 @@ cases:
           requirements/index.md: '# Requirements'
           requirements/api-review.json: '{"ok":true}'
     - match:
-        node_path: new-ticket/implementation_planning/recipe.run_and_get_result
+        node_path: new-ticket/plan_ticket_implementation/plan_ticket_implementation
       behavior:
         mode: return
         outputs:
@@ -1053,7 +1053,7 @@ cases:
           implementation/index.md: '# Implementation'
           implementation/compat-review.json: '{"ok":true}'
     - match:
-        node_path: new-ticket/outcome_determination/recipe.run_and_get_result
+        node_path: new-ticket/define_ticket_outcomes/define_ticket_outcomes
       behavior:
         mode: return
         outputs:
@@ -1076,7 +1076,7 @@ cases:
           outcome/validation-commands.txt: npm test
           outcome/review.json: '{"ok":true}'
     - match:
-        node_path: new-ticket/pre_implementation_review/input
+        node_path: new-ticket/review_implementation_plan/review_implementation_plan
       behavior:
         mode: return
         outputs:
@@ -1106,7 +1106,7 @@ cases:
           incompleteCategory: needs_user_input
           pendingDependencies: []
     - match:
-        node_path: new-ticket/pre_implementation_followup_review/input
+        node_path: new-ticket/review_revised_plan/review_revised_plan
       behavior:
         mode: return
         outputs:
@@ -1136,7 +1136,7 @@ cases:
           incompleteCategory: ''
           pendingDependencies: []
     - match:
-        node_path: new-ticket/validate/recipe.run_and_get_result
+        node_path: new-ticket/validate_ticket_implementation/validate_ticket_implementation
       behavior:
         mode: return
         outputs:
@@ -1147,7 +1147,7 @@ cases:
           validation/output.txt: ok
           validation/output-tail.txt: ok-tail
     - match:
-        node_path: new-ticket/ready_to_merge_review/input
+        node_path: new-ticket/review_ticket_outcome/review_ticket_outcome
       behavior:
         mode: return
         outputs:
@@ -1158,7 +1158,7 @@ cases:
             upstream_branch: ''
             commit_message: ''
     - match:
-        node_path: new-ticket/cancel_job_route/sleep
+        node_path: new-ticket/route_ticket_cancellation/route_ticket_cancellation
       behavior:
         mode: return
         outputs:
@@ -1167,7 +1167,7 @@ cases:
           actual_duration: 1ms
           error_message: ''
     - match:
-        node_path: new-ticket/cancel_job_update/sleep
+        node_path: new-ticket/record_ticket_cancellation/record_ticket_cancellation
       behavior:
         mode: return
         outputs:
@@ -1176,7 +1176,7 @@ cases:
           actual_duration: 1ms
           error_message: ''
     - match:
-        node_path: new-ticket/cancel_job_done/sleep
+        node_path: new-ticket/complete_ticket_cancellation/complete_ticket_cancellation
       behavior:
         mode: return
         outputs:
@@ -1186,9 +1186,9 @@ cases:
           error_message: ''
   assertions:
   - type: node_executed
-    node_path: new-ticket/pre_implementation_review/input
+    node_path: new-ticket/review_implementation_plan/review_implementation_plan
   - type: node_executed
-    node_path: new-ticket/implement/state_machine/fresh/nix:github:colony-2/c2ops/published#skill-run
+    node_path: new-ticket/implement/state_machine/start_implementation_session/start_implementation_session
   - type: output_equals
     path: implementation_user_questions_requested
     value: true
@@ -1212,7 +1212,7 @@ cases:
         outputs:
           resolved_selectors: {}
     - match:
-        node_path: new-ticket/triage/recipe.run_and_get_result
+        node_path: new-ticket/triage_ticket/triage_ticket
       behavior:
         mode: return
         outputs:
@@ -1223,7 +1223,7 @@ cases:
             recommended_cell_final: recipe-tests
             rationale: In-cell
     - match:
-        node_path: new-ticket/requirements_planning/recipe.run_and_get_result
+        node_path: new-ticket/plan_ticket_requirements/plan_ticket_requirements
       behavior:
         mode: return
         outputs:
@@ -1254,7 +1254,7 @@ cases:
           requirements/index.md: '# Requirements'
           requirements/api-review.json: '{"ok":true}'
     - match:
-        node_path: new-ticket/implementation_planning/recipe.run_and_get_result
+        node_path: new-ticket/plan_ticket_implementation/plan_ticket_implementation
       behavior:
         mode: return
         outputs:
@@ -1277,7 +1277,7 @@ cases:
           implementation/index.md: '# Implementation'
           implementation/compat-review.json: '{"ok":true}'
     - match:
-        node_path: new-ticket/outcome_determination/recipe.run_and_get_result
+        node_path: new-ticket/define_ticket_outcomes/define_ticket_outcomes
       behavior:
         mode: return
         outputs:
@@ -1300,7 +1300,7 @@ cases:
           outcome/validation-commands.txt: npm test
           outcome/review.json: '{"ok":true}'
     - match:
-        node_path: new-ticket/pre_implementation_review/input
+        node_path: new-ticket/review_implementation_plan/review_implementation_plan
       behavior:
         mode: return
         outputs:
@@ -1330,7 +1330,7 @@ cases:
           incompleteCategory: ''
           pendingDependencies: []
     - match:
-        node_path: new-ticket/validate/recipe.run_and_get_result
+        node_path: new-ticket/validate_ticket_implementation/validate_ticket_implementation
       behavior:
         mode: return
         outputs:
@@ -1341,7 +1341,7 @@ cases:
           validation/output.txt: ok
           validation/output-tail.txt: ok-tail
     - match:
-        node_path: new-ticket/ready_to_merge_review/input
+        node_path: new-ticket/review_ticket_outcome/review_ticket_outcome
       behavior:
         mode: return
         outputs:
@@ -1352,7 +1352,7 @@ cases:
             upstream_branch: ''
             commit_message: ''
     - match:
-        node_path: new-ticket/cancel_job_route/sleep
+        node_path: new-ticket/route_ticket_cancellation/route_ticket_cancellation
       behavior:
         mode: return
         outputs:
@@ -1361,7 +1361,7 @@ cases:
           actual_duration: 1ms
           error_message: ''
     - match:
-        node_path: new-ticket/cancel_job_update/sleep
+        node_path: new-ticket/record_ticket_cancellation/record_ticket_cancellation
       behavior:
         mode: return
         outputs:
@@ -1370,7 +1370,7 @@ cases:
           actual_duration: 1ms
           error_message: ''
     - match:
-        node_path: new-ticket/cancel_job_done/sleep
+        node_path: new-ticket/complete_ticket_cancellation/complete_ticket_cancellation
       behavior:
         mode: return
         outputs:
@@ -1380,7 +1380,7 @@ cases:
           error_message: ''
   assertions:
   - type: node_executed
-    node_path: new-ticket/pre_implementation_review/input
+    node_path: new-ticket/review_implementation_plan/review_implementation_plan
   - type: output_equals
     path: validation_selected_commands
     value: npm test
@@ -1404,7 +1404,7 @@ cases:
         outputs:
           resolved_selectors: {}
     - match:
-        node_path: new-ticket/triage/recipe.run_and_get_result
+        node_path: new-ticket/triage_ticket/triage_ticket
       behavior:
         mode: return
         outputs:
@@ -1415,7 +1415,7 @@ cases:
             recommended_cell_final: recipe-tests
             rationale: In-cell
     - match:
-        node_path: new-ticket/requirements_planning/recipe.run_and_get_result
+        node_path: new-ticket/plan_ticket_requirements/plan_ticket_requirements
       behavior:
         mode: return
         outputs:
@@ -1446,7 +1446,7 @@ cases:
           requirements/index.md: '# Requirements'
           requirements/api-review.json: '{"ok":true}'
     - match:
-        node_path: new-ticket/implementation_planning/recipe.run_and_get_result
+        node_path: new-ticket/plan_ticket_implementation/plan_ticket_implementation
       behavior:
         mode: return
         outputs:
@@ -1469,7 +1469,7 @@ cases:
           implementation/index.md: '# Implementation'
           implementation/compat-review.json: '{"ok":true}'
     - match:
-        node_path: new-ticket/outcome_determination/recipe.run_and_get_result
+        node_path: new-ticket/define_ticket_outcomes/define_ticket_outcomes
       behavior:
         mode: return
         outputs:
@@ -1492,7 +1492,7 @@ cases:
           outcome/validation-commands.txt: npm test
           outcome/review.json: '{"ok":true}'
     - match:
-        node_path: new-ticket/pre_implementation_review/input
+        node_path: new-ticket/review_implementation_plan/review_implementation_plan
       behavior:
         mode: return
         outputs:
@@ -1522,7 +1522,7 @@ cases:
           incompleteCategory: needs_test_statement_update
           pendingDependencies: []
     - match:
-        node_path: new-ticket/pre_implementation_followup_review/input
+        node_path: new-ticket/review_revised_plan/review_revised_plan
       behavior:
         mode: return
         outputs:
@@ -1531,7 +1531,7 @@ cases:
             feedback: ''
             implementation_answers: ''
     - match:
-        node_path: new-ticket/cancel_job_route/sleep
+        node_path: new-ticket/route_ticket_cancellation/route_ticket_cancellation
       behavior:
         mode: return
         outputs:
@@ -1540,7 +1540,7 @@ cases:
           actual_duration: 1ms
           error_message: ''
     - match:
-        node_path: new-ticket/cancel_job_update/sleep
+        node_path: new-ticket/record_ticket_cancellation/record_ticket_cancellation
       behavior:
         mode: return
         outputs:
@@ -1549,7 +1549,7 @@ cases:
           actual_duration: 1ms
           error_message: ''
     - match:
-        node_path: new-ticket/cancel_job_done/sleep
+        node_path: new-ticket/complete_ticket_cancellation/complete_ticket_cancellation
       behavior:
         mode: return
         outputs:
@@ -1559,7 +1559,7 @@ cases:
           error_message: ''
   assertions:
   - type: node_executed
-    node_path: new-ticket/pre_implementation_review/input
+    node_path: new-ticket/review_implementation_plan/review_implementation_plan
   - type: output_equals
     path: implementation_requested_test_statement_update
     value: true
