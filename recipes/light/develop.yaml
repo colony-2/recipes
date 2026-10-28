@@ -43,7 +43,7 @@ state:
         valid: ${{ nonempty(inputs.directory) && !inputs.directory.startsWith('/') && !inputs.directory.matches('(^|/)[.][.](/|$)')
           }}
         flow: '${{ {''message'': inputs.request, ''request'': inputs.request, ''target_directory'': inputs.directory,
-          ''session'': inputs.session, ''documents'': inputs.documents, ''threads'': {}, ''jobs'': {}, ''reviews'':
+          ''session'': inputs.session, ''documents'': inputs.documents, ''threads'': {}, ''jobs'': {}, ''merge_chases'': 0, ''reviews'':
           {}, ''root_cell'': inputs.root_cell, ''root_ref'': inputs.root_ref, ''build_recipe'': inputs.build_recipe}
           }}'
       transitions:
@@ -57,7 +57,7 @@ state:
           flow: ${{ outputs.flow }}
     work:
       inputs:
-        flow: ${{ jq(transition.payload.flow, 'del(.review_hint)') }}
+        flow: ${{ jq(transition.payload.flow, 'del(.review_hint, .reuse_merge_approval, .chase_pending)') }}
       sequence:
       - id: write_build_context
         op: command_execution
@@ -217,10 +217,40 @@ state:
       outputs:
         flow: ${{ inputs.flow }}
       transitions:
+      - to: inspect_chased_candidate
+        when: outputs.flow.?chase_pending.orValue(false)
+        payload:
+          flow: ${{ outputs.flow }}
       - to: inspect_rebased
         when: true
         payload:
           flow: ${{ outputs.flow }}
+    inspect_chased_candidate:
+      inputs:
+        flow: ${{ transition.payload.flow }}
+      sequence:
+      - id: candidate
+        include: ../kernel/git-candidate.yaml
+      outputs:
+        reusable: >-
+          ${{ size(sequence.candidate.outputs.candidate.files) == 0 ||
+          sequence.candidate.outputs.candidate.change_digest == inputs.flow.reviewed_change_digest }}
+        flow: >-
+          ${{ jq([inputs.flow, {'chase_pending': false,
+          'candidate_changed': size(sequence.candidate.outputs.candidate.files) > 0,
+          'documents': jq([inputs.flow.documents, sequence.candidate.outputs.documents], 'add')}], 'add') }}
+      transitions:
+      - to: verify
+        when: outputs.reusable
+        payload:
+          flow: >-
+            ${{ jq([outputs.flow, {'reuse_merge_approval': true}], 'add') }}
+      - to: verify
+        when: true
+        payload:
+          flow: >-
+            ${{ jq(outputs.flow,
+            'del(.reviews.outcome, .assessment, .commit_message, .reviewed_change_digest, .reuse_merge_approval)') }}
     verify:
       inputs:
         flow: ${{ transition.payload.flow }}
@@ -236,6 +266,15 @@ state:
           sequence.verify.outputs.artifact_refs], ''add''), ''message'': ''Verification did not pass. Read
           verification.md and build.log, resolve the issue, and request inspection again.''}], ''add'') }}'
       transitions:
+      - to: stopped
+        when: outputs.ok && outputs.flow.?reuse_merge_approval.orValue(false) && !outputs.flow.candidate_changed
+        payload:
+          flow: >-
+            ${{ jq([outputs.flow, {'disposition': size(outputs.flow.jobs) > 0 ? 'delegated' : 'unchanged'}], 'add') }}
+      - to: merge
+        when: outputs.ok && outputs.flow.?reuse_merge_approval.orValue(false) && outputs.flow.candidate_changed
+        payload:
+          flow: ${{ outputs.flow }}
       - to: synopsis
         when: outputs.ok
         payload:
@@ -301,6 +340,8 @@ state:
           flow: '${{ jq([outputs.flow, {''review_hint'': ''Please describe the requested changes or attach
             annotated documents before requesting revision.''}], ''add'') }}'
     merge:
+      retry:
+        maximum_attempts: 1
       inputs:
         flow: ${{ transition.payload.flow }}
       sequence:
@@ -311,6 +352,8 @@ state:
           commit_message: ${{ inputs.flow.commit_message }}
       - id: merge_reviewed_candidate
         op: merge
+        retry:
+          maximum_attempts: 1
         inputs:
           repo_path: ${{ context.environment.op.worktree_path }}
           upstream_repo: ${{ context.git.repo }}
@@ -319,6 +362,18 @@ state:
         flow: '${{ jq([inputs.flow, {''disposition'': ''implemented''}], ''add'') }}'
         merged_hash: ${{ sequence.merge_reviewed_candidate.outputs.merged_hash }}
         target_branch: ${{ sequence.merge_reviewed_candidate.outputs.target_branch }}
+      catch:
+      - id: chase_advanced_upstream
+        # State catches read the incoming transition, outside sequence inputs.
+        when: >-
+          failure.kind == 'task_error' && failure.code == 'MERGE_UPSTREAM_ADVANCED' &&
+          failure.node.op == 'merge' && failure.node.id == 'merge_reviewed_candidate' &&
+          transition.payload.flow.merge_chases < 3
+        to: rebase
+        payload:
+          flow: >-
+            ${{ jq([transition.payload.flow, {'merge_chases': int(transition.payload.flow.merge_chases) + 1, 'chase_pending': true}],
+            'add | del(.verification, .reuse_merge_approval, .review_hint)') }}
     stopped:
       inputs:
         flow: ${{ transition.payload.flow }}
@@ -445,7 +500,7 @@ state:
         inputs:
           flow: ${{ inputs.flow }}
       outputs:
-        flow: '${{ jq([inputs.flow, {''commit_message'': sequence.synopsis.outputs.commit_message, ''documents'':
+        flow: '${{ jq([inputs.flow, {''reviewed_change_digest'': sequence.synopsis.outputs.change_digest, ''commit_message'': sequence.synopsis.outputs.commit_message, ''documents'':
           jq([inputs.flow.documents, sequence.synopsis.outputs.documents], ''add'')}], ''add'') }}'
       transitions:
       - to: accept
@@ -510,4 +565,6 @@ outputs:
     state_output('record', 'flow', {})))).reviews }}
   verification: ${{ state_output('merge', 'flow', state_output('stopped', 'flow', state_output('handoff',
     'flow', state_output('record', 'flow', {})))).?verification.orValue({}) }}
+  merge_chases: ${{ state_output('merge', 'flow', state_output('stopped', 'flow', state_output('handoff', 'flow',
+    state_output('record', 'flow', {})))).?merge_chases.orValue(0) }}
   escalate: ${{ state_exists('handoff') }}

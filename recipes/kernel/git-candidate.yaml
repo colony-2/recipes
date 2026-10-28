@@ -13,7 +13,7 @@ sequence:
       OUTBOX: ${{ context.environment.op.outbox }}
     run: |
       python3 - <<'PY'
-      import json, os, pathlib, subprocess
+      import hashlib, json, os, pathlib, subprocess
       from urllib.parse import quote
       def git(*args):
           return subprocess.check_output(['git', *args])
@@ -24,7 +24,11 @@ sequence:
       job_url = 'https://jobs.colony2.com/{}/jobs/{}'.format(
           quote(os.environ['C2J_CURRENT_TENANT_ID'], safe=''),
           quote(os.environ['C2J_CURRENT_JOB_ID'], safe=''))
-      candidate = {'base': base, 'head': head, 'files': files, 'job_url': job_url}
+      # Compare local changes independently of commit IDs and unrelated upstream
+      # files. Raw records include paths, full before/after blob IDs, and modes;
+      # changes to binary files, symlinks, and executable bits remain significant.
+      change_digest = hashlib.sha256(git('diff', '--raw', '--no-abbrev', '--no-renames', '-z', base, head)).hexdigest()
+      candidate = {'base': base, 'head': head, 'files': files, 'job_url': job_url, 'change_digest': change_digest}
       outbox = pathlib.Path(os.environ['OUTBOX'])
       (outbox / 'merge-candidate.json').write_text(json.dumps(candidate, indent=2) + '\n')
       (outbox / 'merge-candidate.diff').write_bytes(git('diff', '--binary', '--no-ext-diff', '--no-renames', base, head))
