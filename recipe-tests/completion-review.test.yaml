@@ -1,0 +1,790 @@
+# Shared anchors reuse identical fixtures; each case declares its own outcome assertions.
+recipe: fixtures/completion-review.yaml
+cases:
+- id: missing-purpose-cannot-complete-without-human-acceptance
+  type: integration_case
+  runtime:
+    secrets:
+      jev_api_key: synthetic-jev
+    cells:
+      root:
+        files:
+          candidate.txt: original
+          README.md: Widget documentation owner
+    observe_files:
+    - candidate.txt
+    - PURPOSE.md
+    responses:
+    - node_path: completion-review/build/root/run/light/light/light-develop/accept/sequence/outcome_review/kernel-review/request_human_review
+      fields:
+        decision: cancel
+  inputs:
+    prompt: Create root PURPOSE.md from repository evidence.
+  mocks: &id007
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#jev
+      behavior:
+        mode: return
+        outputs:
+          answers:
+            is_heavy:
+              type: noul
+              noul: 0.01
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: PURPOSE.md remains absent; implementation did not occur.
+            files: []
+            questions: []
+            consultations: []
+            keys: []
+            verification_command: test ! -e PURPOSE.md
+            subject: Correct widget documentation
+            review_message: This is not a successful documentation-refresh outcome. The prior consultant restriction
+              prevented implementation.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: light
+          artifact_files:
+            test-statements.md: completion-review-statements.md
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: disposition
+    value: cancelled
+  - type: cel_true
+    expr: size(reviews) == 1 && "synopsis.md" in reviews[0].form.documents
+  - type: cel_true
+    expr: '!outputs.merged && repositories.root.new_commits == 0'
+  - type: cel_true
+    expr: '!("PURPOSE.md" in repositories.root.files)'
+  - type: cel_true
+    expr: '!calls.exists(c, c.op in ["squash", "merge"])'
+  - type: cel_true
+    expr: calls.filter(c, c.node_path.endsWith("/render_change_synopsis"))[0].inputs.env.RESPONSE.contains("not
+      a successful documentation-refresh outcome")
+  - type: cel_true
+    expr: outputs.review_document.contains("## No-change rationale") && outputs.review_document.contains("not a
+      successful documentation-refresh outcome")
+- id: unchanged-revision-requires-work-and-another-review
+  type: integration_case
+  runtime:
+    secrets:
+      jev_api_key: synthetic-jev
+    cells:
+      root:
+        files:
+          PURPOSE.md: Own widget documentation.
+          candidate.txt: original
+    observe_files:
+    - candidate.txt
+    responses:
+    - node_path: completion-review/build/root/run/light/light/light-develop/accept/sequence/outcome_review/kernel-review/request_human_review
+      fields:
+        decision: revise
+        feedback: The documentation needs correction; implement the request.
+    - node_path: completion-review/build/root/run/light/light/light-develop/accept/sequence/outcome_review/kernel-review/request_human_review
+      fields:
+        decision: accept
+  inputs:
+    prompt: Correct the widget documentation.
+  mocks:
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#jev
+      behavior:
+        mode: return
+        outputs:
+          answers:
+            is_heavy:
+              type: noul
+              noul: 0.01
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: The existing documentation already satisfies the request.
+            files: []
+            questions: []
+            consultations: []
+            keys: []
+            verification_command: test "$(cat candidate.txt)" = original
+            subject: Correct widget documentation
+            review_message: README and candidate.txt already describe the requested behavior; inspection and the
+              content check confirm no repository changes are needed.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: light
+          artifact_files:
+            test-statements.md: completion-review-statements.md
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: root
+      behavior:
+        mode: return
+        outputs: &id009
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: Correct the widget documentation.
+            files: []
+            questions: []
+            consultations: []
+            keys: []
+            verification_command: test "$(cat candidate.txt)" = corrected
+            subject: Correct widget documentation
+            review_message: Correct the documented widget behavior. Verify the updated content with an automated
+              check.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: light
+          worktree:
+            candidate.txt: corrected
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: size(reviews) == 2
+  - type: cel_true
+    expr: outputs.merged && outputs.disposition == "implemented"
+  - type: cel_true
+    expr: repositories.root.files["candidate.txt"] == "corrected"
+  - type: cel_true
+    expr: size(calls.filter(c, c.op == "merge")) == 1
+  - type: cel_true
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex"))[1].inputs.inputs.session
+      == calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex"))[0].outputs.session
+- id: heavy-no-change-rationale-requires-human-acceptance
+  type: integration_case
+  runtime:
+    secrets:
+      jev_api_key: synthetic-jev
+      codex_api_key: synthetic-build-credential
+    config:
+      codex_api_base_url: https://fixture.invalid/v1
+    cells:
+      root:
+        files:
+          candidate.txt: original
+    observe_files:
+    - candidate.txt
+    responses:
+    - node_path: completion-review/build/root/run/heavy/heavy/develop/approval/sequence/plan_review/kernel-review/request_human_review
+      fields:
+        decision: approve
+    - node_path: completion-review/build/root/run/heavy/heavy/develop/accept/sequence/outcome_review/kernel-review/request_human_review
+      fields:
+        decision: accept
+  inputs:
+    prompt: Confirm that existing widget documentation meets the request.
+  mocks: &id001
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#jev
+      behavior:
+        mode: return
+        outputs:
+          answers:
+            is_heavy:
+              type: noul
+              noul: 0.99
+    - repeat: true
+      match:
+        node_path: completion-review/build/root/run/heavy/heavy/develop/accounting/sequence/review/build-merge-review/reviewer/kernel-agent-turn/start_read_only_session/start_read_only_session
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            verdict: approve
+            subject: Improve requested behavior with verified coverage
+            review_message: The existing candidate.txt already documents the requested behavior. Repository inspection
+              and the approved acceptance criteria establish that no changes are needed.
+            files: []
+    - &id002
+      match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: design response
+            files:
+            - path: design.md
+              description: Review evidence
+            questions: []
+            consultations: []
+            keys: []
+        artifacts:
+          design.md: '# design evidence'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: design
+                turn: 1review
+    - &id003
+      match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: test-plan response
+            files:
+            - path: test-statements.md
+              description: Review evidence
+            questions: []
+            consultations: []
+            keys: []
+        artifacts: {}
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: test-plan
+                turn: 1review
+          artifact_files:
+            test-statements.md: completion-review-statements.md
+    - &id004
+      match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: agreed
+            thinking: Independent plan assessment
+            assessment: pass
+            files:
+            - path: iter1/consultant/plan-review.md
+              description: Review evidence
+        artifacts:
+          iter1/consultant/plan-review.md: '# Independent findings'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                expert: plan
+    - &id005
+      match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: implement response
+            files:
+            - path: implementation.md
+              description: Review evidence
+            questions: []
+            consultations: []
+            keys: []
+        artifacts:
+          implementation.md: '# implement evidence'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: implement
+                turn: 1review
+    - &id006
+      match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: agreed
+            thinking: Independent outcome assessment
+            assessment: pass
+            files:
+            - path: iter1/consultant/outcome-review.md
+              description: Review evidence
+        artifacts:
+          iter1/consultant/outcome-review.md: '# Independent findings'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                expert: outcome
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.disposition == "unchanged" && !outputs.merged
+  - type: cel_true
+    expr: repositories.root.new_commits == 0
+  - type: cel_true
+    expr: size(reviews) == 2 && "merge-review.md" in reviews[1].form.documents
+  - type: cel_true
+    expr: reviews[1].form.title.contains("no-change rationale")
+  - type: cel_true
+    expr: reviews[1].form.fields[0].question.contains("satisfied without repository changes")
+  - type: cel_true
+    expr: '!calls.exists(c, c.op in ["squash", "merge"])'
+  - type: cel_true
+    expr: outputs.reviews.outcome != {}
+  - type: cel_true
+    expr: calls.filter(c, c.node_path.endsWith("/render_file_accounting"))[0].inputs.env.RESULT.contains("no changes
+      are needed")
+  - type: cel_true
+    expr: outputs.review_document.contains("## No-change rationale") && outputs.review_document.contains("no changes
+      are needed") && !outputs.review_document.contains("## Proposed squash commit")
+- id: heavy-no-change-cancellation-never-completes-as-satisfied
+  type: integration_case
+  runtime:
+    secrets:
+      jev_api_key: synthetic-jev
+      codex_api_key: synthetic-build-credential
+    config:
+      codex_api_base_url: https://fixture.invalid/v1
+    cells:
+      root:
+        files:
+          candidate.txt: original
+    observe_files:
+    - candidate.txt
+    responses:
+    - node_path: completion-review/build/root/run/heavy/heavy/develop/approval/sequence/plan_review/kernel-review/request_human_review
+      fields:
+        decision: approve
+    - node_path: completion-review/build/root/run/heavy/heavy/develop/accept/sequence/outcome_review/kernel-review/request_human_review
+      fields:
+        decision: cancel
+  inputs:
+    prompt: Confirm that existing widget documentation meets the request.
+  mocks: *id001
+  assertions:
+  - type: cel_true
+    expr: outputs.disposition == "cancelled" && !outputs.merged
+  - type: cel_true
+    expr: repositories.root.new_commits == 0
+  - type: cel_true
+    expr: size(reviews) == 2 && "merge-review.md" in reviews[1].form.documents
+  - type: cel_true
+    expr: reviews[1].form.title.contains("no-change rationale")
+  - type: cel_true
+    expr: reviews[1].form.fields[0].question.contains("satisfied without repository changes")
+  - type: cel_true
+    expr: '!calls.exists(c, c.op in ["squash", "merge"])'
+  - type: cel_true
+    expr: outputs.reviews.outcome != {}
+  - type: cel_true
+    expr: calls.filter(c, c.node_path.endsWith("/render_file_accounting"))[0].inputs.env.RESULT.contains("no changes
+      are needed")
+  - type: cel_true
+    expr: outputs.review_document.contains("## No-change rationale") && outputs.review_document.contains("no changes
+      are needed") && !outputs.review_document.contains("## Proposed squash commit")
+- id: heavy-blank-no-change-rationale-blocks-review
+  type: integration_case
+  runtime:
+    secrets:
+      jev_api_key: synthetic-jev
+      codex_api_key: synthetic-build-credential
+    config:
+      codex_api_base_url: https://fixture.invalid/v1
+    cells:
+      root:
+        files:
+          candidate.txt: original
+    observe_files:
+    - candidate.txt
+    responses:
+    - node_path: completion-review/build/root/run/heavy/heavy/develop/approval/sequence/plan_review/kernel-review/request_human_review
+      fields:
+        decision: approve
+    expect_error: command execution failed
+  inputs:
+    prompt: Confirm that existing widget documentation meets the request.
+  mocks:
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#jev
+      behavior:
+        mode: return
+        outputs:
+          answers:
+            is_heavy:
+              type: noul
+              noul: 0.99
+    - repeat: true
+      match:
+        node_path: completion-review/build/root/run/heavy/heavy/develop/accounting/sequence/review/build-merge-review/reviewer/kernel-agent-turn/start_read_only_session/start_read_only_session
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            verdict: approve
+            subject: Improve requested behavior with verified coverage
+            review_message: '   '
+            files: []
+    - *id002
+    - *id003
+    - *id004
+    - *id005
+    - *id006
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: size(reviews) == 1
+  - type: cel_true
+    expr: '!calls.exists(c, c.op in ["squash", "merge"])'
+- id: missing-purpose-waits-for-human-response
+  type: integration_case
+  runtime:
+    secrets:
+      jev_api_key: synthetic-jev
+    cells:
+      root:
+        files:
+          candidate.txt: original
+          README.md: Widget documentation owner
+    observe_files:
+    - candidate.txt
+    - PURPOSE.md
+    responses: []
+    expect_error: no input response fixture for completion-review/build/root/run/light/light/light-develop/accept/sequence/outcome_review/kernel-review/request_human_review
+  inputs:
+    prompt: Create root PURPOSE.md from repository evidence.
+  mocks: *id007
+  assertions: &id008
+  - type: cel_true
+    expr: calls.exists(c, c.op == "input" && c.node_path.contains("/accept/"))
+  - type: cel_true
+    expr: '!calls.exists(c, c.op in ["squash", "merge"])'
+  - type: cel_true
+    expr: repositories.root.new_commits == 0
+- id: heavy-no-change-waits-for-human-response
+  type: integration_case
+  runtime:
+    secrets:
+      jev_api_key: synthetic-jev
+      codex_api_key: synthetic-build-credential
+    config:
+      codex_api_base_url: https://fixture.invalid/v1
+    cells:
+      root:
+        files:
+          candidate.txt: original
+    observe_files:
+    - candidate.txt
+    responses:
+    - node_path: completion-review/build/root/run/heavy/heavy/develop/approval/sequence/plan_review/kernel-review/request_human_review
+      fields:
+        decision: approve
+    expect_error: no input response fixture for completion-review/build/root/run/heavy/heavy/develop/accept/sequence/outcome_review/kernel-review/request_human_review
+  inputs:
+    prompt: Confirm that existing widget documentation meets the request.
+  mocks: *id001
+  assertions: *id008
+- id: agreed-purpose-work-starts-fresh-and-creates-document
+  type: integration_case
+  runtime:
+    secrets:
+      jev_api_key: synthetic-jev
+    cells:
+      root:
+        files:
+          PURPOSE.md: Own widget documentation.
+          candidate.txt: original
+        file_sources:
+          .c2/recipes/dependency.yaml: fixtures/implementation-handoff.yaml
+          .c2/recipes/light: ../recipes/light
+          .c2/recipes/develop: ../recipes/develop
+          .c2/recipes/kernel: ../recipes/kernel
+      B:
+        files:
+          README.md: Own API docs.
+    observe_files:
+    - candidate.txt
+    - PURPOSE.md
+    responses:
+    - node_path: implementation-handoff/develop/light-develop/accept/sequence/outcome_review/kernel-review/request_human_review
+      cell: B
+      fields:
+        decision: accept
+  inputs:
+    prompt: Correct the widget documentation.
+    build_recipe: dependency
+  mocks:
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#jev
+      behavior:
+        mode: return
+        outputs:
+          answers:
+            is_heavy:
+              type: noul
+              noul: 0.01
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: consult
+            summary: Correct the widget documentation.
+            files: []
+            questions: []
+            consultations:
+            - key: api
+              kind: feature
+              cell: B
+              ref: main
+              request: Agree to create missing root PURPOSE.md from repository evidence.
+              role: Agree the bounded documentation update.
+            keys: []
+            verification_command: test "$(cat candidate.txt)" = corrected
+            subject: Correct widget documentation
+            review_message: Correct the documented widget behavior. Verify the updated content with an automated
+              check.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: light
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: B
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: agreed
+            thinking: The documentation request fits this cell.
+            assessment: not_applicable
+            files:
+            - path: iter1/consultant/spec.md
+              description: Agreed scope
+        artifacts:
+          iter1/consultant/spec.md: '# Accepted scope
+
+            Create root PURPOSE.md because it is absent. Consultation is complete.'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: serving
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: B
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: Created root PURPOSE.md as agreed.
+            files: []
+            questions: []
+            consultations: []
+            keys: []
+            verification_command: test -s PURPOSE.md
+            subject: Document API ownership
+            review_message: Created PURPOSE.md from README evidence and checked its contents.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: light
+          worktree:
+            PURPOSE.md: '# Purpose
+
+              Own API documentation.
+
+              '
+          artifact_files:
+            test-statements.md: completion-review-statements.md
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: root
+      behavior:
+        mode: return
+        outputs: *id009
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: light
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.disposition == "delegated" && !outputs.merged
+  - type: cel_true
+    expr: outputs.dependencies.api.result.merged
+  - type: cel_true
+    expr: repositories.B.files["PURPOSE.md"].contains("Own API documentation")
+  - type: cel_true
+    expr: size(reviews) == 1
+  - type: cel_true
+    expr: size(calls.filter(c, c.op == "recipes.run")) == 1
+  - type: cel_true
+    expr: '!has(calls.filter(c, c.op == "recipes.run")[0].inputs.recipes[0].inputs.session)'
+  - type: cel_true
+    expr: calls.filter(c, c.op == "recipes.run")[0].inputs.recipes[0].inputs.prompt.startsWith("Execute the agreed
+      prerequisite work.")
+  - type: cel_true
+    expr: calls.filter(c, c.op == "extension_execution" && c.cell == "B")[1].node_path.endsWith("/start_implementation_session/start_implementation_session")
+  - type: cel_true
+    expr: '!has(calls.filter(c, c.op == "extension_execution" && c.cell == "B")[1].inputs.inputs.session)'
+  - type: cel_true
+    expr: calls.filter(c, c.op == "extension_execution" && c.cell == "B")[1].artifacts["iter1/consultant/spec.md"].contains("Create
+      root PURPOSE.md because it is absent")
+  - type: cel_true
+    expr: '"consultation/conversation.json" in calls.filter(c, c.op == "extension_execution" && c.cell == "B")[1].artifacts'
+  - type: cel_true
+    expr: '!calls.filter(c, c.op == "extension_execution" && c.cell == "B")[1].inputs.inputs.instructions.contains("During
+      this consultation")'
+- id: light-blank-no-change-rationale-cannot-request-acceptance
+  type: integration_case
+  runtime:
+    secrets:
+      jev_api_key: synthetic-jev
+    cells:
+      root:
+        files:
+          candidate.txt: original
+          README.md: Widget documentation owner
+    observe_files:
+    - candidate.txt
+    - PURPOSE.md
+    responses:
+    - node_path: completion-review/build/root/run/light/light/light-develop/repair/sequence/repair/result-repair/review/review/kernel-review/request_human_review
+      fields:
+        decision: cancel
+  inputs:
+    prompt: Create root PURPOSE.md from repository evidence.
+  mocks:
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#jev
+      behavior:
+        mode: return
+        outputs:
+          answers:
+            is_heavy:
+              type: noul
+              noul: 0.01
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: PURPOSE.md remains absent; implementation did not occur.
+            files: []
+            questions: []
+            consultations: []
+            keys: []
+            verification_command: test ! -e PURPOSE.md
+            subject: Correct widget documentation
+            review_message: '   '
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: light
+          artifact_files:
+            test-statements.md: completion-review-statements.md
+      repeat: true
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.disposition == "cancelled" && !outputs.merged
+  - type: cel_true
+    expr: size(reviews) == 1 && reviews[0].form.title == "Agent result needs correction"
+  - type: cel_true
+    expr: '!calls.exists(c, c.op == "input" && c.node_path.contains("/accept/"))'
+  - type: cel_true
+    expr: '!calls.exists(c, c.op in ["squash", "merge"])'
+  - type: cel_true
+    expr: repositories.root.new_commits == 0

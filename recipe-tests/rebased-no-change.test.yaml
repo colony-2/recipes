@@ -1,0 +1,64 @@
+recipe: fixtures/rebased-no-change.yaml
+cases:
+- id: rebased-away-change-still-requires-human-review
+  type: integration_case
+  runtime:
+    secrets:
+      jev_api_key: synthetic-jev
+    cells:
+      root:
+        files:
+          PURPOSE.md: Own widget documentation.
+          candidate.txt: original
+    observe_files:
+    - candidate.txt
+    responses:
+    - node_path: rebased-no-change/develop/light-develop/accept/sequence/outcome_review/kernel-review/request_human_review
+      fields:
+        decision: accept
+  mocks:
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: The existing documentation already satisfies the request.
+            files: []
+            questions: []
+            consultations: []
+            keys: []
+            verification_command: test "$(cat candidate.txt)" = corrected
+            subject: Correct widget documentation
+            review_message: Upstream already applied the requested correction. The rebased candidate is empty and
+              the content check confirms the requirement is satisfied.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: light
+          artifact_files:
+            test-statements.md: completion-review-statements.md
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: size(reviews) == 1
+  - type: cel_true
+    expr: outputs.disposition == "unchanged" && !outputs.merged
+  - type: cel_true
+    expr: '!calls.exists(c, c.op in ["squash", "merge"])'
+  - type: cel_true
+    expr: calls.exists(c, c.op == "rebase")
+  - type: cel_true
+    expr: outputs.review_document.contains("## No-change rationale") && outputs.review_document.contains("Upstream
+      already applied")

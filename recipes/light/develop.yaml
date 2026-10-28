@@ -290,16 +290,16 @@ state:
       - id: outcome_review
         include: ../kernel/review.yaml
         inputs:
-          title: Review change synopsis and verification evidence
+          title: '${{ inputs.flow.candidate_changed ? ''Review change synopsis and verification evidence'' : ''Review no-change rationale and verification evidence'' }}'
           documents: ${{ inputs.flow.documents }}
           fields:
           - id: decision
             type: multiple_choice
-            question: Accept the synopsis, reported verification status, and proposed commit message, and merge this candidate?
+            question: '${{ inputs.flow.candidate_changed ? ''Accept the synopsis, reported verification status, and proposed commit message, and merge this candidate?'' : ''Accept the rationale in synopsis.md that this request is satisfied without repository changes, and complete this job?'' }}'
             required: true
             options:
             - value: accept
-              label: Accept and merge
+              label: '${{ inputs.flow.candidate_changed ? ''Accept and merge'' : ''Accept no-change outcome'' }}'
             - value: revise
               label: Revise implementation
             - value: cancel
@@ -325,9 +325,14 @@ state:
         when: outputs.response.fields.decision == 'cancel'
         payload:
           flow: '${{ jq([outputs.flow, {''disposition'': ''cancelled''}], ''add'') }}'
+      - to: stopped
+        when: outputs.response.fields.decision == 'accept' && !outputs.changed && !outputs.flow.candidate_changed
+          && outputs.flow.verification.status in ['passed', 'skipped']
+        payload:
+          flow: '${{ jq([outputs.flow, {''disposition'': ''unchanged''}], ''add'') }}'
       - to: merge
         when: outputs.response.fields.decision == 'accept' && !outputs.changed && outputs.flow.verification.status
-          in ['passed', 'skipped']
+          in ['passed', 'skipped'] && outputs.flow.candidate_changed
         payload:
           flow: ${{ outputs.flow }}
       - to: work
@@ -487,10 +492,14 @@ state:
         payload:
           flow: ${{ outputs.flow }}
       - to: stopped
+        when: size(outputs.flow.jobs) > 0
+        payload:
+          flow: '${{ jq([outputs.flow, {''disposition'': ''delegated''}],
+            ''add'') }}'
+      - to: verify
         when: true
         payload:
-          flow: '${{ jq([outputs.flow, {''disposition'': size(outputs.flow.jobs) > 0 ? ''delegated'' : ''unchanged''}],
-            ''add'') }}'
+          flow: ${{ outputs.flow }}
     synopsis:
       inputs:
         flow: ${{ transition.payload.flow }}
@@ -500,7 +509,7 @@ state:
         inputs:
           flow: ${{ inputs.flow }}
       outputs:
-        flow: '${{ jq([inputs.flow, {''reviewed_change_digest'': sequence.synopsis.outputs.change_digest, ''commit_message'': sequence.synopsis.outputs.commit_message, ''documents'':
+        flow: '${{ jq([inputs.flow, {''reviewed_change_digest'': sequence.synopsis.outputs.change_digest, ''candidate_changed'': sequence.synopsis.outputs.changed, ''commit_message'': sequence.synopsis.outputs.commit_message, ''documents'':
           jq([inputs.flow.documents, sequence.synopsis.outputs.documents], ''add'')}], ''add'') }}'
       transitions:
       - to: accept
@@ -539,10 +548,14 @@ state:
         payload:
           flow: ${{ outputs.flow }}
       - to: stopped
+        when: size(outputs.flow.jobs) > 0
+        payload:
+          flow: '${{ jq([outputs.flow, {''disposition'': ''delegated''}],
+            ''add'') }}'
+      - to: verify
         when: true
         payload:
-          flow: '${{ jq([outputs.flow, {''disposition'': size(outputs.flow.jobs) > 0 ? ''delegated'' : ''unchanged''}],
-            ''add'') }}'
+          flow: ${{ outputs.flow }}
 outputs:
   merged: ${{ nonempty(state_output('merge', 'merged_hash', '')) }}
   merged_hash: ${{ state_output('merge', 'merged_hash', '') }}

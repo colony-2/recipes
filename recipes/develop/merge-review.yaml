@@ -33,6 +33,10 @@ sequence:
       change codes, once each. Return a specific imperative commit subject (one line, <=72
       characters) and a review_message explaining the outcome, rationale, verification, and
       material limitations. The recipe renders the review document and appends the actual job URL.
+      When the inventory is empty, review_message must explain with evidence why the
+      request is satisfied without repository changes, including any child outcomes.
+      Missing work or inability to implement requires revise, not approval. The human
+      must review this no-change rationale before the job can complete.
     prompt: |
       Prepare the file accounting and proposed squash commit message for this request:
       {{ inputs.request }}
@@ -94,16 +98,18 @@ sequence:
       commit_message = subject + '\n\n' + message + '\n\nJob: ' + candidate['job_url']
       lines = ['# Merge review', '', 'Verdict: ' + review['verdict'], '',
                'Base: `' + candidate['base'] + '`', 'Candidate: `' + candidate['head'] + '`',
-               '', '## Proposed squash commit', '', commit_message, '', '## File accounting', '']
+               '', '## Proposed squash commit' if files else '## No-change rationale', '',
+               commit_message if files else message, '', '## File accounting', '']
       labels = {'A': 'Added', 'M': 'Changed', 'D': 'Deleted', 'T': 'Changed type'}
       for f in sorted(files, key=lambda f: f['path']):
           lines.extend(['### ' + labels[f['change']] + ': ' + json.dumps(f['path'], ensure_ascii=False), '', f['reason'].strip(), ''])
       if not files:
-          lines.append('No file changes relative to the target base.')
+          lines.append('No repository changes. Human acceptance is required to complete this job; no commit will be created.')
       (pathlib.Path(os.environ['OUTBOX']) / 'merge-review.md').write_text('\n'.join(lines) + '\n')
       print(json.dumps({'verdict': review['verdict'], 'commit_message': commit_message}))
       PY
 outputs:
+  changed: ${{ size(sequence.candidate.outputs.candidate.files) > 0 }}
   change_digest: ${{ sequence.candidate.outputs.candidate.change_digest }}
   approved: ${{ json_parse(sequence.render_file_accounting.outputs.stdout).verdict == 'approve' }}
   commit_message: ${{ json_parse(sequence.render_file_accounting.outputs.stdout).commit_message }}

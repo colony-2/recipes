@@ -33,17 +33,22 @@ sequence:
           if verification['status'] == 'passed' else
           'Verification skipped: no build.sh or explicit check command. See verification.md. No automated verification was performed.')
       commit = subject + '\n\n' + message + '\n\nJob: ' + candidate['job_url']
-      lines = ['# Change synopsis', '', response['summary'], '', '## Proposed squash commit', '', commit,
+      heading = '## Proposed squash commit' if candidate['files'] else '## No-change rationale'
+      explanation = commit if candidate['files'] else message
+      lines = ['# Change synopsis', '', response['summary'], '', heading, '', explanation,
                '', '## Candidate and verification', '', 'Base: `' + candidate['base'] + '`',
                'Candidate: `' + candidate['head'] + '`', '',
                verification_note,
                '', '## Files included', '']
       for f in candidate['files']:
           lines.append('- ' + f['change'] + ': ' + json.dumps(f['path'], ensure_ascii=False))
+      if not candidate['files']:
+          lines.append('No repository changes. Human acceptance is required to complete this job; no commit will be created.')
       (pathlib.Path(os.environ['OUTBOX']) / 'synopsis.md').write_text('\n'.join(lines) + '\n')
       print(json.dumps({'commit_message': commit}))
       PY
 outputs:
+  changed: ${{ size(sequence.candidate.outputs.candidate.files) > 0 }}
   change_digest: ${{ sequence.candidate.outputs.candidate.change_digest }}
   commit_message: ${{ json_parse(sequence.render_change_synopsis.outputs.stdout).commit_message }}
   documents: >-

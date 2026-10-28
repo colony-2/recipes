@@ -85,7 +85,7 @@ cases:
       size(calls.filter(c, c.op == "merge")) == 1
   - type: cel_true
     expr: calls.filter(c, c.op == "squash")[0].inputs.commit_message.contains("https://jobs.colony2.com/")
-- id: unchanged-no-review
+- id: unchanged-requires-human-review
   type: integration_case
   runtime:
     secrets:
@@ -97,7 +97,10 @@ cases:
           candidate.txt: original
     observe_files:
     - candidate.txt
-    responses: []
+    responses:
+    - node_path: build/run/light/light/light-develop/accept/sequence/outcome_review/kernel-review/request_human_review
+      fields:
+        decision: accept
   inputs:
     prompt: Correct the widget documentation.
   mocks:
@@ -121,21 +124,23 @@ cases:
           output_schema_valid: true
           response:
             next: review
-            summary: Correct the widget documentation.
+            summary: The existing documentation already satisfies the request.
             files: []
             questions: []
             consultations: []
             keys: []
-            verification_command: test "$(cat candidate.txt)" = corrected
+            verification_command: test "$(cat candidate.txt)" = original
             subject: Correct widget documentation
-            review_message: Correct the documented widget behavior. Verify the updated content with an automated
-              check.
+            review_message: README and candidate.txt already describe the requested behavior; inspection and the
+              content check confirm no repository changes are needed.
         effects:
           objects:
             session:
               type: c2ops.codex.session/v1
               metadata:
                 phase: light
+          artifact_files:
+            test-statements.md: completion-review-statements.md
     - repeat: true
       match:
         op: command_execution
@@ -152,9 +157,22 @@ cases:
     path: disposition
     value: unchanged
   - type: cel_true
-    expr: size(reviews) == 0
-  - type: cel_true
     expr: '!calls.exists(c, c.op in ["rebase", "squash", "merge"])'
+  - type: cel_true
+    expr: size(reviews) == 1 && "synopsis.md" in reviews[0].form.documents
+  - type: cel_true
+    expr: reviews[0].form.title.contains("no-change rationale")
+  - type: cel_true
+    expr: reviews[0].form.fields[0].question.contains("satisfied without repository changes")
+  - type: cel_true
+    expr: outputs.reviews.outcome != {}
+  - type: cel_true
+    expr: repositories.root.new_commits == 0
+  - type: cel_true
+    expr: outputs.verification.status == "passed"
+  - type: cel_true
+    expr: calls.filter(c, c.node_path.endsWith("/render_change_synopsis"))[0].inputs.env.RESPONSE.contains("already
+      describe the requested behavior")
 - id: failed-tests-return-to-implementation
   type: integration_case
   runtime:
@@ -678,7 +696,7 @@ cases:
   - type: cel_true
     expr: outputs.dependencies.api.result.disposition == "unchanged"
   - type: cel_true
-    expr: outputs.dependencies.api.result.starter == outputs.consultations.api.result.consultant_session
+    expr: outputs.dependencies.api.result.starter == {}
   - type: cel_true
     expr: '"consultation/conversation.json" in outputs.dependencies.api.result.documents'
   - type: cel_true
@@ -847,7 +865,7 @@ cases:
   - type: cel_true
     expr: outputs.dependencies.api.result.disposition == "unchanged"
   - type: cel_true
-    expr: outputs.dependencies.api.result.starter == outputs.consultations.api.result.consultant_session
+    expr: outputs.dependencies.api.result.starter == {}
   - type: cel_true
     expr: '"consultation/conversation.json" in outputs.dependencies.api.result.documents'
   - type: cel_true
@@ -1485,7 +1503,7 @@ cases:
   - type: cel_true
     expr: outputs.dependencies.api.result.disposition == "unchanged"
   - type: cel_true
-    expr: outputs.dependencies.api.result.starter == outputs.consultations.api.result.consultant_session
+    expr: outputs.dependencies.api.result.starter == {}
   - type: cel_true
     expr: '"consultation/conversation.json" in outputs.dependencies.api.result.documents'
   - type: cel_true

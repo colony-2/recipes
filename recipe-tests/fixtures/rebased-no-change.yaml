@@ -1,0 +1,40 @@
+id: rebased-no-change
+sequence:
+- id: prepare_candidate
+  op: command_execution
+  inputs:
+    run: printf corrected > candidate.txt
+- id: advance_upstream
+  op: command_execution
+  const: true
+  inputs:
+    env:
+      REPO: ${{ context.git.repo }}
+    run: |
+      set -eu
+      printf corrected > "$REPO/candidate.txt"
+      git -C "$REPO" add candidate.txt
+      git -C "$REPO" commit -m 'Apply the requested correction concurrently'
+- id: develop
+  include: ../../recipes/light/develop.yaml
+  inputs:
+    prompt: Correct the widget documentation.
+    target_directory: .
+    session: {}
+    documents: {}
+    root_cell: ''
+    root_ref: ''
+    build_recipe: build
+- id: read_review_documents
+  op: command_execution
+  const: true
+  artifacts:
+    ./: ${{ sequence.develop.outputs.artifact_refs }}
+  inputs:
+    env:
+      INBOX: ${{ context.environment.op.inbox }}
+    run: cat "$INBOX/synopsis.md"
+outputs:
+  disposition: ${{ sequence.develop.outputs.disposition }}
+  merged: ${{ sequence.develop.outputs.merged }}
+  review_document: ${{ sequence.read_review_documents.outputs.stdout }}

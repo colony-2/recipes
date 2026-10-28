@@ -36,8 +36,10 @@ The [light workflow](recipes/light/develop.yaml) runs:
 2. Consult serving cells inline, sequentially, and immediately launch agreed child
    builds. There is no human plan-approval gate. Child builds can run concurrently;
    the parent waits for every launched child before completing.
-3. Inspect the actual repository diff. With no local changes, finish as `delegated`
-   or `unchanged`, without requesting local merge review or merging.
+3. Inspect the actual repository diff. Only no-change jobs with successful children
+   may finish as `delegated` without local review. Without children, run verification
+   and present the evidence-backed no-change rationale for human acceptance. Acceptance
+   finishes as `unchanged` without squash or merge.
 4. For local changes, rebase, run repository verification, and present `synopsis.md`
    with the outcome, exact file inventory, verification evidence, and proposed commit
    message. Failure returns to implementation. Human feedback repeats implementation
@@ -61,6 +63,10 @@ The existing heavy [development workflow](recipes/develop/develop.yaml) runs:
 5. A fresh Codex session accounts for every changed file and proposes the commit message;
    inappropriate changes return to implementation.
 6. Human outcome acceptance, then separate squash and fast-forward merge operations.
+
+Heavy no-change outcomes also require human acceptance. `merge-review.md` explains
+why the request is satisfied without repository changes, including any child
+outcomes. Acceptance finishes as `unchanged` without creating an empty commit.
 
 Design, test statements, implementation summaries, reviews, and feedback travel
 as artifacts. Questions are focused fields alongside documents. Uploaded edits
@@ -112,19 +118,20 @@ c2j submit --recipe-file ./build.yaml \
 
 `target_directory` defaults to `.` and scopes the task; agents still operate from
 the repository root. `session` accepts a complete Codex checkpoint and `documents`
-accepts native artifact references. This lets a serving build start from its
-consultant's session and agreed specification. The deprecated `type` input is
-accepted and ignored because c2j v0.0.82 still injects it; it selects no mode.
+accepts native artifact references. Resume only compatible build sessions;
+consultation handoffs pass agreed documents into a fresh execution session. The
+deprecated `type` input is accepted and ignored because c2j v0.0.82 still injects
+it; it selects no mode.
 
 ## Reusable kernel and coordination
 
 The [kernel guide](recipes/kernel/README.md) documents consultation and its return
 contract. Build and consultation share `agent-turn.yaml` for fresh/resumed calls,
 Codex-enforced schemas, and read-only or mutating execution. Cell instructions
-are injected only on fresh sessions. A build entered from a consultant checkpoint
-establishes its workflow rules in the first prompt without repeating cell context. Consultation participant setup is delivered
-once when entering from an existing checkpoint. Subsequent turns carry the next
-message and relevant artifacts.
+are injected only on fresh sessions. Prerequisite builds start fresh sessions so
+consultant restrictions cannot carry into implementation. Consultation participant
+setup is delivered once when entering from an existing checkpoint. Subsequent turns
+carry the next message and relevant artifacts.
 
 The consultant decides agreement. After four consultant responses, or an explicit
 deconfliction request, consultation runs independent synthesis and a human review.
@@ -144,8 +151,9 @@ successful dispositions as dependency completion.
 `build_recipe` selects child builds in both paths. `consultation_recipe` selects
 the heavy path's consultation jobs; light always includes the shared kernel inline.
 
-On the heavy path, only agreed prerequisite keys explicitly listed in the approved proposal can be submitted. Each child receives the
-serving consultant's checkpoint and final documents. Its inherited transcript is
+On the heavy path, only agreed prerequisite keys explicitly listed in the approved
+proposal can be submitted. Each child receives the final agreement documents and
+an explicit execution request in a fresh session. The consultation transcript is
 bound as `consultation/conversation.json`, leaving the next consultation's own
 transcript filename available. Waiting preserves the caller's
 newer checkpoint, records failures, and exposes summaries and evidence through
@@ -161,7 +169,8 @@ is not a local prerequisite. Builds without external prerequisites return `keys:
 Root identity comes from `root_cell`/`root_ref`, falling back to `c2j self --json`.
 Creation eligibility always consults that root about project fit, existing owners,
 excluded alternatives, and technology tradeoffs. The shared [create recipe](create.yaml)
-resumes root's consultant session and presents one consolidated proposal review.
+starts a fresh session with the agreed creation brief and presents one consolidated
+proposal review.
 After approval, each new workspace starts with `initial: empty`, copies the
 approved `PURPOSE.md`, and publishes through `squashrebasemerge`. Gitvend creates
 an authorized missing repository during that ordinary push. The recipe then

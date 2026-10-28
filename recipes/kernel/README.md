@@ -132,8 +132,10 @@ that newer checkpoint. Choose a branch explicitly; do not merge session historie
 A requested summary is a prerequisite for summary-based continuation.
 
 The calling snippet applies the decision. After its authorization gates, a
-feature snippet submits target `build` with `consultant_session` and relevant
-documents; creation submits root `create` with root's consultant context. Expert
+feature snippet submits target `build` without a session checkpoint, passing the
+final agreement documents and transcript with an explicit execution request. Creation
+also starts fresh with the agreed brief. Consultant checkpoints remain available for
+consultation continuation; they are not implementation sessions. Expert
 review feeds the current build. Agreement does not erase adverse findings or
 replace normal review, verification, or merge gates. This atom submits no jobs.
 

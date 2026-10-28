@@ -26,7 +26,7 @@ and mocked Codex responses. Creation handoff uses a stand-in child recipe.
 | High | Integration / c2j, Git | `recipes/develop/merge-review.yaml`, `recipes/develop/develop.yaml` | The human reviews the proposed squash subject and explanation; the published commit includes that message and the current tenant's job URL. |
 | High | Integration / c2j | `recipes/develop/verify.yaml` | Verification reports passed, failed, and skipped checks honestly; missing verification cannot silently count as passing. |
 | Critical | Integration / c2j jobs | `recipes/develop/coordinate.yaml` | Independent consultations launch before waiting, and local work can continue while another consultation awaits human direction. |
-| Critical | Integration / c2j objects | `recipes/develop/coordinate.yaml` | Submitted prerequisite builds receive the serving consultant's checkpoint and exact agreed artifacts after scope approval. |
+| Critical | Integration / c2j objects | `recipes/develop/coordinate.yaml` | Submitted prerequisite builds start fresh execution sessions with exact agreed artifacts after scope approval. |
 | Critical | Integration / c2j jobs | `recipes/develop/coordinate.yaml` | Stable request keys prevent duplicate jobs; blocked routes wait for named known dependencies and preserve failure outcomes. |
 | Critical | Integration / c2j, Git | `recipes/develop/coordinate.yaml` | Same-candidate experts inspect unmerged work; foreign consultation never replaces the requester's repository or later session progress. |
 | Critical | Integration / c2j | `recipes/develop/develop.yaml` | Only agreed prerequisite keys listed in the approved proposal authorize submission; new external scope requires renewed plan approval. |

@@ -524,7 +524,7 @@ state:
       outputs:
         approved: ${{ sequence.review.outputs.approved }}
         flow: >-
-          ${{ jq([inputs.flow, {'reviewed_change_digest': sequence.review.outputs.change_digest, 'commit_message': sequence.review.outputs.commit_message,
+          ${{ jq([inputs.flow, {'reviewed_change_digest': sequence.review.outputs.change_digest, 'candidate_changed': sequence.review.outputs.changed, 'commit_message': sequence.review.outputs.commit_message,
           'documents': jq([inputs.flow.documents, sequence.review.outputs.documents], 'add'),
           'message': 'The independent file accounting requested revision. Read merge-review.md, correct the inappropriate changes, and request inspection again.'}], 'add') }}
       transitions:
@@ -543,16 +543,16 @@ state:
       - id: outcome_review
         include: ../kernel/review.yaml
         inputs:
-          title: Review outcome, verification evidence, and file accounting
+          title: '${{ inputs.flow.candidate_changed ? ''Review outcome, verification evidence, and file accounting'' : ''Review no-change rationale and verification evidence'' }}'
           documents: ${{ inputs.flow.documents }}
           fields:
           - id: decision
             type: multiple_choice
-            question: Accept the file accounting, reported verification status, and proposed commit message in merge-review.md, and merge this candidate into the target branch?
+            question: '${{ inputs.flow.candidate_changed ? ''Accept the file accounting, reported verification status, and proposed commit message in merge-review.md, and merge this candidate into the target branch?'' : ''Accept the rationale in merge-review.md that this request is satisfied without repository changes, and complete this job?'' }}'
             required: true
             options:
             - value: accept
-              label: Accept and merge
+              label: '${{ inputs.flow.candidate_changed ? ''Accept and merge'' : ''Accept no-change outcome'' }}'
             - value: revise
               label: Revise implementation
             - value: redesign
@@ -582,9 +582,14 @@ state:
         when: outputs.response.fields.decision == 'cancel'
         payload:
           flow: '${{ jq([outputs.flow, {''disposition'': ''cancelled''}], ''add'') }}'
+      - to: stopped
+        when: outputs.response.fields.decision == 'accept' && !outputs.changed && !outputs.flow.candidate_changed
+          && outputs.flow.verification.status in ['passed', 'skipped'] && outputs.flow.assessment == 'pass'
+        payload:
+          flow: '${{ jq([outputs.flow, {''disposition'': ''unchanged''}], ''add'') }}'
       - to: merge
         when: outputs.response.fields.decision == 'accept' && !outputs.changed && outputs.flow.verification.status
-          in ['passed', 'skipped'] && outputs.flow.assessment == 'pass'
+          in ['passed', 'skipped'] && outputs.flow.assessment == 'pass' && outputs.flow.candidate_changed
         payload:
           flow: ${{ outputs.flow }}
       - to: design_next
