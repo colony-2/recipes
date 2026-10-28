@@ -1,0 +1,365 @@
+# Filtering cases stop at the first model turn; forty-inline verifies full batch completion.
+recipe: fixtures/consultation-scheduling.yaml
+cases:
+- type: integration_case
+  runtime: &consultation_cells
+    cells:
+      root:
+        files:
+          PURPOSE.md: Requester
+          candidate.txt: original
+      B:
+        files:
+          PURPOSE.md: API owner
+    observe_files:
+    - candidate.txt
+  mocks: &inline_mocks
+    ops:
+    - &seed_session
+      match:
+        node_path: consultation-scheduling/seed
+      behavior:
+        mode: return
+        outputs:
+          success: true
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: seed
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: B
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: agreed
+            thinking: B response
+            files: []
+            assessment: not_applicable
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                participant: B
+                iteration: 1
+      repeat: true
+    - &artifact_commands
+      match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: valid
+    value: true
+  - type: cel_true
+    expr: repositories.root.new_commits == 0
+  - type: cel_true
+    expr: size(outputs.flow.threads) == 1
+  - type: cel_true
+    expr: outputs.flow.threads.all(k, outputs.flow.threads[k].status == "completed" && !("job_id" in outputs.flow.threads[k]))
+  - type: cel_true
+    expr: '!calls.exists(c, c.op == "recipes.run")'
+  - type: cel_true
+    expr: size(calls.filter(c, c.op == "extension_execution" && c.cell == "B")) == 1
+  - type: cel_true
+    expr: outputs.flow.session == outputs.initial_session
+  id: one-inline
+  inputs:
+    count: 1
+- type: integration_case
+  runtime: *consultation_cells
+  mocks: *inline_mocks
+  assertions:
+  - type: output_equals
+    path: valid
+    value: true
+  - type: cel_true
+    expr: repositories.root.new_commits == 0
+  - type: cel_true
+    expr: size(outputs.flow.threads) == 40
+  - type: cel_true
+    expr: outputs.flow.threads.all(k, outputs.flow.threads[k].status == "completed" && !("job_id" in outputs.flow.threads[k]))
+  - type: cel_true
+    expr: '!calls.exists(c, c.op == "recipes.run")'
+  - type: cel_true
+    expr: size(calls.filter(c, c.op == "extension_execution" && c.cell == "B")) == 40
+  - type: cel_true
+    expr: outputs.flow.session == outputs.initial_session
+  id: forty-inline
+  inputs:
+    count: 40
+- type: integration_case
+  runtime: *consultation_cells
+  mocks:
+    ops:
+    - *seed_session
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: B
+      behavior:
+        mode: fail
+        error:
+          message: Inline consultation selected
+  assertions:
+  - type: cel_true
+    expr: '!calls.exists(c, c.op == "recipes.run")'
+  - type: cel_true
+    expr: size(calls.filter(c, c.op == "extension_execution" && c.cell == "B")) == 1
+  id: duplicates-do-not-inflate-batch
+  inputs:
+    count: 40
+    duplicate: true
+  expect_error: Inline consultation selected
+- type: integration_case
+  runtime: *consultation_cells
+  mocks:
+    ops:
+    - *seed_session
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: B
+      behavior:
+        mode: fail
+        error:
+          message: Inline consultation selected
+  assertions:
+  - type: cel_true
+    expr: '!calls.exists(c, c.op == "recipes.run")'
+  - type: cel_true
+    expr: size(calls.filter(c, c.op == "extension_execution" && c.cell == "B")) == 1
+  id: existing-threads-do-not-inflate-batch
+  inputs:
+    count: 39
+    known_count: 2
+  expect_error: Inline consultation selected
+- type: integration_case
+  runtime: *consultation_cells
+  mocks:
+    ops:
+    - *seed_session
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: B
+      behavior:
+        mode: fail
+        error:
+          message: Inline consultation selected
+  assertions:
+  - type: cel_true
+    expr: '!calls.exists(c, c.op == "recipes.run")'
+  - type: cel_true
+    expr: size(calls.filter(c, c.op == "extension_execution" && c.cell == "B")) == 1
+  id: experts-do-not-inflate-batch
+  inputs:
+    count: 40
+    expert: true
+  expect_error: Inline consultation selected
+- type: integration_case
+  runtime: *consultation_cells
+  mocks:
+    ops:
+    - *seed_session
+    - match:
+        op: recipes.run
+      repeat: true
+      behavior:
+        mode: return
+        outputs:
+          job_ids:
+          - test-child
+  assertions:
+  - type: output_equals
+    path: valid
+    value: true
+  - type: cel_true
+    expr: repositories.root.new_commits == 0
+  - type: cel_true
+    expr: size(outputs.flow.threads) == 41
+  - type: cel_true
+    expr: outputs.flow.threads.all(k, outputs.flow.threads[k].status == "running" && "job_id" in outputs.flow.threads[k])
+  - type: cel_true
+    expr: size(calls.filter(c, c.op == "recipes.run")) == 41
+  - type: cel_true
+    expr: '!calls.exists(c, c.op == "extension_execution" || c.op == "recipe.await_result_soft")'
+  - type: cel_true
+    expr: outputs.flow.session == outputs.initial_session
+  - type: cel_true
+    expr: calls.filter(c, c.op == "recipes.run").all(c, c.inputs.recipes[0].name == 'git+https://github.com/colony-2/recipes.git//recipes/kernel/consultation.yaml@main')
+  id: forty-one-child-jobs
+  inputs:
+    count: 41
+- type: integration_case
+  runtime: *consultation_cells
+  mocks:
+    ops:
+    - *seed_session
+    - match:
+        op: recipes.run
+      repeat: true
+      behavior:
+        mode: return
+        outputs:
+          job_ids:
+          - test-child
+  assertions:
+  - type: output_equals
+    path: valid
+    value: true
+  - type: cel_true
+    expr: repositories.root.new_commits == 0
+  - type: cel_true
+    expr: size(outputs.flow.threads) == 1
+  - type: cel_true
+    expr: outputs.flow.threads.all(k, outputs.flow.threads[k].status == "running" && "job_id" in outputs.flow.threads[k])
+  - type: cel_true
+    expr: size(calls.filter(c, c.op == "recipes.run")) == 1
+  - type: cel_true
+    expr: '!calls.exists(c, c.op == "extension_execution" || c.op == "recipe.await_result_soft")'
+  - type: cel_true
+    expr: outputs.flow.session == outputs.initial_session
+  - type: cel_true
+    expr: calls.filter(c, c.op == "recipes.run").all(c, c.inputs.recipes[0].name == 'custom-consultation')
+  id: custom-selector-preserved
+  inputs:
+    count: 1
+    consultation_recipe: custom-consultation
+- type: integration_case
+  runtime: *consultation_cells
+  mocks:
+    ops:
+    - *seed_session
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: B
+      behavior:
+        mode: fail
+        error:
+          message: Consultation transport unavailable
+  assertions:
+  - type: cel_true
+    expr: '!calls.exists(c, c.op == "recipes.run")'
+  id: inline-failure-propagates
+  inputs:
+    count: 1
+  expect_error: Consultation transport unavailable
+- type: integration_case
+  runtime: *consultation_cells
+  mocks:
+    ops:
+    - *seed_session
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: B
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: continue
+            thinking: B response
+            files: []
+            assessment: not_applicable
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                participant: B
+                iteration: 1
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: continue
+            thinking: root response
+            files: []
+            assessment: not_applicable
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                participant: root
+                iteration: 2
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: B
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: agreed
+            thinking: B response
+            files:
+            - path: iter2/consultant/spec.md
+              description: Agreement
+            assessment: not_applicable
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                participant: B
+                iteration: 2
+        artifacts:
+          iter2/consultant/spec.md: '# B agreement'
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: B
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: agreed
+            thinking: B response
+            files:
+            - path: iter1/consultant/spec.md
+              description: Agreement
+            assessment: not_applicable
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                participant: B
+                iteration: 1
+        artifacts:
+          iter1/consultant/spec.md: '# B agreement'
+    - *artifact_commands
+  assertions:
+  - type: output_equals
+    path: valid
+    value: true
+  - type: cel_true
+    expr: repositories.root.new_commits == 0
+  - type: cel_true
+    expr: outputs.flow.threads.api1.result.requester_start_session == outputs.flow.threads.api0.result.requester_session
+  - type: cel_true
+    expr: outputs.flow.session == outputs.flow.threads.api0.result.requester_session && outputs.flow.session !=
+      outputs.initial_session
+  - type: cel_true
+    expr: '"consultations/api0/iter2/consultant/spec.md" in outputs.flow.documents && "consultations/api1/iter1/consultant/spec.md"
+      in outputs.flow.documents'
+  - type: cel_true
+    expr: '!calls.exists(c, c.op == "recipes.run")'
+  id: sequential-requester-checkpoints
+  inputs:
+    count: 2

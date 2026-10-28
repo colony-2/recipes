@@ -1,0 +1,57 @@
+id: consultation-scheduling
+version: '1'
+input_schema:
+  count:
+    type: number
+    default_value: 1
+  known_count:
+    type: number
+    default_value: 0
+  duplicate:
+    type: boolean
+    default_value: false
+  expert:
+    type: boolean
+    default_value: false
+  consultation_recipe:
+    type: string
+    default_value: git+https://github.com/colony-2/recipes.git//recipes/kernel/consultation.yaml@main
+inputs:
+  count: ${{ inputs.count }}
+  known_count: ${{ inputs.known_count }}
+  duplicate: ${{ inputs.duplicate }}
+  expert: ${{ inputs.expert }}
+  consultation_recipe: ${{ inputs.consultation_recipe }}
+sequence:
+- id: seed
+  op: command_execution
+  inputs:
+    run: 'true'
+- id: prepare
+  inputs:
+    total: ${{ inputs.count + inputs.known_count }}
+    known_count: ${{ inputs.known_count }}
+    session: ${{ sequence.seed.outputs.session }}
+    consultation_recipe: ${{ inputs.consultation_recipe }}
+  sequence: []
+  outputs:
+    requests: >-
+      ${{ jq(inputs.total, '[range(0; .) | {key: ("api" + tostring), kind: "feature", cell: "B", ref: "main", request: "Agree an API.", role: "API owner"}]') }}
+    flow: >-
+      ${{ {'phase': 'design', 'session': inputs.session, 'documents': {}, 'jobs': {}, 'approved': [],
+          'root_cell': 'R', 'root_ref': 'main', 'build_recipe': 'build', 'create_recipe': '',
+          'consultation_recipe': inputs.consultation_recipe,
+          'threads': jq(inputs.known_count, '[range(0; .) | ("api" + tostring) as $key | {key: $key, value: {request: {key: $key, kind: "feature", cell: "B", ref: "main", request: "Agree an API.", role: "API owner"}, status: "completed", result: {outcome: "agreed"}}}] | from_entries')} }}
+- id: coordinate
+  include: ../../recipes/develop/coordinate.yaml
+  inputs:
+    action: consult
+    flow: ${{ sequence.prepare.outputs.flow }}
+    requests: >-
+      ${{ sequence.prepare.outputs.requests + (inputs.duplicate ? sequence.prepare.outputs.requests : [])
+          + (inputs.expert ? [{'key': 'expert', 'kind': 'expert', 'cell': '', 'ref': 'main',
+                              'request': 'Assess this candidate.', 'role': 'Independent reviewer'}] : []) }}
+outputs:
+  flow: ${{ sequence.coordinate.outputs.flow }}
+  valid: ${{ sequence.coordinate.outputs.valid }}
+  initial_session: ${{ sequence.seed.outputs.session }}

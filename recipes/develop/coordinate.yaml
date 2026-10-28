@@ -5,6 +5,20 @@ inputs:
   action: ${{ inputs.action }}
   requests: ${{ inputs.?requests.orValue([]) }}
   keys: ${{ inputs.?keys.orValue([]) }}
+vars:
+  # Count the original batch once; do not switch modes as threads finish or launch.
+  inline_consultation_limit: 40
+  shared_consultation_recipe: git+https://github.com/colony-2/recipes.git//recipes/kernel/consultation.yaml@main
+  new_serving_consultations: >-
+    ${{ jq([inputs.requests, inputs.flow.threads],
+        '.[1] as $threads | [.[0][] | select(.kind != "expert") | .key | select(. as $key | $threads | has($key) | not)] | unique | length') }}
+  root_role: >-
+    Act for project root. Inspect the project purpose and cell catalog. Evaluate project fit and existing owners
+    for overlap, explaining excluded alternatives. Compare extension, split, existing dependencies,
+    and new cells. Recommend technologies balancing fit against added tooling and maintenance. Agree
+    a concrete creation brief with purpose, boundaries, names, repository destinations, and provisioning
+    effects. New cells always start on main; do not ask the requester to select a branch.
+    Do not provision during consultation.
 state:
   initial: pick
   states:
@@ -38,6 +52,9 @@ state:
         when: inputs.action == 'consult' && outputs.item.kind == 'expert'
       - to: invalid
         when: inputs.action == 'consult' && (outputs.item.cell == '' || outputs.item.ref == '')
+      - to: consult_inline
+        when: inputs.action == 'consult' && inputs.flow.consultation_recipe == vars.shared_consultation_recipe
+          && vars.new_serving_consultations <= vars.inline_consultation_limit
       - to: launch_serving_consultation
         when: inputs.action == 'consult'
       - to: invalid
@@ -68,13 +85,8 @@ state:
           context.git.ref, 'base_hash': context.git.resolved_hash}, 'name': states.pick.outputs.flow.consultation_recipe,
           'inputs': {'thread': states.pick.outputs.key, 'request': states.pick.outputs.item.request, 'consultant_cell':
           states.pick.outputs.item.cell, 'consultant_ref': states.pick.outputs.item.ref, 'consultant_role':
-          states.pick.outputs.item.role + (states.pick.outputs.item.kind == 'create' ? '\nAct for project
-          root. Inspect the project purpose and cell catalog. Evaluate project fit and existing owners
-          for overlap, explaining excluded alternatives. Compare extension, split, existing dependencies,
-          and new cells. Recommend technologies balancing fit against added tooling and maintenance. Agree
-          a concrete creation brief with purpose, boundaries, names, repository destinations, and provisioning
-          effects. New cells always start on main; do not ask the requester to select a branch.
-          Do not provision during consultation.' : ''), 'requester_session': states.pick.outputs.flow.session,
+          states.pick.outputs.item.role + (states.pick.outputs.item.kind == 'create' ? '\n' + vars.root_role : ''),
+          'requester_session': states.pick.outputs.flow.session,
           'documents': states.pick.outputs.flow.documents, 'include_summary': true} }] }}
       transitions:
       - to: record
@@ -83,6 +95,25 @@ state:
           patch: >-
             ${{ {'threads': jq([states.pick.outputs.flow.threads, {states.pick.outputs.key: {'request':
             states.pick.outputs.item, 'job_id': outputs.job_ids[0], 'status': 'running'} }], 'add')} }}
+    consult_inline:
+      include: ../kernel/consultation.yaml
+      inputs:
+        thread: ${{ states.pick.outputs.key }}
+        request: ${{ states.pick.outputs.item.request }}
+        consultant_cell: ${{ states.pick.outputs.item.cell }}
+        consultant_ref: ${{ states.pick.outputs.item.ref }}
+        consultant_role: >-
+          ${{ states.pick.outputs.item.role + (states.pick.outputs.item.kind == 'create' ? '\n' + vars.root_role : '') }}
+        requester_session: ${{ states.pick.outputs.flow.session }}
+        documents: ${{ states.pick.outputs.flow.documents }}
+      transitions:
+      - to: record
+        when: true
+        payload:
+          patch: >-
+            ${{ jq([{'threads': jq([states.pick.outputs.flow.threads, {states.pick.outputs.key: {'request':
+            states.pick.outputs.item, 'status': 'completed', 'result': outputs} }], 'add')}, {'session':
+            outputs.requester_session, 'documents': outputs.final_artifacts}], 'add') }}
     expert:
       include: ../kernel/consultation.yaml
       inputs:

@@ -137,11 +137,14 @@ The consultant decides agreement. After four consultant responses, or an explici
 deconfliction request, consultation runs independent synthesis and a human review.
 Direction opens another bounded round; it does not establish agreement itself.
 
-[Heavy build coordination](recipes/develop/coordinate.yaml) launches foreign consultations
-as native child jobs. Multiple requests can be launched before waiting; the build
-can continue local work while another thread awaits human feedback. Same-candidate
-expert consultation is included locally. Stable keys prevent duplicate requests
-and submissions. Changed scope needs a new key and renewed plan approval.
+[Heavy build coordination](recipes/develop/coordinate.yaml) includes the shared consultation
+recipe inline for batches of up to 40 new, distinct serving consultations. They run
+sequentially, carrying the requester checkpoint forward; human feedback pauses the
+parent build. Larger batches launch child consultation jobs before waiting, allowing
+local work to continue. The mode is fixed for the batch; existing threads, duplicate
+keys, and same-candidate experts do not count toward the threshold. Experts remain
+inline. Adjust `vars.inline_consultation_limit` in the coordinator to tune the threshold.
+Stable keys prevent duplicate requests and submissions. Changed scope needs a new key and renewed plan approval.
 
 [Light coordination](recipes/light/coordinate.yaml) uses the same consultation
 kernel inline for every request. Stable keys still prevent duplicate submission;
@@ -149,7 +152,11 @@ reusing a key with a different request requires correction. A completed child ma
 report `delegated` or `unchanged` without a merge; both build paths accept those
 successful dispositions as dependency completion.
 `build_recipe` selects child builds in both paths. `consultation_recipe` selects
-the heavy path's consultation jobs; light always includes the shared kernel inline.
+the heavy path's consultation jobs. Explicit non-default selectors always use child
+jobs, preserving project customization: includes resolve before runtime inputs are
+available. The default inline path includes the kernel shipped with the parent recipe;
+the child path resolves the configured selector. Light always includes the shared
+kernel inline.
 
 On the heavy path, only agreed prerequisite keys explicitly listed in the approved
 proposal can be submitted. Each child receives the final agreement documents and
@@ -196,7 +203,7 @@ See [creation behavior and failure handling](recipes/create/README.md).
 Run the current deterministic build and consultation suites:
 
 ```sh
-c2j test run --directory recipe-tests --case-timeout 3m --out-dir .c2/test-results
+c2j test run --directory recipe-tests --case-timeout 10m --out-dir .c2/test-results
 ```
 
 These suites mock model responses and declare human answers while running native
@@ -208,7 +215,8 @@ and provide the op's declared execution tools,
 including Nix. No live model credentials or external repository provisioning are
 needed. See [routing and light workflow statements](recipe-tests/build-light-statements.md),
 [build test statements](recipe-tests/build-kernel-statements.md),
-[consultation statements](recipe-tests/consultation-kernel-statements.md), and
+[consultation statements](recipe-tests/consultation-kernel-statements.md),
+[consultation scheduling statements](recipe-tests/consultation-scheduling-statements.md), and
 [coverage ownership](guides/NATIVE_TEST_MIGRATION.md).
 
 [Recipe CI](.github/workflows/recipes.yml) runs on pushes to `main` and pull
