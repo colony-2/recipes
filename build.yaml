@@ -45,31 +45,95 @@ inputs:
   build_recipe: ${{ inputs.build_recipe }}
   create_recipe: ${{ inputs.create_recipe }}
 sequence:
-- id: develop
+- id: classify
+  include: ./recipes/build/classify.yaml
   workspace:
     cell: ${{ context.git.repo }}
     ref: ${{ context.git.ref }}
-  include: ./recipes/develop/develop.yaml
+  inputs:
+    request: ${{ inputs.prompt }}
+- id: run
+  workspace:
+    cell: ${{ context.git.repo }}
+    ref: ${{ context.git.ref }}
   inputs:
     prompt: ${{ inputs.prompt }}
     target_directory: ${{ inputs.target_directory }}
-    session: ${{ inputs.session }}
+    session: ${{ inputs.?session.orValue({}) }}
     documents: ${{ inputs.documents }}
     root_cell: ${{ inputs.root_cell }}
     root_ref: ${{ inputs.root_ref }}
     consultation_recipe: ${{ inputs.consultation_recipe }}
     build_recipe: ${{ inputs.build_recipe }}
     create_recipe: ${{ inputs.create_recipe }}
+    light: ${{ sequence.classify.outputs.light }}
+  state:
+    initial:
+    - to: light
+      when: inputs.light
+    - to: heavy
+      when: true
+    states:
+      light:
+        include: ./recipes/light/develop.yaml
+        inputs:
+          prompt: ${{ inputs.prompt }}
+          target_directory: ${{ inputs.target_directory }}
+          session: ${{ inputs.session }}
+          documents: ${{ inputs.documents }}
+          root_cell: ${{ inputs.root_cell }}
+          root_ref: ${{ inputs.root_ref }}
+          build_recipe: ${{ inputs.build_recipe }}
+        transitions:
+        - to: heavy
+          when: outputs.escalate
+      heavy:
+        include: ./recipes/develop/develop.yaml
+        inputs:
+          prompt: '${{ inputs.prompt + (state_exists(''light'') ? ''\nRead inbox/light-handoff.json: preserve
+            completed child outcomes and existing candidate work. Do not duplicate completed delegation.''
+            : '''') }}'
+          target_directory: ${{ inputs.target_directory }}
+          session: ${{ state_output('light', 'session', inputs.session) }}
+          documents: ${{ state_output('light', 'artifact_refs', inputs.documents) }}
+          root_cell: ${{ inputs.root_cell }}
+          root_ref: ${{ inputs.root_ref }}
+          consultation_recipe: ${{ inputs.consultation_recipe }}
+          build_recipe: ${{ inputs.build_recipe }}
+          create_recipe: ${{ inputs.create_recipe }}
+          prior_dependencies: ${{ state_output('light', 'dependencies', {}) }}
+          prior_consultations: ${{ state_output('light', 'consultations', {}) }}
+  outputs:
+    merged: ${{ state_output('heavy', 'merged', state_output('light', 'merged', null)) }}
+    merged_hash: ${{ state_output('heavy', 'merged_hash', state_output('light', 'merged_hash', null)) }}
+    target_branch: ${{ state_output('heavy', 'target_branch', state_output('light', 'target_branch', null))
+      }}
+    session: ${{ state_output('heavy', 'session', state_output('light', 'session', null)) }}
+    assistant_summary: ${{ state_output('heavy', 'assistant_summary', state_output('light', 'assistant_summary',
+      null)) }}
+    disposition: ${{ state_output('heavy', 'disposition', state_output('light', 'disposition', null)) }}
+    result: ${{ state_output('heavy', 'result', state_output('light', 'result', null)) }}
+    artifact_refs: ${{ state_output('heavy', 'artifact_refs', state_output('light', 'artifact_refs', null))
+      }}
+    consultations: ${{ jq([state_output('light', 'consultations', {}), state_output('heavy', 'consultations',
+      {})], 'add') }}
+    dependencies: ${{ jq([state_output('light', 'dependencies', {}), state_output('heavy', 'dependencies',
+      {})], 'add') }}
+    reviews: ${{ state_output('heavy', 'reviews', state_output('light', 'reviews', null)) }}
+    verification: ${{ state_output('heavy', 'verification', state_output('light', 'verification', null)) }}
+    process: '${{ state_exists(''heavy'') ? ''heavy'' : ''light'' }}'
 outputs:
-  merged: ${{ sequence.develop.outputs.merged }}
-  merged_hash: ${{ sequence.develop.outputs.merged_hash }}
-  target_branch: ${{ sequence.develop.outputs.target_branch }}
-  session: ${{ sequence.develop.outputs.session }}
-  assistant_summary: ${{ sequence.develop.outputs.assistant_summary }}
-  disposition: ${{ sequence.develop.outputs.disposition }}
-  result: ${{ sequence.develop.outputs.result }}
-  artifact_refs: ${{ sequence.develop.outputs.artifact_refs }}
-  consultations: ${{ sequence.develop.outputs.consultations }}
-  dependencies: ${{ sequence.develop.outputs.dependencies }}
-  reviews: ${{ sequence.develop.outputs.reviews }}
-  verification: ${{ sequence.develop.outputs.verification }}
+  merged: ${{ sequence.run.outputs.merged }}
+  merged_hash: ${{ sequence.run.outputs.merged_hash }}
+  target_branch: ${{ sequence.run.outputs.target_branch }}
+  session: ${{ sequence.run.outputs.session }}
+  assistant_summary: ${{ sequence.run.outputs.assistant_summary }}
+  disposition: ${{ sequence.run.outputs.disposition }}
+  result: ${{ sequence.run.outputs.result }}
+  artifact_refs: ${{ sequence.run.outputs.artifact_refs }}
+  consultations: ${{ sequence.run.outputs.consultations }}
+  dependencies: ${{ sequence.run.outputs.dependencies }}
+  reviews: ${{ sequence.run.outputs.reviews }}
+  verification: ${{ sequence.run.outputs.verification }}
+  process: ${{ sequence.run.outputs.process }}
+  classification: ${{ sequence.classify.outputs }}

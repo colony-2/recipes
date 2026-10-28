@@ -15,7 +15,42 @@ when present and infers responsibilities from the repository otherwise. It does
 not initialize a mandate. The evolve entrypoint and workflow-editing mode have
 been removed.
 
-The shared [development workflow](recipes/develop/develop.yaml) runs:
+At entry, [Jev classification](recipes/build/classify.yaml) reads the root purpose,
+`ARCHITECTURE.md`, and the first available README. It evaluates the scope, complexity,
+uncertainty, and risk of **this cell's work**, including whether its role is simply
+delegating bounded requests to existing children. Each child classifies its own work.
+The operation explicitly references the `jev_api_key` secret. The published Jev
+manifest marks `api_key` with `x-secret: true`, allowing c2j to pass that reference.
+
+Jev's `noul` value is the probability that `is_heavy` is true. Only a valid value
+between 0 and 0.10 selects light (at least 90% probability of light work). Uncertainty,
+invalid answers, unavailable Jev, or unusable/truncated repository context select
+heavy. Missing PURPOSE.md is acceptable when README supplies context; neither
+document is created just to classify a request. Each document is capped at 64 KiB.
+The public outputs include `process` and `classification` to explain the decision.
+
+The [light workflow](recipes/light/develop.yaml) runs:
+
+1. Implement and test using existing patterns, without separate design, test-statement,
+   or plan-approval phases. Existing test expectations still apply.
+2. Consult serving cells inline, sequentially, and immediately launch agreed child
+   builds. There is no human plan-approval gate. Child builds can run concurrently;
+   the parent waits for every launched child before completing.
+3. Inspect the actual repository diff. With no local changes, finish as `delegated`
+   or `unchanged`, without requesting local merge review or merging.
+4. For local changes, rebase, run repository verification, and present `synopsis.md`
+   with the outcome, exact file inventory, verification evidence, and proposed commit
+   message. Failure returns to implementation. Human feedback repeats implementation
+   and verification; acceptance without feedback permits squash and merge.
+
+Light verification uses the agent's explicit repository check command, falling back
+to `bash ./build.sh`. Missing checks cannot authorize a merge. The light synopsis uses
+the implementation session's explanation and the shared Git inventory; it does not
+start an independent file-accounting session. If complexity emerges, the agent can
+escalate to heavy after its children finish, retaining its session, candidate,
+documents, and child outcomes in `light-handoff.json`.
+
+The existing heavy [development workflow](recipes/develop/develop.yaml) runs:
 
 1. Design and test statements, with serving-cell consultations where needed.
 2. Independent assessment through the consultation kernel, then human plan review.
@@ -52,8 +87,9 @@ verification, and file accounting. Squash happens after human acceptance and pre
 tree. Merge publishes that prepared commit without rewriting it; upstream advancement
 after review stops publication if it prevents a fast-forward.
 
-The [file accounting include](recipes/develop/merge-review.yaml) declares pinned
-Nix Python through `execution_needs.packages` on its inventory and Markdown-rendering
+The [file accounting include](recipes/develop/merge-review.yaml) and shared
+[Git inventory](recipes/kernel/git-candidate.yaml) declare pinned
+Nix Python through `execution_needs.packages` on their inventory and Markdown-rendering
 commands. c2j prepares Python and adds it to each command's PATH; host Python is
 not required for these steps. Its independent, read-only Codex session
 explains every added, changed, and deleted file against the approved scope, including
@@ -92,13 +128,21 @@ The consultant decides agreement. After four consultant responses, or an explici
 deconfliction request, consultation runs independent synthesis and a human review.
 Direction opens another bounded round; it does not establish agreement itself.
 
-[Build coordination](recipes/develop/coordinate.yaml) launches foreign consultations
+[Heavy build coordination](recipes/develop/coordinate.yaml) launches foreign consultations
 as native child jobs. Multiple requests can be launched before waiting; the build
 can continue local work while another thread awaits human feedback. Same-candidate
 expert consultation is included locally. Stable keys prevent duplicate requests
 and submissions. Changed scope needs a new key and renewed plan approval.
 
-Only agreed prerequisite keys explicitly listed in the approved proposal can be submitted. Each child receives the
+[Light coordination](recipes/light/coordinate.yaml) uses the same consultation
+kernel inline for every request. Stable keys still prevent duplicate submission;
+reusing a key with a different request requires correction. A completed child may
+report `delegated` or `unchanged` without a merge; both build paths accept those
+successful dispositions as dependency completion.
+`build_recipe` selects child builds in both paths. `consultation_recipe` selects
+the heavy path's consultation jobs; light always includes the shared kernel inline.
+
+On the heavy path, only agreed prerequisite keys explicitly listed in the approved proposal can be submitted. Each child receives the
 serving consultant's checkpoint and final documents. Its inherited transcript is
 bound as `consultation/conversation.json`, leaving the next consultation's own
 transcript filename available. Waiting preserves the caller's
@@ -146,7 +190,8 @@ current kernel uses c2ops' `published` Nix packages, including Codex's
 Install the latest c2j release with `npm install --global @colony2/c2j@latest`
 and provide the op's declared execution tools,
 including Nix. No live model credentials or external repository provisioning are
-needed. See [build test statements](recipe-tests/build-kernel-statements.md),
+needed. See [routing and light workflow statements](recipe-tests/build-light-statements.md),
+[build test statements](recipe-tests/build-kernel-statements.md),
 [consultation statements](recipe-tests/consultation-kernel-statements.md), and
 [coverage ownership](guides/NATIVE_TEST_MIGRATION.md).
 

@@ -1,0 +1,36 @@
+id: git-candidate
+version: 1.0.0
+sequence:
+- id: inspect
+  op: command_execution
+  execution_needs:
+    packages:
+    - nix:github:NixOS/nixpkgs/e7439b6b14ad3cc35d05608ebca9bce01a25f5f8#python3
+  const: true
+  inputs:
+    env:
+      BASE: ${{ context.git.execution.base_hash }}
+      OUTBOX: ${{ context.environment.op.outbox }}
+    run: |
+      python3 - <<'PY'
+      import json, os, pathlib, subprocess
+      from urllib.parse import quote
+      def git(*args):
+          return subprocess.check_output(['git', *args])
+      base = os.environ['BASE']
+      head = git('rev-parse', 'HEAD').decode().strip()
+      names = git('diff', '--name-status', '--no-renames', '-z', base, head).decode().split('\0')[:-1]
+      files = [{'change': names[i], 'path': names[i + 1]} for i in range(0, len(names), 2)]
+      job_url = 'https://jobs.colony2.com/{}/jobs/{}'.format(
+          quote(os.environ['C2J_CURRENT_TENANT_ID'], safe=''),
+          quote(os.environ['C2J_CURRENT_JOB_ID'], safe=''))
+      candidate = {'base': base, 'head': head, 'files': files, 'job_url': job_url}
+      outbox = pathlib.Path(os.environ['OUTBOX'])
+      (outbox / 'merge-candidate.json').write_text(json.dumps(candidate, indent=2) + '\n')
+      (outbox / 'merge-candidate.diff').write_bytes(git('diff', '--binary', '--no-ext-diff', '--no-renames', base, head))
+      print(json.dumps(candidate))
+      PY
+outputs:
+  candidate: ${{ json_parse(sequence.inspect.outputs.stdout) }}
+  documents: '${{ {''merge-candidate.json'': sequence.inspect.artifacts[''merge-candidate.json''], ''merge-candidate.diff'':
+    sequence.inspect.artifacts[''merge-candidate.diff'']} }}'

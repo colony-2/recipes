@@ -4,8 +4,13 @@ input_schema:
   target_directory:
     type: string
     default_value: .
+  command:
+    type: string
+    default_value: ''
+    description: Repository verification command; empty uses build.sh.
 inputs:
   target_directory: ${{ inputs.target_directory }}
+  command: ${{ inputs.command }}
 sequence:
 - id: execute
   op: command_execution
@@ -15,14 +20,18 @@ sequence:
     env:
       TARGET: '{{ context.environment.op.worktree_path }}/{{ inputs.target_directory }}'
       OUTBOX: '{{ context.environment.op.outbox }}'
+      VERIFY_COMMAND: ${{ inputs.command }}
     run: |
-      cd "$TARGET"
-      if [ ! -f build.sh ]; then
+      cd "$TARGET" || exit 1
+      if [ -n "$VERIFY_COMMAND" ]; then
+        printf ran
+        bash -c "$VERIFY_COMMAND" > "$OUTBOX/build.log" 2>&1
+      elif [ -f build.sh ]; then
+        printf ran
+        bash ./build.sh > "$OUTBOX/build.log" 2>&1
+      else
         printf skipped
-        exit 0
       fi
-      printf ran
-      bash ./build.sh > "$OUTBOX/build.log" 2>&1
 - id: report
   op: command_execution
   const: true
@@ -33,25 +42,24 @@ sequence:
       OK: ${{ string(sequence.execute.outputs.success) }}
       CODE: ${{ string(sequence.execute.outputs.exit_code) }}
       TIMED_OUT: ${{ string(sequence.execute.outputs.timed_out) }}
+      VERIFY_COMMAND: '${{ inputs.command != '''' ? inputs.command : ''bash ./build.sh'' }}'
     run: |
       if [ "$RAN" = skipped ]; then
         printf '# Verification\n\nSkipped: no build.sh in the target directory. No automated verification was performed.\n'
       else
-        printf '# Verification\n\nbuild.sh success: %s; exit code: %s; timed out: %s. See build.log.\n' "$OK" "$CODE" "$TIMED_OUT"
+        printf '# Verification\n\nCommand: %s\n\nSuccess: %s; exit code: %s; timed out: %s. See build.log.\n' "$VERIFY_COMMAND" "$OK" "$CODE" "$TIMED_OUT"
       fi > "$OUTBOX/verification.md"
 outputs:
   ok: ${{ sequence.execute.outputs.success && sequence.execute.outputs.stdout != "skipped" }}
-  result: >-
-    ${{ {"ok": sequence.execute.outputs.success && sequence.execute.outputs.stdout != "skipped", "status":
+  result: '${{ {"ok": sequence.execute.outputs.success && sequence.execute.outputs.stdout != "skipped", "status":
     sequence.execute.outputs.stdout == "skipped" ? "skipped" : (sequence.execute.outputs.success ? "passed"
     : "failed"), "exit_code": sequence.execute.outputs.exit_code, "timed_out": sequence.execute.outputs.timed_out}
-    }}
+    }}'
   review_documents: '${{ {"verification": sequence.report.artifacts["verification.md"]} }}'
-  artifact_refs: >-
-    ${{ jq([{'verification.md': sequence.report.artifacts['verification.md']}, 'build.log' in sequence.execute.artifacts
-    ? {'build.log': sequence.execute.artifacts['build.log']} : {}], 'add') }}
-  evidence: >-
-    ${{ {"ok": sequence.execute.outputs.success && sequence.execute.outputs.stdout != "skipped", "status":
-    sequence.execute.outputs.stdout == "skipped" ? "skipped" : (sequence.execute.outputs.success ? "passed"
-    : "failed"), "exit_code": sequence.execute.outputs.exit_code, "timed_out": sequence.execute.outputs.timed_out}
-    }}
+  artifact_refs: '${{ jq([{''verification.md'': sequence.report.artifacts[''verification.md'']}, ''build.log''
+    in sequence.execute.artifacts ? {''build.log'': sequence.execute.artifacts[''build.log'']} : {}], ''add'')
+    }}'
+  evidence: '${{ {"ok": sequence.execute.outputs.success && sequence.execute.outputs.stdout != "skipped",
+    "status": sequence.execute.outputs.stdout == "skipped" ? "skipped" : (sequence.execute.outputs.success
+    ? "passed" : "failed"), "exit_code": sequence.execute.outputs.exit_code, "timed_out": sequence.execute.outputs.timed_out}
+    }}'

@@ -1,0 +1,45 @@
+id: light-synopsis
+version: 1.0.0
+inputs:
+  flow: ${{ inputs.flow }}
+sequence:
+- id: candidate
+  include: ../kernel/git-candidate.yaml
+- id: document
+  op: command_execution
+  const: true
+  execution_needs:
+    packages:
+    - nix:github:NixOS/nixpkgs/e7439b6b14ad3cc35d05608ebca9bce01a25f5f8#python3
+  inputs:
+    env:
+      OUTBOX: ${{ context.environment.op.outbox }}
+      CANDIDATE: ${{ json_stringify(sequence.candidate.outputs.candidate) }}
+      RESPONSE: ${{ json_stringify(inputs.flow.result) }}
+      VERIFICATION: ${{ json_stringify(inputs.flow.verification) }}
+    run: |
+      python3 - <<'PY'
+      import json, os, pathlib
+      candidate = json.loads(os.environ['CANDIDATE'])
+      response = json.loads(os.environ['RESPONSE'])
+      verification = json.loads(os.environ['VERIFICATION'])
+      subject, message = response['subject'].strip(), response['review_message'].strip()
+      if not subject or len(subject) > 72 or '\n' in subject or '\r' in subject or not message:
+          raise ValueError('Synopsis requires a one-line subject (<=72 characters) and review message')
+      if verification['status'] != 'passed':
+          raise ValueError('Synopsis requires passing verification')
+      commit = subject + '\n\n' + message + '\n\nJob: ' + candidate['job_url']
+      lines = ['# Change synopsis', '', response['summary'], '', '## Proposed squash commit', '', commit,
+               '', '## Verified candidate', '', 'Base: `' + candidate['base'] + '`',
+               'Candidate: `' + candidate['head'] + '`', '',
+               'Verification passed. See verification.md and build.log for the command and results.',
+               '', '## Files included', '']
+      for f in candidate['files']:
+          lines.append('- ' + f['change'] + ': ' + json.dumps(f['path'], ensure_ascii=False))
+      (pathlib.Path(os.environ['OUTBOX']) / 'synopsis.md').write_text('\n'.join(lines) + '\n')
+      print(json.dumps({'commit_message': commit}))
+      PY
+outputs:
+  commit_message: ${{ json_parse(sequence.document.outputs.stdout).commit_message }}
+  documents: >-
+    ${{ jq([sequence.candidate.outputs.documents, {'synopsis.md': sequence.document.artifacts['synopsis.md']}], 'add') }}

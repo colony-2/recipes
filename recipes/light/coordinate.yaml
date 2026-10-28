@@ -1,0 +1,162 @@
+id: light-coordinate
+version: 1.0.0
+inputs:
+  flow: ${{ inputs.flow }}
+  action: ${{ inputs.action }}
+  requests: ${{ inputs.?requests.orValue([]) }}
+  keys: ${{ inputs.?keys.orValue([]) }}
+state:
+  initial: pick
+  states:
+    pick:
+      inputs:
+        flow: ${{ transition.payload.?flow.orValue(inputs.flow) }}
+        index: ${{ transition.payload.?index.orValue(0) }}
+        items: '${{ inputs.action == ''consult'' ? inputs.requests : inputs.keys }}'
+        action: ${{ inputs.action }}
+      sequence: []
+      outputs:
+        flow: ${{ inputs.flow }}
+        index: ${{ int(inputs.index) }}
+        key: '${{ size(inputs.items) > int(inputs.index) ? (inputs.action == ''consult'' ? inputs.items[int(inputs.index)].key
+          : inputs.items[int(inputs.index)]) : '''' }}'
+        item: '${{ size(inputs.items) > int(inputs.index) && inputs.action == ''consult'' ? inputs.items[int(inputs.index)]
+          : {} }}'
+        available: ${{ int(inputs.index) < size(inputs.items) }}
+      transitions:
+      - to: invalid
+        when: '!outputs.available'
+      - to: invalid
+        when: inputs.action == 'consult' && (outputs.item.kind != 'feature' || outputs.item.cell == '' ||
+          outputs.item.ref == '')
+      - to: invalid
+        when: inputs.action == 'consult' && outputs.key in outputs.flow.threads && outputs.flow.threads[outputs.key].request
+          != outputs.item
+      - to: skip
+        when: inputs.action == 'consult' && outputs.key in outputs.flow.threads
+      - to: consult
+        when: inputs.action == 'consult'
+      - to: invalid
+        when: '!(outputs.key in outputs.flow.jobs)'
+      - to: wait_job
+        when: outputs.flow.jobs[outputs.key].status == 'running'
+      - to: skip
+        when: true
+    consult:
+      include: ../kernel/consultation.yaml
+      inputs:
+        thread: ${{ states.pick.outputs.key }}
+        request: ${{ states.pick.outputs.item.request }}
+        consultant_role: ${{ states.pick.outputs.item.role }}
+        requester_session: ${{ states.pick.outputs.flow.session }}
+        documents: ${{ states.pick.outputs.flow.documents }}
+        consultant_cell: ${{ states.pick.outputs.item.cell }}
+        consultant_ref: ${{ states.pick.outputs.item.ref }}
+      transitions:
+      - to: agreed
+        when: true
+    submit:
+      workspace:
+        cell: ${{ states.agreed.outputs.flow.threads[states.pick.outputs.key].request.cell }}
+        ref: ${{ states.agreed.outputs.flow.threads[states.pick.outputs.key].request.ref }}
+      inputs:
+        flow: ${{ states.agreed.outputs.flow }}
+        thread: ${{ states.agreed.outputs.flow.threads[states.pick.outputs.key] }}
+      sequence:
+      - id: starter
+        include: ../kernel/artifact-namespace.yaml
+        inputs:
+          prefix: consultation/
+          documents: '${{ {''conversation.json'': inputs.thread.result.continuation} }}'
+      - id: launch
+        op: recipes.run
+        inputs:
+          recipes: '${{ [{''cell_name'': context.workspace.cell, ''git'': {''base_repo'': context.git.repo,
+            ''base_ref'': context.git.ref, ''base_hash'': context.git.resolved_hash}, ''name'': inputs.flow.build_recipe,
+            ''inputs'': {''prompt'': inputs.thread.request.request, ''session'': inputs.thread.result.consultant_session,
+            ''documents'': jq([inputs.thread.result.final_artifacts, sequence.starter.outputs.documents],
+            ''add''), ''root_cell'': inputs.flow.root_cell, ''root_ref'': inputs.flow.root_ref} }] }}'
+      outputs:
+        job_id: ${{ sequence.launch.outputs.job_ids[0] }}
+      transitions:
+      - to: record
+        when: true
+        payload:
+          patch: '${{ {''threads'': states.agreed.outputs.flow.threads, ''session'': states.agreed.outputs.flow.session,
+            ''documents'': states.consult.outputs.final_artifacts, ''jobs'': jq([states.pick.outputs.flow.jobs,
+            {states.pick.outputs.key: {''job_id'': outputs.job_id, ''status'': ''running'', ''kind'': ''feature'',
+            ''cell'': states.pick.outputs.item.cell} }], ''add'')} }}'
+    wait_job:
+      op: recipe.await_result
+      inputs:
+        target:
+          job: ${{ states.pick.outputs.flow.jobs[states.pick.outputs.key].job_id }}
+        wait:
+          'on': job
+          condition: success
+      transitions:
+      - to: record
+        when: true
+        payload:
+          patch: '${{ {''jobs'': jq([states.pick.outputs.flow.jobs, {states.pick.outputs.key: jq([states.pick.outputs.flow.jobs[states.pick.outputs.key],
+            {''status'': ''completed'', ''result'': outputs.outputs}], ''add'')}], ''add''), ''documents'':
+            outputs.outputs.?artifact_refs.orValue({})} }}'
+    skip:
+      sequence: []
+      transitions:
+      - to: record
+        when: true
+        payload:
+          patch: ${{ {} }}
+    record:
+      inputs:
+        key: ${{ states.pick.outputs.key }}
+        action: ${{ inputs.action }}
+        flow: ${{ states.pick.outputs.flow }}
+        patch: ${{ transition.payload.patch }}
+      sequence:
+      - id: namespace
+        include: ../kernel/artifact-namespace.yaml
+        inputs:
+          prefix: '${{ (inputs.action == ''blocked'' && inputs.key in inputs.flow.jobs ? ''jobs/'' : ''consultations/'')
+            + inputs.key + ''/'' }}'
+          documents: ${{ inputs.patch.?documents.orValue({}) }}
+      outputs:
+        flow: '${{ jq([inputs.flow, inputs.patch, {''documents'': jq([inputs.flow.documents, sequence.namespace.outputs.documents],
+          ''add'')}], ''add'') }}'
+      transitions:
+      - to: pick
+        when: 'int(states.pick.outputs.index) + 1 < size(inputs.action == ''consult'' ? inputs.requests :
+          inputs.keys)'
+        payload:
+          flow: ${{ outputs.flow }}
+          index: ${{ int(states.pick.outputs.index) + 1 }}
+    invalid:
+      sequence: []
+      outputs:
+        error: 'Invalid light coordination request: use a distinct stable key, an existing serving cell and
+          ref, and known child keys when waiting.'
+    agreed:
+      inputs:
+        flow: ${{ states.pick.outputs.flow }}
+        key: ${{ states.pick.outputs.key }}
+        request: ${{ states.pick.outputs.item }}
+        consultation: ${{ states.consult.outputs }}
+      sequence: []
+      outputs:
+        flow: >-
+          ${{ jq([inputs.flow, {'threads': jq([inputs.flow.threads, {inputs.key:
+          {'request': inputs.request, 'status': 'completed', 'result': inputs.consultation} }],
+          'add'), 'session': inputs.consultation.requester_session}], 'add') }}
+      transitions:
+      - to: submit
+        when: states.consult.outputs.outcome == 'agreed'
+      - to: record
+        when: true
+        payload:
+          patch: '${{ {''threads'': outputs.flow.threads, ''session'': outputs.flow.session, ''documents'':
+            states.consult.outputs.final_artifacts} }}'
+outputs:
+  flow: ${{ state_output('record', 'flow', inputs.flow) }}
+  valid: ${{ !state_exists('invalid') }}
+  error: ${{ state_output('invalid', 'error', '') }}

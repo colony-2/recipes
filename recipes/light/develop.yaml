@@ -1,0 +1,511 @@
+id: light-develop
+version: 1.0.0
+inputs:
+  prompt: ${{ inputs.prompt }}
+  target_directory: ${{ inputs.target_directory }}
+  session: ${{ inputs.session }}
+  documents: ${{ inputs.documents }}
+  root_cell: ${{ inputs.root_cell }}
+  root_ref: ${{ inputs.root_ref }}
+  build_recipe: ${{ inputs.build_recipe }}
+state:
+  initial: prepare
+  states:
+    prepare:
+      op: command_execution
+      const: true
+      inputs:
+        run: |
+          if [ -f .c2/config.yaml ] && command -v c2j >/dev/null 2>&1; then
+            c2j self --json
+          else
+            printf '{}'
+          fi
+      transitions:
+      - to: start
+        when: true
+    start:
+      inputs:
+        request: ${{ inputs.prompt }}
+        directory: ${{ inputs.target_directory }}
+        session: ${{ inputs.session }}
+        documents: ${{ jq([json_parse(json_stringify(context.artifacts)), inputs.documents], 'add | with_entries(select(.key
+          != "__git_state_thin_pack__" and .key != "diff_from_parent.diff" and .key != "diff_from_base.diff"))')
+          }}
+        root_cell: '${{ inputs.root_cell != '''' ? inputs.root_cell : json_parse(states.prepare.outputs.stdout).?root_repo.orValue('''')
+          }}'
+        root_ref: '${{ inputs.root_ref != '''' ? inputs.root_ref : json_parse(states.prepare.outputs.stdout).?root_ref.orValue(''main'')
+          }}'
+        build_recipe: ${{ inputs.build_recipe }}
+      sequence: []
+      outputs:
+        valid: ${{ nonempty(inputs.directory) && !inputs.directory.startsWith('/') && !inputs.directory.matches('(^|/)[.][.](/|$)')
+          }}
+        flow: '${{ {''message'': inputs.request, ''request'': inputs.request, ''target_directory'': inputs.directory,
+          ''session'': inputs.session, ''documents'': inputs.documents, ''threads'': {}, ''jobs'': {}, ''reviews'':
+          {}, ''root_cell'': inputs.root_cell, ''root_ref'': inputs.root_ref, ''build_recipe'': inputs.build_recipe}
+          }}'
+      transitions:
+      - to: rejected
+        when: '!outputs.valid'
+        payload:
+          reason: Target directory must be a nonempty repository-relative path without parent traversal.
+      - to: work
+        when: true
+        payload:
+          flow: ${{ outputs.flow }}
+    work:
+      inputs:
+        flow: ${{ jq(transition.payload.flow, 'del(.review_hint)') }}
+      sequence:
+      - id: context
+        op: command_execution
+        const: true
+        inputs:
+          env:
+            OUTBOX: ${{ context.environment.op.outbox }}
+            CONTEXT: ${{ json_stringify(jq(inputs.flow, 'del(.session, .documents, .result)')) }}
+          run: |
+            printf '%s\n' "$CONTEXT" > "$OUTBOX/context.json"
+      - id: agent
+        include: ./agent.yaml
+        inputs:
+          flow: ${{ inputs.flow }}
+          documents: '${{ jq([inputs.flow.documents, {''context.json'': sequence.context.artifacts[''context.json'']}],
+            ''add'') }}'
+      outputs:
+        flow: ${{ inputs.flow }}
+        turn: ${{ sequence.agent.outputs.turn }}
+      transitions:
+      - to: record
+        when: true
+    record:
+      inputs:
+        previous: ${{ states.work.outputs.flow }}
+        turn: ${{ states.work.outputs.turn }}
+      sequence: []
+      outputs:
+        valid: ${{ size(vars.issues) == 0 }}
+        flow: |-
+          ${{ inputs.turn.result.?output_schema_valid.orValue(false) ? (jq([inputs.previous, {
+           'repair_attempts': 0, 'repair_artifacts': {}, 'session': inputs.turn.result.?session.orValue(inputs.previous.session),
+
+           'result': inputs.turn.result.?response.orValue({}),
+           'documents': jq([inputs.previous.?repair_base_documents.orValue(inputs.previous.documents),
+             jq({'files': inputs.turn.result.?response.orValue({}).?files.orValue([]), 'artifacts': inputs.turn.artifacts},
+                '. as $v | $v.files | map(select(.path as $p | $v.artifacts | has($p)) | {key: .path, value: $v.artifacts[.path]}) | from_entries')], 'add')}], 'add | del(.repair_base_documents)')) : inputs.previous }}
+        issues: ${{ vars.issues }}
+        turn: ${{ inputs.turn }}
+        previous: ${{ inputs.previous }}
+      transitions:
+      - to: rejected
+        when: '!outputs.valid && (outputs.turn.result.?status.orValue(''failed'') != ''completed'' || size(outputs.turn.jobs.?job_ids.orValue([]))
+          > 0)'
+        payload:
+          reason: ${{ jq(outputs.issues, 'join("; ")') }}
+      - to: repair
+        when: '!outputs.valid'
+        payload:
+          flow: ${{ outputs.previous }}
+          turn: ${{ outputs.turn }}
+          issues: ${{ outputs.issues }}
+      - to: questions
+        when: outputs.flow.result.next == 'ask_user'
+        payload:
+          flow: ${{ outputs.flow }}
+      - to: coordinate
+        when: outputs.flow.result.next in ['consult', 'blocked']
+        payload:
+          flow: ${{ outputs.flow }}
+          action: ${{ outputs.flow.result.next }}
+          requests: ${{ outputs.flow.result.consultations }}
+          keys: ${{ outputs.flow.result.keys }}
+      - to: work
+        when: outputs.flow.result.next == 'continue'
+        payload:
+          flow: '${{ jq([outputs.flow, {''message'': ''Continue the bounded request.''}], ''add'') }}'
+      - to: finish
+        when: true
+        payload:
+          flow: ${{ outputs.flow }}
+      vars:
+        issues: |-
+          ${{ (states.work.outputs.turn.result.?response.orValue({}).?next.orValue('') == 'ask_user' ? [] : states.work.outputs.turn.?issues.orValue([]))
+           + (states.work.outputs.turn.result.?status.orValue('failed') != 'completed' ? ['Agent did not complete: ' + states.work.outputs.turn.result.?errorMessage.orValue('No completed response.')] : [])
+           + (!states.work.outputs.turn.result.?output_schema_valid.orValue(false) ? ['The operation did not produce a schema-valid response. Correct the response using the supplied schema.'] : [])
+           + (states.work.outputs.turn.result.?session.orValue(null) == null ? ['The response has no resumable session checkpoint.'] : [])
+           + (size(states.work.outputs.turn.jobs.?job_ids.orValue([])) > 0 ? ['The agent submitted jobs directly; stop and review these effects before continuing.'] : [])
+           + (states.work.outputs.turn.result.?status.orValue('failed') == 'completed' && states.work.outputs.turn.result.?output_schema_valid.orValue(false) ?
+              (states.work.outputs.turn.result.response.next != 'ask_user' && states.work.outputs.turn.result.response.files.exists(f, f.path.startsWith('/') || f.path.contains('..') || f.path.contains('\\') || f.path in ['context.json', 'feedback.json', '__git_state_thin_pack__']) ? ['Select only safe deliverable artifact names, excluding workflow control files.'] : [])
+            + (states.work.outputs.turn.result.response.next != 'ask_user' && size(states.work.outputs.turn.result.response.files.map(f, f.path)) != size(jq(states.work.outputs.turn.result.response.files, 'map(.path) | unique')) ? ['List each resolved artifact only once.'] : [])
+            + (states.work.outputs.turn.result.response.next == 'ask_user' && (size(states.work.outputs.turn.result.response.questions) == 0 || states.work.outputs.turn.result.response.questions.exists(q, q.id == 'annotations')) ? ['ask_user requires focused questions; annotations is a reserved question id.'] : [])
+            + (states.work.outputs.turn.result.response.next == 'consult' && size(states.work.outputs.turn.result.response.consultations) == 0 ? ['consult requires at least one consultation request.'] : [])
+            + (states.work.outputs.turn.result.response.next == 'review' && (!states.work.outputs.turn.result.response.subject.matches('^[^[:cntrl:]]{1,72}$') || !states.work.outputs.turn.result.response.subject.matches('.*[^[:space:]].*') || !states.work.outputs.turn.result.response.review_message.matches('(?s).*[^[:space:]].*')) ? ['Review requires a single-line subject of at most 72 characters and a substantive review message.'] : [])
+           : []) }}
+    coordinate:
+      inputs:
+        flow: ${{ transition.payload.flow }}
+        action: ${{ transition.payload.action }}
+        requests: ${{ transition.payload.requests }}
+        keys: ${{ transition.payload.keys }}
+      sequence:
+      - id: coordinate
+        include: ./coordinate.yaml
+        inputs:
+          flow: ${{ inputs.flow }}
+          action: ${{ inputs.action }}
+          requests: ${{ inputs.requests }}
+          keys: ${{ inputs.keys }}
+      outputs:
+        valid: ${{ sequence.coordinate.outputs.valid }}
+        flow: '${{ jq([sequence.coordinate.outputs.flow, {''message'': ''Coordination state changed. Read
+          context.json and new evidence; continue independent work before waiting.''}], ''add'') }}'
+      transitions:
+      - to: repair
+        when: '!outputs.valid'
+        payload:
+          flow: '${{ jq([outputs.flow, {''repair_attempts'': states.work.outputs.flow.?repair_attempts.orValue(0),
+            ''repair_base_documents'': states.work.outputs.flow.?repair_base_documents.orValue(states.work.outputs.flow.documents)}],
+            ''add'') }}'
+          turn: '${{ jq([states.work.outputs.turn, {''result'': jq([states.work.outputs.turn.result, {''session'':
+            outputs.flow.session}], ''add'')}], ''add'') }}'
+          issues: ${{ ['Coordination rejected the requested keys or action. Use known keys and distinct requests
+            to existing serving cells. Never resubmit recorded jobs.'] }}
+      - to: work
+        when: true
+        payload:
+          flow: ${{ outputs.flow }}
+    questions:
+      inputs:
+        flow: ${{ transition.payload.flow }}
+      sequence:
+      - id: review
+        include: ../kernel/review.yaml
+        inputs:
+          title: Clarify the current build
+          documents: ${{ inputs.flow.documents }}
+          fields: '${{ inputs.flow.result.questions + [{''id'': ''annotations'', ''type'': ''file_upload'',
+            ''question'': ''Optional supporting documents or annotations.'', ''required'': false}] }}'
+      outputs:
+        flow: '${{ jq([inputs.flow, {''documents'': jq([inputs.flow.documents, sequence.review.outputs.documents],
+          ''add''), ''message'': ''Read feedback.json and the attachments, then continue the bounded request.''}],
+          ''add'') }}'
+      transitions:
+      - to: work
+        when: true
+        payload:
+          flow: ${{ outputs.flow }}
+    rebase:
+      inputs:
+        flow: ${{ transition.payload.flow }}
+      sequence:
+      - id: upstream
+        op: command_execution
+        const: true
+        inputs:
+          env:
+            REPO: ${{ context.git.repo }}
+            BRANCH: ${{ context.git.ref }}
+          run: |
+            set -eu
+            git ls-remote --exit-code -- "$REPO" "refs/heads/${BRANCH#refs/heads/}"
+      - id: rebase
+        op: rebase
+        inputs:
+          target_base_hash: ${{ jq(sequence.upstream.outputs.stdout, 'split("\t")[0]') }}
+      outputs:
+        flow: ${{ inputs.flow }}
+      transitions:
+      - to: inspect_rebased
+        when: true
+        payload:
+          flow: ${{ outputs.flow }}
+    verify:
+      inputs:
+        flow: ${{ transition.payload.flow }}
+      sequence:
+      - id: verify
+        include: ../develop/verify.yaml
+        inputs:
+          target_directory: ${{ inputs.flow.target_directory }}
+          command: ${{ inputs.flow.result.verification_command }}
+      outputs:
+        ok: ${{ sequence.verify.outputs.ok }}
+        flow: '${{ jq([inputs.flow, {''verification'': sequence.verify.outputs.evidence, ''documents'': jq([inputs.flow.documents,
+          sequence.verify.outputs.artifact_refs], ''add''), ''message'': ''Verification did not pass. Read
+          verification.md and build.log, resolve the issue, and request inspection again.''}], ''add'') }}'
+      transitions:
+      - to: synopsis
+        when: outputs.ok
+        payload:
+          flow: ${{ outputs.flow }}
+      - to: work
+        when: true
+        payload:
+          flow: ${{ outputs.flow }}
+    accept:
+      inputs:
+        flow: ${{ transition.payload.flow }}
+      sequence:
+      - id: outcome_review
+        include: ../kernel/review.yaml
+        inputs:
+          title: Review verified change synopsis
+          documents: ${{ inputs.flow.documents }}
+          fields:
+          - id: decision
+            type: multiple_choice
+            question: Accept the synopsis and proposed commit message, and merge this verified candidate?
+            required: true
+            options:
+            - value: accept
+              label: Accept and merge
+            - value: revise
+              label: Revise implementation
+            - value: cancel
+              label: Cancel
+          - id: feedback
+            type: paragraph_text
+            question: ${{ inputs.flow.?review_hint.orValue('Requested changes or guidance (required when requesting
+              changes).') }}
+            required: false
+          - id: annotations
+            type: file_upload
+            question: Optional annotated documents; uploads request revision and another review.
+            required: false
+      outputs:
+        response: ${{ sequence.outcome_review.outputs.response }}
+        changed: ${{ sequence.outcome_review.outputs.changed }}
+        flow: '${{ jq([inputs.flow, {''documents'': jq([inputs.flow.documents, sequence.outcome_review.outputs.documents],
+          ''add''), ''reviews'': jq([inputs.flow.reviews, {''outcome'': sequence.outcome_review.outputs.response.?receipt.orValue({})}],
+          ''add''), ''message'': ''Read feedback.json and attachments, revise the implementation, and request
+          inspection again.''}], ''add'') }}'
+      transitions:
+      - to: stopped
+        when: outputs.response.fields.decision == 'cancel'
+        payload:
+          flow: '${{ jq([outputs.flow, {''disposition'': ''cancelled''}], ''add'') }}'
+      - to: merge
+        when: outputs.response.fields.decision == 'accept' && !outputs.changed && outputs.flow.verification.status
+          == 'passed'
+        payload:
+          flow: ${{ outputs.flow }}
+      - to: work
+        when: outputs.changed
+        payload:
+          flow: ${{ outputs.flow }}
+      - to: accept
+        when: true
+        payload:
+          flow: '${{ jq([outputs.flow, {''review_hint'': ''Please describe the requested changes or attach
+            annotated documents before requesting revision.''}], ''add'') }}'
+    merge:
+      inputs:
+        flow: ${{ transition.payload.flow }}
+      sequence:
+      - id: squash
+        op: squash
+        inputs:
+          author: ${{ context.git.?author.orValue('') }}
+          commit_message: ${{ inputs.flow.commit_message }}
+      - id: merge
+        op: merge
+        inputs:
+          repo_path: ${{ context.environment.op.worktree_path }}
+          upstream_repo: ${{ context.git.repo }}
+          upstream_branch: ${{ context.git.ref }}
+      outputs:
+        flow: '${{ jq([inputs.flow, {''disposition'': ''implemented''}], ''add'') }}'
+        merged_hash: ${{ sequence.merge.outputs.merged_hash }}
+        target_branch: ${{ sequence.merge.outputs.target_branch }}
+    stopped:
+      inputs:
+        flow: ${{ transition.payload.flow }}
+      sequence: []
+      outputs:
+        flow: ${{ inputs.flow }}
+    rejected:
+      op: command_execution
+      inputs:
+        run: exit 1
+      catch:
+      - when: true
+        fail:
+          code: BUILD_REJECTED
+          message: ${{ transition.payload.reason }}
+    repair:
+      inputs:
+        flow: ${{ transition.payload.flow }}
+        turn: ${{ transition.payload.turn }}
+        issues: ${{ transition.payload.issues }}
+      sequence:
+      - id: repair
+        include: ../kernel/repair.yaml
+        inputs:
+          turn: ${{ inputs.turn }}
+          issues: ${{ inputs.issues }}
+          documents: ${{ inputs.flow.documents }}
+          session: ${{ inputs.flow.session }}
+          attempts: ${{ inputs.flow.?repair_attempts.orValue(0) }}
+      outputs:
+        retry: ${{ sequence.repair.outputs.retry }}
+        flow: '${{ jq([inputs.flow, {''result'': inputs.turn.result.?response.orValue(inputs.flow.?result.orValue({})),
+          ''session'': sequence.repair.outputs.session, ''documents'': sequence.repair.outputs.documents,
+          ''repair_base_documents'': inputs.flow.?repair_base_documents.orValue(inputs.flow.documents), ''repair_artifacts'':
+          sequence.repair.outputs.artifacts, ''repair_attempts'': sequence.repair.outputs.attempts, ''message'':
+          sequence.repair.outputs.prompt}], ''add'') }}'
+      transitions:
+      - to: work
+        when: outputs.retry
+        payload:
+          flow: ${{ outputs.flow }}
+      - to: stopped
+        when: true
+        payload:
+          flow: '${{ jq([outputs.flow, {''disposition'': ''cancelled''}], ''add'') }}'
+    finish:
+      inputs:
+        flow: ${{ transition.payload.flow }}
+      sequence: []
+      outputs:
+        flow: ${{ inputs.flow }}
+      transitions:
+      - to: wait_children
+        when: outputs.flow.jobs.exists(k, outputs.flow.jobs[k].status == 'running')
+        payload:
+          flow: ${{ outputs.flow }}
+      - to: rejected
+        when: '!outputs.flow.jobs.all(k, outputs.flow.jobs[k].status == ''completed'' && (outputs.flow.jobs[k].result.?merged.orValue(false)
+          || outputs.flow.jobs[k].result.?disposition.orValue('''') in [''delegated'', ''unchanged'']))'
+        payload:
+          reason: A child completed without satisfying its requested work. Inspect its result before continuing.
+      - to: handoff
+        when: outputs.flow.result.next == 'heavy'
+        payload:
+          flow: ${{ outputs.flow }}
+      - to: stopped
+        when: outputs.flow.result.next == 'outside'
+        payload:
+          flow: '${{ jq([outputs.flow, {''disposition'': ''outside''}], ''add'') }}'
+      - to: work
+        when: outputs.flow.threads.exists(k, outputs.flow.threads[k].result.outcome != 'agreed')
+        payload:
+          flow: '${{ jq([outputs.flow, {''message'': ''A serving-cell consultation did not agree. Resolve
+            the outstanding scope, ask the user, or escalate to heavy; do not claim the request is complete.''}],
+            ''add'') }}'
+      - to: inspect
+        when: true
+        payload:
+          flow: ${{ outputs.flow }}
+    wait_children:
+      inputs:
+        flow: ${{ transition.payload.flow }}
+      sequence:
+      - id: children
+        include: ./coordinate.yaml
+        inputs:
+          flow: ${{ inputs.flow }}
+          action: ${{ 'blocked' }}
+          requests: ${{ [] }}
+          keys: ${{ jq(inputs.flow.jobs, 'to_entries | map(select(.value.status == "running") | .key)') }}
+      outputs:
+        flow: ${{ sequence.children.outputs.flow }}
+      transitions:
+      - to: finish
+        when: true
+        payload:
+          flow: ${{ outputs.flow }}
+    inspect:
+      inputs:
+        flow: ${{ transition.payload.flow }}
+      sequence:
+      - id: candidate
+        include: ../kernel/git-candidate.yaml
+      outputs:
+        flow: ${{ inputs.flow }}
+        changed: ${{ size(sequence.candidate.outputs.candidate.files) > 0 }}
+      transitions:
+      - to: rebase
+        when: outputs.changed
+        payload:
+          flow: ${{ outputs.flow }}
+      - to: stopped
+        when: true
+        payload:
+          flow: '${{ jq([outputs.flow, {''disposition'': size(outputs.flow.jobs) > 0 ? ''delegated'' : ''unchanged''}],
+            ''add'') }}'
+    synopsis:
+      inputs:
+        flow: ${{ transition.payload.flow }}
+      sequence:
+      - id: synopsis
+        include: ./synopsis.yaml
+        inputs:
+          flow: ${{ inputs.flow }}
+      outputs:
+        flow: '${{ jq([inputs.flow, {''commit_message'': sequence.synopsis.outputs.commit_message, ''documents'':
+          jq([inputs.flow.documents, sequence.synopsis.outputs.documents], ''add'')}], ''add'') }}'
+      transitions:
+      - to: accept
+        when: true
+        payload:
+          flow: ${{ outputs.flow }}
+    handoff:
+      inputs:
+        flow: ${{ transition.payload.flow }}
+      sequence:
+      - id: evidence
+        op: command_execution
+        const: true
+        inputs:
+          env:
+            OUTBOX: ${{ context.environment.op.outbox }}
+            HANDOFF: ${{ json_stringify(jq(inputs.flow, 'del(.session, .documents)')) }}
+          run: |
+            printf '%s\n' "$HANDOFF" > "$OUTBOX/light-handoff.json"
+      outputs:
+        flow: '${{ jq([inputs.flow, {''disposition'': ''heavy'', ''documents'': jq([inputs.flow.documents,
+          {''light-handoff.json'': sequence.evidence.artifacts[''light-handoff.json'']}], ''add'')}], ''add'')
+          }}'
+    inspect_rebased:
+      inputs:
+        flow: ${{ transition.payload.flow }}
+      sequence:
+      - id: candidate
+        include: ../kernel/git-candidate.yaml
+      outputs:
+        flow: ${{ inputs.flow }}
+        changed: ${{ size(sequence.candidate.outputs.candidate.files) > 0 }}
+      transitions:
+      - to: verify
+        when: outputs.changed
+        payload:
+          flow: ${{ outputs.flow }}
+      - to: stopped
+        when: true
+        payload:
+          flow: '${{ jq([outputs.flow, {''disposition'': size(outputs.flow.jobs) > 0 ? ''delegated'' : ''unchanged''}],
+            ''add'') }}'
+outputs:
+  merged: ${{ nonempty(state_output('merge', 'merged_hash', '')) }}
+  merged_hash: ${{ state_output('merge', 'merged_hash', '') }}
+  target_branch: ${{ state_output('merge', 'target_branch', '') }}
+  session: ${{ state_output('merge', 'flow', state_output('stopped', 'flow', state_output('handoff', 'flow',
+    state_output('record', 'flow', {})))).session }}
+  assistant_summary: ${{ state_output('merge', 'flow', state_output('stopped', 'flow', state_output('handoff',
+    'flow', state_output('record', 'flow', {})))).result.?summary.orValue('') }}
+  disposition: ${{ state_output('merge', 'flow', state_output('stopped', 'flow', state_output('handoff', 'flow',
+    state_output('record', 'flow', {})))).?disposition.orValue('incomplete') }}
+  result: ${{ state_output('merge', 'flow', state_output('stopped', 'flow', state_output('handoff', 'flow',
+    state_output('record', 'flow', {})))).result }}
+  artifact_refs: ${{ state_output('merge', 'flow', state_output('stopped', 'flow', state_output('handoff',
+    'flow', state_output('record', 'flow', {})))).documents }}
+  consultations: ${{ state_output('merge', 'flow', state_output('stopped', 'flow', state_output('handoff',
+    'flow', state_output('record', 'flow', {})))).threads }}
+  dependencies: ${{ state_output('merge', 'flow', state_output('stopped', 'flow', state_output('handoff',
+    'flow', state_output('record', 'flow', {})))).jobs }}
+  reviews: ${{ state_output('merge', 'flow', state_output('stopped', 'flow', state_output('handoff', 'flow',
+    state_output('record', 'flow', {})))).reviews }}
+  verification: ${{ state_output('merge', 'flow', state_output('stopped', 'flow', state_output('handoff',
+    'flow', state_output('record', 'flow', {})))).?verification.orValue({}) }}
+  escalate: ${{ state_exists('handoff') }}

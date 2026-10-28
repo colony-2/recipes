@@ -1,0 +1,178 @@
+id: light-agent
+version: 1.0.0
+inputs:
+  flow: ${{ inputs.flow }}
+  documents: ${{ inputs.documents }}
+vars:
+  schema:
+    type: object
+    additionalProperties: false
+    required:
+    - next
+    - summary
+    - files
+    - questions
+    - consultations
+    - keys
+    - verification_command
+    - subject
+    - review_message
+    properties:
+      next:
+        type: string
+        enum:
+        - continue
+        - review
+        - ask_user
+        - consult
+        - blocked
+        - heavy
+        - outside
+      summary:
+        type: string
+        minLength: 1
+      files:
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          required:
+          - path
+          - description
+          properties:
+            path:
+              type: string
+              minLength: 1
+            description:
+              type: string
+              minLength: 1
+      questions:
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          required:
+          - id
+          - type
+          - question
+          - required
+          - options
+          properties:
+            id:
+              type: string
+              minLength: 1
+            type:
+              type: string
+              enum:
+              - paragraph_text
+              - short_answer
+              - multiple_choice
+              - checkboxes
+            question:
+              type: string
+              minLength: 1
+            required:
+              type: boolean
+            options:
+              type: array
+              items:
+                type: object
+                additionalProperties: false
+                required:
+                - value
+                - label
+                properties:
+                  value:
+                    type: string
+                  label:
+                    type: string
+      consultations:
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          required:
+          - key
+          - kind
+          - cell
+          - ref
+          - request
+          - role
+          properties:
+            key:
+              type: string
+              pattern: ^[a-zA-Z0-9_-]+$
+            kind:
+              type: string
+              enum:
+              - feature
+            cell:
+              type: string
+            ref:
+              type: string
+            request:
+              type: string
+              minLength: 1
+            role:
+              type: string
+              minLength: 1
+      keys:
+        type: array
+        items:
+          type: string
+          minLength: 1
+      verification_command:
+        type: string
+      subject:
+        type: string
+      review_message:
+        type: string
+  instructions: |
+    A cell encompasses the entire repository. Read AGENTS.md and root PURPOSE.md if
+    present; otherwise infer responsibilities from repository evidence and history.
+    Missing purpose documentation is not a blocker or a reason to initialize a mandate.
+    A target directory scopes the task, not cell membership. Discover dependencies
+    through ordinary tooling; c2j cells lists relationships we may influence.
+  prompt: |
+    {{ inputs.flow.message }}
+    Target directory: {{ inputs.flow.target_directory }}
+    Read inbox/context.json for the request, consultation agreements and child outcomes.
+    Read feedback.json and supporting documents when present. Continue implementation
+    and testing unless this is a read-only response repair.
+  setup: |
+    Complete this bounded request using the repository's existing patterns. Implement
+    directly; no separate design, test-statement, or plan-approval phase is required.
+    Maintain existing test expectations and run meaningful repository checks. Return
+    verification_command for the recipe to repeat before merge review, or empty to use
+    bash ./build.sh. Use the repository's Nix/bootstrap environment when tools are
+    required; do not assume host language runtimes. Never substitute a no-op for verification. Docs-only changes also
+    need an appropriate check. Explain outcomes, tests and limitations in summary and
+    review_message; use an imperative single-line commit subject of at most 72 characters.
+    Do not commit, push, merge, or submit jobs yourself: recipes own those actions.
+    Use consult with stable keys for requests to existing serving cells. All consultations
+    run inline; agreed requests launch child builds immediately without plan approval.
+    Do independent work before blocked, which waits on known keys. Read context.json
+    before requesting anything again. Reusing a key never launches a second job, and
+    changing its request requires a new key. Declined consultations are not completed work.
+    Use heavy if the local scope becomes complex, uncertain, requires creating cells,
+    or cannot safely fit this short process. State why in summary. Existing children
+    finish before the heavy workflow starts; preserve their completed work.
+    Use review when the request is satisfied. The recipe waits for all children, checks
+    the actual Git diff, repeats verification, and requests synopsis approval only when
+    there are local changes. Delegation-only work needs no local merge review.
+    Use ask_user for focused clarification. Annotations request revision, not approval.
+    Use the supplied output schema. Deliverable files are optional; list only files you
+    actually wrote to outbox. Never edit the repository during response repair.
+sequence:
+- id: turn
+  include: ../kernel/agent-turn.yaml
+  inputs:
+    prompt: ${{ vars.setup + '\n' + vars.prompt }}
+    instructions: ${{ vars.instructions + '\n\n' + vars.setup }}
+    schema: ${{ vars.schema }}
+    session: ${{ inputs.flow.session }}
+    documents: ${{ inputs.documents }}
+    read_only: ${{ has(inputs.flow.repair_base_documents) }}
+    retained_artifacts: ${{ inputs.flow.?repair_artifacts.orValue({}) }}
+outputs:
+  turn: ${{ sequence.turn.outputs }}
