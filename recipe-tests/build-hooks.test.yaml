@@ -1,0 +1,231 @@
+recipe: fixtures/build-hooks.yaml
+cases:
+- id: missing-hooks
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          build.sh: exit 1
+  inputs: {}
+  mocks:
+    ops:
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: verification.status
+    value: skipped
+  - type: output_equals
+    path: settings.require_design
+    value: false
+- id: configuration-values
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          .c2/recipes/hooks/build/configure.yaml: |
+            id: fixture-configure
+            sequence:
+            - id: values
+              op: command_execution
+              inputs:
+                run: |
+                  printf '%s%s%s' '{"require_design":true,"prompt_additions":{"design":"Compare alternatives; preserve $(literal) and $' '{' '{ literal }}."},"variables":{"nested":{"budget":6}},"consultations":[]}'
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: Fixture configure completed.
+              artifact_refs: {}
+              settings: ${{ json_parse(sequence.values.outputs.stdout) }}
+          .c2/recipes/hooks/build/before_design.yaml: |
+            id: fixture-before_design
+            sequence: []
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: Fixture before_design completed.
+              artifact_refs: {}
+          .c2/recipes/hooks/build/prepare.yaml: |
+            id: fixture-prepare
+            sequence: []
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: Fixture prepare completed.
+              artifact_refs: {}
+  inputs: {}
+  mocks:
+    ops:
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: settings
+    value:
+      require_design: true
+      prompt_additions:
+        design: Compare alternatives; preserve $(literal) and ${{ literal }}.
+      variables:
+        nested:
+          budget: 6
+      consultations: []
+- id: unknown-setting
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          .c2/recipes/hooks/build/configure.yaml: |
+            id: fixture-configure
+            sequence: []
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: Fixture configure completed.
+              artifact_refs: {}
+              settings:
+                typo: true
+  inputs: {}
+  mocks:
+    ops:
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions: []
+  expect_error: typo
+- id: duplicate-consultations
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          .c2/recipes/hooks/build/configure.yaml: |
+            id: fixture-configure
+            sequence: []
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: Fixture configure completed.
+              artifact_refs: {}
+              settings:
+                consultations:
+                - &id001
+                  key: security
+                  checkpoint: plan_assessment
+                  role: Security
+                  request: Review boundaries
+                  required: true
+                - *id001
+  inputs: {}
+  mocks:
+    ops:
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions: []
+  expect_error: command execution failed
+- id: prepare-new-hook
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          .c2/recipes/hooks/build/prepare.yaml: |
+            id: fixture-prepare
+            sequence:
+            - id: write_hook
+              op: command_execution
+              inputs:
+                run: |
+                  cat > .c2/recipes/hooks/build/verify.yaml <<'HOOK'
+                  id: fixture-verify
+                  sequence: []
+                  outputs:
+                    api_version: c2.build-hook/v1
+                    status: passed
+                    summary: Fixture verify completed.
+                    artifact_refs: {}
+                  HOOK
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: Fixture prepare completed.
+              artifact_refs: {}
+  inputs: {}
+  mocks:
+    ops:
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: verification.status
+    value: passed
+- id: prepare-failure
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          .c2/recipes/hooks/build/prepare.yaml: |
+            id: fixture-prepare
+            sequence: []
+            outputs:
+              api_version: c2.build-hook/v1
+              status: failed
+              summary: Fixture prepare completed.
+              artifact_refs: {}
+  inputs: {}
+  mocks:
+    ops:
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: preparation.status
+    value: failed
+- id: research-mutation-rejected
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          .c2/recipes/hooks/build/before_design.yaml: |
+            id: fixture-research
+            sequence:
+            - id: edit
+              op: command_execution
+              inputs:
+                run: echo bad > candidate.txt
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: Fixture research completed.
+              artifact_refs: {}
+  inputs: {}
+  mocks:
+    ops:
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions: []
+  expect_error: command execution failed

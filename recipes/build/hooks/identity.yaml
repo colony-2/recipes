@@ -1,0 +1,77 @@
+id: build-hook-identity
+version: 1.0.0
+sequence:
+- id: inspect_hook_sources
+  op: command_execution
+  const: true
+  execution_needs:
+    packages:
+    - nix:github:NixOS/nixpkgs/e7439b6b14ad3cc35d05608ebca9bce01a25f5f8#python3
+    - nix:github:NixOS/nixpkgs/e7439b6b14ad3cc35d05608ebca9bce01a25f5f8#yq-go
+  inputs:
+    run: |
+      python3 - <<'PY'
+      import hashlib, json, posixpath, subprocess
+
+      def git(*args):
+          return subprocess.check_output(['git', *args])
+
+      pending = ['.c2/recipes/hooks/build/' + name + '.yaml'
+                 for name in ('configure', 'before_design', 'prepare', 'verify', 'publish')]
+      sources = {}
+      opaque = False
+      while pending:
+          path = posixpath.normpath(pending.pop())
+          if path in sources:
+              continue
+          if path.startswith('/') or path == '..' or path.startswith('../'):
+              raise ValueError('Hook include escapes its repository')
+          entry = git('ls-tree', 'HEAD', '--', path).decode().strip()
+          if not entry:
+              sources[path] = 'absent'
+              continue
+          sources[path] = entry.split('\t', 1)[0]
+          if not entry.startswith('100'):
+              # Runtime hook loading rejects symlinks; never follow them here.
+              opaque = True
+              continue
+          document = json.loads(subprocess.check_output(
+              ['yq', '-o=json', '.'], input=git('show', 'HEAD:' + path)))
+          visited = set()
+          def walk(node):
+              global opaque
+              if not isinstance(node, (dict, list)) or id(node) in visited:
+                  return
+              visited.add(id(node))
+              if isinstance(node, dict):
+                  include = node.get('include')
+                  if isinstance(include, dict):
+                      include = include.get('recipe')
+                  if isinstance(include, str):
+                      if include.startswith('cell://'):
+                          pending.append(include[len('cell://'):])
+                      elif ':' in include or (chr(36) + chr(123) + chr(123)) in include:
+                          opaque = True
+                      else:
+                          pending.append(posixpath.join(posixpath.dirname(path), include))
+                  op = node.get('op')
+                  if isinstance(op, str) and ':' in op:
+                      opaque = True
+                  if node.get('extensions'):
+                      opaque = True
+                  walk(node.get('sequence'))
+                  state = node.get('state')
+                  if isinstance(state, dict):
+                      for child in state.get('states', {}).values():
+                          walk(child)
+              else:
+                  for value in node:
+                      walk(value)
+          walk(document)
+      # External recipe/selector definitions can change independently. Require
+      # renewed review on a new candidate rather than guessing their identity.
+      identity = {'sources': sources, 'candidate': git('rev-parse', 'HEAD').decode().strip() if opaque else ''}
+      print(hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest())
+      PY
+outputs:
+  digest: '${{ jq(sequence.inspect_hook_sources.outputs.stdout, ''rtrimstr("\n")'') }}'

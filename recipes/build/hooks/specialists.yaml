@@ -1,0 +1,118 @@
+id: build-specialists
+inputs:
+  flow: ${{ inputs.flow }}
+  checkpoint: ${{ inputs.checkpoint }}
+state:
+  initial: start
+  states:
+    start:
+      inputs:
+        flow: ${{ inputs.flow }}
+        checkpoint: ${{ inputs.checkpoint }}
+      sequence: []
+      outputs:
+        flow: "${{ jq([inputs.flow, {'specialist_round': int(inputs.flow.?specialist_round.orValue(0)) + 1}], 'add')
+          }}"
+        items: ${{ inputs.flow.?hook_settings.orValue({}).?consultations.orValue([]).filter(c, c.checkpoint ==
+          inputs.checkpoint) }}
+      transitions:
+      - to: pick
+        when: 'true'
+        payload:
+          flow: ${{ outputs.flow }}
+          items: ${{ outputs.items }}
+          index: 0
+    pick:
+      inputs:
+        flow: ${{ transition.payload.flow }}
+        items: ${{ transition.payload.items }}
+        index: ${{ transition.payload.index }}
+      sequence: []
+      outputs:
+        flow: ${{ inputs.flow }}
+        items: ${{ inputs.items }}
+        index: ${{ inputs.index }}
+      transitions:
+      - to: consult
+        when: int(outputs.index) < size(outputs.items)
+        payload:
+          flow: ${{ outputs.flow }}
+          items: ${{ outputs.items }}
+          index: ${{ outputs.index }}
+      - to: done
+        when: 'true'
+        payload:
+          flow: ${{ outputs.flow }}
+          passed: true
+    consult:
+      inputs:
+        flow: ${{ transition.payload.flow }}
+        items: ${{ transition.payload.items }}
+        index: ${{ transition.payload.index }}
+      vars:
+        item: ${{ transition.payload.items[int(transition.payload.index)] }}
+        thread: ${{ 'configured_' + transition.payload.items[int(transition.payload.index)].key + '_' +
+          string(transition.payload.flow.specialist_round) }}
+      sequence:
+      - id: expert
+        include: ./expert.yaml
+        inputs:
+          thread: ${{ vars.thread }}
+          request: ${{ vars.item.request }}
+          consultant_role: "${{ vars.item.role + '\\nRead the current documents and report concrete findings. '
+            + (vars.item.required ? 'This is a required assessment: report assessment=pass only when no blocking
+            issues remain, otherwise revise. Agreement on findings is not a pass.' : 'This is advisory research;
+            explain alternatives, limitations, and recommendations.') + '\\nRepository assessment guidance:\\n'
+            + inputs.flow.?hook_settings.orValue({}).?prompt_additions.orValue({})[?vars.item.checkpoint].orValue('')
+            }}"
+          requester_session: '${{ inputs.flow.session }}'
+          documents: ${{ inputs.flow.documents }}
+      - id: evidence
+        include: ../../kernel/artifact-namespace.yaml
+        inputs:
+          prefix: ${{ 'specialists/' + vars.thread + '/' }}
+          documents: "${{ jq([sequence.expert.outputs.final_artifacts, {'conversation.json': sequence.expert.outputs.transcript}],
+            'add') }}"
+      outputs:
+        flow: "${{ jq([inputs.flow, {'session': sequence.expert.outputs.requester_session, 'documents': jq([inputs.flow.documents,
+          sequence.evidence.outputs.documents], 'add'), 'specialist_reviews': jq([inputs.flow.?specialist_reviews.orValue({}),
+          {vars.thread: {'key': vars.item.key, 'checkpoint': vars.item.checkpoint, 'required': vars.item.required,
+          'outcome': sequence.expert.outputs.outcome, 'assessment': sequence.expert.outputs.assessment} }], 'add')}],
+          'add') }}"
+        unresolved: ${{ sequence.expert.outputs.outcome in ['failed', 'needs_review'] }}
+        passed: ${{ !vars.item.required || (sequence.expert.outputs.outcome == 'agreed' &&
+          sequence.expert.outputs.assessment == 'pass') }}
+        items: ${{ inputs.items }}
+        index: ${{ int(inputs.index) + 1 }}
+      transitions:
+      - to: invalid
+        when: outputs.unresolved
+      - to: done
+        when: '!outputs.passed'
+        payload:
+          flow: "${{ jq([outputs.flow, {'message': 'A required specialist requested revision. Read the specialist
+            findings and revise the current deliverable; agreement on findings is not approval.'}], 'add | del(.reuse_merge_approval)')
+            }}"
+          passed: false
+      - to: pick
+        when: 'true'
+        payload:
+          flow: ${{ outputs.flow }}
+          items: ${{ outputs.items }}
+          index: ${{ outputs.index }}
+    done:
+      inputs:
+        flow: ${{ transition.payload.flow }}
+        passed: ${{ transition.payload.passed }}
+      sequence: []
+      outputs:
+        flow: ${{ inputs.flow }}
+        passed: ${{ inputs.passed }}
+    invalid:
+      id: invalid
+      op: command_execution
+      inputs:
+        run: echo "Specialist consultation did not resolve; inspect its transcript" >&2; exit 1
+outputs:
+  flow: ${{ states.done.outputs.flow }}
+  passed: ${{ states.done.outputs.passed }}

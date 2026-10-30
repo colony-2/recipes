@@ -12,6 +12,28 @@ cases:
         files:
           candidate.txt: original
           obsolete.txt: obsolete content
+          .c2/recipes/hooks/build/verify.yaml: |
+            id: fixture-verify
+            inputs:
+              target_directory: ${{ inputs.target_directory }}
+            sequence:
+            - id: run_suite
+              op: command_execution
+              const: true
+              inputs:
+                env:
+                  TARGET: '{{ context.environment.op.worktree_path }}/{{ inputs.target_directory }}'
+                  OUTBOX: ${{ context.environment.op.outbox }}
+                run: |
+                  cd "$TARGET" || exit 1
+                  if (
+                  bash ./build.sh
+                  ) > "$OUTBOX/tests.log" 2>&1; then printf passed; else printf failed; fi
+            outputs:
+              api_version: c2.build-hook/v1
+              status: ${{ sequence.run_suite.outputs.stdout }}
+              summary: Fixture repository checks completed.
+              artifact_refs: "${{ {'tests.log': sequence.run_suite.artifacts['tests.log']} }}"
     observe_files:
     - candidate.txt
     - unapproved.txt
@@ -19,10 +41,12 @@ cases:
     - added document.md
     - upstream.txt
     responses:
-    - node_path: build-merge-fixture/develop/root/approval/sequence/plan_review/kernel-review/request_human_review
+    - node_path:
+        build-merge-fixture/develop/root/approval/sequence/plan_review/kernel-review/request_human_review
       fields:
         decision: approve
-    - node_path: build-merge-fixture/develop/root/accept/sequence/outcome_review/kernel-review/request_human_review
+    - node_path:
+        build-merge-fixture/develop/root/accept/sequence/outcome_review/kernel-review/request_human_review
       fields:
         decision: accept
   mocks:
@@ -30,7 +54,8 @@ cases:
     - &approved_accounting
       repeat: true
       match:
-        node_path: build-merge-fixture/develop/root/accounting/sequence/review/build-merge-review/reviewer/kernel-agent-turn/start_read_only_session/start_read_only_session
+        node_path:
+          build-merge-fixture/develop/root/accounting/sequence/review/build-merge-review/reviewer/kernel-agent-turn/start_read_only_session/start_read_only_session
       behavior:
         mode: return
         outputs:
@@ -39,8 +64,8 @@ cases:
           response:
             verdict: approve
             subject: Improve requested behavior with verified coverage
-            review_message: Implement the approved behavior and verify it with build.sh. Independent assessment
-              and file accounting found the changes appropriate.
+            review_message: Implement the approved behavior and verify it with build.sh. Independent
+              assessment and file accounting found the changes appropriate.
             files:
             - path: build.sh
               change: A
@@ -211,8 +236,8 @@ cases:
   - type: cel_true
     expr: repositories.root.new_commits == 2
   - type: cel_true
-    expr: repositories.root.files["candidate.txt"] == "implemented behavior" && !("obsolete.txt" in repositories.root.files)
-      && "upstream.txt" in repositories.root.files
+    expr: repositories.root.files["candidate.txt"] == "implemented behavior" && !("obsolete.txt" in
+      repositories.root.files) && "upstream.txt" in repositories.root.files
   - type: cel_true
     expr: calls.filter(c, c.op in ["rebase", "squash", "merge"]).map(c, c.op) == ["rebase", "squash", "merge"]
   - type: cel_true
@@ -223,24 +248,30 @@ cases:
     expr: 'outputs.commit_message.startsWith("Improve requested behavior with verified coverage\n\n") && outputs.commit_message.contains("Job:
       https://jobs.colony2.com/0/jobs/" + calls.filter(c, c.op == "squash")[0].job_id)'
   - type: cel_true
-    expr: calls.filter(c, c.op == "merge")[0].outputs.merged_hash == calls.filter(c, c.op == "squash")[0].outputs.squashed_hash
+    expr: calls.filter(c, c.op == "merge")[0].outputs.merged_hash == calls.filter(c, c.op ==
+      "squash")[0].outputs.squashed_hash
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.node_path.contains("/accounting/")).all(c, !("session"
-      in c.inputs.inputs) && c.worktree["upstream.txt"] == "Concurrent upstream work\n")
+    expr: calls.filter(c, c.op == "extension_execution" && c.node_path.contains("/accounting/")).all(c,
+      !("session" in c.inputs.inputs) && c.worktree["upstream.txt"] == "Concurrent upstream work\n")
   - type: cel_true
     expr: size(reviews) == 2 && "merge-review.md" in reviews[1].form.documents
   - type: cel_true
-    expr: calls.filter(c, c.node_path.contains("/accounting/") && c.op == "extension_execution")[0].artifacts["merge-candidate.json"].contains("obsolete.txt")
+    expr: calls.filter(c, c.node_path.contains("/accounting/") && c.op ==
+      "extension_execution")[0].artifacts["merge-candidate.json"].contains("obsolete.txt")
   - type: cel_true
     expr: '"merge-review.md" in outputs.build.artifact_refs'
   - type: cel_true
     expr: >-
-      calls.filter(c, c.node_path.endsWith("/inspect_commit"))[0].artifacts["merge-review.md"].contains("Remove the obsolete implementation as requested.")
-      && calls.filter(c, c.node_path.endsWith("/inspect_commit"))[0].artifacts["merge-review.md"].contains("Document the approved behavior for users.")
-      && calls.filter(c, c.node_path.endsWith("/inspect_commit"))[0].artifacts["merge-review.md"].contains("Implement the approved behavior in this file.")
+      calls.filter(c, c.node_path.endsWith("/inspect_commit"))[0].artifacts["merge-review.md"].contains("Remove
+      the obsolete implementation as requested.")
+      && calls.filter(c, c.node_path.endsWith("/inspect_commit"))[0].artifacts["merge-review.md"].contains("Document
+      the approved behavior for users.")
+      && calls.filter(c, c.node_path.endsWith("/inspect_commit"))[0].artifacts["merge-review.md"].contains("Implement
+      the approved behavior in this file.")
   - type: cel_true
     expr: >-
-      calls.filter(c, c.op == "extension_execution" && c.node_path.contains("/assessment/"))[1].worktree["upstream.txt"] == "Concurrent upstream work\n"
+      calls.filter(c, c.op == "extension_execution" && c.node_path.contains("/assessment/"))[1].worktree["upstream.txt"]
+      == "Concurrent upstream work\n"
 - id: accounting-revision-returns-to-build-session
   type: integration_case
   runtime:
@@ -253,6 +284,28 @@ cases:
         files:
           candidate.txt: original
           obsolete.txt: obsolete content
+          .c2/recipes/hooks/build/verify.yaml: |
+            id: fixture-verify
+            inputs:
+              target_directory: ${{ inputs.target_directory }}
+            sequence:
+            - id: run_suite
+              op: command_execution
+              const: true
+              inputs:
+                env:
+                  TARGET: '{{ context.environment.op.worktree_path }}/{{ inputs.target_directory }}'
+                  OUTBOX: ${{ context.environment.op.outbox }}
+                run: |
+                  cd "$TARGET" || exit 1
+                  if (
+                  bash ./build.sh
+                  ) > "$OUTBOX/tests.log" 2>&1; then printf passed; else printf failed; fi
+            outputs:
+              api_version: c2.build-hook/v1
+              status: ${{ sequence.run_suite.outputs.stdout }}
+              summary: Fixture repository checks completed.
+              artifact_refs: "${{ {'tests.log': sequence.run_suite.artifacts['tests.log']} }}"
     observe_files:
     - candidate.txt
     - unapproved.txt
@@ -260,16 +313,19 @@ cases:
     - added document.md
     - upstream.txt
     responses:
-    - node_path: build-merge-fixture/develop/root/approval/sequence/plan_review/kernel-review/request_human_review
+    - node_path:
+        build-merge-fixture/develop/root/approval/sequence/plan_review/kernel-review/request_human_review
       fields:
         decision: approve
-    - node_path: build-merge-fixture/develop/root/accept/sequence/outcome_review/kernel-review/request_human_review
+    - node_path:
+        build-merge-fixture/develop/root/accept/sequence/outcome_review/kernel-review/request_human_review
       fields:
         decision: accept
   mocks:
     ops:
     - match:
-        node_path: build-merge-fixture/develop/root/accounting/sequence/review/build-merge-review/reviewer/kernel-agent-turn/start_read_only_session/start_read_only_session
+        node_path:
+          build-merge-fixture/develop/root/accounting/sequence/review/build-merge-review/reviewer/kernel-agent-turn/start_read_only_session/start_read_only_session
       behavior:
         mode: return
         outputs:
@@ -370,14 +426,15 @@ cases:
   - type: cel_true
     expr: size(calls.filter(c, c.op == "extension_execution" && c.node_path.contains("/accounting/"))) == 2
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.node_path.contains("/work/"))[3].inputs.inputs.session
-      == calls.filter(c, c.op == "extension_execution" && c.node_path.contains("/work/"))[2].outputs.session
+    expr: calls.filter(c, c.op == "extension_execution" &&
+      c.node_path.contains("/work/"))[3].inputs.inputs.session == calls.filter(c, c.op ==
+      "extension_execution" && c.node_path.contains("/work/"))[2].outputs.session
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.node_path.contains("/work/"))[3].artifacts["merge-review.md"].contains("Explain
-      the migration impact")
+    expr: calls.filter(c, c.op == "extension_execution" &&
+      c.node_path.contains("/work/"))[3].artifacts["merge-review.md"].contains("Explain the migration impact")
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.node_path.contains("/accounting/")).all(c, !("session"
-      in c.inputs.inputs))
+    expr: calls.filter(c, c.op == "extension_execution" && c.node_path.contains("/accounting/")).all(c,
+      !("session" in c.inputs.inputs))
 - id: accounting-rejects-missing-file
   type: integration_case
   runtime:
@@ -390,6 +447,28 @@ cases:
         files:
           candidate.txt: original
           obsolete.txt: obsolete content
+          .c2/recipes/hooks/build/verify.yaml: |
+            id: fixture-verify
+            inputs:
+              target_directory: ${{ inputs.target_directory }}
+            sequence:
+            - id: run_suite
+              op: command_execution
+              const: true
+              inputs:
+                env:
+                  TARGET: '{{ context.environment.op.worktree_path }}/{{ inputs.target_directory }}'
+                  OUTBOX: ${{ context.environment.op.outbox }}
+                run: |
+                  cd "$TARGET" || exit 1
+                  if (
+                  bash ./build.sh
+                  ) > "$OUTBOX/tests.log" 2>&1; then printf passed; else printf failed; fi
+            outputs:
+              api_version: c2.build-hook/v1
+              status: ${{ sequence.run_suite.outputs.stdout }}
+              summary: Fixture repository checks completed.
+              artifact_refs: "${{ {'tests.log': sequence.run_suite.artifacts['tests.log']} }}"
     observe_files:
     - candidate.txt
     - unapproved.txt
@@ -397,7 +476,8 @@ cases:
     - added document.md
     - upstream.txt
     responses:
-    - node_path: build-merge-fixture/develop/root/approval/sequence/plan_review/kernel-review/request_human_review
+    - node_path:
+        build-merge-fixture/develop/root/approval/sequence/plan_review/kernel-review/request_human_review
       fields:
         decision: approve
     expect_error: command execution failed
@@ -405,7 +485,8 @@ cases:
     ops:
     - repeat: true
       match:
-        node_path: build-merge-fixture/develop/root/accounting/sequence/review/build-merge-review/reviewer/kernel-agent-turn/start_read_only_session/start_read_only_session
+        node_path:
+          build-merge-fixture/develop/root/accounting/sequence/review/build-merge-review/reviewer/kernel-agent-turn/start_read_only_session/start_read_only_session
       behavior:
         mode: return
         outputs:
@@ -414,8 +495,8 @@ cases:
           response:
             verdict: approve
             subject: Improve requested behavior with verified coverage
-            review_message: Implement the approved behavior and verify it with build.sh. Independent assessment
-              and file accounting found the changes appropriate.
+            review_message: Implement the approved behavior and verify it with build.sh. Independent
+              assessment and file accounting found the changes appropriate.
             files:
             - path: build.sh
               change: A
@@ -451,6 +532,28 @@ cases:
         files:
           candidate.txt: original
           obsolete.txt: obsolete content
+          .c2/recipes/hooks/build/verify.yaml: |
+            id: fixture-verify
+            inputs:
+              target_directory: ${{ inputs.target_directory }}
+            sequence:
+            - id: run_suite
+              op: command_execution
+              const: true
+              inputs:
+                env:
+                  TARGET: '{{ context.environment.op.worktree_path }}/{{ inputs.target_directory }}'
+                  OUTBOX: ${{ context.environment.op.outbox }}
+                run: |
+                  cd "$TARGET" || exit 1
+                  if (
+                  bash ./build.sh
+                  ) > "$OUTBOX/tests.log" 2>&1; then printf passed; else printf failed; fi
+            outputs:
+              api_version: c2.build-hook/v1
+              status: ${{ sequence.run_suite.outputs.stdout }}
+              summary: Fixture repository checks completed.
+              artifact_refs: "${{ {'tests.log': sequence.run_suite.artifacts['tests.log']} }}"
     observe_files:
     - candidate.txt
     - unapproved.txt
@@ -458,7 +561,8 @@ cases:
     - added document.md
     - upstream.txt
     responses:
-    - node_path: build-merge-fixture/develop/root/approval/sequence/plan_review/kernel-review/request_human_review
+    - node_path:
+        build-merge-fixture/develop/root/approval/sequence/plan_review/kernel-review/request_human_review
       fields:
         decision: approve
     expect_error: command execution failed
@@ -466,7 +570,8 @@ cases:
     ops:
     - repeat: true
       match:
-        node_path: build-merge-fixture/develop/root/accounting/sequence/review/build-merge-review/reviewer/kernel-agent-turn/start_read_only_session/start_read_only_session
+        node_path:
+          build-merge-fixture/develop/root/accounting/sequence/review/build-merge-review/reviewer/kernel-agent-turn/start_read_only_session/start_read_only_session
       behavior:
         mode: return
         outputs:
@@ -475,8 +580,8 @@ cases:
           response:
             verdict: approve
             subject: Improve requested behavior with verified coverage
-            review_message: Implement the approved behavior and verify it with build.sh. Independent assessment
-              and file accounting found the changes appropriate.
+            review_message: Implement the approved behavior and verify it with build.sh. Independent
+              assessment and file accounting found the changes appropriate.
             files:
             - path: build.sh
               change: A
@@ -518,6 +623,28 @@ cases:
         files:
           candidate.txt: original
           obsolete.txt: obsolete content
+          .c2/recipes/hooks/build/verify.yaml: |
+            id: fixture-verify
+            inputs:
+              target_directory: ${{ inputs.target_directory }}
+            sequence:
+            - id: run_suite
+              op: command_execution
+              const: true
+              inputs:
+                env:
+                  TARGET: '{{ context.environment.op.worktree_path }}/{{ inputs.target_directory }}'
+                  OUTBOX: ${{ context.environment.op.outbox }}
+                run: |
+                  cd "$TARGET" || exit 1
+                  if (
+                  bash ./build.sh
+                  ) > "$OUTBOX/tests.log" 2>&1; then printf passed; else printf failed; fi
+            outputs:
+              api_version: c2.build-hook/v1
+              status: ${{ sequence.run_suite.outputs.stdout }}
+              summary: Fixture repository checks completed.
+              artifact_refs: "${{ {'tests.log': sequence.run_suite.artifacts['tests.log']} }}"
     observe_files:
     - candidate.txt
     - unapproved.txt
@@ -525,7 +652,8 @@ cases:
     - added document.md
     - upstream.txt
     responses:
-    - node_path: build-merge-fixture/develop/root/approval/sequence/plan_review/kernel-review/request_human_review
+    - node_path:
+        build-merge-fixture/develop/root/approval/sequence/plan_review/kernel-review/request_human_review
       fields:
         decision: approve
     expect_error: command execution failed
@@ -533,7 +661,8 @@ cases:
     ops:
     - repeat: true
       match:
-        node_path: build-merge-fixture/develop/root/accounting/sequence/review/build-merge-review/reviewer/kernel-agent-turn/start_read_only_session/start_read_only_session
+        node_path:
+          build-merge-fixture/develop/root/accounting/sequence/review/build-merge-review/reviewer/kernel-agent-turn/start_read_only_session/start_read_only_session
       behavior:
         mode: return
         outputs:
@@ -542,8 +671,8 @@ cases:
           response:
             verdict: approve
             subject: Improve requested behavior with verified coverage
-            review_message: Implement the approved behavior and verify it with build.sh. Independent assessment
-              and file accounting found the changes appropriate.
+            review_message: Implement the approved behavior and verify it with build.sh. Independent
+              assessment and file accounting found the changes appropriate.
             files:
             - path: build.sh
               change: D
@@ -582,6 +711,28 @@ cases:
         files:
           candidate.txt: original
           obsolete.txt: obsolete content
+          .c2/recipes/hooks/build/verify.yaml: |
+            id: fixture-verify
+            inputs:
+              target_directory: ${{ inputs.target_directory }}
+            sequence:
+            - id: run_suite
+              op: command_execution
+              const: true
+              inputs:
+                env:
+                  TARGET: '{{ context.environment.op.worktree_path }}/{{ inputs.target_directory }}'
+                  OUTBOX: ${{ context.environment.op.outbox }}
+                run: |
+                  cd "$TARGET" || exit 1
+                  if (
+                  bash ./build.sh
+                  ) > "$OUTBOX/tests.log" 2>&1; then printf passed; else printf failed; fi
+            outputs:
+              api_version: c2.build-hook/v1
+              status: ${{ sequence.run_suite.outputs.stdout }}
+              summary: Fixture repository checks completed.
+              artifact_refs: "${{ {'tests.log': sequence.run_suite.artifacts['tests.log']} }}"
     observe_files:
     - candidate.txt
     - unapproved.txt
@@ -589,7 +740,8 @@ cases:
     - added document.md
     - upstream.txt
     responses:
-    - node_path: build-merge-fixture/develop/root/approval/sequence/plan_review/kernel-review/request_human_review
+    - node_path:
+        build-merge-fixture/develop/root/approval/sequence/plan_review/kernel-review/request_human_review
       fields:
         decision: approve
     expect_error: upstream rebase conflict

@@ -1,0 +1,668 @@
+recipe: ../build.yaml
+cases:
+- id: light-configure-prepare-publish
+  type: integration_case
+  runtime:
+    secrets:
+      jev_api_key: synthetic-jev
+    cells:
+      root:
+        files:
+          PURPOSE.md: Own widget documentation.
+          candidate.txt: original
+          .c2/recipes/hooks/build/verify.yaml: |
+            id: fixture-verify
+            inputs:
+              target_directory: ${{ inputs.target_directory }}
+            sequence:
+            - id: run_suite
+              op: command_execution
+              const: true
+              inputs:
+                env:
+                  TARGET: '{{ context.environment.op.worktree_path }}/{{ inputs.target_directory }}'
+                  OUTBOX: ${{ context.environment.op.outbox }}
+                run: |
+                  cd "$TARGET" || exit 1
+                  if (
+                  test "$(cat candidate.txt)" = corrected
+                  ) > "$OUTBOX/tests.log" 2>&1; then printf passed; else printf failed; fi
+            outputs:
+              api_version: c2.build-hook/v1
+              status: ${{ sequence.run_suite.outputs.stdout }}
+              summary: Fixture repository checks completed.
+              artifact_refs: "${{ {'tests.log': sequence.run_suite.artifacts['tests.log']} }}"
+          .c2/recipes/hooks/build/configure.yaml: |
+            id: fixture-configure
+            sequence: []
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: Fixture configure completed.
+              artifact_refs: {}
+              settings:
+                require_design: false
+                prompt_additions:
+                  design: DESIGN_GUIDANCE
+                  test_plan: TEST_GUIDANCE
+                  implementation: IMPLEMENT_GUIDANCE
+                  plan_assessment: PLAN_GUIDANCE
+                  outcome_assessment: OUTCOME_GUIDANCE
+                variables:
+                  release_channel: preview
+                consultations: []
+          .c2/recipes/hooks/build/prepare.yaml: |
+            id: fixture-prepare
+            sequence:
+            - id: generate_file
+              op: command_execution
+              inputs:
+                run: printf generated > generated.txt
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: Fixture prepare completed.
+              artifact_refs: {}
+          .c2/recipes/hooks/build/publish.yaml: |
+            id: fixture-publish
+            sequence:
+            - id: publish_fixture
+              op: command_execution
+              inputs:
+                run: test "$(cat generated.txt)" = generated
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: Fixture publish completed.
+              artifact_refs: {}
+    observe_files:
+    - candidate.txt
+    - generated.txt
+    responses:
+    - node_path:
+        build/run/light/light/light-develop/accept/sequence/outcome_review/kernel-review/request_human_review
+      fields:
+        decision: accept
+  inputs:
+    prompt: Correct the widget documentation.
+  mocks:
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#jev
+      behavior:
+        mode: return
+        outputs:
+          answers:
+            is_heavy:
+              type: noul
+              noul: 0.01
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: Correct the widget documentation.
+            files: []
+            questions: []
+            consultations: []
+            keys: []
+            subject: Correct widget documentation
+            review_message: Correct the documented widget behavior. Verify the updated content with an
+              automated check.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: light
+          worktree:
+            candidate.txt: corrected
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: merged
+    value: true
+  - type: output_equals
+    path: publication.status
+    value: passed
+  - type: output_equals
+    path: process
+    value: light
+  - type: cel_true
+    expr: repositories.root.files["generated.txt"] == "generated"
+  - type: cel_true
+    expr: size(calls.filter(c, c.node_path.endsWith("/write_settings"))) == 1
+  - type: cel_true
+    expr: calls.filter(c, c.node_path.contains("/agent/") && c.op == "extension_execution").exists(c,
+      c.inputs.inputs.prompt.contains("IMPLEMENT_GUIDANCE"))
+  - type: cel_true
+    expr: calls.exists(c, c.node_path.endsWith("/publish_fixture"))
+  - type: cel_true
+    expr: size(reviews) == 1
+- id: heavy-research-and-required-specialists
+  type: integration_case
+  runtime:
+    secrets:
+      jev_api_key: synthetic-jev
+      codex_api_key: synthetic-build-credential
+    config:
+      codex_api_base_url: https://fixture.invalid/v1
+    cells:
+      root:
+        files:
+          candidate.txt: original
+          .c2/recipes/hooks/build/verify.yaml: |
+            id: fixture-verify
+            inputs:
+              target_directory: ${{ inputs.target_directory }}
+            sequence:
+            - id: run_suite
+              op: command_execution
+              const: true
+              inputs:
+                env:
+                  TARGET: '{{ context.environment.op.worktree_path }}/{{ inputs.target_directory }}'
+                  OUTBOX: ${{ context.environment.op.outbox }}
+                run: |
+                  cd "$TARGET" || exit 1
+                  if (
+                  bash ./build.sh
+                  ) > "$OUTBOX/tests.log" 2>&1; then printf passed; else printf failed; fi
+            outputs:
+              api_version: c2.build-hook/v1
+              status: ${{ sequence.run_suite.outputs.stdout }}
+              summary: Fixture repository checks completed.
+              artifact_refs: "${{ {'tests.log': sequence.run_suite.artifacts['tests.log']} }}"
+          .c2/recipes/hooks/build/configure.yaml: |
+            id: fixture-configure
+            sequence: []
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: Fixture configure completed.
+              artifact_refs: {}
+              settings:
+                require_design: true
+                prompt_additions:
+                  design: DESIGN_GUIDANCE
+                  test_plan: TEST_GUIDANCE
+                  implementation: IMPLEMENT_GUIDANCE
+                  plan_assessment: PLAN_GUIDANCE
+                  outcome_assessment: OUTCOME_GUIDANCE
+                variables:
+                  release_channel: preview
+                consultations:
+                - key: security_plan_assessment
+                  checkpoint: plan_assessment
+                  role: Security reviewer
+                  request: Review the security boundary.
+                  required: true
+                - key: security_outcome_assessment
+                  checkpoint: outcome_assessment
+                  role: Security reviewer
+                  request: Review the security boundary.
+                  required: true
+          .c2/recipes/hooks/build/prepare.yaml: |
+            id: fixture-prepare
+            sequence:
+            - id: generate_file
+              op: command_execution
+              inputs:
+                run: printf generated > generated.txt
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: Fixture prepare completed.
+              artifact_refs: {}
+          .c2/recipes/hooks/build/publish.yaml: |
+            id: fixture-publish
+            sequence:
+            - id: publish_fixture
+              op: command_execution
+              inputs:
+                run: test "$(cat generated.txt)" = generated
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: Fixture publish completed.
+              artifact_refs: {}
+          .c2/recipes/hooks/build/before_design.yaml: |
+            id: fixture-research
+            sequence:
+            - id: research_alternatives
+              op: command_execution
+              const: true
+              inputs:
+                env:
+                  OUTBOX: ${{ context.environment.op.outbox }}
+                run: printf "# Alternatives\nResearch evidence marker" > "$OUTBOX/alternatives.md"
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: Fixture research completed.
+              artifact_refs: "${{ {'alternatives.md': sequence.research_alternatives.artifacts['alternatives.md']} }}"
+          PURPOSE.md: Own widget behavior and documentation.
+    observe_files:
+    - candidate.txt
+    - unapproved.txt
+    - generated.txt
+    responses:
+    - node_path:
+        build/run/heavy/heavy/develop/approval/sequence/plan_review/kernel-review/request_human_review
+      fields:
+        decision: approve
+    - node_path:
+        build/run/heavy/heavy/develop/accept/sequence/outcome_review/kernel-review/request_human_review
+      fields:
+        decision: accept
+  inputs:
+    prompt: Improve the requested behavior.
+  mocks:
+    ops:
+    - repeat: true
+      match:
+        node_path:
+          build/run/heavy/heavy/develop/specialists/sequence/specialists/build-specialists/consult/sequence/expert/build-expert/resume/resume/consultation/turn/sequence/exchange/local/local/kernel-agent-turn/start_read_only_session/start_read_only_session
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: agreed
+            thinking: Security review passed.
+            assessment: pass
+            files:
+            - path: iter1/consultant/security.md
+              description: Findings
+        artifacts:
+          iter1/consultant/security.md: '# Security assessment'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                expert: security
+    - match:
+        selector: nix:github:colony-2/c2ops/published#jev
+      behavior:
+        mode: return
+        outputs:
+          answers:
+            is_heavy: {type: noul, noul: 0.01}
+    - repeat: true
+      match:
+        node_path:
+          build/run/heavy/heavy/develop/accounting/sequence/review/build-merge-review/reviewer/kernel-agent-turn/start_read_only_session/start_read_only_session
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            verdict: approve
+            subject: Improve requested behavior with verified coverage
+            review_message: Implement the approved behavior and verify it with build.sh. Independent
+              assessment and file accounting found the changes appropriate.
+            files:
+            - path: build.sh
+              change: A
+              reason: Exercise the approved behavior with an automated check.
+            - path: candidate.txt
+              change: M
+              reason: Implement the approved behavior in this file.
+            - path: generated.txt
+              change: A
+              reason: Prepared generated file within approved scope.
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: design response
+            files:
+            - path: design.md
+              description: Review evidence
+            questions: []
+            consultations: []
+            keys: []
+        artifacts:
+          design.md: '# design evidence'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: design
+                turn: 1review
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: test-plan response
+            files:
+            - path: test-statements.md
+              description: Review evidence
+            questions: []
+            consultations: []
+            keys: []
+        artifacts: {}
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: test-plan
+                turn: 1review
+          artifact_files:
+            test-statements.md: build-kernel-statements.md
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: agreed
+            thinking: Independent plan assessment
+            assessment: pass
+            files:
+            - path: iter1/consultant/plan-review.md
+              description: Review evidence
+        artifacts:
+          iter1/consultant/plan-review.md: '# Independent findings'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                expert: plan
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: implement response
+            files:
+            - path: implementation.md
+              description: Review evidence
+            questions: []
+            consultations: []
+            keys: []
+        artifacts:
+          implementation.md: '# implement evidence'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: implement
+                turn: 1review
+          worktree:
+            candidate.txt: implemented behavior
+            build.sh: |
+              #!/bin/sh
+              test "$(cat candidate.txt)" = "implemented behavior"
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: agreed
+            thinking: Independent outcome assessment
+            assessment: pass
+            files:
+            - path: iter1/consultant/outcome-review.md
+              description: Review evidence
+        artifacts:
+          iter1/consultant/outcome-review.md: '# Independent findings'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                expert: outcome
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: merged
+    value: true
+  - type: output_equals
+    path: publication.status
+    value: passed
+  - type: output_equals
+    path: process
+    value: heavy
+  - type: cel_true
+    expr: repositories.root.files["generated.txt"] == "generated"
+  - type: cel_true
+    expr: size(calls.filter(c, c.node_path.endsWith("/write_settings"))) == 1
+  - type: cel_true
+    expr: calls.filter(c, c.node_path.contains("/agent/") && c.op == "extension_execution").exists(c,
+      c.inputs.inputs.prompt.contains("IMPLEMENT_GUIDANCE"))
+  - type: cel_true
+    expr: calls.exists(c, c.node_path.endsWith("/publish_fixture"))
+  - type: cel_true
+    expr: size(calls.filter(c, c.node_path.contains("/specialists/") && c.op == "extension_execution")) == 2
+  - type: cel_true
+    expr: calls.filter(c, c.node_path.contains("/agent/") && c.op == "extension_execution").exists(c,
+      c.inputs.inputs.prompt.contains("DESIGN_GUIDANCE"))
+  - type: cel_true
+    expr: calls.filter(c, c.node_path.contains("/agent/") && c.op == "extension_execution").exists(c,
+      "hooks/before_design/1/alternatives.md" in c.artifacts)
+  - type: cel_true
+    expr: size(reviews) == 2
+- id: light-required-security-assessment
+  type: integration_case
+  runtime:
+    secrets:
+      jev_api_key: synthetic-jev
+    cells:
+      root:
+        files:
+          PURPOSE.md: Own widget documentation.
+          candidate.txt: original
+          .c2/recipes/hooks/build/verify.yaml: |
+            id: fixture-verify
+            inputs:
+              target_directory: ${{ inputs.target_directory }}
+            sequence:
+            - id: run_suite
+              op: command_execution
+              const: true
+              inputs:
+                env:
+                  TARGET: '{{ context.environment.op.worktree_path }}/{{ inputs.target_directory }}'
+                  OUTBOX: ${{ context.environment.op.outbox }}
+                run: |
+                  cd "$TARGET" || exit 1
+                  if (
+                  test "$(cat candidate.txt)" = corrected
+                  ) > "$OUTBOX/tests.log" 2>&1; then printf passed; else printf failed; fi
+            outputs:
+              api_version: c2.build-hook/v1
+              status: ${{ sequence.run_suite.outputs.stdout }}
+              summary: Fixture repository checks completed.
+              artifact_refs: "${{ {'tests.log': sequence.run_suite.artifacts['tests.log']} }}"
+          .c2/recipes/hooks/build/configure.yaml: |
+            id: fixture-configure
+            sequence: []
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: Fixture configure completed.
+              artifact_refs: {}
+              settings:
+                require_design: false
+                prompt_additions:
+                  design: DESIGN_GUIDANCE
+                  test_plan: TEST_GUIDANCE
+                  implementation: IMPLEMENT_GUIDANCE
+                  plan_assessment: PLAN_GUIDANCE
+                  outcome_assessment: OUTCOME_GUIDANCE
+                variables:
+                  release_channel: preview
+                consultations:
+                - key: security
+                  checkpoint: outcome_assessment
+                  role: Security reviewer
+                  request: Review authorization boundaries.
+                  required: true
+          .c2/recipes/hooks/build/prepare.yaml: |
+            id: fixture-prepare
+            sequence:
+            - id: generate_file
+              op: command_execution
+              inputs:
+                run: printf generated > generated.txt
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: Fixture prepare completed.
+              artifact_refs: {}
+          .c2/recipes/hooks/build/publish.yaml: |
+            id: fixture-publish
+            sequence:
+            - id: publish_fixture
+              op: command_execution
+              inputs:
+                run: test "$(cat generated.txt)" = generated
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: Fixture publish completed.
+              artifact_refs: {}
+    observe_files:
+    - candidate.txt
+    - generated.txt
+    responses:
+    - node_path:
+        build/run/light/light/light-develop/accept/sequence/outcome_review/kernel-review/request_human_review
+      fields:
+        decision: accept
+  inputs:
+    prompt: Correct the widget documentation.
+  mocks:
+    ops:
+    - repeat: true
+      match:
+        node_path:
+          build/run/light/light/light-develop/specialists/sequence/specialists/build-specialists/consult/sequence/expert/build-expert/resume/resume/consultation/turn/sequence/exchange/local/local/kernel-agent-turn/start_read_only_session/start_read_only_session
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: agreed
+            thinking: Security review passed.
+            assessment: pass
+            files:
+            - path: iter1/consultant/security.md
+              description: Findings
+        artifacts:
+          iter1/consultant/security.md: '# Security assessment'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                expert: security
+    - match:
+        selector: nix:github:colony-2/c2ops/published#jev
+      behavior:
+        mode: return
+        outputs:
+          answers:
+            is_heavy:
+              type: noul
+              noul: 0.01
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: Correct the widget documentation.
+            files: []
+            questions: []
+            consultations: []
+            keys: []
+            subject: Correct widget documentation
+            review_message: Correct the documented widget behavior. Verify the updated content with an
+              automated check.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: light
+          worktree:
+            candidate.txt: corrected
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: merged
+    value: true
+  - type: output_equals
+    path: publication.status
+    value: passed
+  - type: output_equals
+    path: process
+    value: light
+  - type: cel_true
+    expr: repositories.root.files["generated.txt"] == "generated"
+  - type: cel_true
+    expr: size(calls.filter(c, c.node_path.endsWith("/write_settings"))) == 1
+  - type: cel_true
+    expr: calls.filter(c, c.node_path.contains("/agent/") && c.op == "extension_execution").exists(c,
+      c.inputs.inputs.prompt.contains("IMPLEMENT_GUIDANCE"))
+  - type: cel_true
+    expr: calls.exists(c, c.node_path.endsWith("/publish_fixture"))
+  - type: cel_true
+    expr: size(reviews) == 1
+  - type: cel_true
+    expr: size(calls.filter(c, c.node_path.contains("/build-expert/"))) > 0

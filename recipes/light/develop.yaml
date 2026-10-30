@@ -8,6 +8,9 @@ inputs:
   root_cell: ${{ inputs.root_cell }}
   root_ref: ${{ inputs.root_ref }}
   build_recipe: ${{ inputs.build_recipe }}
+  hook_settings: ${{ inputs.?hook_settings.orValue({}) }}
+  settings_artifact: ${{ inputs.?settings_artifact.orValue(null) }}
+  require_verification: ${{ inputs.?require_verification.orValue(false) }}
 state:
   initial: discover_root_cell
   states:
@@ -30,22 +33,26 @@ state:
         request: ${{ inputs.prompt }}
         directory: ${{ inputs.target_directory }}
         session: ${{ inputs.session }}
-        documents: ${{ jq([json_parse(json_stringify(context.artifacts)), inputs.documents], 'add | with_entries(select(.key
-          != "__git_state_thin_pack__" and .key != "diff_from_parent.diff" and .key != "diff_from_base.diff"))')
-          }}
+        documents: ${{ jq([json_parse(json_stringify(context.artifacts)), inputs.documents], 'add |
+          with_entries(select(.key != "__git_state_thin_pack__" and .key != "diff_from_parent.diff" and .key
+          != "diff_from_base.diff"))') }}
         root_cell: '${{ inputs.root_cell != '''' ? inputs.root_cell : json_parse(states.discover_root_cell.outputs.stdout).?root_repo.orValue('''')
           }}'
         root_ref: '${{ inputs.root_ref != '''' ? inputs.root_ref : json_parse(states.discover_root_cell.outputs.stdout).?root_ref.orValue(''main'')
           }}'
         build_recipe: ${{ inputs.build_recipe }}
+        hook_settings: ${{ inputs.hook_settings }}
+        settings_artifact: ${{ inputs.settings_artifact }}
+        require_verification: ${{ inputs.require_verification }}
       sequence: []
       outputs:
-        valid: ${{ nonempty(inputs.directory) && !inputs.directory.startsWith('/') && !inputs.directory.matches('(^|/)[.][.](/|$)')
-          }}
-        flow: '${{ {''message'': inputs.request, ''request'': inputs.request, ''target_directory'': inputs.directory,
-          ''session'': inputs.session, ''documents'': inputs.documents, ''threads'': {}, ''jobs'': {}, ''merge_chases'': 0, ''reviews'':
-          {}, ''root_cell'': inputs.root_cell, ''root_ref'': inputs.root_ref, ''build_recipe'': inputs.build_recipe}
-          }}'
+        valid: ${{ nonempty(inputs.directory) && !inputs.directory.startsWith('/') &&
+          !inputs.directory.matches('(^|/)[.][.](/|$)') }}
+        flow: '${{ jq([{''message'': inputs.request, ''request'': inputs.request, ''target_directory'': inputs.directory,
+          ''session'': inputs.session, ''documents'': inputs.documents, ''threads'': {}, ''jobs'': {}, ''merge_chases'':
+          0, ''reviews'': {}, ''root_cell'': inputs.root_cell, ''root_ref'': inputs.root_ref, ''build_recipe'':
+          inputs.build_recipe}, {''hook_settings'': inputs.hook_settings, ''settings_artifact'': inputs.settings_artifact,
+          ''require_verification'': inputs.require_verification}], ''add'') }}'
       transitions:
       - to: reject_invalid_build_request
         when: '!outputs.valid'
@@ -159,8 +166,8 @@ state:
           keys: ${{ inputs.keys }}
       outputs:
         valid: ${{ sequence.coordinate.outputs.valid }}
-        flow: '${{ jq([sequence.coordinate.outputs.flow, {''message'': ''Coordination state changed. Read
-          context.json and new evidence; continue independent work before waiting.''}], ''add'') }}'
+        flow: '${{ jq([sequence.coordinate.outputs.flow, {''message'': ''Coordination state changed. Read context.json
+          and new evidence; continue independent work before waiting.''}], ''add'') }}'
       transitions:
       - to: repair
         when: '!outputs.valid'
@@ -170,8 +177,8 @@ state:
             ''add'') }}'
           turn: '${{ jq([states.work.outputs.turn, {''result'': jq([states.work.outputs.turn.result, {''session'':
             outputs.flow.session}], ''add'')}], ''add'') }}'
-          issues: ${{ ['Coordination rejected the requested keys or action. Use known keys and distinct requests
-            to existing serving cells. Never resubmit recorded jobs.'] }}
+          issues: ${{ ['Coordination rejected the requested keys or action. Use known keys and distinct
+            requests to existing serving cells. Never resubmit recorded jobs.'] }}
       - to: work
         when: true
         payload:
@@ -184,9 +191,10 @@ state:
         include: ../kernel/review.yaml
         inputs:
           title: Clarify the current build
-          documents: ${{ inputs.flow.documents }}
-          fields: '${{ inputs.flow.result.questions + [{''id'': ''annotations'', ''type'': ''file_upload'',
-            ''question'': ''Optional supporting documents or annotations.'', ''required'': false}] }}'
+          documents: ${{ jq(inputs.flow.documents, 'del(."build-settings.json", ."configuration.md",
+            ."design-context.md")') }}
+          fields: '${{ inputs.flow.result.questions + [{''id'': ''annotations'', ''type'': ''file_upload'', ''question'':
+            ''Optional supporting documents or annotations.'', ''required'': false}] }}'
       outputs:
         flow: '${{ jq([inputs.flow, {''documents'': jq([inputs.flow.documents, sequence.review.outputs.documents],
           ''add''), ''message'': ''Read feedback.json and the attachments, then continue the bounded request.''}],
@@ -217,12 +225,8 @@ state:
       outputs:
         flow: ${{ inputs.flow }}
       transitions:
-      - to: inspect_chased_candidate
-        when: outputs.flow.?chase_pending.orValue(false)
-        payload:
-          flow: ${{ outputs.flow }}
-      - to: inspect_rebased
-        when: true
+      - to: prepare
+        when: 'true'
         payload:
           flow: ${{ outputs.flow }}
     inspect_chased_candidate:
@@ -233,24 +237,26 @@ state:
         include: ../kernel/git-candidate.yaml
       outputs:
         reusable: >-
-          ${{ size(sequence.candidate.outputs.candidate.files) == 0 ||
-          sequence.candidate.outputs.candidate.change_digest == inputs.flow.reviewed_change_digest }}
+          ${{ (size(sequence.candidate.outputs.candidate.files) == 0 || sequence.candidate.outputs.candidate.change_digest
+          == inputs.flow.reviewed_change_digest) && inputs.flow.hook_digest == inputs.flow.?reviewed_hook_digest.orValue('')
+          }}
         flow: >-
           ${{ jq([inputs.flow, {'chase_pending': false,
           'candidate_changed': size(sequence.candidate.outputs.candidate.files) > 0,
           'documents': jq([inputs.flow.documents, sequence.candidate.outputs.documents], 'add')}], 'add') }}
       transitions:
-      - to: verify
+      - to: specialists
         when: outputs.reusable
         payload:
           flow: >-
             ${{ jq([outputs.flow, {'reuse_merge_approval': true}], 'add') }}
-      - to: verify
+      - to: specialists
         when: true
         payload:
           flow: >-
             ${{ jq(outputs.flow,
-            'del(.reviews.outcome, .assessment, .commit_message, .reviewed_change_digest, .reuse_merge_approval)') }}
+            'del(.reviews.outcome, .assessment, .commit_message, .reviewed_change_digest, .reuse_merge_approval)')
+            }}
     verify:
       inputs:
         flow: ${{ transition.payload.flow }}
@@ -258,21 +264,37 @@ state:
       - id: verify
         include: ../develop/verify.yaml
         inputs:
+          request: ${{ inputs.flow.request }}
           target_directory: ${{ inputs.flow.target_directory }}
-          command: ${{ inputs.flow.result.verification_command }}
+          documents: ${{ inputs.flow.documents }}
+          settings: ${{ inputs.flow.settings_artifact }}
+          round: ${{ inputs.flow.validation_round }}
+          require_verification: ${{ inputs.flow.require_verification }}
       outputs:
-        ok: ${{ sequence.verify.outputs.result.status in ['passed', 'skipped'] }}
+        ok: ${{ sequence.verify.outputs.allowed }}
         flow: '${{ jq([inputs.flow, {''verification'': sequence.verify.outputs.evidence, ''documents'': jq([inputs.flow.documents,
-          sequence.verify.outputs.artifact_refs], ''add''), ''message'': ''Verification did not pass. Read
-          verification.md and build.log, resolve the issue, and request inspection again.''}], ''add'') }}'
+          sequence.verify.outputs.artifact_refs], ''add''), ''message'': ''Verification did not pass. Read verification.md
+          and its attached evidence, resolve the issue, and request inspection again.''}], ''add'') }}'
       transitions:
+      - to: reject_invalid_build_request
+        when: outputs.flow.require_verification && outputs.flow.verification.status == 'skipped'
+        payload:
+          reason: Verification is required, but the repository verify hook is absent or skipped. Configure
+            .c2/recipes/hooks/build/verify.yaml.
       - to: stopped
-        when: outputs.ok && outputs.flow.?reuse_merge_approval.orValue(false) && !outputs.flow.candidate_changed
+        when: outputs.ok && !outputs.flow.candidate_changed && size(outputs.flow.jobs) > 0
+        payload:
+          flow: "${{ jq([outputs.flow, {'disposition': 'delegated'}], 'add') }}"
+      - to: stopped
+        when: outputs.ok && outputs.flow.?reuse_merge_approval.orValue(false) &&
+          !outputs.flow.candidate_changed
         payload:
           flow: >-
-            ${{ jq([outputs.flow, {'disposition': size(outputs.flow.jobs) > 0 ? 'delegated' : 'unchanged'}], 'add') }}
+            ${{ jq([outputs.flow, {'disposition': size(outputs.flow.jobs) > 0 ? 'delegated' : 'unchanged'}], 'add')
+            }}
       - to: merge
-        when: outputs.ok && outputs.flow.?reuse_merge_approval.orValue(false) && outputs.flow.candidate_changed
+        when: outputs.ok && outputs.flow.?reuse_merge_approval.orValue(false) &&
+          outputs.flow.candidate_changed
         payload:
           flow: ${{ outputs.flow }}
       - to: synopsis
@@ -290,12 +312,15 @@ state:
       - id: outcome_review
         include: ../kernel/review.yaml
         inputs:
-          title: '${{ inputs.flow.candidate_changed ? ''Review change synopsis and verification evidence'' : ''Review no-change rationale and verification evidence'' }}'
+          title: '${{ inputs.flow.candidate_changed ? ''Review change synopsis and verification evidence'' : ''Review
+            no-change rationale and verification evidence'' }}'
           documents: ${{ inputs.flow.documents }}
           fields:
           - id: decision
             type: multiple_choice
-            question: '${{ inputs.flow.candidate_changed ? ''Accept the synopsis, reported verification status, and proposed commit message, and merge this candidate?'' : ''Accept the rationale in synopsis.md that this request is satisfied without repository changes, and complete this job?'' }}'
+            question: '${{ inputs.flow.candidate_changed ? ''Accept the synopsis, reported verification status,
+              and proposed commit message, and merge this candidate?'' : ''Accept the rationale in synopsis.md that
+              this request is satisfied without repository changes, and complete this job?'' }}'
             required: true
             options:
             - value: accept
@@ -306,8 +331,8 @@ state:
               label: Cancel
           - id: feedback
             type: paragraph_text
-            question: ${{ inputs.flow.?review_hint.orValue('Requested changes or guidance (required when requesting
-              changes).') }}
+            question: ${{ inputs.flow.?review_hint.orValue('Requested changes or guidance (required when
+              requesting changes).') }}
             required: false
           - id: annotations
             type: file_upload
@@ -318,21 +343,21 @@ state:
         changed: ${{ sequence.outcome_review.outputs.changed }}
         flow: '${{ jq([inputs.flow, {''documents'': jq([inputs.flow.documents, sequence.outcome_review.outputs.documents],
           ''add''), ''reviews'': jq([inputs.flow.reviews, {''outcome'': sequence.outcome_review.outputs.response.?receipt.orValue({})}],
-          ''add''), ''message'': ''Read feedback.json and attachments, revise the implementation, and request
-          inspection again.''}], ''add'') }}'
+          ''add''), ''message'': ''Read feedback.json and attachments, revise the implementation, and request inspection
+          again.''}], ''add'') }}'
       transitions:
       - to: stopped
         when: outputs.response.fields.decision == 'cancel'
         payload:
           flow: '${{ jq([outputs.flow, {''disposition'': ''cancelled''}], ''add'') }}'
       - to: stopped
-        when: outputs.response.fields.decision == 'accept' && !outputs.changed && !outputs.flow.candidate_changed
-          && outputs.flow.verification.status in ['passed', 'skipped']
+        when: outputs.response.fields.decision == 'accept' && !outputs.changed &&
+          !outputs.flow.candidate_changed && outputs.flow.verification.status in ['passed', 'skipped']
         payload:
           flow: '${{ jq([outputs.flow, {''disposition'': ''unchanged''}], ''add'') }}'
       - to: merge
-        when: outputs.response.fields.decision == 'accept' && !outputs.changed && outputs.flow.verification.status
-          in ['passed', 'skipped'] && outputs.flow.candidate_changed
+        when: outputs.response.fields.decision == 'accept' && !outputs.changed &&
+          outputs.flow.verification.status in ['passed', 'skipped'] && outputs.flow.candidate_changed
         payload:
           flow: ${{ outputs.flow }}
       - to: work
@@ -342,13 +367,14 @@ state:
       - to: accept
         when: true
         payload:
-          flow: '${{ jq([outputs.flow, {''review_hint'': ''Please describe the requested changes or attach
-            annotated documents before requesting revision.''}], ''add'') }}'
+          flow: '${{ jq([outputs.flow, {''review_hint'': ''Please describe the requested changes or attach annotated
+            documents before requesting revision.''}], ''add'') }}'
     merge:
       retry:
         maximum_attempts: 1
       inputs:
         flow: ${{ transition.payload.flow }}
+        base: ${{ context.git.execution.base_hash }}
       sequence:
       - id: squash_reviewed_candidate
         op: squash
@@ -363,8 +389,24 @@ state:
           repo_path: ${{ context.environment.op.worktree_path }}
           upstream_repo: ${{ context.git.repo }}
           upstream_branch: ${{ context.git.ref }}
+      - id: publish
+        include: ../build/hooks/publish.yaml
+        workspace:
+          cell: ${{ context.git.repo }}
+          ref: ${{ sequence.merge_reviewed_candidate.outputs.merged_hash }}
+        inputs:
+          request: ${{ inputs.flow.request }}
+          target_directory: ${{ inputs.flow.target_directory }}
+          documents: ${{ inputs.flow.documents }}
+          settings: ${{ inputs.flow.settings_artifact }}
+          round: ${{ inputs.flow.validation_round }}
+          merged_hash: ${{ sequence.merge_reviewed_candidate.outputs.merged_hash }}
+          target_branch: ${{ sequence.merge_reviewed_candidate.outputs.target_branch }}
+          base: ${{ inputs.base }}
       outputs:
-        flow: '${{ jq([inputs.flow, {''disposition'': ''implemented''}], ''add'') }}'
+        flow: '${{ jq([inputs.flow, {''disposition'': ''implemented'', ''publication'': sequence.publish.outputs.result,
+          ''documents'': jq([inputs.flow.documents, sequence.publish.outputs.artifact_refs], ''add'')}], ''add'')
+          }}'
         merged_hash: ${{ sequence.merge_reviewed_candidate.outputs.merged_hash }}
         target_branch: ${{ sequence.merge_reviewed_candidate.outputs.target_branch }}
       catch:
@@ -377,7 +419,8 @@ state:
         to: rebase
         payload:
           flow: >-
-            ${{ jq([transition.payload.flow, {'merge_chases': int(transition.payload.flow.merge_chases) + 1, 'chase_pending': true}],
+            ${{ jq([transition.payload.flow, {'merge_chases': int(transition.payload.flow.merge_chases) + 1, 'chase_pending':
+            true}],
             'add | del(.verification, .reuse_merge_approval, .review_hint)') }}
     stopped:
       inputs:
@@ -412,10 +455,10 @@ state:
       outputs:
         retry: ${{ sequence.repair.outputs.retry }}
         flow: '${{ jq([inputs.flow, {''result'': inputs.turn.result.?response.orValue(inputs.flow.?result.orValue({})),
-          ''session'': sequence.repair.outputs.session, ''documents'': sequence.repair.outputs.documents,
-          ''repair_base_documents'': inputs.flow.?repair_base_documents.orValue(inputs.flow.documents), ''repair_artifacts'':
-          sequence.repair.outputs.artifacts, ''repair_attempts'': sequence.repair.outputs.attempts, ''message'':
-          sequence.repair.outputs.prompt}], ''add'') }}'
+          ''session'': sequence.repair.outputs.session, ''documents'': sequence.repair.outputs.documents, ''repair_base_documents'':
+          inputs.flow.?repair_base_documents.orValue(inputs.flow.documents), ''repair_artifacts'': sequence.repair.outputs.artifacts,
+          ''repair_attempts'': sequence.repair.outputs.attempts, ''message'': sequence.repair.outputs.prompt}],
+          ''add'') }}'
       transitions:
       - to: work
         when: outputs.retry
@@ -440,7 +483,8 @@ state:
         when: '!outputs.flow.jobs.all(k, outputs.flow.jobs[k].status == ''completed'' && (outputs.flow.jobs[k].result.?merged.orValue(false)
           || outputs.flow.jobs[k].result.?disposition.orValue('''') in [''delegated'', ''unchanged'']))'
         payload:
-          reason: A child completed without satisfying its requested work. Inspect its result before continuing.
+          reason: A child completed without satisfying its requested work. Inspect its result before
+            continuing.
       - to: handoff
         when: outputs.flow.result.next == 'heavy'
         payload:
@@ -452,9 +496,8 @@ state:
       - to: work
         when: outputs.flow.threads.exists(k, outputs.flow.threads[k].result.outcome != 'agreed')
         payload:
-          flow: '${{ jq([outputs.flow, {''message'': ''A serving-cell consultation did not agree. Resolve
-            the outstanding scope, ask the user, or escalate to heavy; do not claim the request is complete.''}],
-            ''add'') }}'
+          flow: '${{ jq([outputs.flow, {''message'': ''A serving-cell consultation did not agree. Resolve the outstanding
+            scope, ask the user, or escalate to heavy; do not claim the request is complete.''}], ''add'') }}'
       - to: inspect
         when: true
         payload:
@@ -488,16 +531,7 @@ state:
         changed: ${{ size(sequence.candidate.outputs.candidate.files) > 0 }}
       transitions:
       - to: rebase
-        when: outputs.changed
-        payload:
-          flow: ${{ outputs.flow }}
-      - to: stopped
-        when: size(outputs.flow.jobs) > 0
-        payload:
-          flow: '${{ jq([outputs.flow, {''disposition'': ''delegated''}],
-            ''add'') }}'
-      - to: verify
-        when: true
+        when: 'true'
         payload:
           flow: ${{ outputs.flow }}
     synopsis:
@@ -509,8 +543,10 @@ state:
         inputs:
           flow: ${{ inputs.flow }}
       outputs:
-        flow: '${{ jq([inputs.flow, {''reviewed_change_digest'': sequence.synopsis.outputs.change_digest, ''candidate_changed'': sequence.synopsis.outputs.changed, ''commit_message'': sequence.synopsis.outputs.commit_message, ''documents'':
-          jq([inputs.flow.documents, sequence.synopsis.outputs.documents], ''add'')}], ''add'') }}'
+        flow: '${{ jq([inputs.flow, {''reviewed_hook_digest'': inputs.flow.hook_digest, ''reviewed_change_digest'':
+          sequence.synopsis.outputs.change_digest, ''candidate_changed'': sequence.synopsis.outputs.changed, ''commit_message'':
+          sequence.synopsis.outputs.commit_message, ''documents'': jq([inputs.flow.documents, sequence.synopsis.outputs.documents],
+          ''add'')}], ''add'') }}'
       transitions:
       - to: accept
         when: true
@@ -530,30 +566,63 @@ state:
           run: |
             printf '%s\n' "$HANDOFF" > "$OUTBOX/light-handoff.json"
       outputs:
-        flow: '${{ jq([inputs.flow, {''disposition'': ''heavy'', ''documents'': jq([inputs.flow.documents,
-          {''light-handoff.json'': sequence.write_heavy_handoff.artifacts[''light-handoff.json'']}], ''add'')}], ''add'')
-          }}'
-    inspect_rebased:
+        flow: '${{ jq([inputs.flow, {''disposition'': ''heavy'', ''documents'': jq([inputs.flow.documents, {''light-handoff.json'':
+          sequence.write_heavy_handoff.artifacts[''light-handoff.json'']}], ''add'')}], ''add'') }}'
+    prepare:
+      inputs:
+        flow: "${{ jq([transition.payload.flow, {'validation_round': int(transition.payload.flow.?validation_round.orValue(0))
+          + 1}], 'add') }}"
+      sequence:
+      - id: prepare
+        include: ../build/hooks/prepare.yaml
+        inputs:
+          request: ${{ inputs.flow.request }}
+          target_directory: ${{ inputs.flow.target_directory }}
+          documents: ${{ inputs.flow.documents }}
+          settings: ${{ inputs.flow.settings_artifact }}
+          round: ${{ inputs.flow.validation_round }}
+      - id: candidate
+        include: ../kernel/git-candidate.yaml
+      - id: identity
+        include: ../build/hooks/identity.yaml
+      outputs:
+        passed: ${{ sequence.prepare.outputs.result.status in ['passed', 'skipped'] }}
+        flow: "${{ jq([inputs.flow, {'candidate_changed': size(sequence.candidate.outputs.candidate.files) > 0,
+          'hook_digest': sequence.identity.outputs.digest, 'documents': jq([inputs.flow.documents, sequence.prepare.outputs.artifact_refs,
+          sequence.candidate.outputs.documents], 'add'), 'message': 'Preparation did not pass. Read preparation.md
+          and its evidence, correct the issue, and request inspection again.'}], 'add') }}"
+      transitions:
+      - to: work
+        when: '!outputs.passed'
+        payload:
+          flow: ${{ outputs.flow }}
+      - to: inspect_chased_candidate
+        when: outputs.flow.?chase_pending.orValue(false)
+        payload:
+          flow: ${{ outputs.flow }}
+      - to: specialists
+        when: true
+        payload:
+          flow: ${{ outputs.flow }}
+    specialists:
       inputs:
         flow: ${{ transition.payload.flow }}
       sequence:
-      - id: candidate
-        include: ../kernel/git-candidate.yaml
+      - id: specialists
+        include: ../build/hooks/specialists.yaml
+        inputs:
+          flow: ${{ inputs.flow }}
+          checkpoint: outcome_assessment
       outputs:
-        flow: ${{ inputs.flow }}
-        changed: ${{ size(sequence.candidate.outputs.candidate.files) > 0 }}
+        flow: ${{ sequence.specialists.outputs.flow }}
+        passed: ${{ sequence.specialists.outputs.passed }}
       transitions:
       - to: verify
-        when: outputs.changed
+        when: outputs.passed
         payload:
           flow: ${{ outputs.flow }}
-      - to: stopped
-        when: size(outputs.flow.jobs) > 0
-        payload:
-          flow: '${{ jq([outputs.flow, {''disposition'': ''delegated''}],
-            ''add'') }}'
-      - to: verify
-        when: true
+      - to: work
+        when: 'true'
         payload:
           flow: ${{ outputs.flow }}
 outputs:
@@ -564,8 +633,8 @@ outputs:
     state_output('record', 'flow', {})))).session }}
   assistant_summary: ${{ state_output('merge', 'flow', state_output('stopped', 'flow', state_output('handoff',
     'flow', state_output('record', 'flow', {})))).result.?summary.orValue('') }}
-  disposition: ${{ state_output('merge', 'flow', state_output('stopped', 'flow', state_output('handoff', 'flow',
-    state_output('record', 'flow', {})))).?disposition.orValue('incomplete') }}
+  disposition: ${{ state_output('merge', 'flow', state_output('stopped', 'flow', state_output('handoff',
+    'flow', state_output('record', 'flow', {})))).?disposition.orValue('incomplete') }}
   result: ${{ state_output('merge', 'flow', state_output('stopped', 'flow', state_output('handoff', 'flow',
     state_output('record', 'flow', {})))).result }}
   artifact_refs: ${{ state_output('merge', 'flow', state_output('stopped', 'flow', state_output('handoff',
@@ -578,6 +647,7 @@ outputs:
     state_output('record', 'flow', {})))).reviews }}
   verification: ${{ state_output('merge', 'flow', state_output('stopped', 'flow', state_output('handoff',
     'flow', state_output('record', 'flow', {})))).?verification.orValue({}) }}
-  merge_chases: ${{ state_output('merge', 'flow', state_output('stopped', 'flow', state_output('handoff', 'flow',
-    state_output('record', 'flow', {})))).?merge_chases.orValue(0) }}
+  merge_chases: ${{ state_output('merge', 'flow', state_output('stopped', 'flow', state_output('handoff',
+    'flow', state_output('record', 'flow', {})))).?merge_chases.orValue(0) }}
   escalate: ${{ state_exists('handoff') }}
+  publication: ${{ state_output('merge', 'flow', {}).?publication.orValue({}) }}

@@ -6,10 +6,31 @@ cases:
     cells:
       root:
         files:
-          .c2/build.sh: |
-            printf 'verified output\n'
+          .c2/recipes/hooks/build/verify.yaml: |
+            id: fixture-verify
+            inputs:
+              target_directory: ${{ inputs.target_directory }}
+            sequence:
+            - id: run_suite
+              op: command_execution
+              const: true
+              inputs:
+                env:
+                  TARGET: '{{ context.environment.op.worktree_path }}/{{ inputs.target_directory }}'
+                  OUTBOX: ${{ context.environment.op.outbox }}
+                run: |
+                  cd "$TARGET" || exit 1
+                  if (
+                  bash ./build.sh
+                  ) > "$OUTBOX/tests.log" 2>&1; then printf passed; else printf failed; fi
+            outputs:
+              api_version: c2.build-hook/v1
+              status: ${{ sequence.run_suite.outputs.stdout }}
+              summary: Fixture repository checks completed.
+              artifact_refs: "${{ {'tests.log': sequence.run_suite.artifacts['tests.log']} }}"
+          component/build.sh: echo verified
   inputs:
-    target_directory: .c2
+    target_directory: component
   mocks:
     ops:
     - repeat: true
@@ -19,28 +40,43 @@ cases:
         mode: passthrough
   assertions:
   - type: output_equals
-    path: ok
-    value: true
-  - type: output_equals
     path: result.status
     value: passed
   - type: output_equals
-    path: result.timed_out
-    value: false
+    path: allowed
+    value: true
   - type: cel_true
-    expr: calls.filter(c, c.op == "command_execution").all(c, !("timeout" in c.inputs))
-  - type: cel_true
-    expr: size(outputs.artifact_refs) == 2 && "verification.md" in outputs.artifact_refs
+    expr: outputs.log.contains("verified")
 - id: fail
   type: integration_case
   runtime:
     cells:
       root:
         files:
-          .c2/build.sh: |
-            echo failed; exit 7
-  inputs:
-    target_directory: .c2
+          .c2/recipes/hooks/build/verify.yaml: |
+            id: fixture-verify
+            inputs:
+              target_directory: ${{ inputs.target_directory }}
+            sequence:
+            - id: run_suite
+              op: command_execution
+              const: true
+              inputs:
+                env:
+                  TARGET: '{{ context.environment.op.worktree_path }}/{{ inputs.target_directory }}'
+                  OUTBOX: ${{ context.environment.op.outbox }}
+                run: |
+                  cd "$TARGET" || exit 1
+                  if (
+                  bash ./build.sh
+                  ) > "$OUTBOX/tests.log" 2>&1; then printf passed; else printf failed; fi
+            outputs:
+              api_version: c2.build-hook/v1
+              status: ${{ sequence.run_suite.outputs.stdout }}
+              summary: Fixture repository checks completed.
+              artifact_refs: "${{ {'tests.log': sequence.run_suite.artifacts['tests.log']} }}"
+          build.sh: echo failed; exit 7
+  inputs: {}
   mocks:
     ops:
     - repeat: true
@@ -50,59 +86,21 @@ cases:
         mode: passthrough
   assertions:
   - type: output_equals
-    path: ok
-    value: false
-  - type: output_equals
     path: result.status
     value: failed
-  - type: cel_true
-    expr: size(outputs.artifact_refs) == 2 && "verification.md" in outputs.artifact_refs
-- id: external-timeout
-  type: integration_case
-  runtime: {}
-  inputs:
-    target_directory: .c2
-  mocks:
-    ops:
-    - match:
-        node_path: verification-fixture/check/development-verify/run_repository_checks
-      behavior:
-        mode: return
-        outputs:
-          stdout: ran
-          stderr: ''
-          success: false
-          exit_code: -1
-          timed_out: true
-        artifacts:
-          build.log: |
-            starting
-    - repeat: true
-      match:
-        op: command_execution
-      behavior:
-        mode: passthrough
-  assertions:
   - type: output_equals
-    path: ok
+    path: allowed
     value: false
-  - type: output_equals
-    path: result.status
-    value: failed
   - type: cel_true
-    expr: size(outputs.artifact_refs) == 2 && "verification.md" in outputs.artifact_refs
-  - type: output_equals
-    path: result.timed_out
-    value: true
+    expr: outputs.log.contains("failed")
 - id: missing
   type: integration_case
   runtime:
     cells:
       root:
         files:
-          .c2/README.md: This target has no build script.
-  inputs:
-    target_directory: .c2
+          build.sh: echo MUST_NOT_RUN; exit 1
+  inputs: {}
   mocks:
     ops:
     - repeat: true
@@ -112,23 +110,70 @@ cases:
         mode: passthrough
   assertions:
   - type: output_equals
-    path: ok
-    value: false
-  - type: output_equals
     path: result.status
     value: skipped
-  - type: cel_true
-    expr: size(outputs.artifact_refs) == 1 && "verification.md" in outputs.artifact_refs
+  - type: output_equals
+    path: allowed
+    value: true
+  - type: output_equals
+    path: ok
+    value: false
+- id: required-missing
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          README.md: Fixture
+  inputs:
+    require_verification: true
+  mocks:
+    ops:
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: allowed
+    value: false
+- id: required-skip
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          .c2/recipes/hooks/build/verify.yaml: |
+            id: fixture-verify
+            sequence: []
+            outputs:
+              api_version: c2.build-hook/v1
+              status: skipped
+              summary: Fixture verify completed.
+              artifact_refs: {}
+  inputs:
+    require_verification: true
+  mocks:
+    ops:
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: allowed
+    value: false
 - id: missing-target-directory
   type: integration_case
   runtime:
     cells:
       root:
         files:
-          build.sh: |
-            printf 'This root script must not run for a missing target.\n'
+          README.md: Fixture
   inputs:
-    target_directory: missing-target
+    target_directory: missing
   mocks:
     ops:
     - repeat: true
@@ -136,27 +181,128 @@ cases:
         op: command_execution
       behavior:
         mode: passthrough
-  assertions:
-  - type: output_equals
-    path: ok
-    value: false
-  - type: output_equals
-    path: result.status
-    value: failed
-  - type: cel_true
-    expr: size(outputs.artifact_refs) == 1 && !("build.log" in outputs.artifact_refs)
-- id: script-and-explicit-command
+  assertions: []
+  expect_error: command execution failed
+- id: invalid-yaml
   type: integration_case
   runtime:
     cells:
       root:
         files:
-          build.sh: 'printf "script-ran\n"
-
-            '
-  inputs:
-    target_directory: .
-    command: printf "extra-ran\n"
+          .c2/recipes/hooks/build/verify.yaml: 'sequence: [ broken'
+  inputs: {}
+  mocks:
+    ops:
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions: []
+  expect_error: yaml
+- id: invalid-output
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          .c2/recipes/hooks/build/verify.yaml: |
+            id: fixture-verify
+            sequence: []
+            outputs:
+              api_version: c2.build-hook/v1
+              status: unknown
+              summary: Fixture verify completed.
+              artifact_refs: {}
+  inputs: {}
+  mocks:
+    ops:
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions: []
+  expect_error: status
+- id: unsafe-artifact
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          .c2/recipes/hooks/build/verify.yaml: |
+            id: fixture-verify
+            sequence: []
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: Fixture verify completed.
+              artifact_refs:
+                ../design.md: {}
+  inputs: {}
+  mocks:
+    ops:
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions: []
+  expect_error: invalid propertyName
+- id: mutation-rejected
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          .c2/recipes/hooks/build/verify.yaml: |
+            id: fixture-verify
+            sequence:
+            - id: mutate
+              op: command_execution
+              inputs:
+                run: echo bad > candidate.txt
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: Fixture verify completed.
+              artifact_refs: {}
+          candidate.txt: original
+  inputs: {}
+  mocks:
+    ops:
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions: []
+  expect_error: command execution failed
+- id: relative-include
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          .c2/recipes/hooks/build/verify.yaml: |
+            id: relative-verify
+            sequence:
+            - id: checks
+              include: ./suite.yaml
+            outputs:
+              api_version: ${{ sequence.checks.outputs.api_version }}
+              status: ${{ sequence.checks.outputs.status }}
+              summary: ${{ sequence.checks.outputs.summary }}
+              artifact_refs: ${{ sequence.checks.outputs.artifact_refs }}
+          .c2/recipes/hooks/build/suite.yaml: |
+            id: fixture-suite
+            sequence: []
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: Fixture suite completed.
+              artifact_refs: {}
+  inputs: {}
   mocks:
     ops:
     - repeat: true
@@ -168,25 +314,25 @@ cases:
   - type: output_equals
     path: result.status
     value: passed
-  - type: output_equals
-    path: result.exit_code
-    value: 0
-  - type: cel_true
-    expr: outputs.build_log.contains("script-ran")
-  - type: cel_true
-    expr: outputs.build_log.contains("extra-ran")
-- id: script-failure-cannot-be-bypassed
+- id: suite-error
   type: integration_case
   runtime:
     cells:
       root:
         files:
-          build.sh: 'printf "script-failed\n"; exit 7
-
-            '
-  inputs:
-    target_directory: .
-    command: printf "must-not-run\n"
+          .c2/recipes/hooks/build/verify.yaml: |
+            id: fixture-verify
+            sequence:
+            - id: error
+              op: command_execution
+              inputs:
+                run: exit 7
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: Fixture verify completed.
+              artifact_refs: {}
+  inputs: {}
   mocks:
     ops:
     - repeat: true
@@ -194,29 +340,28 @@ cases:
         op: command_execution
       behavior:
         mode: passthrough
-  assertions:
-  - type: output_equals
-    path: result.status
-    value: failed
-  - type: output_equals
-    path: result.exit_code
-    value: 7
-  - type: cel_true
-    expr: outputs.build_log.contains("script-failed")
-  - type: cel_true
-    expr: '!outputs.build_log.contains("must-not-run")'
-- id: explicit-command-failure
+  assertions: []
+  expect_error: command execution failed
+- id: suite-timeout
   type: integration_case
   runtime:
     cells:
       root:
         files:
-          build.sh: 'printf "script-ran\n"
-
-            '
-  inputs:
-    target_directory: .
-    command: printf "extra-failed\n"; exit 9
+          .c2/recipes/hooks/build/verify.yaml: |
+            id: fixture-verify
+            sequence:
+            - id: error
+              op: command_execution
+              inputs:
+                run: sleep 2
+                timeout: 20ms
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: Fixture verify completed.
+              artifact_refs: {}
+  inputs: {}
   mocks:
     ops:
     - repeat: true
@@ -224,14 +369,5 @@ cases:
         op: command_execution
       behavior:
         mode: passthrough
-  assertions:
-  - type: output_equals
-    path: result.status
-    value: failed
-  - type: output_equals
-    path: result.exit_code
-    value: 9
-  - type: cel_true
-    expr: outputs.build_log.contains("script-ran")
-  - type: cel_true
-    expr: outputs.build_log.contains("extra-failed")
+  assertions: []
+  expect_error: command execution timed out

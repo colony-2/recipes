@@ -1,0 +1,70 @@
+id: build-hook-report
+inputs:
+  hook: ${{ inputs.hook }}
+  round: ${{ inputs.round }}
+  candidate: ${{ inputs.candidate }}
+  result_candidate: ${{ inputs.result_candidate }}
+  result: ${{ json_parse(json_stringify(inputs.result)) }}
+vars:
+  safe: ${{ inputs.result.artifact_refs.all(k, !k.startsWith('/') && !k.contains('..') && !k.contains('\\') &&
+    !(k in ['__git_state_thin_pack__','diff_from_parent.diff','diff_from_base.diff'])) }}
+state:
+  initial:
+  - to: render
+    when: vars.safe
+  - to: invalid
+    when: 'true'
+  states:
+    render:
+      sequence:
+      - id: namespace
+        include: ../../kernel/artifact-namespace.yaml
+        inputs:
+          prefix: ${{ 'hooks/' + inputs.hook + '/' + string(inputs.round) + '/' }}
+          documents: ${{ inputs.result.artifact_refs }}
+      - id: render_hook_report
+        op: command_execution
+        const: true
+        inputs:
+          run: |
+            set -eu
+            {
+              printf '# %s hook\n\nStatus: %s\n\n%s\n\n' "$HOOK" "$STATUS" "$SUMMARY"
+              printf 'Candidate: `%s`\n\nResult candidate: `%s`\n\n' "$CANDIDATE" "$RESULT_CANDIDATE"
+              printf 'Hook: `.c2/recipes/hooks/build/%s.yaml`\n\nEvidence is attached under `hooks/%s/`.\n' "$HOOK" "$HOOK"
+            } > "$OUTBOX/$REPORT"
+          env:
+            OUTBOX: ${{ context.environment.op.outbox }}
+            HOOK: ${{ inputs.hook }}
+            REPORT: "${{ {'configure': 'configuration.md', 'before_design': 'design-context.md', 'prepare': 'preparation.md',
+              'verify': 'verification.md', 'publish': 'publication.md'}[inputs.hook] }}"
+            STATUS: ${{ inputs.result.status }}
+            SUMMARY: ${{ inputs.result.summary }}
+            CANDIDATE: ${{ inputs.candidate }}
+            RESULT_CANDIDATE: ${{ inputs.result_candidate }}
+        artifacts:
+          ./: ${{ sequence.namespace.outputs.documents }}
+      outputs:
+        artifact_refs: "${{ jq([sequence.namespace.outputs.documents, { {'configure': 'configuration.md', 'before_design':
+          'design-context.md', 'prepare': 'preparation.md', 'verify': 'verification.md', 'publish': 'publication.md'}[inputs.hook]:
+          sequence.render_hook_report.artifacts[{'configure': 'configuration.md', 'before_design': 'design-context.md',
+          'prepare': 'preparation.md', 'verify': 'verification.md', 'publish': 'publication.md'}[inputs.hook]]}],
+          'add') }}"
+      inputs:
+        hook: ${{ inputs.hook }}
+        round: ${{ inputs.round }}
+        candidate: ${{ inputs.candidate }}
+        result_candidate: ${{ inputs.result_candidate }}
+        result: ${{ inputs.result }}
+    invalid:
+      id: invalid
+      op: command_execution
+      const: true
+      inputs:
+        run: |-
+          echo "Hook exported an unsafe artifact name" >&2
+          exit 1
+outputs:
+  artifact_refs: ${{ states.render.outputs.artifact_refs }}
+  result: "${{ {'status': inputs.result.status, 'ok': inputs.result.status == 'passed', 'summary': inputs.result.summary,
+    'candidate': inputs.candidate, 'result_candidate': inputs.result_candidate} }}"

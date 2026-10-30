@@ -1,0 +1,41 @@
+id: repository-build-verify
+input_schema:
+  api_version:
+    type: string
+    required: true
+  request:
+    type: string
+    required: true
+  target_directory:
+    type: string
+    required: true
+  candidate:
+    type: string
+    required: true
+  base:
+    type: string
+    required: true
+  documents:
+    type: artifact_map
+    default_value: {}
+  settings:
+    type: artifact
+    required: false
+inputs:
+  target_directory: ${{ inputs.target_directory }}
+sequence:
+- id: run_repository_suite
+  op: command_execution
+  const: true
+  inputs:
+    env:
+      TARGET: '{{ context.environment.op.worktree_path }}/{{ inputs.target_directory }}'
+      OUTBOX: ${{ context.environment.op.outbox }}
+    run: |
+      cd "$TARGET" || exit 1
+      if bash ./build.sh > "$OUTBOX/tests.log" 2>&1; then printf passed; else printf failed; fi
+outputs:
+  api_version: c2.build-hook/v1
+  status: ${{ sequence.run_repository_suite.outputs.stdout }}
+  summary: Repository suite completed; inspect tests.log.
+  artifact_refs: "${{ {'tests.log': sequence.run_repository_suite.artifacts['tests.log']} }}"

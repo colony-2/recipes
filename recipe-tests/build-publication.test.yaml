@@ -1,0 +1,162 @@
+recipe: fixtures/build-publication.yaml
+cases:
+- id: publish-merged-commit
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          .c2/recipes/hooks/build/publish.yaml: |
+            id: fixture-publish
+            sequence:
+            - id: publish_fixture
+              op: command_execution
+              inputs:
+                env:
+                  CANDIDATE: ${{ inputs.candidate }}
+                  MERGED: ${{ inputs.merged_hash }}
+                  OUTBOX: ${{ context.environment.op.outbox }}
+                run: test "$CANDIDATE" = "$MERGED" && test "$(git rev-parse HEAD)" = "$MERGED" && printf "%s\n" "$MERGED"
+                  > "$OUTBOX/publication.txt"
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: Fixture publish completed.
+              artifact_refs: "${{ {'publication.txt': sequence.publish_fixture.artifacts['publication.txt']} }}"
+            inputs:
+              candidate: ${{ inputs.candidate }}
+              merged_hash: ${{ inputs.merged_hash }}
+          candidate.txt: original
+  inputs: {}
+  mocks:
+    ops:
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: publication.status
+    value: passed
+  - type: cel_true
+    expr: outputs.publication.candidate == outputs.merged_hash
+  - type: cel_true
+    expr: size(calls.filter(c, c.op == "merge")) == 1
+- id: absent-publication
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          README.md: Fixture
+  inputs: {}
+  mocks:
+    ops:
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: publication.status
+    value: skipped
+- id: publication-failure
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          .c2/recipes/hooks/build/publish.yaml: |
+            id: fixture-publish
+            sequence: []
+            outputs:
+              api_version: c2.build-hook/v1
+              status: failed
+              summary: Fixture publish completed.
+              artifact_refs: {}
+  inputs: {}
+  mocks:
+    ops:
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions: []
+  expect_error: command execution failed
+- id: publication-mutation
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          .c2/recipes/hooks/build/publish.yaml: |
+            id: fixture-publish
+            sequence:
+            - id: edit
+              op: command_execution
+              inputs:
+                run: echo invalid > candidate.txt
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: Fixture publish completed.
+              artifact_refs: {}
+  inputs: {}
+  mocks:
+    ops:
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions: []
+  expect_error: command execution failed
+- id: publish-remains-pinned-after-branch-advances
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          .c2/recipes/hooks/build/publish.yaml: |
+            id: fixture-publish
+            sequence:
+            - id: publish_fixture
+              op: command_execution
+              inputs:
+                env:
+                  CANDIDATE: ${{ inputs.candidate }}
+                  MERGED: ${{ inputs.merged_hash }}
+                  OUTBOX: ${{ context.environment.op.outbox }}
+                run: test "$CANDIDATE" = "$MERGED" && test "$(git rev-parse HEAD)" = "$MERGED" && printf "%s\n" "$MERGED"
+                  > "$OUTBOX/publication.txt"
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: Fixture publish completed.
+              artifact_refs: "${{ {'publication.txt': sequence.publish_fixture.artifacts['publication.txt']} }}"
+            inputs:
+              candidate: ${{ inputs.candidate }}
+              merged_hash: ${{ inputs.merged_hash }}
+          candidate.txt: original
+  inputs:
+    advance: true
+  mocks:
+    ops:
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: publication.status
+    value: passed
+  - type: cel_true
+    expr: outputs.publication.candidate == outputs.merged_hash
+  - type: cel_true
+    expr: size(calls.filter(c, c.op == "merge")) == 1
+  - type: cel_true
+    expr: '!outputs.source_hash.startsWith(outputs.merged_hash)'

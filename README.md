@@ -45,9 +45,9 @@ The [light workflow](recipes/light/develop.yaml) runs:
    message. Failure returns to implementation. Human feedback repeats implementation
    and verification; acceptance without feedback permits squash and merge.
 
-Light verification runs `bash ./build.sh` when present, followed by any additional
-repository check command supplied by the agent. Missing checks are reported as skipped
-and allow normal synopsis review and merge. The light synopsis uses
+Light verification runs `.c2/recipes/hooks/build/verify.yaml`. Missing hooks are
+reported as skipped and allow normal synopsis review unless `require_verification`
+is true. `build.sh` is no longer discovered automatically. The light synopsis uses
 the implementation session's explanation and the shared Git inventory; it does not
 start an independent file-accounting session. If complexity emerges, the agent can
 escalate to heavy after its children finish, retaining its session, candidate,
@@ -84,11 +84,27 @@ For deliverable responses, correctable errors resume the same session with prese
 after two automatic corrections, the workflow asks for human direction.
 Correction never substitutes for the normal design or outcome approval.
 
-Verification runs an existing `build.sh` in `target_directory`, retaining its output
-in `build.log` and its status in `verification.md`. Failed checks return to implementation.
-An absent script is reported as skipped and permits normal review and merge; agents
-do not need to create `build.sh` to satisfy the workflow. Projects can
-specialize this include to use their own verification op. Verification is read
+Build hooks require c2j with local hook support (commit `100c422` or later).
+See the [known runtime limitations](guides/BUG_C2J_HOOK_PIN_CHILD_SNAPSHOT.md)
+for custom consultation child jobs and the Nix test setup.
+
+Both build paths use repository-local hooks under `.c2/recipes/hooks/build/`:
+`configure.yaml` supplies startup settings, prompt additions, and specialist requests;
+`before_design.yaml` supplies design research on the heavy path; `prepare.yaml`
+prepares candidate files; `verify.yaml` runs checks; and `publish.yaml` runs after merge.
+Design-stage specialists or `require_design` in configuration select the heavy path.
+Required specialists need an explicit passing assessment. Outcome specialists also
+run on light builds. Configuration remains fixed for the build; later hook calls
+resolve from their current candidate.
+
+Verification failures return to implementation. Skipped checks are recorded in
+`verification.md`; `require_verification: true` blocks completion when checks are
+absent or skipped. Unchanged and delegated outcomes also run verification. Existing
+scripts may be called explicitly by a hook. This repository's verify hook preserves
+its existing purpose-document checks; the full native suite remains in CI.
+See [hook examples](examples/build-hooks/README.md) and the
+[hook contract](guides/PROPOSAL_BUILD_RECIPE_HOOKS.md), plus the
+[validation report](guides/BUILD_HOOKS_VALIDATION.md). Verification is read
 only with respect to the managed Git candidate. Build uses the native `rebase`,
 `squash`, and `merge` ops (c2j v0.0.104 or later). Rebase happens before inspection,
 verification, and file accounting. Squash happens after human acceptance and preserves the reviewed
@@ -98,7 +114,8 @@ after review stops publication if it prevents a fast-forward.
 The [file accounting include](recipes/develop/merge-review.yaml) and shared
 [Git inventory](recipes/kernel/git-candidate.yaml) declare pinned
 Nix Python through `execution_needs.packages` on their inventory and Markdown-rendering
-commands. c2j prepares Python and adds it to each command's PATH; host Python is
+commands. Hook-source inspection also declares pinned `yq-go` for YAML parsing.
+c2j prepares these tools and adds them to each command's PATH; host Python is
 not required for these steps. Its independent, read-only Codex session
 explains every added, changed, and deleted file against the approved scope, including
 files outside `target_directory`. Renames appear as deletion/addition pairs. The recipe
@@ -112,7 +129,7 @@ The document shows the proposed squash subject and review message. The recipe ap
 so the reviewed message and published commit link to the actual originating job.
 
 ```sh
-c2j submit --recipe-file ./build.yaml \
+c2j submit --advanced-recipe-file ./build.yaml \
   --inputs-json '{"prompt":"Add retry handling"}' --run --embed
 ```
 
@@ -236,7 +253,7 @@ Each run records the selected c2j version and uploads test reports and logs as
 - `guides/` contains operation contracts, authoring guidance, and historical designs.
 
 Use `c2j self` to check the target cell and
-`c2j submit --recipe-file ... --run --embed` for local iteration. There is no
+`c2j submit --advanced-recipe-file ... --run --embed` for local iteration. There is no
 separate registry update step. Read the [authoring guide](guides/RECIPE_AUTHORING_GUIDE.md),
 [operation catalog](guides/ops/README.md), and [scope rules](guides/NODE_SCOPE_SPEC.md).
 Use real ops where available, explicit outputs across include boundaries, and

@@ -1,0 +1,42 @@
+id: publication-fixture
+sequence:
+- id: edit
+  op: command_execution
+  inputs:
+    run: echo changed > candidate.txt
+- id: merge
+  op: merge
+- id: advance_source
+  op: command_execution
+  const: true
+  inputs:
+    env:
+      ADVANCE: ${{ string(inputs.advance) }}
+      REPO: ${{ context.git.repo }}
+    run: |
+      if [ "$ADVANCE" = true ]; then
+        printf concurrent > "$REPO/after-merge.txt"
+        git -C "$REPO" add after-merge.txt
+        git -C "$REPO" commit -qm "Advance source after merge"
+      fi
+      git -C "$REPO" rev-parse HEAD
+- id: publish
+  include: ../../recipes/build/hooks/publish.yaml
+  workspace:
+    cell: ${{ context.git.repo }}
+    ref: ${{ sequence.merge.outputs.merged_hash }}
+  inputs:
+    merged_hash: ${{ sequence.merge.outputs.merged_hash }}
+    target_branch: ${{ sequence.merge.outputs.target_branch }}
+    base: ${{ context.git.execution.base_hash }}
+outputs:
+  merged_hash: ${{ sequence.merge.outputs.merged_hash }}
+  publication: ${{ sequence.publish.outputs.result }}
+  artifact_refs: ${{ sequence.publish.outputs.artifact_refs }}
+  source_hash: ${{ sequence.advance_source.outputs.stdout }}
+input_schema:
+  advance:
+    type: boolean
+    default_value: false
+inputs:
+  advance: ${{ inputs.advance }}

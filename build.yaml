@@ -32,8 +32,11 @@ input_schema:
   type:
     type: string
     default_value: build
-    description: 'Deprecated compatibility input: c2j v0.0.82 injects this field. Ignored; build is the only
-      development workflow.'
+    description: 'Deprecated compatibility input: c2j v0.0.82 injects this field. Ignored; build is the only development
+      workflow.'
+  require_verification:
+    type: boolean
+    default_value: false
 inputs:
   prompt: ${{ inputs.prompt }}
   target_directory: ${{ inputs.target_directory }}
@@ -44,7 +47,17 @@ inputs:
   consultation_recipe: ${{ inputs.consultation_recipe }}
   build_recipe: ${{ inputs.build_recipe }}
   create_recipe: ${{ inputs.create_recipe }}
+  require_verification: ${{ inputs.require_verification }}
 sequence:
+- id: configure
+  include: ./recipes/build/hooks/configure.yaml
+  workspace:
+    cell: ${{ context.git.repo }}
+    ref: ${{ context.git.ref }}
+  inputs:
+    request: ${{ inputs.prompt }}
+    target_directory: ${{ inputs.target_directory }}
+    documents: ${{ inputs.documents }}
 - id: classify
   include: ./recipes/build/classify.yaml
   workspace:
@@ -60,13 +73,18 @@ sequence:
     prompt: ${{ inputs.prompt }}
     target_directory: ${{ inputs.target_directory }}
     session: ${{ inputs.?session.orValue({}) }}
-    documents: ${{ inputs.documents }}
+    documents: ${{ jq([inputs.documents, sequence.configure.outputs.artifact_refs], 'add') }}
     root_cell: ${{ inputs.root_cell }}
     root_ref: ${{ inputs.root_ref }}
     consultation_recipe: ${{ inputs.consultation_recipe }}
     build_recipe: ${{ inputs.build_recipe }}
     create_recipe: ${{ inputs.create_recipe }}
-    light: ${{ sequence.classify.outputs.light }}
+    light: ${{ sequence.classify.outputs.light && !sequence.configure.outputs.settings.require_design &&
+      !sequence.configure.outputs.settings.consultations.exists(c, c.checkpoint in ['before_design',
+      'plan_assessment']) }}
+    hook_settings: ${{ sequence.configure.outputs.settings }}
+    settings_artifact: ${{ sequence.configure.outputs.settings_artifact }}
+    require_verification: ${{ inputs.require_verification }}
   state:
     initial:
     - to: light
@@ -84,15 +102,17 @@ sequence:
           root_cell: ${{ inputs.root_cell }}
           root_ref: ${{ inputs.root_ref }}
           build_recipe: ${{ inputs.build_recipe }}
+          hook_settings: ${{ inputs.hook_settings }}
+          settings_artifact: ${{ inputs.settings_artifact }}
+          require_verification: ${{ inputs.require_verification }}
         transitions:
         - to: heavy
           when: outputs.escalate
       heavy:
         include: ./recipes/develop/develop.yaml
         inputs:
-          prompt: '${{ inputs.prompt + (state_exists(''light'') ? ''\nRead inbox/light-handoff.json: preserve
-            completed child outcomes and existing candidate work. Do not duplicate completed delegation.''
-            : '''') }}'
+          prompt: '${{ inputs.prompt + (state_exists(''light'') ? ''\nRead inbox/light-handoff.json: preserve completed
+            child outcomes and existing candidate work. Do not duplicate completed delegation.'' : '''') }}'
           target_directory: ${{ inputs.target_directory }}
           session: ${{ state_output('light', 'session', inputs.session) }}
           documents: ${{ state_output('light', 'artifact_refs', inputs.documents) }}
@@ -104,18 +124,19 @@ sequence:
           prior_merge_chases: ${{ state_output('light', 'merge_chases', 0) }}
           prior_dependencies: ${{ state_output('light', 'dependencies', {}) }}
           prior_consultations: ${{ state_output('light', 'consultations', {}) }}
+          hook_settings: ${{ inputs.hook_settings }}
+          settings_artifact: ${{ inputs.settings_artifact }}
+          require_verification: ${{ inputs.require_verification }}
   outputs:
     merged: ${{ state_output('heavy', 'merged', state_output('light', 'merged', null)) }}
     merged_hash: ${{ state_output('heavy', 'merged_hash', state_output('light', 'merged_hash', null)) }}
-    target_branch: ${{ state_output('heavy', 'target_branch', state_output('light', 'target_branch', null))
-      }}
+    target_branch: ${{ state_output('heavy', 'target_branch', state_output('light', 'target_branch', null)) }}
     session: ${{ state_output('heavy', 'session', state_output('light', 'session', null)) }}
-    assistant_summary: ${{ state_output('heavy', 'assistant_summary', state_output('light', 'assistant_summary',
-      null)) }}
+    assistant_summary: ${{ state_output('heavy', 'assistant_summary', state_output('light',
+      'assistant_summary', null)) }}
     disposition: ${{ state_output('heavy', 'disposition', state_output('light', 'disposition', null)) }}
     result: ${{ state_output('heavy', 'result', state_output('light', 'result', null)) }}
-    artifact_refs: ${{ state_output('heavy', 'artifact_refs', state_output('light', 'artifact_refs', null))
-      }}
+    artifact_refs: ${{ state_output('heavy', 'artifact_refs', state_output('light', 'artifact_refs', null)) }}
     consultations: ${{ jq([state_output('light', 'consultations', {}), state_output('heavy', 'consultations',
       {})], 'add') }}
     dependencies: ${{ jq([state_output('light', 'dependencies', {}), state_output('heavy', 'dependencies',
@@ -123,6 +144,7 @@ sequence:
     reviews: ${{ state_output('heavy', 'reviews', state_output('light', 'reviews', null)) }}
     verification: ${{ state_output('heavy', 'verification', state_output('light', 'verification', null)) }}
     process: '${{ state_exists(''heavy'') ? ''heavy'' : ''light'' }}'
+    publication: ${{ state_output('heavy', 'publication', state_output('light', 'publication', {})) }}
 outputs:
   merged: ${{ sequence.run.outputs.merged }}
   merged_hash: ${{ sequence.run.outputs.merged_hash }}
@@ -138,3 +160,4 @@ outputs:
   verification: ${{ sequence.run.outputs.verification }}
   process: ${{ sequence.run.outputs.process }}
   classification: ${{ sequence.classify.outputs }}
+  publication: ${{ sequence.run.outputs.publication }}

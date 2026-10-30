@@ -10,10 +10,33 @@ cases:
         files:
           PURPOSE.md: Own widget documentation.
           candidate.txt: original
+          .c2/recipes/hooks/build/verify.yaml: |
+            id: fixture-verify
+            inputs:
+              target_directory: ${{ inputs.target_directory }}
+            sequence:
+            - id: run_suite
+              op: command_execution
+              const: true
+              inputs:
+                env:
+                  TARGET: '{{ context.environment.op.worktree_path }}/{{ inputs.target_directory }}'
+                  OUTBOX: ${{ context.environment.op.outbox }}
+                run: |
+                  cd "$TARGET" || exit 1
+                  if (
+                  test "$(cat candidate.txt)" = corrected
+                  ) > "$OUTBOX/tests.log" 2>&1; then printf passed; else printf failed; fi
+            outputs:
+              api_version: c2.build-hook/v1
+              status: ${{ sequence.run_suite.outputs.stdout }}
+              summary: Fixture repository checks completed.
+              artifact_refs: "${{ {'tests.log': sequence.run_suite.artifacts['tests.log']} }}"
     observe_files:
     - candidate.txt
     responses:
-    - node_path: rebased-no-change/develop/light-develop/accept/sequence/outcome_review/kernel-review/request_human_review
+    - node_path:
+        rebased-no-change/develop/light-develop/accept/sequence/outcome_review/kernel-review/request_human_review
       fields:
         decision: accept
   mocks:
@@ -33,10 +56,9 @@ cases:
             questions: []
             consultations: []
             keys: []
-            verification_command: test "$(cat candidate.txt)" = corrected
             subject: Correct widget documentation
-            review_message: Upstream already applied the requested correction. The rebased candidate is empty and
-              the content check confirms the requirement is satisfied.
+            review_message: Upstream already applied the requested correction. The rebased candidate is empty
+              and the content check confirms the requirement is satisfied.
         effects:
           objects:
             session:
@@ -60,5 +82,5 @@ cases:
   - type: cel_true
     expr: calls.exists(c, c.op == "rebase")
   - type: cel_true
-    expr: outputs.review_document.contains("## No-change rationale") && outputs.review_document.contains("Upstream
-      already applied")
+    expr: outputs.review_document.contains("## No-change rationale") &&
+      outputs.review_document.contains("Upstream already applied")

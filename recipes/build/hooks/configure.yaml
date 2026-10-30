@@ -1,0 +1,171 @@
+id: build-hook-configure
+version: 1.0.0
+inputs:
+  request: ${{ inputs.?request.orValue('') }}
+  target_directory: ${{ inputs.?target_directory.orValue('.') }}
+  documents: ${{ inputs.?documents.orValue({}) }}
+  settings: ${{ inputs.?settings.orValue(null) }}
+  round: ${{ inputs.?round.orValue(0) }}
+sequence:
+- id: capture_candidate
+  op: command_execution
+  const: true
+  inputs:
+    run: |
+      set -eu
+      case "$DIRECTORY" in ""|/*|..|../*|*/../*|*/..) echo "Invalid repository-relative target directory" >&2; exit 1;; esac
+      test -d "$WORKTREE/$DIRECTORY" || { echo "Target directory does not exist" >&2; exit 1; }
+      git rev-parse HEAD
+    env:
+      DIRECTORY: ${{ inputs.target_directory }}
+      WORKTREE: ${{ context.environment.op.worktree_path }}
+- id: invoke_hook
+  include:
+    recipe: cell://.c2/recipes/hooks/build/configure.yaml
+    if_missing:
+      outputs:
+        api_version: c2.build-hook/v1
+        status: skipped
+        summary: No repository configure hook is configured.
+        artifact_refs: {}
+        settings:
+          require_design: false
+          prompt_additions: {}
+          variables: {}
+          consultations: []
+  inputs:
+    api_version: c2.build-hook/v1
+    request: ${{ inputs.request }}
+    target_directory: ${{ inputs.target_directory }}
+    candidate: ${{ context.git.hash }}
+    base: ${{ context.git.execution.base_hash }}
+    documents: ${{ inputs.documents }}
+  expect_outputs:
+    type: object
+    additionalProperties: false
+    required:
+    - api_version
+    - status
+    - summary
+    - artifact_refs
+    - settings
+    properties:
+      api_version:
+        type: string
+        enum:
+        - c2.build-hook/v1
+      status:
+        type: string
+        enum:
+        - passed
+        - failed
+        - skipped
+      summary:
+        type: string
+        minLength: 1
+        maxLength: 8192
+      artifact_refs:
+        type: object
+        maxProperties: 64
+        propertyNames:
+          pattern: ^[a-zA-Z0-9_-][a-zA-Z0-9_./-]*$
+        additionalProperties:
+          type: object
+      settings:
+        type: object
+        additionalProperties: false
+        properties:
+          require_design:
+            type: boolean
+          prompt_additions:
+            type: object
+            additionalProperties: false
+            properties:
+              design:
+                type: string
+                maxLength: 8192
+              test_plan:
+                type: string
+                maxLength: 8192
+              implementation:
+                type: string
+                maxLength: 8192
+              plan_assessment:
+                type: string
+                maxLength: 8192
+              outcome_assessment:
+                type: string
+                maxLength: 8192
+          variables:
+            type: object
+          consultations:
+            type: array
+            maxItems: 40
+            items:
+              type: object
+              additionalProperties: false
+              required:
+              - key
+              - checkpoint
+              - role
+              - request
+              - required
+              properties:
+                key:
+                  type: string
+                  pattern: ^[a-zA-Z0-9_-]+$
+                  maxLength: 80
+                checkpoint:
+                  enum:
+                  - before_design
+                  - plan_assessment
+                  - outcome_assessment
+                role:
+                  type: string
+                  minLength: 1
+                  maxLength: 2048
+                request:
+                  type: string
+                  minLength: 1
+                  maxLength: 8192
+                required:
+                  type: boolean
+- id: check_hook_candidate
+  op: command_execution
+  const: true
+  inputs:
+    run: |
+      set -eu
+      test "$(git rev-parse HEAD)" = "$BEFORE" || { echo "Read-only build hook changed the managed candidate" >&2; exit 1; }
+      test -d "$TARGET" || { echo "Target directory does not exist" >&2; exit 1; }
+      git rev-parse HEAD
+    env:
+      BEFORE: ${{ jq(sequence.capture_candidate.outputs.stdout, 'rtrimstr("\n")') }}
+      TARGET: '{{ context.environment.op.worktree_path }}/{{ inputs.target_directory }}'
+      STATUS: ${{ sequence.invoke_hook.outputs.status }}
+- id: report
+  include: ./report.yaml
+  inputs:
+    hook: configure
+    round: ${{ inputs.round }}
+    candidate: ${{ jq(sequence.capture_candidate.outputs.stdout, 'rtrimstr("\n")') }}
+    result_candidate: ${{ jq(sequence.check_hook_candidate.outputs.stdout, 'rtrimstr("\n")') }}
+    result: ${{ sequence.invoke_hook.outputs }}
+- id: require_hook_success
+  op: command_execution
+  const: true
+  inputs:
+    env:
+      STATUS: ${{ sequence.invoke_hook.outputs.status }}
+    run: test "$STATUS" != failed || { echo "Build hook reported failure; inspect its report" >&2; exit 1; }
+- id: settings
+  include: ./settings.yaml
+  inputs:
+    settings: ${{ sequence.invoke_hook.outputs.settings }}
+outputs:
+  result: ${{ sequence.report.outputs.result }}
+  artifact_refs: "${{ jq([sequence.report.outputs.artifact_refs, sequence.settings.outputs.artifact_refs], 'add')
+    }}"
+  candidate: ${{ jq(sequence.check_hook_candidate.outputs.stdout, 'rtrimstr("\n")') }}
+  settings: ${{ sequence.settings.outputs.settings }}
+  settings_artifact: ${{ sequence.settings.outputs.artifact_refs['build-settings.json'] }}

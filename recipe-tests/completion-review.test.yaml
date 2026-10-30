@@ -11,11 +11,34 @@ cases:
         files:
           candidate.txt: original
           README.md: Widget documentation owner
+          .c2/recipes/hooks/build/verify.yaml: |
+            id: fixture-verify
+            inputs:
+              target_directory: ${{ inputs.target_directory }}
+            sequence:
+            - id: run_suite
+              op: command_execution
+              const: true
+              inputs:
+                env:
+                  TARGET: '{{ context.environment.op.worktree_path }}/{{ inputs.target_directory }}'
+                  OUTBOX: ${{ context.environment.op.outbox }}
+                run: |
+                  cd "$TARGET" || exit 1
+                  if (
+                  test ! -e PURPOSE.md
+                  ) > "$OUTBOX/tests.log" 2>&1; then printf passed; else printf failed; fi
+            outputs:
+              api_version: c2.build-hook/v1
+              status: ${{ sequence.run_suite.outputs.stdout }}
+              summary: Fixture repository checks completed.
+              artifact_refs: "${{ {'tests.log': sequence.run_suite.artifacts['tests.log']} }}"
     observe_files:
     - candidate.txt
     - PURPOSE.md
     responses:
-    - node_path: completion-review/build/root/run/light/light/light-develop/accept/sequence/outcome_review/kernel-review/request_human_review
+    - node_path:
+        completion-review/build/root/run/light/light/light-develop/accept/sequence/outcome_review/kernel-review/request_human_review
       fields:
         decision: cancel
   inputs:
@@ -46,10 +69,9 @@ cases:
             questions: []
             consultations: []
             keys: []
-            verification_command: test ! -e PURPOSE.md
             subject: Correct widget documentation
-            review_message: This is not a successful documentation-refresh outcome. The prior consultant restriction
-              prevented implementation.
+            review_message: This is not a successful documentation-refresh outcome. The prior consultant
+              restriction prevented implementation.
         effects:
           objects:
             session:
@@ -76,11 +98,12 @@ cases:
   - type: cel_true
     expr: '!calls.exists(c, c.op in ["squash", "merge"])'
   - type: cel_true
-    expr: calls.filter(c, c.node_path.endsWith("/render_change_synopsis"))[0].inputs.env.RESPONSE.contains("not
-      a successful documentation-refresh outcome")
+    expr: calls.filter(c,
+      c.node_path.endsWith("/render_change_synopsis"))[0].inputs.env.RESPONSE.contains("not a successful
+      documentation-refresh outcome")
   - type: cel_true
-    expr: outputs.review_document.contains("## No-change rationale") && outputs.review_document.contains("not a
-      successful documentation-refresh outcome")
+    expr: outputs.review_document.contains("## No-change rationale") && outputs.review_document.contains("not
+      a successful documentation-refresh outcome")
 - id: unchanged-revision-requires-work-and-another-review
   type: integration_case
   runtime:
@@ -91,14 +114,38 @@ cases:
         files:
           PURPOSE.md: Own widget documentation.
           candidate.txt: original
+          .c2/recipes/hooks/build/verify.yaml: |
+            id: fixture-verify
+            inputs:
+              target_directory: ${{ inputs.target_directory }}
+            sequence:
+            - id: run_suite
+              op: command_execution
+              const: true
+              inputs:
+                env:
+                  TARGET: '{{ context.environment.op.worktree_path }}/{{ inputs.target_directory }}'
+                  OUTBOX: ${{ context.environment.op.outbox }}
+                run: |
+                  cd "$TARGET" || exit 1
+                  if (
+                  case "$(cat candidate.txt)" in original|corrected) exit 0;; *) exit 1;; esac
+                  ) > "$OUTBOX/tests.log" 2>&1; then printf passed; else printf failed; fi
+            outputs:
+              api_version: c2.build-hook/v1
+              status: ${{ sequence.run_suite.outputs.stdout }}
+              summary: Fixture repository checks completed.
+              artifact_refs: "${{ {'tests.log': sequence.run_suite.artifacts['tests.log']} }}"
     observe_files:
     - candidate.txt
     responses:
-    - node_path: completion-review/build/root/run/light/light/light-develop/accept/sequence/outcome_review/kernel-review/request_human_review
+    - node_path:
+        completion-review/build/root/run/light/light/light-develop/accept/sequence/outcome_review/kernel-review/request_human_review
       fields:
         decision: revise
         feedback: The documentation needs correction; implement the request.
-    - node_path: completion-review/build/root/run/light/light/light-develop/accept/sequence/outcome_review/kernel-review/request_human_review
+    - node_path:
+        completion-review/build/root/run/light/light/light-develop/accept/sequence/outcome_review/kernel-review/request_human_review
       fields:
         decision: accept
   inputs:
@@ -129,10 +176,9 @@ cases:
             questions: []
             consultations: []
             keys: []
-            verification_command: test "$(cat candidate.txt)" = original
             subject: Correct widget documentation
-            review_message: README and candidate.txt already describe the requested behavior; inspection and the
-              content check confirm no repository changes are needed.
+            review_message: README and candidate.txt already describe the requested behavior; inspection and
+              the content check confirm no repository changes are needed.
         effects:
           objects:
             session:
@@ -156,10 +202,9 @@ cases:
             questions: []
             consultations: []
             keys: []
-            verification_command: test "$(cat candidate.txt)" = corrected
             subject: Correct widget documentation
-            review_message: Correct the documented widget behavior. Verify the updated content with an automated
-              check.
+            review_message: Correct the documented widget behavior. Verify the updated content with an
+              automated check.
         effects:
           objects:
             session:
@@ -183,8 +228,9 @@ cases:
   - type: cel_true
     expr: size(calls.filter(c, c.op == "merge")) == 1
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex"))[1].inputs.inputs.session
-      == calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex"))[0].outputs.session
+    expr: calls.filter(c, c.op == "extension_execution" &&
+      c.inputs.selector.endsWith("#codex"))[1].inputs.inputs.session == calls.filter(c, c.op ==
+      "extension_execution" && c.inputs.selector.endsWith("#codex"))[0].outputs.session
 - id: heavy-no-change-rationale-requires-human-acceptance
   type: integration_case
   runtime:
@@ -200,10 +246,12 @@ cases:
     observe_files:
     - candidate.txt
     responses:
-    - node_path: completion-review/build/root/run/heavy/heavy/develop/approval/sequence/plan_review/kernel-review/request_human_review
+    - node_path:
+        completion-review/build/root/run/heavy/heavy/develop/approval/sequence/plan_review/kernel-review/request_human_review
       fields:
         decision: approve
-    - node_path: completion-review/build/root/run/heavy/heavy/develop/accept/sequence/outcome_review/kernel-review/request_human_review
+    - node_path:
+        completion-review/build/root/run/heavy/heavy/develop/accept/sequence/outcome_review/kernel-review/request_human_review
       fields:
         decision: accept
   inputs:
@@ -221,7 +269,8 @@ cases:
               noul: 0.99
     - repeat: true
       match:
-        node_path: completion-review/build/root/run/heavy/heavy/develop/accounting/sequence/review/build-merge-review/reviewer/kernel-agent-turn/start_read_only_session/start_read_only_session
+        node_path:
+          completion-review/build/root/run/heavy/heavy/develop/accounting/sequence/review/build-merge-review/reviewer/kernel-agent-turn/start_read_only_session/start_read_only_session
       behavior:
         mode: return
         outputs:
@@ -230,8 +279,8 @@ cases:
           response:
             verdict: approve
             subject: Improve requested behavior with verified coverage
-            review_message: The existing candidate.txt already documents the requested behavior. Repository inspection
-              and the approved acceptance criteria establish that no changes are needed.
+            review_message: The existing candidate.txt already documents the requested behavior. Repository
+              inspection and the approved acceptance criteria establish that no changes are needed.
             files: []
     - &id002
       match:
@@ -384,11 +433,11 @@ cases:
   - type: cel_true
     expr: outputs.reviews.outcome != {}
   - type: cel_true
-    expr: calls.filter(c, c.node_path.endsWith("/render_file_accounting"))[0].inputs.env.RESULT.contains("no changes
-      are needed")
+    expr: calls.filter(c, c.node_path.endsWith("/render_file_accounting"))[0].inputs.env.RESULT.contains("no
+      changes are needed")
   - type: cel_true
-    expr: outputs.review_document.contains("## No-change rationale") && outputs.review_document.contains("no changes
-      are needed") && !outputs.review_document.contains("## Proposed squash commit")
+    expr: outputs.review_document.contains("## No-change rationale") && outputs.review_document.contains("no
+      changes are needed") && !outputs.review_document.contains("## Proposed squash commit")
 - id: heavy-no-change-cancellation-never-completes-as-satisfied
   type: integration_case
   runtime:
@@ -404,10 +453,12 @@ cases:
     observe_files:
     - candidate.txt
     responses:
-    - node_path: completion-review/build/root/run/heavy/heavy/develop/approval/sequence/plan_review/kernel-review/request_human_review
+    - node_path:
+        completion-review/build/root/run/heavy/heavy/develop/approval/sequence/plan_review/kernel-review/request_human_review
       fields:
         decision: approve
-    - node_path: completion-review/build/root/run/heavy/heavy/develop/accept/sequence/outcome_review/kernel-review/request_human_review
+    - node_path:
+        completion-review/build/root/run/heavy/heavy/develop/accept/sequence/outcome_review/kernel-review/request_human_review
       fields:
         decision: cancel
   inputs:
@@ -429,11 +480,11 @@ cases:
   - type: cel_true
     expr: outputs.reviews.outcome != {}
   - type: cel_true
-    expr: calls.filter(c, c.node_path.endsWith("/render_file_accounting"))[0].inputs.env.RESULT.contains("no changes
-      are needed")
+    expr: calls.filter(c, c.node_path.endsWith("/render_file_accounting"))[0].inputs.env.RESULT.contains("no
+      changes are needed")
   - type: cel_true
-    expr: outputs.review_document.contains("## No-change rationale") && outputs.review_document.contains("no changes
-      are needed") && !outputs.review_document.contains("## Proposed squash commit")
+    expr: outputs.review_document.contains("## No-change rationale") && outputs.review_document.contains("no
+      changes are needed") && !outputs.review_document.contains("## Proposed squash commit")
 - id: heavy-blank-no-change-rationale-blocks-review
   type: integration_case
   runtime:
@@ -449,7 +500,8 @@ cases:
     observe_files:
     - candidate.txt
     responses:
-    - node_path: completion-review/build/root/run/heavy/heavy/develop/approval/sequence/plan_review/kernel-review/request_human_review
+    - node_path:
+        completion-review/build/root/run/heavy/heavy/develop/approval/sequence/plan_review/kernel-review/request_human_review
       fields:
         decision: approve
     expect_error: command execution failed
@@ -468,7 +520,8 @@ cases:
               noul: 0.99
     - repeat: true
       match:
-        node_path: completion-review/build/root/run/heavy/heavy/develop/accounting/sequence/review/build-merge-review/reviewer/kernel-agent-turn/start_read_only_session/start_read_only_session
+        node_path:
+          completion-review/build/root/run/heavy/heavy/develop/accounting/sequence/review/build-merge-review/reviewer/kernel-agent-turn/start_read_only_session/start_read_only_session
       behavior:
         mode: return
         outputs:
@@ -508,7 +561,8 @@ cases:
     - candidate.txt
     - PURPOSE.md
     responses: []
-    expect_error: no input response fixture for completion-review/build/root/run/light/light/light-develop/accept/sequence/outcome_review/kernel-review/request_human_review
+    expect_error: no input response fixture for
+      completion-review/build/root/run/light/light/light-develop/accept/sequence/outcome_review/kernel-review/request_human_review
   inputs:
     prompt: Create root PURPOSE.md from repository evidence.
   mocks: *id007
@@ -534,10 +588,12 @@ cases:
     observe_files:
     - candidate.txt
     responses:
-    - node_path: completion-review/build/root/run/heavy/heavy/develop/approval/sequence/plan_review/kernel-review/request_human_review
+    - node_path:
+        completion-review/build/root/run/heavy/heavy/develop/approval/sequence/plan_review/kernel-review/request_human_review
       fields:
         decision: approve
-    expect_error: no input response fixture for completion-review/build/root/run/heavy/heavy/develop/accept/sequence/outcome_review/kernel-review/request_human_review
+    expect_error: no input response fixture for
+      completion-review/build/root/run/heavy/heavy/develop/accept/sequence/outcome_review/kernel-review/request_human_review
   inputs:
     prompt: Confirm that existing widget documentation meets the request.
   mocks: *id001
@@ -552,11 +608,34 @@ cases:
         files:
           PURPOSE.md: Own widget documentation.
           candidate.txt: original
+          .c2/recipes/hooks/build/verify.yaml: |
+            id: fixture-verify
+            inputs:
+              target_directory: ${{ inputs.target_directory }}
+            sequence:
+            - id: run_suite
+              op: command_execution
+              const: true
+              inputs:
+                env:
+                  TARGET: '{{ context.environment.op.worktree_path }}/{{ inputs.target_directory }}'
+                  OUTBOX: ${{ context.environment.op.outbox }}
+                run: |
+                  cd "$TARGET" || exit 1
+                  if (
+                  test "$(cat candidate.txt)" = original
+                  ) > "$OUTBOX/tests.log" 2>&1; then printf passed; else printf failed; fi
+            outputs:
+              api_version: c2.build-hook/v1
+              status: ${{ sequence.run_suite.outputs.stdout }}
+              summary: Fixture repository checks completed.
+              artifact_refs: "${{ {'tests.log': sequence.run_suite.artifacts['tests.log']} }}"
         file_sources:
           .c2/recipes/dependency.yaml: fixtures/implementation-handoff.yaml
           .c2/recipes/light: ../recipes/light
           .c2/recipes/develop: ../recipes/develop
           .c2/recipes/kernel: ../recipes/kernel
+          .c2/recipes/build/hooks: ../recipes/build/hooks
       B:
         files:
           README.md: Own API docs.
@@ -564,7 +643,8 @@ cases:
     - candidate.txt
     - PURPOSE.md
     responses:
-    - node_path: implementation-handoff/develop/light-develop/accept/sequence/outcome_review/kernel-review/request_human_review
+    - node_path:
+        implementation-handoff/develop/light-develop/accept/sequence/outcome_review/kernel-review/request_human_review
       cell: B
       fields:
         decision: accept
@@ -603,10 +683,9 @@ cases:
               request: Agree to create missing root PURPOSE.md from repository evidence.
               role: Agree the bounded documentation update.
             keys: []
-            verification_command: test "$(cat candidate.txt)" = corrected
             subject: Correct widget documentation
-            review_message: Correct the documented widget behavior. Verify the updated content with an automated
-              check.
+            review_message: Correct the documented widget behavior. Verify the updated content with an
+              automated check.
         effects:
           objects:
             session:
@@ -653,7 +732,6 @@ cases:
             questions: []
             consultations: []
             keys: []
-            verification_command: test -s PURPOSE.md
             subject: Document API ownership
             review_message: Created PURPOSE.md from README evidence and checked its contents.
         effects:
@@ -701,15 +779,16 @@ cases:
   - type: cel_true
     expr: '!has(calls.filter(c, c.op == "recipes.run")[0].inputs.recipes[0].inputs.session)'
   - type: cel_true
-    expr: calls.filter(c, c.op == "recipes.run")[0].inputs.recipes[0].inputs.prompt.startsWith("Execute the agreed
-      prerequisite work.")
+    expr: calls.filter(c, c.op == "recipes.run")[0].inputs.recipes[0].inputs.prompt.startsWith("Execute the
+      agreed prerequisite work.")
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.cell == "B")[1].node_path.endsWith("/start_implementation_session/start_implementation_session")
+    expr: calls.filter(c, c.op == "extension_execution" && c.cell ==
+      "B")[1].node_path.endsWith("/start_implementation_session/start_implementation_session")
   - type: cel_true
     expr: '!has(calls.filter(c, c.op == "extension_execution" && c.cell == "B")[1].inputs.inputs.session)'
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.cell == "B")[1].artifacts["iter1/consultant/spec.md"].contains("Create
-      root PURPOSE.md because it is absent")
+    expr: calls.filter(c, c.op == "extension_execution" && c.cell ==
+      "B")[1].artifacts["iter1/consultant/spec.md"].contains("Create root PURPOSE.md because it is absent")
   - type: cel_true
     expr: '"consultation/conversation.json" in calls.filter(c, c.op == "extension_execution" && c.cell == "B")[1].artifacts'
   - type: cel_true
@@ -725,11 +804,34 @@ cases:
         files:
           candidate.txt: original
           README.md: Widget documentation owner
+          .c2/recipes/hooks/build/verify.yaml: |
+            id: fixture-verify
+            inputs:
+              target_directory: ${{ inputs.target_directory }}
+            sequence:
+            - id: run_suite
+              op: command_execution
+              const: true
+              inputs:
+                env:
+                  TARGET: '{{ context.environment.op.worktree_path }}/{{ inputs.target_directory }}'
+                  OUTBOX: ${{ context.environment.op.outbox }}
+                run: |
+                  cd "$TARGET" || exit 1
+                  if (
+                  test ! -e PURPOSE.md
+                  ) > "$OUTBOX/tests.log" 2>&1; then printf passed; else printf failed; fi
+            outputs:
+              api_version: c2.build-hook/v1
+              status: ${{ sequence.run_suite.outputs.stdout }}
+              summary: Fixture repository checks completed.
+              artifact_refs: "${{ {'tests.log': sequence.run_suite.artifacts['tests.log']} }}"
     observe_files:
     - candidate.txt
     - PURPOSE.md
     responses:
-    - node_path: completion-review/build/root/run/light/light/light-develop/repair/sequence/repair/result-repair/review/review/kernel-review/request_human_review
+    - node_path:
+        completion-review/build/root/run/light/light/light-develop/repair/sequence/repair/result-repair/review/review/kernel-review/request_human_review
       fields:
         decision: cancel
   inputs:
@@ -760,7 +862,6 @@ cases:
             questions: []
             consultations: []
             keys: []
-            verification_command: test ! -e PURPOSE.md
             subject: Correct widget documentation
             review_message: '   '
         effects:

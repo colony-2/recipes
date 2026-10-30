@@ -1,0 +1,42 @@
+id: build-hook-settings
+inputs:
+  settings: ${{ inputs.settings }}
+vars:
+  normalized: "${{ jq([{'require_design': false, 'prompt_additions': {}, 'variables': {}, 'consultations': []},
+    inputs.settings], 'add') }}"
+outputs:
+  settings: ${{ states.write.outputs.settings }}
+  artifact_refs: ${{ states.write.outputs.artifact_refs }}
+state:
+  initial:
+  - to: write
+    when: size(json_stringify(vars.normalized)) <= 16000 && size(vars.normalized.consultations.map(c, c.key))
+      == size(jq(vars.normalized.consultations, 'map(.key) | unique'))
+  - to: invalid
+    when: 'true'
+  states:
+    write:
+      sequence:
+      - id: write_settings
+        op: command_execution
+        const: true
+        inputs:
+          run: |
+            set -eu
+            printf '%s\n' "$SETTINGS" > "$OUTBOX/build-settings.json"
+          env:
+            SETTINGS: ${{ json_stringify(vars.normalized) }}
+            OUTBOX: ${{ context.environment.op.outbox }}
+      outputs:
+        settings: ${{ vars.normalized }}
+        artifact_refs: "${{ {'build-settings.json': sequence.write_settings.artifacts['build-settings.json']} }}"
+      inputs:
+        settings: ${{ inputs.settings }}
+    invalid:
+      id: invalid
+      op: command_execution
+      const: true
+      inputs:
+        run: |-
+          echo "Build settings exceed 16000 characters or contain duplicate consultation keys" >&2
+          exit 1

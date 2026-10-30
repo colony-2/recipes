@@ -1,70 +1,26 @@
 id: development-verify
-version: 0.4.0
-input_schema:
-  target_directory:
-    type: string
-    default_value: .
-  command:
-    type: string
-    default_value: ''
-    description: Additional repository verification command; build.sh runs first when present. Missing checks are skipped.
+version: 1.0.0
 inputs:
-  target_directory: ${{ inputs.target_directory }}
-  command: ${{ inputs.command }}
+  target_directory: ${{ inputs.?target_directory.orValue('.') }}
+  request: ${{ inputs.?request.orValue('') }}
+  documents: ${{ inputs.?documents.orValue({}) }}
+  settings: ${{ inputs.?settings.orValue(null) }}
+  round: ${{ inputs.?round.orValue(0) }}
+  require_verification: ${{ inputs.?require_verification.orValue(false) }}
 sequence:
-- id: run_repository_checks
-  op: command_execution
-  const: true
+- id: check
+  include: ../build/hooks/verify.yaml
   inputs:
-    continue_on_error: true
-    env:
-      TARGET: '{{ context.environment.op.worktree_path }}/{{ inputs.target_directory }}'
-      OUTBOX: '{{ context.environment.op.outbox }}'
-      VERIFY_COMMAND: ${{ inputs.command }}
-    run: |
-      cd "$TARGET" || exit 1
-      if [ ! -f build.sh ] && [ -z "$VERIFY_COMMAND" ]; then
-        printf skipped
-        exit 0
-      fi
-      printf ran
-      {
-        if [ -f build.sh ]; then
-          printf '$ bash ./build.sh\n'
-          bash ./build.sh || exit $?
-        fi
-        if [ -n "$VERIFY_COMMAND" ] && { [ ! -f build.sh ] || [ "$VERIFY_COMMAND" != 'bash ./build.sh' ]; }; then
-          printf '$ %s\n' "$VERIFY_COMMAND"
-          bash -c "$VERIFY_COMMAND"
-        fi
-      } > "$OUTBOX/build.log" 2>&1
-- id: write_verification_report
-  op: command_execution
-  const: true
-  inputs:
-    env:
-      OUTBOX: '{{ context.environment.op.outbox }}'
-      RAN: ${{ sequence.run_repository_checks.outputs.stdout }}
-      OK: ${{ string(sequence.run_repository_checks.outputs.success) }}
-      CODE: ${{ string(sequence.run_repository_checks.outputs.exit_code) }}
-      TIMED_OUT: ${{ string(sequence.run_repository_checks.outputs.timed_out) }}
-    run: |
-      if [ "$RAN" = skipped ]; then
-        printf '# Verification\n\nSkipped: no build.sh in the target directory. No automated verification was performed.\n'
-      else
-        printf '# Verification\n\nSuccess: %s; exit code: %s; timed out: %s. See build.log for commands and output.\n' "$OK" "$CODE" "$TIMED_OUT"
-      fi > "$OUTBOX/verification.md"
+    target_directory: ${{ inputs.target_directory }}
+    request: ${{ inputs.request }}
+    documents: ${{ inputs.documents }}
+    settings: ${{ inputs.settings }}
+    round: ${{ inputs.round }}
 outputs:
-  ok: ${{ sequence.run_repository_checks.outputs.success && sequence.run_repository_checks.outputs.stdout != "skipped" }}
-  result: '${{ {"ok": sequence.run_repository_checks.outputs.success && sequence.run_repository_checks.outputs.stdout != "skipped", "status":
-    sequence.run_repository_checks.outputs.stdout == "skipped" ? "skipped" : (sequence.run_repository_checks.outputs.success ? "passed"
-    : "failed"), "exit_code": sequence.run_repository_checks.outputs.exit_code, "timed_out": sequence.run_repository_checks.outputs.timed_out}
-    }}'
-  review_documents: '${{ {"verification": sequence.write_verification_report.artifacts["verification.md"]} }}'
-  artifact_refs: '${{ jq([{''verification.md'': sequence.write_verification_report.artifacts[''verification.md'']}, ''build.log''
-    in sequence.run_repository_checks.artifacts ? {''build.log'': sequence.run_repository_checks.artifacts[''build.log'']} : {}], ''add'')
-    }}'
-  evidence: '${{ {"ok": sequence.run_repository_checks.outputs.success && sequence.run_repository_checks.outputs.stdout != "skipped",
-    "status": sequence.run_repository_checks.outputs.stdout == "skipped" ? "skipped" : (sequence.run_repository_checks.outputs.success
-    ? "passed" : "failed"), "exit_code": sequence.run_repository_checks.outputs.exit_code, "timed_out": sequence.run_repository_checks.outputs.timed_out}
-    }}'
+  ok: ${{ sequence.check.outputs.result.status == 'passed' }}
+  allowed: ${{ sequence.check.outputs.result.status == 'passed' || (sequence.check.outputs.result.status ==
+    'skipped' && !inputs.require_verification) }}
+  result: ${{ sequence.check.outputs.result }}
+  evidence: ${{ sequence.check.outputs.result }}
+  review_documents: "${{ {'verification': sequence.check.outputs.artifact_refs['verification.md']} }}"
+  artifact_refs: ${{ sequence.check.outputs.artifact_refs }}
