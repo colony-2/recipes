@@ -102,7 +102,8 @@ Verification failures return to implementation. Skipped checks are recorded in
 absent or skipped. Unchanged and delegated outcomes also run verification. Existing
 scripts may be called explicitly by a hook. This repository's verify hook preserves
 its existing purpose-document checks; the full native suite remains in CI.
-See [hook examples](examples/build-hooks/README.md) and the
+See the [user guide](guides/BUILD_HOOKS_USER_GUIDE.md),
+[hook examples](examples/build-hooks/README.md), and the
 [hook contract](guides/PROPOSAL_BUILD_RECIPE_HOOKS.md), plus the
 [validation report](guides/BUILD_HOOKS_VALIDATION.md). Verification is read
 only with respect to the managed Git candidate. Build uses the native `rebase`,

@@ -1,5 +1,8 @@
 # Build hooks
 
+Start with the [build hooks user guide](../../guides/BUILD_HOOKS_USER_GUIDE.md)
+for setup, configuration, permissions, and testing.
+
 Copy the hooks you need into `.c2/recipes/hooks/build/` in the consuming repository.
 The shared build invokes them with `cell://`; these example files are not discovered
 by filename alone. Replace example commands with your repository's commands.
