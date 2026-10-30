@@ -1,0 +1,44 @@
+id: payload-consultation
+input_schema:
+  bytes:
+    type: number
+    required: true
+  marker:
+    type: string
+    required: true
+inputs:
+  request: ${{ jq(double(inputs.bytes), '"x" * .') + inputs.marker }}
+sequence:
+- id: discuss
+  include: ../../recipes/kernel/consultation.yaml
+  inputs:
+    thread: validation-api
+    request: ${{ inputs.request }}
+    consultant_cell: B
+    consultant_role: Own the serving API; assess scope and compatibility.
+- id: check
+  op: command_execution
+  const: true
+  execution_needs:
+    packages:
+    - nix:github:NixOS/nixpkgs/e7439b6b14ad3cc35d05608ebca9bce01a25f5f8#python3
+  artifacts:
+    conversation.json: ${{ sequence.discuss.outputs.continuation }}
+    expected.txt:
+      kind: value
+      format: text
+      value: ${{ inputs.request }}
+  inputs:
+    env:
+      INBOX: ${{ context.environment.op.inbox }}
+    run: |
+      python3 - <<'CHECK'
+      import json, os, pathlib
+      p = pathlib.Path(os.environ['INBOX'])
+      conversation = json.loads((p / 'conversation.json').read_text())
+      assert conversation['request'] == (p / 'expected.txt').read_text()
+      print('stored transcript preserved')
+      CHECK
+outputs:
+  checked: ${{ sequence.check.outputs.stdout }}
+  kind: ${{ sequence.discuss.outputs.continuation.kind }}

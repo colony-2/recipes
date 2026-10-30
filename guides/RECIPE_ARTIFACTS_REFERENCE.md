@@ -35,6 +35,40 @@ Example:
 
 This produces an artifact named `subdir/random.bin`.
 
+### 2.3 From a recipe value
+
+For computed JSON or text, bind a value source directly instead of starting a
+command just to write a file:
+
+```yaml
+artifacts:
+  context.json:
+    kind: value
+    format: json
+    value: ${{ inputs.flow }}
+inputs:
+  env:
+    INBOX: ${{ context.environment.op.inbox }}
+  run: cat "$INBOX/context.json"
+```
+
+`json` takes the native value and adds one newline; do not `json_stringify` it.
+`text` takes a string and writes its exact UTF-8 bytes. The contents are data,
+including literal template syntax and shell metacharacters. Environment values
+should carry small scalars and paths, not serialized documents.
+
+For a forwarded descriptor, supply `name` explicitly and pass it through the
+existing `artifact` / `artifact_map` parameters or document maps. Inline helpers
+may return these descriptors; standalone jobs persist explicit
+`outputs.artifact_refs` exports. Review `form.documents` also persists value
+sources. Temporary inbox files are not automatically archived for later story
+downloads. Use an outbox copy when a stored continuation handle is required.
+
+This requires c2j's [value-artifact capability](https://github.com/colony-2/c2j/blob/66cbded46995627f08c562092d98098f38404b4d/pkg/artifacts/guides/VALUES.md).
+See [migration and compatibility notes](VALUE_ARTIFACT_MIGRATION.md) for the
+runtime used in validation. Large resolved invocations use the runtime's
+attachment channel; ordinary job-input, declaration, and op-output limits remain.
+
 ## 3. Consuming Artifacts
 
 ### 3.1 Pass Artifact Keys in Inputs

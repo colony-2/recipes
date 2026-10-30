@@ -74,14 +74,13 @@ sequence:
   const: true
   inputs:
     env:
-      CANDIDATE: ${{ json_stringify(sequence.candidate.outputs.candidate) }}
-      RESULT: ${{ json_stringify(sequence.reviewer.outputs.result) }}
       OUTBOX: ${{ context.environment.op.outbox }}
+      INBOX: ${{ context.environment.op.inbox }}
     run: |
       python3 - <<'PY'
       import json, os, pathlib
-      candidate = json.loads(os.environ['CANDIDATE'])
-      result = json.loads(os.environ['RESULT'])
+      candidate = json.loads((pathlib.Path(os.environ['INBOX']) / 'candidate.json').read_text())
+      result = json.loads((pathlib.Path(os.environ['INBOX']) / 'result.json').read_text())
       if result.get('status') != 'completed' or not result.get('output_schema_valid'):
           raise ValueError('File accounting reviewer did not return a completed schema-valid response')
       review = result['response']
@@ -108,6 +107,17 @@ sequence:
       (pathlib.Path(os.environ['OUTBOX']) / 'merge-review.md').write_text('\n'.join(lines) + '\n')
       print(json.dumps({'verdict': review['verdict'], 'commit_message': commit_message}))
       PY
+  artifacts:
+    candidate.json:
+      kind: value
+      name: candidate.json
+      format: json
+      value: ${{ sequence.candidate.outputs.candidate }}
+    result.json:
+      kind: value
+      name: result.json
+      format: json
+      value: ${{ sequence.reviewer.outputs.result }}
 outputs:
   changed: ${{ size(sequence.candidate.outputs.candidate.files) > 0 }}
   change_digest: ${{ sequence.candidate.outputs.candidate.change_digest }}

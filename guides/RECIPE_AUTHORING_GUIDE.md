@@ -14,7 +14,7 @@ Treat each op as a remote durable step:
 - pass files between steps through `artifacts`
 - read/write task-local files through `context.environment.op.worktree_path`, `context.environment.op.inbox`, and `context.environment.op.outbox`
 - export anything later nodes need through the enclosing node's `outputs:`
-- Give every op an explicit, action-oriented `id`, such as `write_build_context` or
+- Give every op an explicit, action-oriented `id`, such as `render_change_synopsis` or
   `resume_read_only_session`, so job stories and failures identify the work being done.
   For a direct op state, use the same name for the state key and its `id`; update
   transitions, state references, and test node paths together when renaming it.
@@ -115,6 +115,7 @@ Write recipes with these rules:
 - use `context.environment.host.*` only when you intentionally need the c2j worker host path
 - use an `artifacts:` block only on ops that support inbox bindings
 - pass the submitted `prompt` input directly in LLM prompts when needed; do not write it to a file just to re-read it
+- use `kind: value` JSON/text artifacts for computed documents instead of bulk environment variables or writer-only commands; see `RECIPE_ARTIFACTS_REFERENCE.md`
 - do not paste file contents into LLM prompts; bind files into the op inbox and tell the LLM the inbox path to read
 - use artifact set bindings such as `submitted/: '${{ context.artifacts }}'` when an op needs a whole submitted or node-produced artifact set
 - use `${{ ... }}` for raw CEL values when a field expects a list, map, boolean, or number

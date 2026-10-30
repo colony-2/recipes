@@ -66,21 +66,12 @@ state:
       inputs:
         flow: ${{ jq(transition.payload.flow, 'del(.review_hint, .reuse_merge_approval, .chase_pending)') }}
       sequence:
-      - id: write_build_context
-        op: command_execution
-        const: true
-        inputs:
-          env:
-            OUTBOX: ${{ context.environment.op.outbox }}
-            CONTEXT: ${{ json_stringify(jq(inputs.flow, 'del(.session, .documents, .result)')) }}
-          run: |
-            printf '%s\n' "$CONTEXT" > "$OUTBOX/context.json"
       - id: agent
         include: ./agent.yaml
         inputs:
           flow: ${{ inputs.flow }}
-          documents: '${{ jq([inputs.flow.documents, {''context.json'': sequence.write_build_context.artifacts[''context.json'']}],
-            ''add'') }}'
+          documents: "${{ jq([inputs.flow.documents, {'context.json': {'kind': 'value', 'name': 'context.json',
+            'format': 'json', 'value': jq(inputs.flow, 'del(.session, .documents, .result)')} }], 'add') }}"
       outputs:
         flow: ${{ inputs.flow }}
         turn: ${{ sequence.agent.outputs.turn }}
@@ -555,19 +546,11 @@ state:
     handoff:
       inputs:
         flow: ${{ transition.payload.flow }}
-      sequence:
-      - id: write_heavy_handoff
-        op: command_execution
-        const: true
-        inputs:
-          env:
-            OUTBOX: ${{ context.environment.op.outbox }}
-            HANDOFF: ${{ json_stringify(jq(inputs.flow, 'del(.session, .documents)')) }}
-          run: |
-            printf '%s\n' "$HANDOFF" > "$OUTBOX/light-handoff.json"
+      sequence: []
       outputs:
-        flow: '${{ jq([inputs.flow, {''disposition'': ''heavy'', ''documents'': jq([inputs.flow.documents, {''light-handoff.json'':
-          sequence.write_heavy_handoff.artifacts[''light-handoff.json'']}], ''add'')}], ''add'') }}'
+        flow: "${{ jq([inputs.flow, {'disposition': 'heavy', 'documents': jq([inputs.flow.documents, {'light-handoff.json':
+          {'kind': 'value', 'name': 'light-handoff.json', 'format': 'json', 'value': jq(inputs.flow, 'del(.session,
+          .documents)')} }], 'add')}], 'add') }}"
     prepare:
       inputs:
         flow: "${{ jq([transition.payload.flow, {'validation_round': int(transition.payload.flow.?validation_round.orValue(0))

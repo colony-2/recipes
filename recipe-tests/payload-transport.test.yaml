@@ -1,0 +1,142 @@
+recipe: fixtures/payload-build.yaml
+cases:
+- id: heavy-context-65536
+  type: integration_case
+  runtime: &id001
+    secrets:
+      jev_api_key: synthetic-jev
+    cells:
+      root:
+        files:
+          candidate.txt: original
+          PURPOSE.md: Own recipe test fixtures.
+    observe_files:
+    - candidate.txt
+    - unapproved.txt
+    responses: []
+  inputs:
+    bytes: 65536
+    marker: "λ \"quoted\" \\ backslash\n$(touch SHOULD_NOT_EXIST) `literal` $HOME ${{ literal }}"
+  mocks: &id002
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#jev
+      behavior:
+        mode: return
+        outputs:
+          answers:
+            is_heavy: {type: noul, noul: 0.99}
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: outside
+            summary: design response
+            files:
+            - path: design.md
+              description: Review evidence
+            questions: []
+            consultations: []
+            keys: []
+        artifacts:
+          design.md: '# design evidence'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: design
+                turn: 1outside
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions: &id003
+  - type: output_equals
+    path: disposition
+    value: outside
+  - type: cel_true
+    expr: size(calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex"))) == 1
+  - type: cel_true
+    expr: '!calls.exists(c, c.node_path.endsWith("/write_build_context"))'
+  - type: cel_true
+    expr: '!calls.exists(c, "env" in c.inputs && "CONTEXT" in c.inputs.env)'
+- id: heavy-context-131072
+  type: integration_case
+  runtime: *id001
+  inputs:
+    bytes: 131072
+    marker: "λ \"quoted\" \\ backslash\n$(touch SHOULD_NOT_EXIST) `literal` $HOME ${{ literal }}"
+  mocks: *id002
+  assertions: *id003
+- id: heavy-context-524288
+  type: integration_case
+  runtime: *id001
+  inputs:
+    bytes: 524288
+    marker: "λ \"quoted\" \\ backslash\n$(touch SHOULD_NOT_EXIST) `literal` $HOME ${{ literal }}"
+  mocks: *id002
+  assertions: *id003
+- id: heavy-context-2097152
+  type: integration_case
+  runtime: *id001
+  inputs:
+    bytes: 2097152
+    marker: "λ \"quoted\" \\ backslash\n$(touch SHOULD_NOT_EXIST) `literal` $HOME ${{ literal }}"
+  mocks: *id002
+  assertions: *id003
+- id: light-context-524288
+  type: integration_case
+  runtime: *id001
+  inputs:
+    bytes: 524288
+    marker: "λ \"quoted\" \\ backslash\n$(touch SHOULD_NOT_EXIST) `literal` $HOME ${{ literal }}"
+  mocks:
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#jev
+      behavior:
+        mode: return
+        outputs:
+          answers:
+            is_heavy: {type: noul, noul: 0.01}
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: outside
+            summary: design response
+            files:
+            - path: design.md
+              description: Review evidence
+            questions: []
+            consultations: []
+            keys: []
+            subject: Decline outside work
+            review_message: Outside the cell purpose.
+        artifacts:
+          design.md: '# design evidence'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: design
+                turn: 1outside
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions: *id003

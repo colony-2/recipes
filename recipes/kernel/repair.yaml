@@ -10,26 +10,32 @@ state:
   initial: write_response_repair_evidence
   states:
     write_response_repair_evidence:
-      id: write_response_repair_evidence
-      op: command_execution
-      const: true
       inputs:
-        env:
-          OUTBOX: ${{ context.environment.op.outbox }}
-          ISSUES: ${{ jq(inputs.issues, 'map("- " + .) | join("\n")') }}
-          DETAILS: |-
-            ${{ json_stringify({'issues': inputs.issues,
-              'previous_response': inputs.turn.result.?response.orValue({}),
-              'original_response': inputs.turn.?original_response.orValue({}),
-              'matches': inputs.turn.?matches.orValue([]),
-              'available_artifacts': inputs.turn.artifacts.map(k, k)}) }}
-        run: |
-          printf '%s\n' "$DETAILS" > "$OUTBOX/repair.json"
-          printf '# Agent result needs correction\n\n%s\n\nThe work and documents are preserved. Give direction for another correction attempt, or cancel. This review does not approve the proposed work.\n' "$ISSUES" > "$OUTBOX/repair.md"
+        turn: ${{ inputs.turn }}
+        issues: ${{ inputs.issues }}
+        attempts: ${{ inputs.attempts }}
+        session: ${{ inputs.session }}
+      sequence: []
+      outputs:
+        artifact_refs:
+          repair.json:
+            kind: value
+            name: repair.json
+            format: json
+            value: "${{ {'issues': inputs.issues, 'previous_response': inputs.turn.result.?response.orValue({}),
+              'original_response': inputs.turn.?original_response.orValue({}), 'matches': inputs.turn.?matches.orValue([]),
+              'available_artifacts': inputs.turn.artifacts.map(k, k)} }}"
+          repair.md:
+            kind: value
+            name: repair.md
+            format: text
+            value: ${{ '# Agent result needs correction\n\n' + jq(inputs.issues, 'map("- " + .) | join("\n")')
+              + '\n\nThe work and documents are preserved. Give direction for another correction attempt, or
+              cancel. This review does not approve the proposed work.\n' }}
       transitions:
       - to: automatic
-        when: inputs.attempts < 2 && size(inputs.turn.result.?session.orValue(inputs.session)) > 0 && size(inputs.turn.jobs.?job_ids.orValue([]))
-          == 0
+        when: inputs.attempts < 2 && size(inputs.turn.result.?session.orValue(inputs.session)) > 0 &&
+          size(inputs.turn.jobs.?job_ids.orValue([])) == 0
       - to: review
         when: true
     automatic:
@@ -40,7 +46,7 @@ state:
         title: Agent result needs correction
         documents: |-
           ${{ jq([inputs.documents, inputs.turn.artifacts,
-            {'repair.md': states.write_response_repair_evidence.artifacts['repair.md']}], 'add') }}
+            {'repair.md': states.write_response_repair_evidence.outputs.artifact_refs['repair.md']}], 'add') }}
         fields:
         - id: decision
           type: multiple_choice
@@ -64,13 +70,13 @@ state:
         when: outputs.response.fields.decision == 'retry' && !outputs.changed
 outputs:
   retry: ${{ state_exists('automatic') || states.review.outputs.response.fields.decision == 'retry' }}
-  attempts: '${{ state_exists(''automatic'') ? int(inputs.attempts) + 1 : 0 }}'
+  attempts: "${{ state_exists('automatic') ? int(inputs.attempts) + 1 : 0 }}"
   session: ${{ inputs.turn.result.?session.orValue(inputs.turn.?checkpoint.orValue(inputs.session)) }}
   artifacts: >-
     ${{ jq([inputs.turn.artifacts, state_output('review', 'response', {}).?artifact_refs.orValue({})], 'add') }}
   documents: |-
     ${{ jq([inputs.documents, inputs.turn.artifacts,
-      {'repair.json': states.write_response_repair_evidence.artifacts['repair.json'], 'repair.md': states.write_response_repair_evidence.artifacts['repair.md']},
+      {'repair.json': states.write_response_repair_evidence.outputs.artifact_refs['repair.json'], 'repair.md': states.write_response_repair_evidence.outputs.artifact_refs['repair.md']},
       state_output('review', 'documents', {})], 'add') }}
   prompt: |
     Correct the previous response using inbox/repair.json and the preserved documents.

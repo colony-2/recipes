@@ -5,9 +5,11 @@ customize the shared C2 build. You can run tests, supply design research, add pr
 guidance, require specialist reviews, prepare generated files, and publish after
 merge. Install only the hooks your project needs.
 
-Use a c2j build with repository-local hook support (commit `100c422` or later) and
+Use a c2j build with repository-local hooks and value artifacts (`66cbded` or later),
+including the corrections in [the runtime compatibility report](BUG_C2J_VALUE_ARTIFACT_COMPATIBILITY.md), and
 the shared build recipe containing these hooks. The runtime and recipe versions
-used for validation are listed in the [validation report](BUILD_HOOKS_VALIDATION.md).
+used for validation are listed in the [hook validation report](BUILD_HOOKS_VALIDATION.md)
+and [value-artifact migration report](VALUE_ARTIFACT_MIGRATION.md).
 
 ## Choose your hooks
 
@@ -124,7 +126,8 @@ unpushed changes. Child builds load their own cell's configuration.
 
 ### Read named values in a later hook
 
-Later hooks receive a `settings` artifact containing normalized `build-settings.json`.
+Later hooks receive a value-backed `settings` artifact containing normalized
+`build-settings.json`. The existing 16,000-character settings limit still applies.
 Agents also receive it as context. To let a script read it, bind the artifact into
 that operation's inbox. This fragment belongs inside a hook:
 

@@ -14,15 +14,13 @@ sequence:
   inputs:
     env:
       OUTBOX: ${{ context.environment.op.outbox }}
-      CANDIDATE: ${{ json_stringify(sequence.candidate.outputs.candidate) }}
-      RESPONSE: ${{ json_stringify(inputs.flow.result) }}
-      VERIFICATION: ${{ json_stringify(inputs.flow.verification) }}
+      INBOX: ${{ context.environment.op.inbox }}
     run: |
       python3 - <<'PY'
       import json, os, pathlib
-      candidate = json.loads(os.environ['CANDIDATE'])
-      response = json.loads(os.environ['RESPONSE'])
-      verification = json.loads(os.environ['VERIFICATION'])
+      candidate = json.loads((pathlib.Path(os.environ['INBOX']) / 'candidate.json').read_text())
+      response = json.loads((pathlib.Path(os.environ['INBOX']) / 'response.json').read_text())
+      verification = json.loads((pathlib.Path(os.environ['INBOX']) / 'verification.json').read_text())
       subject, message = response['subject'].strip(), response['review_message'].strip()
       if not subject or len(subject) > 72 or '\n' in subject or '\r' in subject or not message:
           raise ValueError('Synopsis requires a one-line subject (<=72 characters) and review message')
@@ -47,9 +45,26 @@ sequence:
       (pathlib.Path(os.environ['OUTBOX']) / 'synopsis.md').write_text('\n'.join(lines) + '\n')
       print(json.dumps({'commit_message': commit}))
       PY
+  artifacts:
+    candidate.json:
+      kind: value
+      name: candidate.json
+      format: json
+      value: ${{ sequence.candidate.outputs.candidate }}
+    response.json:
+      kind: value
+      name: response.json
+      format: json
+      value: ${{ inputs.flow.result }}
+    verification.json:
+      kind: value
+      name: verification.json
+      format: json
+      value: ${{ inputs.flow.verification }}
 outputs:
   changed: ${{ size(sequence.candidate.outputs.candidate.files) > 0 }}
   change_digest: ${{ sequence.candidate.outputs.candidate.change_digest }}
   commit_message: ${{ json_parse(sequence.render_change_synopsis.outputs.stdout).commit_message }}
   documents: >-
-    ${{ jq([sequence.candidate.outputs.documents, {'synopsis.md': sequence.render_change_synopsis.artifacts['synopsis.md']}], 'add') }}
+    ${{ jq([sequence.candidate.outputs.documents, {'synopsis.md': sequence.render_change_synopsis.artifacts['synopsis.md']}],
+    'add') }}

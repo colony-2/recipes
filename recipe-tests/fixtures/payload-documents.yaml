@@ -1,0 +1,85 @@
+id: payload-documents
+input_schema:
+  bytes:
+    type: number
+    required: true
+  marker:
+    type: string
+    required: true
+inputs:
+  payload: ${{ jq(double(inputs.bytes), '"x" * .') + inputs.marker }}
+sequence:
+- id: review
+  include: ../../recipes/kernel/review.yaml
+  inputs:
+    title: Large review
+    documents: {}
+    fields:
+    - id: feedback
+      type: paragraph_text
+      question: ${{ jq(inputs.payload, '.[0:1000] + .[-80:]') }}
+      required: false
+- id: repair
+  include: ../../recipes/kernel/repair.yaml
+  inputs:
+    turn:
+      result:
+        response:
+          summary: ${{ inputs.payload }}
+      artifacts: {}
+      jobs: {}
+    issues:
+    - ${{ inputs.payload }}
+    documents: ${{ sequence.review.outputs.documents }}
+    attempts: 2
+- id: synopsis
+  include: ../../recipes/light/synopsis.yaml
+  inputs:
+    flow:
+      result:
+        summary: ${{ inputs.payload }}
+        subject: Preserve large documents
+        review_message: No repository change.
+      verification:
+        status: skipped
+- id: settings
+  include: ../../recipes/build/hooks/settings.yaml
+  inputs:
+    settings:
+      variables:
+        marker: ${{ jq(inputs.payload, '.[-80:]') }}
+- id: check
+  op: command_execution
+  const: true
+  artifacts:
+    expected.txt:
+      kind: value
+      format: text
+      value: ${{ inputs.payload }}
+    repair/: ${{ sequence.repair.outputs.documents }}
+    synopsis/: ${{ sequence.synopsis.outputs.documents }}
+    settings/: ${{ sequence.settings.outputs.artifact_refs }}
+    feedback/: ${{ sequence.review.outputs.documents }}
+  inputs:
+    env:
+      INBOX: ${{ context.environment.op.inbox }}
+    run: |
+      python3 - <<'CHECK'
+      import json, os, pathlib
+      p = pathlib.Path(os.environ['INBOX'])
+      expected = (p / 'expected.txt').read_text()
+      repair = json.loads((p / 'repair/repair.json').read_text())
+      assert repair['issues'] == [expected]
+      assert repair['previous_response']['summary'] == expected
+      assert expected in (p / 'repair/repair.md').read_text()
+      assert json.loads((p / 'feedback/feedback.json').read_text())['questions'][0]['question'] == expected[:1000] + expected[-80:]
+      assert expected in (p / 'synopsis/synopsis.md').read_text()
+      assert json.loads((p / 'settings/build-settings.json').read_text())['variables']['marker'] == expected[-80:]
+      print('exact document content preserved')
+      CHECK
+  execution_needs:
+    packages:
+    - nix:github:NixOS/nixpkgs/e7439b6b14ad3cc35d05608ebca9bce01a25f5f8#python3
+outputs:
+  retry: ${{ sequence.repair.outputs.retry }}
+  checked: ${{ sequence.check.outputs.stdout }}

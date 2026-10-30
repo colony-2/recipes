@@ -1,0 +1,48 @@
+id: value-artifact-smoke
+input_schema:
+  prompt:
+    type: string
+    default_value: Validate value artifacts
+  bytes:
+    type: number
+    required: true
+  marker:
+    type: string
+    required: true
+inputs:
+  request: ${{ jq(double(inputs.bytes), '"x" * .') + inputs.marker }}
+sequence:
+- id: check
+  op: command_execution
+  const: true
+  execution_needs:
+    packages:
+    - nix:github:NixOS/nixpkgs/e7439b6b14ad3cc35d05608ebca9bce01a25f5f8#python3
+  artifacts:
+    context.json:
+      kind: value
+      format: json
+      value:
+        request: ${{ inputs.request }}
+    expected.txt:
+      kind: value
+      format: text
+      value: ${{ inputs.request }}
+  inputs:
+    env:
+      INBOX: ${{ context.environment.op.inbox }}
+    run: |
+      python3 - <<'CHECK'
+      import json, os, pathlib
+      p = pathlib.Path(os.environ['INBOX'])
+      expected = (p / 'expected.txt').read_text()
+      raw = (p / 'context.json').read_bytes()
+      assert raw.endswith(b'\n')
+      assert json.loads(raw)['request'] == expected
+      assert len(expected) > 2 * 1024 * 1024
+      assert '$' + '{' + '{ literal ' + '}' + '}' in expected
+      assert not pathlib.Path('SHOULD_NOT_EXIST').exists()
+      print('exact value bytes preserved')
+      CHECK
+outputs:
+  checked: ${{ sequence.check.outputs.stdout }}

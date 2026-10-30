@@ -61,22 +61,13 @@ sequence:
           prompt: ${{ state_output('registration_repair', 'prompt', vars.initial_prompt) }}
           retained_artifacts: ${{ state_output('registration_repair', 'artifacts', {}) }}
         sequence:
-        - id: write_created_cells_manifest
-          op: command_execution
-          const: true
-          inputs:
-            env:
-              OUTBOX: ${{ context.environment.op.outbox }}
-              CREATED: ${{ json_stringify(inputs.created) }}
-            run: |
-              printf '%s\n' "$CREATED" > "$OUTBOX/created.json"
         - id: agent
           include: ./recipes/kernel/agent-turn.yaml
           inputs:
             read_only: ${{ inputs.read_only }}
             session: ${{ inputs.session }}
-            documents: '${{ jq([inputs.documents, {''created.json'': sequence.write_created_cells_manifest.artifacts[''created.json'']}],
-              ''add'') }}'
+            documents: "${{ jq([inputs.documents, {'created.json': {'kind': 'value', 'name': 'created.json', 'format':
+              'json', 'value': inputs.created} }], 'add') }}"
             prompt: ${{ inputs.prompt }}
             schema:
               type: object
@@ -93,7 +84,11 @@ sequence:
             retained_artifacts: ${{ inputs.retained_artifacts }}
         outputs:
           turn: ${{ sequence.agent.outputs }}
-          records: ${{ sequence.write_created_cells_manifest.artifacts['created.json'] }}
+          records:
+            kind: value
+            name: created.json
+            format: json
+            value: ${{ inputs.created }}
         transitions:
         - to: publish_cell_catalog
           when: outputs.turn.result.?status.orValue('failed') == 'completed' && outputs.turn.result.?output_schema_valid.orValue(false)
