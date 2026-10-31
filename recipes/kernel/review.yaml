@@ -1,6 +1,7 @@
 id: kernel-review
 version: 1.0.0
 inputs:
+  annotations: "${{ jq({'direct': inputs.?annotations.orValue([]), 'documents': inputs.documents}, '[.documents[] | select(.kind == \"value\" and (.value | type) == \"object\" and .value._c2_recipe_sidecar == \"review_annotations/v1\") | .value.annotations | select(type == \"array\")] + [if (.direct | type) == \"array\" then .direct else [] end] | add // []') }}"
   title: ${{ inputs.title }}
   documents: ${{ inputs.documents }}
   fields: ${{ inputs.fields }}
@@ -9,23 +10,28 @@ sequence:
 - id: produce_review_brief
   include: ./review-content.yaml
   inputs:
+    annotations: >-
+      ${{ inputs.annotations }}
     title: ${{ inputs.title }}
     documents: ${{ inputs.documents }}
     fields: ${{ inputs.fields }}
     checkpoint: ${{ inputs.checkpoint }}
+- id: assemble_review_form
+  sequence: []
+  inputs:
+    form: "${{ jq([{'kind': 'review', 'title': inputs.title, 'documents': jq({'all': jq([inputs.documents, sequence.produce_review_brief.outputs.documents], 'add'), 'ids': sequence.produce_review_brief.outputs.presentation.published_ids}, '. as $v | .all | with_entries(select(.key as $id | $v.ids | index($id)))'), 'fields': jq(inputs.fields, 'map(if .type == \"multiple_choice\" or .type == \"checkboxes\" then . else del(.options) end)')}, sequence.produce_review_brief.outputs.presentation.fields], 'add') }}"
+  outputs:
+    form: ${{ inputs.form }}
 - id: request_human_review
   op: input
   inputs:
     form:
-      kind: review
-      title: ${{ inputs.title }}
-      documents: >-
-        ${{ jq(jq([inputs.documents, sequence.produce_review_brief.outputs.documents], 'add'), 'with_entries(select((.key | split("/") | last) as $name | ["context.json",
-        "feedback.json", "conversation.json"] | index($name) | not))') }}
-      fields: >-
-        ${{ jq(inputs.fields, 'map(if .type == "multiple_choice" or .type == "checkboxes"
-        then . else del(.options) end)') }}
+      "${{ sequence.assemble_review_form.outputs.form }}"
 outputs:
+  form: >-
+    ${{ sequence.assemble_review_form.outputs.form }}
+  presentation: >-
+    ${{ sequence.produce_review_brief.outputs.presentation }}
   response: ${{ sequence.request_human_review.outputs }}
   documents: |-
     ${{ jq([sequence.produce_review_brief.outputs.documents, sequence.request_human_review.outputs.?artifact_refs.orValue({}), {'feedback.json': {'kind': 'value', 'name': 'feedback.json', 'format': 'json', 'value': {'questions': inputs.fields, 'response': sequence.request_human_review.outputs} } }], 'add') }}

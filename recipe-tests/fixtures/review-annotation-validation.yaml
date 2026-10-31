@@ -1,0 +1,140 @@
+id: annotation-validation
+sequence:
+- id: production
+  include: ../../recipes/kernel/review-presentation.yaml
+- id: oracle
+  include: ./review-presentation-canonical.yaml
+- id: validate
+  op: command_execution
+  const: true
+  execution_needs:
+    packages:
+    - nix:github:NixOS/nixpkgs/e7439b6b14ad3cc35d05608ebca9bce01a25f5f8#python3
+  artifacts:
+    canonical.json:
+      kind: value
+      format: json
+      value: ${{ sequence.oracle.outputs.vectors }}
+    presentation.py: ${{ sequence.production.outputs.program }}
+  inputs:
+    env:
+      INBOX: ${{ context.environment.op.inbox }}
+    run: |
+      python3 - <<'CHECK'
+      import copy
+      import json
+      import os
+      from pathlib import Path
+      scope = {'__name__': 'presentation_under_test'}
+      exec((Path(os.environ['INBOX']) / 'presentation.py').read_text(), scope)
+      assemble, canonical, presentation = (scope[k] for k in ('assemble','canonical','presentation'))
+      policy = dict(review_document_annotations='annotated_v1', supporting_tag='fixture-only', supporting_commit='fixture-only', release_verified=True, fleet_eligible=True, canonical_verified=True)
+      ref = lambda name: {'kind':'value','name':name,'format':'text','value':name}
+      docs = {k:ref(k) for k in ['report','source','other','context.json','discussion']}
+      def record(key='report', **fields):
+          return {'id':key, 'lineage':[key], 'origin':'producer/occurrence', 'ref':docs[key], 'descriptor':fields, 'sources':[]}
+      def run(annotations, documents=None, deployment=None):
+          return assemble(documents or docs, annotations, 'new/brief.md','new/review-provenance.json','Review evidence',{'phase':'design'},deployment or policy,['report','context.json'])
+      # R1: same final ID/ref must not confer ownership by collection order.
+      first = record(title='First', role='primary')
+      first.update(origin='first', lineage=['first', 'report'])
+      second = record(title='Second', role='diagnostic')
+      second.update(origin='second', lineage=['second', 'report'])
+      for records in ([first, second], [second, first]):
+          result = run(records)
+          assert 'report' not in result['fields']['document_metadata']
+          assert any('Ambiguous attachment lineage' in n and 'report' in n for n in result['diagnostics'])
+          assert set(docs) - {'context.json'} <= set(result['published_ids'])
+      # A namespace extension within one producer occurrence proves succession.
+      old = record(title='Old')
+      successor = copy.deepcopy(old)
+      successor['lineage'] = ['report', 'report']
+      successor['descriptor']['title'] = 'Successor'
+      for records in ([old, successor], [successor, old]):
+          assert run(records)['fields']['document_metadata']['report']['title'] == 'Successor'
+      summary = record(title='Summary')
+      summary['sources'] = [{'id':'source','ref':docs['source'],'lineage':['first','source']},
+                            {'id':'source','ref':docs['source'],'lineage':['second','source']}]
+      for sources in (summary['sources'], list(reversed(summary['sources']))):
+          summary['sources'] = sources
+          result = run([summary])
+          assert 'source_document_ids' not in result['fields']['document_metadata']['report']
+          assert any('Ambiguous attachment lineage' in n and 'source' in n for n in result['diagnostics'])
+      checks = 6
+      for n, accepted in [(120,True),(121,False)]:
+          r=run([record(title='界'*n,description='still valid',order=0)])
+          entry=r['fields']['document_metadata']['report']
+          assert ('title' in entry)==accepted and entry['order']==0 and entry['description']=='still valid'
+          checks+=1
+      for n, accepted in [(300,True),(301,False)]:
+          r=run([record(description='界'*n,title='still valid')]);entry=r['fields']['document_metadata']['report']
+          assert ('description' in entry)==accepted and entry['title']=='still valid';checks+=1
+      for value in [None,False,-1,1000001,0.5,'0',[],{}]:
+          assert 'order' not in run([record(order=value)])['fields']['document_metadata']['report'];checks+=1
+      for value in [0,1000000]:
+          assert run([record(order=value)])['fields']['document_metadata']['report']['order']==value;checks+=1
+      for value in ['primary','supporting','diagnostic']:
+          assert run([record(role=value)])['fields']['document_metadata']['report']['role']==value;checks+=1
+      for value in ['',None,'Primary','unknown',[],{}]:
+          assert 'role' not in run([record(role=value)])['fields']['document_metadata']['report'];checks+=1
+      for value in ['', '\ud800']+[chr(c) for c in list(range(32))+[127]]:
+          entry=run([record(title=value,description='valid')])['fields']['document_metadata']['report']
+          assert 'title' not in entry and entry['description']=='valid';checks+=1
+      for fields in [{},{'title':None},{'title':False,'order':{}},{'title':'e\u0301'},{'title':' <b>plain text</b> '}]:
+          run([record(**fields)]);checks+=1
+      # Exact binding, filtered/unattached, duplicate/self, source ordering, and preserved deep refs.
+      a=record(title='Report',source_paths=['source','report','context.json','missing','other','source'])
+      a['sources']=[{'id':k,'ref':docs.get(k,ref(k)),'lineage':[k]} for k in a['descriptor']['source_paths']]
+      r=run([a]);assert r['fields']['document_metadata']['report']['source_document_ids']==['source','other']
+      assert r['fields']['document_metadata']['new/brief.md']['source_document_ids']==['report']
+      assert r['associations']==[a] and r['diagnostics'];checks+=1
+      bad=copy.deepcopy(a);bad['ref']=ref('different');assert 'report' not in run([bad])['fields']['document_metadata'];checks+=1
+      bad=copy.deepcopy(a);bad['lineage']=['other'];assert 'report' not in run([bad])['fields']['document_metadata'];checks+=1
+      # Two equal refs at different IDs never redirect a source or metadata association.
+      equal={**docs,'equal':docs['source']};a['sources']=[{'id':'source','ref':docs['source'],'lineage':['source']}]
+      assert run([a],equal)['fields']['document_metadata']['report']['source_document_ids']==['source'];checks+=1
+      for n in [128,129]:
+          many={**docs,**{str(i):ref(str(i)) for i in range(n)}}
+          a=record(source_paths=list(map(str,range(n))));a['sources']=[{'id':str(i),'ref':many[str(i)],'lineage':[str(i)]} for i in range(n)]
+          result=run([a],many);entry=result['fields']['document_metadata']['report']
+          assert ('source_document_ids' in entry)==(n==128)
+          if n==129:assert any('entire source list omitted' in x for x in result['diagnostics'])
+          checks+=1
+      # No Unicode normalization; cycles between different attached documents remain valid.
+      a=record(title='e\u0301');a['sources']=[{'id':'source','ref':docs['source'],'lineage':['source']}]
+      b=record('source');b['sources']=[{'id':'report','ref':docs['report'],'lineage':['report']}]
+      assert run([a,b])['fields']['document_metadata']['report']['title']=='e\u0301';checks+=1
+      # Budget degradation preserves originals and follows descending producer IDs.
+      many={**docs,**{f'{i:03}':ref(str(i)) for i in range(200)}}
+      anns=[]
+      for k in many:
+          anns.append({'id':k,'ref':many[k],'lineage':[k],'origin':'p/'+k,'descriptor':{'title':'<'*120,'description':'&'*300},'sources':[]})
+      r=run(anns,many);assert len(canonical(r['fields']))<=65536 and any('budget' in n for n in r['diagnostics'])
+      removed=[n.split(' for ',1)[1] for n in r['diagnostics'] if n.startswith('Presentation budget:')]
+      assert removed==sorted(removed,key=lambda s:s.encode(),reverse=True)
+      assert 'new/brief.md' in r['fields']['document_metadata'] and r['associations']==anns;checks+=1
+      for size in [65535,65536,65537]:
+          # A long opaque ID can exhaust presentation without changing original documents.
+          baseline=len(canonical(presentation({'x':{'title':'t'}})))
+          ident='x'*(size-baseline+1)
+          assert len(canonical(presentation({ident:{'title':'t'}})))==size;checks+=1
+      assert canonical(presentation({'<':{'title':'&>\u2028\u2029','order':0}})) == b'{"document_metadata":{"\\u003c":{"title":"\\u0026\\u003e\\u2028\\u2029","order":0}}}';checks+=1
+      for mode in [None,'unknown','legacy','annotated_v1']:
+          p={'review_document_annotations':mode};r=run([],deployment=p)
+          assert r['mode']=='legacy' and r['fields']=={};checks+=1
+      r=run([],deployment={**policy,'canonical_verified':False});assert r['fields']=={};checks+=1
+      assert run([])['fields']['overview_document_id']=='new/brief.md';checks+=1
+      assert len(canonical(run([],documents={'x'*70000:ref('x')})['fields']))<=65536;checks+=1
+      for vector in json.loads((Path(os.environ['INBOX']) / 'canonical.json').read_text()):
+          if 'input' in vector:
+              raw = vector['input']
+              wire = presentation(raw.get('document_metadata', {}), raw.get('overview_document_id'))
+              assert canonical(wire).decode() == vector['canonical']
+          else:
+              wire = presentation({'x' * vector['id_repeat']: {'title': vector['title']}})
+          assert len(canonical(wire)) == vector['bytes']
+          checks += 1
+      print(json.dumps({'checks':checks,'result':'passed'}))
+      CHECK
+outputs:
+  result: ${{ json_parse(sequence.validate.outputs.stdout) }}

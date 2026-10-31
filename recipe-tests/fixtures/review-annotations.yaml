@@ -1,0 +1,115 @@
+id: annotation-handoff
+input_schema:
+  variant:
+    type: string
+    default_value: heavy
+inputs:
+  variant: ${{ inputs.variant }}
+sequence:
+- id: produce
+  inputs:
+    variant: ${{ inputs.variant }}
+  state:
+    initial:
+    - to: light
+      when: inputs.variant == 'light'
+    - to: heavy
+      when: true
+    states:
+      heavy:
+        include: ../../recipes/develop/agent.yaml
+        inputs:
+          flow:
+            phase: implement
+            last_phase: implement
+            message: Publish an annotated acceptance document.
+            target_directory: .
+            session: {}
+          documents:
+            input.md: {kind: value, format: text, value: Original bound evidence.}
+      light:
+        include: ../../recipes/light/agent.yaml
+        inputs:
+          flow:
+            message: Publish an annotated acceptance document.
+            target_directory: .
+            session: {}
+          documents:
+            input.md: {kind: value, format: text, value: Original bound evidence.}
+  outputs:
+    turn: ${{ state_output('heavy', 'turn', state_output('light', 'turn', {})) }}
+- id: validate_response_schema
+  op: command_execution
+  const: true
+  execution_needs:
+    packages:
+    - nix:github:NixOS/nixpkgs/e7439b6b14ad3cc35d05608ebca9bce01a25f5f8#python3Packages.jsonschema
+    - nix:github:NixOS/nixpkgs/e7439b6b14ad3cc35d05608ebca9bce01a25f5f8#python3
+  artifacts:
+    schema.json:
+      kind: value
+      format: json
+      value: ${{ sequence.produce.outputs.turn.response_schema }}
+    response.json:
+      kind: value
+      format: json
+      value: ${{ sequence.produce.outputs.turn.result.response }}
+  inputs:
+    env:
+      INBOX: ${{ context.environment.op.inbox }}
+      OUTBOX: ${{ context.environment.op.outbox }}
+    run: |
+      set -eu
+      jsonschema -i "$INBOX/response.json" "$INBOX/schema.json"
+      python3 - <<'CHECK'
+      import copy, json, os
+      from pathlib import Path
+      response = json.loads((Path(os.environ['INBOX']) / 'response.json').read_text())
+      for field in ['path', 'description', 'decision']:
+          invalid = copy.deepcopy(response)
+          if field == 'decision': invalid['next'] = 'invented-decision'
+          else: del invalid['files'][0][field]
+          (Path(os.environ['OUTBOX']) / ('invalid-' + field + '.json')).write_text(json.dumps(invalid))
+      CHECK
+      for invalid in "$OUTBOX"/invalid-*.json; do
+        if jsonschema -i "$invalid" "$INBOX/schema.json" >/dev/null 2>&1; then
+          echo 'Required response validation unexpectedly accepted invalid data' >&2
+          exit 1
+        fi
+      done
+- id: child_namespace
+  include: ../../recipes/kernel/artifact-namespace.yaml
+  inputs:
+    prefix: child/
+    documents: ${{ sequence.produce.outputs.turn.artifacts }}
+    annotations: ${{ sequence.produce.outputs.turn.annotations }}
+- id: parent_namespace
+  include: ../../recipes/kernel/artifact-namespace.yaml
+  inputs:
+    prefix: jobs/acceptance/
+    documents: ${{ sequence.child_namespace.outputs.documents }}
+    annotations: ${{ sequence.child_namespace.outputs.annotations }}
+- id: review
+  include: ../../recipes/kernel/review.yaml
+  inputs:
+    title: Review annotation integration
+    documents: >-
+      ${{ jq([sequence.parent_namespace.outputs.documents, {'input.md': {'kind': 'value', 'format': 'text', 'value': 'Original bound evidence.'} }], 'add') }}
+    annotations: ${{ sequence.parent_namespace.outputs.annotations }}
+    checkpoint:
+      phase: implement
+    fields:
+    - id: decision
+      type: multiple_choice
+      question: Accept the described outcome?
+      required: true
+      options:
+      - value: accept
+        label: Accept
+      - value: revise
+        label: Revise
+outputs:
+  turn: ${{ sequence.produce.outputs.turn }}
+  annotations: ${{ sequence.parent_namespace.outputs.annotations }}
+  presentation: ${{ sequence.review.outputs.presentation }}
+  response: ${{ sequence.review.outputs.response }}

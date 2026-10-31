@@ -1,6 +1,9 @@
 id: consultation
 version: 0.1.0
 input_schema:
+  annotations_json:
+    type: string
+    default_value: '[]'
   thread:
     type: string
     default_value: ''
@@ -37,6 +40,7 @@ input_schema:
     default_value: ''
     description: Explicit expert direction authorizing a new bounded round of a saved unresolved thread.
 inputs:
+  annotations: "${{ jq({'direct': json_parse(inputs.annotations_json), 'documents': inputs.documents}, '[if (.direct | type) == \"array\" then .direct else [] end] + [.documents[] | select(.kind == \"value\" and (.value | type) == \"object\" and .value._c2_recipe_sidecar == \"review_annotations/v1\") | .value.annotations | select(type == \"array\")] | add') }}"
   thread: ${{ inputs.thread }}
   request: ${{ inputs.request }}
   consultant: >-
@@ -70,6 +74,8 @@ state:
         when: true
     start:
       inputs:
+        annotations: >-
+          ${{ inputs.annotations }}
         request: ${{ inputs.request }}
         consultant: ${{ inputs.consultant }}
         requester_session: ${{ inputs.requester_session }}
@@ -92,7 +98,7 @@ state:
                   : inputs.continuation.requester_cell == inputs.cell
                     && (inputs.direction == ''
                         || inputs.continuation.outcome in ['needs_review', 'declined', 'redirected'])) }}
-        conversation: |-
+        conversation: |2-
           ${{ size(inputs.continuation) == 0
               ? {'thread': inputs.thread,
                  'request': inputs.request,
@@ -105,7 +111,7 @@ state:
                  'next': 'consultant', 'outcome': 'continue',
                  'message': inputs.request, 'direction': '',
                  'seen': {'requester': 0, 'consultant': 0}, 'latest_files': inputs.documents,
-                 'documents': inputs.documents, 'final_artifacts': {},
+                 'annotations': inputs.annotations, 'documents': inputs.documents, 'final_artifacts': {},
                  'transcript': [{'participant': 'requester', 'iteration': 1,
                    'thinking': inputs.request, 'files': inputs.documents}]}
               : inputs.direction == ''
@@ -119,7 +125,7 @@ state:
                      'round': int(inputs.continuation.round) + 1,
                      'round_iterations': 0, 'max_iterations': int(inputs.max_iterations),
                      'next': 'requester', 'outcome': 'continue',
-                     'documents': jq([inputs.continuation.documents, inputs.documents], 'add'),
+                     'annotations': inputs.continuation.?annotations.orValue([]) + inputs.annotations, 'documents': jq([inputs.continuation.documents, inputs.documents], 'add'),
                      'latest_files': inputs.documents,
                      'transcript': inputs.continuation.transcript + [
                        {'participant': 'expert', 'thinking': inputs.direction, 'files': inputs.documents}]}], 'add') }}
@@ -193,6 +199,10 @@ state:
                     description:
                       type: string
                       minLength: 1
+                    title: {}
+                    role: {}
+                    order: {}
+                    source_paths: {}
               assessment:
                 type: string
                 enum:
@@ -212,6 +222,10 @@ state:
             submit jobs, commit, merge, or push. Experiments are discarded. Only your
             session and listed outbox files survive. Exchanged documents are in inbox;
             earlier versions remain available. List only files relevant to your reply.
+
+            File descriptors may include optional title, role, order and source_paths.
+            Describe human purpose and decision relevance; do not select an overview.
+            Sources must identify declared outputs or bound inputs in evidence order.
 
             Only the consultant decides agreement. Material counterproposals need requester
             acceptance first; requester acceptance returns continue. Either participant can
@@ -349,14 +363,14 @@ state:
                 && int(inputs.previous.round_iterations) + 1 >= int(inputs.previous.max_iterations)
                 ? 'needs_review' : inputs.turn.result.response.outcome }}
       outputs:
-        conversation: |-
+        conversation: |2-
           ${{ jq([inputs.previous,
                 {'outcome': sequence.resolve.outputs.outcome,
                  'message': inputs.turn.result.response.thinking,
                            'assessment': inputs.previous.next == 'consultant' ? inputs.turn.result.response.?assessment.orValue('') : '',
                  'seen': jq([inputs.previous.?seen.orValue({'requester': 0, 'consultant': 0}),
                              {inputs.previous.next: int(inputs.previous.round)}], 'add'),
-                 'latest_files': sequence.resolve.outputs.files,
+                 'annotations': inputs.previous.?annotations.orValue([]) + inputs.turn.?annotations.orValue([]), 'latest_files': sequence.resolve.outputs.files,
                  'next': inputs.previous.next == 'consultant' ? 'requester' : 'consultant',
                  'iteration': int(inputs.previous.iteration) + (inputs.previous.next == 'consultant' ? 1 : 0),
                  'round_iterations': int(inputs.previous.round_iterations) + (inputs.previous.next == 'consultant' ? 1 : 0),
@@ -375,7 +389,7 @@ state:
                     'outcome': inputs.turn.result.response.outcome,
                     'thinking': inputs.turn.result.response.thinking,
                     'files': inputs.turn.result.response.files,
-                    'artifacts': sequence.resolve.outputs.files}]}], 'add') }}
+                    'annotations': inputs.turn.?annotations.orValue([]), 'artifacts': sequence.resolve.outputs.files}]}], 'add') }}
       transitions:
       - to: current
         when: true
@@ -448,45 +462,41 @@ state:
         when: states.publish.outputs.conversation.outcome == 'needs_review' && outputs.error == ''
     request_consultation_direction:
       id: request_consultation_direction
-      op: input
+      include: ./review.yaml
       inputs:
-        form: ${{ states.report.outputs.review.form }}
+        title: Consultation needs expert direction
+        documents: ${{ states.report.outputs.review.documents }}
+        fields: ${{ states.report.outputs.review.form.fields }}
+        annotations: ${{ states.publish.outputs.conversation.?annotations.orValue([]) }}
+        checkpoint: >-
+          ${{ {'phase': 'consultation', 'question': states.publish.outputs.conversation.request} }}
       transitions:
       - to: expert_record
         when: true
     expert_record:
       inputs:
         previous: ${{ states.publish.outputs.conversation }}
-        response: ${{ states.request_consultation_direction.outputs }}
-        review: ${{ states.report.outputs.review.documents }}
-        direction: |-
+        response: "${{ states.request_consultation_direction.outputs.response }}"
+        review: "${{ states.request_consultation_direction.outputs.form.documents }}"
+        direction: |2-
           {{ range $field := states.report.outputs.review.form.fields }}
           {{ if ne $field.id "attachments" }}
           {{ $field.question }}
-          {{ index states.request_consultation_direction.outputs.fields $field.id }}
+          {{ index states.request_consultation_direction.outputs.response.fields $field.id }}
           {{ end }}
           {{ end }}
-          {{ range $path, $ref := states.request_consultation_direction.outputs.artifact_refs }}
+          {{ range $path, $ref := states.request_consultation_direction.outputs.response.artifact_refs }}
           Inbox: {{ $path }}
           {{ end }}
       sequence: []
       outputs:
-        conversation: |-
-          ${{ jq([inputs.previous,
-                 {'outcome': 'continue', 'next': 'requester',
-                  'round': int(inputs.previous.round) + 1, 'round_iterations': 0,
-                  'direction': inputs.direction,
-                  'latest_files': inputs.response.?artifact_refs.orValue({}),
-                  'documents': jq([inputs.previous.documents, inputs.response.?artifact_refs.orValue({})], 'add'),
-                  'transcript': inputs.previous.transcript + [
-                    {'participant': 'expert', 'thinking': inputs.direction,
-                     'fields': inputs.response.fields, 'review': inputs.review,
-                     'receipt': inputs.response.?receipt.orValue({}),
-                     'files': inputs.response.?artifact_refs.orValue({})}]}], 'add') }}
+        conversation: "${{ jq([inputs.previous,\n       {'outcome': 'continue', 'next': 'requester',\n        'round': int(inputs.previous.round) + 1, 'round_iterations': 0,\n        'direction': inputs.direction,\n        'latest_files': inputs.response.?artifact_refs.orValue({}),\n        'documents': jq([inputs.previous.documents, inputs.review, inputs.response.?artifact_refs.orValue({})], 'add'),\n        'transcript': inputs.previous.transcript + [\n          {'participant': 'expert', 'thinking': inputs.direction,\n           'fields': inputs.response.fields, 'review': inputs.review,\n           'receipt': inputs.response.?receipt.orValue({}),\n           'files': inputs.response.?artifact_refs.orValue({})}]}], 'add') }}"
       transitions:
       - to: current
         when: true
 outputs:
+  annotations: >-
+    ${{ jq({'annotations': states.publish.outputs.conversation.?annotations.orValue([]), 'documents': states.publish.outputs.conversation.final_artifacts}, '. as $v | [(.annotations // [])[] | select(.id as $id | $v.documents | has($id))]') }}
   outcome: ${{ states.publish.outputs.conversation.outcome }}
   requester_session: ${{ states.publish.outputs.conversation.requester_session }}
   consultant_session: ${{ states.publish.outputs.conversation.consultant_session }}
@@ -499,6 +509,6 @@ outputs:
   summary: |-
     ${{ inputs.include_summary && state_output('report', 'summary', {}).?outcome.orValue('') == states.publish.outputs.conversation.outcome
         ? states.report.outputs.summary : {} }}
-  review: ${{ state_output('report', 'review', {}) }}
+  review: "${{ state_exists('request_consultation_direction') ? jq([state_output('report', 'review', {}), {'form': states.request_consultation_direction.outputs.form, 'documents': states.request_consultation_direction.outputs.form.documents}], 'add') : state_output('report', 'review', {}) }}"
   report_error: ${{ state_output('report', 'error', '') }}
   assessment: ${{ states.publish.outputs.conversation.?assessment.orValue('') }}

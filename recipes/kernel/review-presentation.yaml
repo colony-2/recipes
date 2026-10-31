@@ -1,0 +1,244 @@
+# Deployment operators may package a policy variant only after release eligibility.
+# No producer/checkpoint input can change this policy. Defaults stay legacy.
+id: review-presentation
+sequence: []
+outputs:
+  deployment: ${{ vars.deployment }}
+  program:
+    kind: value
+    format: text
+    value: ${{ vars.program }}
+vars:
+  deployment:
+    review_document_annotations: legacy
+    supporting_tag: ''
+    supporting_commit: ''
+    release_verified: false
+    canonical_verified: false
+    fleet_eligible: false
+  program: |
+    """Producer normalization only. c2j remains the authoritative input validator.
+
+    This module is bound as an op artifact, never imported from an ambient checkout.
+    Deployment policy comes from the packaged recipe, never from producer evidence.
+    """
+    import json
+
+    INTERNAL = {'context.json', 'feedback.json', 'conversation.json'}
+    ROLES = ('primary', 'supporting', 'diagnostic')
+    KNOWN = {
+        'design.md': ('Design proposal', 'Proposed behavior, compatibility, alternatives and acceptance outcomes.'),
+        'test-statements.md': ('Acceptance test statements', 'Expected positive and negative outcomes and validation dependencies.'),
+        'implementation.md': ('Implementation evidence', 'Delivered behavior, performed checks and remaining limitations.'),
+        'merge-review.md': ('Candidate file accounting', 'Review of every candidate change and its relationship to the approved request.'),
+        'synopsis.md': ('Change synopsis', 'Candidate changes, verification status and completion rationale.'),
+        'merge-candidate.diff': ('Candidate diff', 'Exact changes in the candidate being considered for integration.'),
+    }
+
+
+    def identity(ref):
+        # name is a delivery label, not part of immutable stored identity.
+        return {k: v for k, v in ref.items() if k != 'name'} if isinstance(ref, dict) else ref
+
+
+    def published(name):
+        return name.rsplit('/', 1)[-1] not in INTERNAL
+
+
+    def text(value, limit):
+        if not isinstance(value, str) or not value or len(value) > limit:
+            return False
+        try:
+            value.encode('utf-8', errors='strict')
+        except UnicodeError:
+            return False
+        return all(ord(c) >= 32 and ord(c) != 127 for c in value)
+
+
+    def canonical(value):
+        # Compact Go encoding/json string escaping: HTML and JS line separators.
+        # The dictionary insertion order below is the typed wire field order, while
+        # document IDs (Go map keys) are sorted by UTF-8 bytes. Activation additionally
+        # requires authoritative c2j fixture verification of this typed contract.
+        raw = json.dumps(value, ensure_ascii=False, separators=(',', ':'), allow_nan=False)
+        for old, new in [('&', '\\u0026'), ('<', '\\u003c'), ('>', '\\u003e'),
+                         ('\u2028', '\\u2028'), ('\u2029', '\\u2029')]:
+            raw = raw.replace(old, new)
+        return raw.encode('utf-8')
+
+
+    def presentation(metadata, overview=None):
+        # This field order must match the authoritative typed c2j fixtures.
+        result = {}
+        if metadata:
+            result['document_metadata'] = {
+                key: {field: metadata[key][field] for field in
+                      ('title', 'description', 'role', 'order', 'source_document_ids') if field in metadata[key]}
+                for key in sorted(metadata, key=lambda s: s.encode('utf-8'))}
+        if overview is not None:
+            result['overview_document_id'] = overview
+        return result
+
+
+    def mode(policy):
+        selected = policy.get('review_document_annotations')
+        if selected not in ('legacy', 'annotated_v1'):
+            return 'legacy', ['Missing or unknown review_document_annotations; selected legacy.']
+        if selected == 'legacy':
+            return 'legacy', []
+        if not (policy.get('supporting_tag') and policy.get('supporting_commit')
+                and policy.get('release_verified') is True and policy.get('fleet_eligible') is True
+                and policy.get('canonical_verified') is True):
+            return 'legacy', ['Annotated activation unavailable: verified release, canonical fixtures and fleet eligibility are required.']
+        return 'annotated_v1', []
+
+
+    def assemble(documents, annotations, brief, provenance, title, checkpoint, policy, brief_sources):
+        """Bind to final IDs. New brief/provenance IDs are already collision-reserved."""
+        final = {key: value for key, value in documents.items() if published(key) and not (isinstance(value, dict) and value.get('kind') == 'value' and isinstance(value.get('value'), dict) and value['value'].get('_c2_recipe_sidecar') == 'review_annotations/v1')}
+        assert brief not in documents and provenance not in documents and brief != provenance
+        metadata, notices, origins = {}, [], {}
+        selected, diagnostics = mode(policy)
+        notices.extend(diagnostics)
+        # Sidecars are the attachment ownership evidence. Collection order is not
+        # succession: only a single origin and a single extending lineage prove it.
+        candidates, claims = {}, {}
+        def valid_claim(record):
+            if not isinstance(record, dict):
+                return False
+            key, chain = record.get('id'), record.get('lineage')
+            return (isinstance(key, str) and key in final
+                    and identity(final[key]) == identity(record.get('ref'))
+                    and isinstance(chain, list) and bool(chain)
+                    and all(isinstance(part, str) for part in chain) and chain[-1] == key)
+        def extends(new, old):
+            return len(new) >= len(old) and new[:len(old)] == old
+        for record in annotations if isinstance(annotations, list) else []:
+            if not isinstance(record, dict):
+                notices.append('Malformed optional annotation record omitted.')
+                continue
+            if valid_claim(record) and isinstance(record.get('origin'), str) and record['origin']:
+                candidates.setdefault(record['id'], []).append(record)
+                claims.setdefault(record['id'], []).append(record['lineage'])
+            elif isinstance(record.get('id'), str) and record['id'] in final:
+                notices.append('Ambiguous attachment lineage omitted for ' + str(record.get('id')))
+            for source in record.get('sources', []) if isinstance(record.get('sources'), list) else []:
+                if valid_claim(source):
+                    claims.setdefault(source['id'], []).append(source['lineage'])
+        ambiguous, selected_records = set(), []
+        for key, chains in claims.items():
+            longest = max(chains, key=len)
+            if any(not extends(longest, chain) for chain in chains):
+                ambiguous.add(key)
+        for key, records in candidates.items():
+            longest = max(records, key=lambda r: len(r['lineage']))
+            current = [r for r in records if r['lineage'] == longest['lineage']]
+            if (len({r['origin'] for r in records}) != 1
+                    or any(not extends(longest['lineage'], r['lineage']) for r in records)
+                    or any(r != current[0] for r in current)):
+                ambiguous.add(key)
+            else:
+                selected_records.append(longest)
+        for key in sorted(ambiguous):
+            notices.append('Ambiguous attachment lineage omitted for ' + key + '; incomplete metadata coverage.')
+        for record in selected_records:
+            key = record['id']
+            if key in ambiguous:
+                continue
+            descriptor = record.get('descriptor', {})
+            if not isinstance(descriptor, dict):
+                continue
+            entry = {}
+            for field, limit in [('title', 120), ('description', 300)]:
+                value = descriptor.get(field)
+                if text(value, limit):
+                    entry[field] = value
+                elif field in descriptor and value != '':
+                    notices.append('Invalid optional ' + field + ' omitted for ' + key)
+            role = descriptor.get('role')
+            if isinstance(role, str) and role in ROLES:
+                entry['role'] = role
+            elif role not in (None, ''):
+                notices.append('Invalid optional role omitted for ' + key)
+            order = descriptor.get('order')
+            if type(order) is int and 0 <= order <= 1000000:
+                entry['order'] = order
+            elif 'order' in descriptor:
+                notices.append('Invalid optional order omitted for ' + key)
+            sources = []
+            raw_sources = descriptor.get('source_paths')
+            if 'source_paths' in descriptor and (not isinstance(raw_sources, list) or any(not isinstance(p, str) for p in raw_sources)):
+                notices.append('Malformed source elements omitted for ' + key)
+            for source in record.get('sources', []) if isinstance(record.get('sources', []), list) else []:
+                if not isinstance(source, dict):
+                    notices.append('Malformed source association omitted for ' + key)
+                    continue
+                target = source.get('id')
+                chain = source.get('lineage')
+                if (not isinstance(target, str) or target not in final or target in ambiguous
+                        or identity(final[target]) != identity(source.get('ref'))
+                        or not isinstance(chain, list) or not chain or chain[-1] != target):
+                    notices.append('Unattached or ambiguous source omitted for ' + key)
+                elif target == key or target in sources:
+                    notices.append('Duplicate or self source omitted for ' + key)
+                else:
+                    sources.append(target)
+            if len(sources) > 128:
+                notices.append('Incomplete metadata coverage for ' + key + ': more than 128 sources; entire source list omitted.')
+            elif sources:
+                entry['source_document_ids'] = sources
+            metadata[key] = entry
+            origins[key] = record.get('origin')
+        checkpoint_ids = []
+        phase = checkpoint.get('phase')
+        primary_names = (['design.md', 'test-statements.md'] if phase in ('design', 'test-plan')
+                         else ['implementation.md', 'synopsis.md', 'merge-review.md', 'merge-candidate.diff'])
+        for index, name in enumerate(primary_names, 1):
+            if name in final:
+                label, description = KNOWN[name]
+                metadata.setdefault(name, {}).update(title=label, description=description, role='primary', order=index)
+                checkpoint_ids.append(name)
+        # The recipe's current brief and provenance are known attachments. Never
+        # promote a historic generated brief or infer arbitrary importance from prose.
+        metadata[brief] = {'title': title if text(title, 120) else 'Current review decision',
+                           'description': 'Current decision, relevant changes, material findings and evidence limits.',
+                           'role': 'primary', 'order': 0}
+        targets = []
+        for target in brief_sources:
+            if target in final and target not in targets:
+                targets.append(target)
+        if len(targets) > 128:
+            notices.append('Incomplete metadata coverage for current brief: more than 128 sources; entire source list omitted.')
+        elif targets:
+            metadata[brief]['source_document_ids'] = targets
+        metadata[provenance] = {'title': 'Review evidence provenance',
+                                'description': 'Original source references, coverage limitations and producer execution details.',
+                                'role': 'supporting'}
+        if checkpoint.get('phase') == 'consultation' and 'discussion' in final:
+            metadata['discussion'] = {'title': 'Consultation positions and evidence',
+                                      'description': 'Unresolved positions, evidence and questions requiring expert direction.',
+                                      'role': 'primary', 'order': 1}
+            checkpoint_ids.append('discussion')
+        checkpoint_ids += [brief, provenance]
+        overview = brief
+        wire = presentation(metadata, overview)
+        if len(canonical(wire)) > 65536:
+            producer = sorted(set(metadata) - set(checkpoint_ids), key=lambda s: s.encode('utf-8'), reverse=True)
+            supporting = [provenance]
+            other = sorted(set(checkpoint_ids) - {brief, provenance}, key=lambda s: s.encode('utf-8'), reverse=True)
+            for key in producer + supporting + other + [brief]:
+                metadata.pop(key, None)
+                if key == brief:
+                    overview = None
+                notices.append('Presentation budget: omitted metadata for ' + key)
+                wire = presentation(metadata, overview)
+                if len(canonical(wire)) <= 65536:
+                    break
+        if not policy.get('canonical_verified') or len(canonical(wire)) > 65536:
+            wire = {}
+            if selected == 'annotated_v1':
+                notices.append('Canonical presentation sizing unavailable; both presentation fields omitted.')
+        if selected != 'annotated_v1':
+            wire = {}
+        return {'fields': wire, 'mode': selected, 'diagnostics': list(dict.fromkeys(notices)),
+                'associations': annotations, 'origins': origins, 'published_ids': sorted(list(final) + [brief, provenance])}

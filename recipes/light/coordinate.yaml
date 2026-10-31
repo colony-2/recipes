@@ -5,6 +5,14 @@ inputs:
   action: ${{ inputs.action }}
   requests: ${{ inputs.?requests.orValue([]) }}
   keys: ${{ inputs.?keys.orValue([]) }}
+vars:
+  sidecar_pack: |2-
+     . as $v | if ($v.annotations // [] | length) == 0 then .documents else
+      ("__review_annotations__/" + $v.origin + "/") as $prefix |
+      ([range(0; ($v.documents | length) + 1) | ($prefix + tostring + ".json") |
+        select(. as $k | $v.documents | has($k) | not)][0]) as $id |
+      $v.documents + {($id): {kind: "value", name: $id, format: "json",
+        value: {_c2_recipe_sidecar: "review_annotations/v1", annotations: $v.annotations}}} end
 state:
   initial: pick
   states:
@@ -45,6 +53,7 @@ state:
     consult:
       include: ../kernel/consultation.yaml
       inputs:
+        annotations_json: "${{ json_stringify(states.route.outputs.flow.?annotations.orValue([])) }}"
         thread: ${{ states.pick.outputs.key }}
         request: ${{ states.pick.outputs.item.request }}
         consultant_role: ${{ states.pick.outputs.item.role }}
@@ -71,23 +80,14 @@ state:
       - id: launch_child_build
         op: recipes.run
         inputs:
-          recipes: '${{ [{''cell_name'': context.workspace.cell, ''git'': {''base_repo'': context.git.repo, ''base_ref'':
-            context.git.ref, ''base_hash'': context.git.resolved_hash}, ''name'': inputs.flow.build_recipe, ''inputs'':
-            {''prompt'': ''Execute the agreed prerequisite work. Consultation is complete; this is a fresh execution
-            session. Read consultation/conversation.json and the supplied final agreement documents for the accepted
-            scope. Implement that scope rather than repeating the scope agreement. Original consultation request:
-            '' + inputs.thread.request.request, ''documents'': jq([inputs.thread.result.final_artifacts, sequence.starter.outputs.documents],
-            ''add''), ''root_cell'': inputs.flow.root_cell, ''root_ref'': inputs.flow.root_ref} }] }}'
+          recipes: "${{ [{'cell_name': context.workspace.cell, 'git': {'base_repo': context.git.repo, 'base_ref': context.git.ref, 'base_hash': context.git.resolved_hash}, 'name': inputs.flow.build_recipe, 'inputs': {'prompt': 'Execute the agreed prerequisite work. Consultation is complete; this is a fresh execution session. Read consultation/conversation.json and the supplied final agreement documents for the accepted scope. Implement that scope rather than repeating the scope agreement. Original consultation request: ' + inputs.thread.request.request, 'documents': jq({'documents': jq([inputs.thread.result.final_artifacts, sequence.starter.outputs.documents], 'add'), 'annotations': inputs.thread.result.?annotations.orValue([]), 'origin': context.invocation.hash}, vars.sidecar_pack), 'root_cell': inputs.flow.root_cell, 'root_ref': inputs.flow.root_ref} }] }}"
       outputs:
         job_id: ${{ sequence.launch_child_build.outputs.job_ids[0] }}
       transitions:
       - to: record
         when: true
         payload:
-          patch: '${{ {''threads'': states.agreed.outputs.flow.threads, ''session'': states.agreed.outputs.flow.session,
-            ''documents'': states.consult.outputs.final_artifacts, ''jobs'': jq([states.agreed.outputs.flow.jobs,
-            {states.pick.outputs.key: {''job_id'': outputs.job_id, ''status'': ''running'', ''kind'': ''feature'',
-            ''cell'': states.pick.outputs.item.cell} }], ''add'')} }}'
+          patch: "${{ {'threads': states.agreed.outputs.flow.threads, 'session': states.agreed.outputs.flow.session, 'annotations': states.consult.outputs.?annotations.orValue([]), 'documents': states.consult.outputs.final_artifacts, 'jobs': jq([states.agreed.outputs.flow.jobs, {states.pick.outputs.key: {'job_id': outputs.job_id, 'status': 'running', 'kind': 'feature', 'cell': states.pick.outputs.item.cell} }], 'add')} }}"
     await_child_build:
       id: await_child_build
       op: recipe.await_result_soft
@@ -102,9 +102,7 @@ state:
       - to: record
         when: true
         payload:
-          patch: '${{ {''jobs'': jq([states.pick.outputs.flow.jobs, {states.pick.outputs.key: jq([states.pick.outputs.flow.jobs[states.pick.outputs.key],
-            {''status'': outputs.status, ''result'': outputs.outputs, ''failure'': outputs.failure_message}], ''add'')}],
-            ''add''), ''documents'': outputs.outputs.?artifact_refs.orValue({})} }}'
+          patch: "${{ {'jobs': jq([states.pick.outputs.flow.jobs, {states.pick.outputs.key: jq([states.pick.outputs.flow.jobs[states.pick.outputs.key], {'status': outputs.status, 'result': outputs.outputs, 'failure': outputs.failure_message}], 'add')}], 'add'), 'annotations': outputs.outputs.?annotations.orValue([]), 'documents': outputs.outputs.?artifact_refs.orValue({})} }}"
     skip:
       sequence: []
       transitions:
@@ -122,12 +120,13 @@ state:
       - id: namespace
         include: ../kernel/artifact-namespace.yaml
         inputs:
+          annotations: >-
+            ${{ inputs.patch.?annotations.orValue([]) }}
           prefix: '${{ (inputs.action == ''blocked'' && inputs.key in inputs.flow.jobs ? ''jobs/'' : ''consultations/'')
             + inputs.key + ''/'' }}'
           documents: ${{ inputs.patch.?documents.orValue({}) }}
       outputs:
-        flow: '${{ jq([inputs.flow, inputs.patch, {''documents'': jq([inputs.flow.documents, sequence.namespace.outputs.documents],
-          ''add'')}], ''add'') }}'
+        flow: "${{ jq([inputs.flow, inputs.patch, {'annotations': inputs.flow.?annotations.orValue([]) + sequence.namespace.outputs.annotations, 'documents': jq([inputs.flow.documents, sequence.namespace.outputs.documents], 'add')}], 'add') }}"
       transitions:
       - to: pick
         when: 'int(states.pick.outputs.index) + 1 < size(inputs.action == ''consult'' ? inputs.requests : inputs.keys)'
@@ -157,8 +156,7 @@ state:
       - to: record
         when: true
         payload:
-          patch: '${{ {''threads'': outputs.flow.threads, ''session'': outputs.flow.session, ''documents'': states.consult.outputs.final_artifacts}
-            }}'
+          patch: "${{ {'threads': outputs.flow.threads, 'session': outputs.flow.session, 'annotations': states.consult.outputs.?annotations.orValue([]), 'documents': states.consult.outputs.final_artifacts} }}"
     route:
       include: ../kernel/route-target.yaml
       inputs:

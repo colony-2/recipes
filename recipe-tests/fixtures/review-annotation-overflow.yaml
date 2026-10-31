@@ -1,0 +1,54 @@
+id: annotation-overflow
+sequence:
+- id: evidence
+  sequence: []
+  outputs:
+    documents: >-
+      ${{ jq(200, '[range(0; .) | {key: ("evidence-" + tostring), value: {kind: "value", format: "text", value: "Mandatory check failed; retain this material limitation."}}] | from_entries') }}
+- id: descriptors
+  inputs:
+    documents: ${{ sequence.evidence.outputs.documents }}
+  sequence: []
+  outputs:
+    annotations: >-
+      ${{ jq(inputs.documents, 'to_entries | map({id: .key, ref: .value, origin: ("fixture/" + .key), lineage: [.key], descriptor: {title: ("<" * 120), description: ("&" * 300), role: "supporting"}, sources: []})') }}
+- id: review
+  include: ../../recipes/kernel/review.yaml
+  inputs:
+    title: Review evidence with incomplete presentation coverage
+    documents: ${{ sequence.evidence.outputs.documents }}
+    annotations: ${{ sequence.descriptors.outputs.annotations }}
+    fields:
+    - id: decision
+      type: multiple_choice
+      question: Accept the reported outcome and limitations?
+      required: true
+      options:
+      - value: accept
+        label: Accept
+      - value: revise
+        label: Revise
+- id: check_originals_and_provenance
+  op: command_execution
+  const: true
+  execution_needs:
+    packages:
+    - nix:github:NixOS/nixpkgs/e7439b6b14ad3cc35d05608ebca9bce01a25f5f8#python3
+  artifacts:
+    review/: ${{ sequence.review.outputs.documents }}
+  inputs:
+    env:
+      INBOX: ${{ context.environment.op.inbox }}
+    run: |
+      python3 - <<'CHECK'
+      import json, os
+      from pathlib import Path
+      root = Path(os.environ['INBOX']) / 'review'
+      provenance = json.loads(next(root.rglob('review-provenance.json')).read_text())
+      assert len(provenance['presentation']['associations']) == 200
+      assert 'Mandatory check failed' in next(root.rglob('brief.md')).read_text()
+      print('Full associations and material findings retained in artifacts.')
+      CHECK
+outputs:
+  presentation: ${{ sequence.review.outputs.presentation }}
+  response: ${{ sequence.review.outputs.response }}

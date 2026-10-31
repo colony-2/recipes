@@ -1,6 +1,8 @@
 id: develop
 version: 1.0.0
 inputs:
+  annotations: >-
+    ${{ inputs.?annotations.orValue([]) }}
   prompt: ${{ inputs.prompt }}
   target_directory: ${{ inputs.target_directory }}
   session: ${{ inputs.session }}
@@ -35,6 +37,8 @@ state:
         when: true
     start:
       inputs:
+        annotations: >-
+          ${{ inputs.annotations }}
         request: ${{ inputs.prompt }}
         directory: ${{ inputs.target_directory }}
         session: ${{ inputs.session }}
@@ -62,14 +66,7 @@ state:
         valid: >-
           ${{ nonempty(inputs.directory) && !inputs.directory.startsWith('/') && !inputs.directory.matches('(^|/)[.][.](/|$)')
           }}
-        flow: >-
-          ${{ jq([{'phase': 'design', 'last_phase': '', 'message': inputs.request, 'request': inputs.request, 'target_directory':
-          inputs.directory, 'session': inputs.session, 'documents': inputs.documents, 'threads': inputs.prior_consultations,
-          'jobs': inputs.prior_dependencies, 'merge_chases': inputs.prior_merge_chases, 'approved': [], 'plan_keys':
-          [], 'reviews': {}, 'root_cell': inputs.root_cell, 'root_ref': inputs.root_ref, 'consultation_recipe':
-          inputs.consultation_recipe, 'build_recipe': inputs.build_recipe, 'create_recipe': inputs.create_recipe},
-          {'hook_settings': inputs.hook_settings, 'settings_artifact': inputs.settings_artifact, 'require_verification':
-          inputs.require_verification}], 'add') }}
+        flow: "${{ jq([{'phase': 'design', 'last_phase': '', 'message': inputs.request, 'request': inputs.request, 'target_directory': inputs.directory, 'session': inputs.session, 'annotations': inputs.annotations, 'documents': inputs.documents, 'threads': inputs.prior_consultations, 'jobs': inputs.prior_dependencies, 'merge_chases': inputs.prior_merge_chases, 'approved': [], 'plan_keys': [], 'reviews': {}, 'root_cell': inputs.root_cell, 'root_ref': inputs.root_ref, 'consultation_recipe': inputs.consultation_recipe, 'build_recipe': inputs.build_recipe, 'create_recipe': inputs.create_recipe}, {'hook_settings': inputs.hook_settings, 'settings_artifact': inputs.settings_artifact, 'require_verification': inputs.require_verification}], 'add') }}"
       transitions:
       - to: reject_invalid_build_request
         when: '!outputs.valid'
@@ -103,12 +100,12 @@ state:
       sequence: []
       outputs:
         valid: ${{ size(vars.issues) == 0 }}
-        flow: |-
+        flow: |2-
           ${{ inputs.turn.result.?output_schema_valid.orValue(false) ? (jq([inputs.previous, {
            'repair_attempts': 0, 'repair_artifacts': {}, 'session': inputs.turn.result.?session.orValue(inputs.previous.session),
            'last_phase': inputs.previous.phase,
            'plan_keys': inputs.previous.phase == 'design' && inputs.turn.result.?response.orValue({}).?next.orValue('') == 'review' ? inputs.turn.result.response.keys : inputs.previous.plan_keys,
-           'result': inputs.turn.result.?response.orValue({}),
+           'result': inputs.turn.result.?response.orValue({}), 'annotations': inputs.previous.?annotations.orValue([]) + inputs.turn.?annotations.orValue([]),
            'documents': jq([inputs.previous.?repair_base_documents.orValue(inputs.previous.documents),
              jq({'files': inputs.turn.result.?response.orValue({}).?files.orValue([]), 'artifacts': inputs.turn.artifacts},
                 '. as $v | $v.files | map(select(.path as $p | $v.artifacts | has($p)) | {key: .path, value: $v.artifacts[.path]}) | from_entries')], 'add')}], 'add | del(.repair_base_documents)')) : inputs.previous }}
@@ -284,6 +281,8 @@ state:
       - id: review
         include: ../kernel/review.yaml
         inputs:
+          annotations: >-
+            ${{ inputs.flow.?annotations.orValue([]) }}
           checkpoint: ${{ jq(inputs.flow, 'del(.documents, .session, .result, .repair_artifacts)') }}
           title: Clarify the current build
           documents: ${{ jq(inputs.flow.documents, 'del(."build-settings.json", ."configuration.md",
@@ -308,6 +307,7 @@ state:
       - id: consult
         include: ../kernel/consultation.yaml
         inputs:
+          annotations_json: "${{ json_stringify(inputs.flow.?annotations.orValue([])) }}"
           thread: '${{ inputs.flow.phase == ''test-plan'' ? ''plan-assessment'' : ''outcome-assessment'' }}'
           request: >-
             ${{ inputs.flow.phase == 'test-plan' ? 'Independently assess the proposed design and test statements
@@ -319,10 +319,7 @@ state:
           documents: ${{ inputs.flow.documents }}
       outputs:
         result: ${{ sequence.consult.outputs }}
-        flow: >-
-          ${{ jq([inputs.flow, {'session': sequence.consult.outputs.requester_session, 'documents': jq([inputs.flow.documents,
-          sequence.consult.outputs.final_artifacts], 'add'), 'message': sequence.consult.outputs.state.message,
-          'assessment': sequence.consult.outputs.assessment}], 'add') }}
+        flow: "${{ jq([inputs.flow, {'session': sequence.consult.outputs.requester_session, 'documents': jq([inputs.flow.documents, sequence.consult.outputs.final_artifacts], 'add'), 'message': sequence.consult.outputs.state.message, 'annotations': inputs.flow.?annotations.orValue([]) + sequence.consult.outputs.?annotations.orValue([]), 'assessment': sequence.consult.outputs.assessment}], 'add') }}"
       transitions:
       - to: reject_invalid_build_request
         when: outputs.result.outcome in ['failed', 'needs_review']
@@ -354,6 +351,8 @@ state:
       - id: plan_review
         include: ../kernel/review.yaml
         inputs:
+          annotations: >-
+            ${{ inputs.flow.?annotations.orValue([]) }}
           checkpoint: ${{ jq(inputs.flow, 'del(.documents, .session, .result, .repair_artifacts)') }}
           title: Review design and test statements
           documents: ${{ inputs.flow.documents }}
@@ -562,6 +561,8 @@ state:
       - id: outcome_review
         include: ../kernel/review.yaml
         inputs:
+          annotations: >-
+            ${{ inputs.flow.?annotations.orValue([]) }}
           checkpoint: ${{ jq(inputs.flow, 'del(.documents, .session, .result, .repair_artifacts)') }}
           title: '${{ inputs.flow.candidate_changed ? ''Review outcome, verification evidence, and file accounting''
             : ''Review no-change rationale and verification evidence'' }}'
@@ -713,6 +714,8 @@ state:
       - id: repair
         include: ../kernel/repair.yaml
         inputs:
+          annotations: >-
+            ${{ inputs.flow.?annotations.orValue([]) }}
           turn: ${{ inputs.turn }}
           issues: ${{ inputs.issues }}
           documents: ${{ inputs.flow.documents }}
@@ -832,6 +835,8 @@ state:
         payload:
           flow: ${{ outputs.flow }}
 outputs:
+  annotations: >-
+    ${{ state_output('merge', 'flow', state_output('stopped', 'flow', state_output('record', 'flow', {}))).?annotations.orValue([]) }}
   merged: ${{ nonempty(state_output('merge', 'merged_hash', '')) }}
   merged_hash: ${{ state_output('merge', 'merged_hash', '') }}
   target_branch: ${{ state_output('merge', 'target_branch', '') }}

@@ -1,6 +1,9 @@
 id: build
 version: 1.0.0
 input_schema:
+  annotations_json:
+    type: string
+    default_value: '[]'
   prompt:
     type: string
     required: true
@@ -38,6 +41,7 @@ input_schema:
     type: boolean
     default_value: false
 inputs:
+  annotations: "${{ jq({'direct': json_parse(inputs.annotations_json), 'documents': inputs.documents}, '[if (.direct | type) == \"array\" then .direct else [] end] + [.documents[] | select(.kind == \"value\" and (.value | type) == \"object\" and .value._c2_recipe_sidecar == \"review_annotations/v1\") | .value.annotations | select(type == \"array\")] | add') }}"
   prompt: ${{ inputs.prompt }}
   target_directory: ${{ inputs.target_directory }}
   session: ${{ inputs.?session.orValue({}) }}
@@ -70,6 +74,8 @@ sequence:
     cell: ${{ context.git.repo }}
     ref: ${{ context.git.ref }}
   inputs:
+    annotations: >-
+      ${{ inputs.annotations }}
     prompt: ${{ inputs.prompt }}
     target_directory: ${{ inputs.target_directory }}
     session: ${{ inputs.?session.orValue({}) }}
@@ -95,6 +101,8 @@ sequence:
       light:
         include: ./recipes/light/develop.yaml
         inputs:
+          annotations: >-
+            ${{ inputs.annotations }}
           prompt: ${{ inputs.prompt }}
           target_directory: ${{ inputs.target_directory }}
           session: ${{ inputs.session }}
@@ -112,6 +120,8 @@ sequence:
       heavy:
         include: ./recipes/develop/develop.yaml
         inputs:
+          annotations: >-
+            ${{ state_output('light', 'annotations', inputs.annotations) }}
           prompt: '${{ inputs.prompt + (state_exists(''light'') ? ''\nRead inbox/light-handoff.json: preserve completed
             child outcomes and existing candidate work. Do not duplicate completed delegation.'' : '''') }}'
           target_directory: ${{ inputs.target_directory }}
@@ -129,6 +139,8 @@ sequence:
           settings_artifact: ${{ inputs.settings_artifact }}
           require_verification: ${{ inputs.require_verification }}
   outputs:
+    annotations: >-
+      ${{ state_output('heavy', 'annotations', state_output('light', 'annotations', [])) }}
     merged: ${{ state_output('heavy', 'merged', state_output('light', 'merged', null)) }}
     merged_hash: ${{ state_output('heavy', 'merged_hash', state_output('light', 'merged_hash', null)) }}
     target_branch: ${{ state_output('heavy', 'target_branch', state_output('light', 'target_branch', null)) }}
@@ -147,6 +159,8 @@ sequence:
     process: '${{ state_exists(''heavy'') ? ''heavy'' : ''light'' }}'
     publication: ${{ state_output('heavy', 'publication', state_output('light', 'publication', {})) }}
 outputs:
+  annotations: >-
+    ${{ sequence.run.outputs.annotations }}
   merged: ${{ sequence.run.outputs.merged }}
   merged_hash: ${{ sequence.run.outputs.merged_hash }}
   target_branch: ${{ sequence.run.outputs.target_branch }}

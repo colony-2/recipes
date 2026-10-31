@@ -57,6 +57,8 @@ state:
       - id: expert
         include: ./expert.yaml
         inputs:
+          annotations: >-
+            ${{ inputs.flow.?annotations.orValue([]) }}
           thread: ${{ vars.thread }}
           request: ${{ vars.item.request }}
           consultant_role: "${{ vars.item.role + '\\nRead the current documents and report concrete findings. '
@@ -70,15 +72,13 @@ state:
       - id: evidence
         include: ../../kernel/artifact-namespace.yaml
         inputs:
+          annotations: >-
+            ${{ sequence.expert.outputs.?annotations.orValue([]) }}
           prefix: ${{ 'specialists/' + vars.thread + '/' }}
           documents: "${{ jq([sequence.expert.outputs.final_artifacts, {'conversation.json': sequence.expert.outputs.transcript}],
             'add') }}"
       outputs:
-        flow: "${{ jq([inputs.flow, {'session': sequence.expert.outputs.requester_session, 'documents': jq([inputs.flow.documents,
-          sequence.evidence.outputs.documents], 'add'), 'specialist_reviews': jq([inputs.flow.?specialist_reviews.orValue({}),
-          {vars.thread: {'key': vars.item.key, 'checkpoint': vars.item.checkpoint, 'required': vars.item.required,
-          'outcome': sequence.expert.outputs.outcome, 'assessment': sequence.expert.outputs.assessment} }], 'add')}],
-          'add') }}"
+        flow: "${{ jq([inputs.flow, {'session': sequence.expert.outputs.requester_session, 'documents': jq([inputs.flow.documents, sequence.evidence.outputs.documents], 'add'), 'annotations': inputs.flow.?annotations.orValue([]) + sequence.evidence.outputs.annotations, 'specialist_reviews': jq([inputs.flow.?specialist_reviews.orValue({}), {vars.thread: {'key': vars.item.key, 'checkpoint': vars.item.checkpoint, 'required': vars.item.required, 'outcome': sequence.expert.outputs.outcome, 'assessment': sequence.expert.outputs.assessment} }], 'add')}], 'add') }}"
         unresolved: ${{ sequence.expert.outputs.outcome in ['failed', 'needs_review'] }}
         passed: ${{ !vars.item.required || (sequence.expert.outputs.outcome == 'agreed' &&
           sequence.expert.outputs.assessment == 'pass') }}

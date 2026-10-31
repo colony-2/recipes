@@ -174,3 +174,9 @@ Use the fastest tool that answers the question you have:
 - state-machine semantics: `STATE_MACHINE_GUIDE.md`
 - template and scope rules: `NODE_SCOPE_SPEC.md`, `TEMPLATE_REFERENCE_CHEATSHEET.md`, `template_resolution.md`
 - artifacts and runtime paths: `RECIPE_ARTIFACTS_REFERENCE.md`, `TASK_EXECUTION_CONTEXT_REFERENCE.md`
+
+## Review artifact annotations
+
+See [producer descriptors and deployment activation](REVIEW_ARTIFACT_ANNOTATIONS.md)
+for optional review presentation. Production remains legacy until the actual
+supporting c2j release and deployment compatibility are verified.

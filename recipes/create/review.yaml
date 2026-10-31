@@ -1,6 +1,8 @@
 id: creation-review
 version: 1.0.0
 inputs:
+  annotations: >-
+    ${{ inputs.?annotations.orValue([]) }}
   prompt: ${{ inputs.prompt }}
   session: ${{ inputs.?session.orValue({}) }}
   documents: ${{ inputs.?documents.orValue({}) }}
@@ -60,6 +62,10 @@ vars:
             description:
               type: string
               minLength: 1
+            title: {}
+            role: {}
+            order: {}
+            source_paths: {}
       questions:
         type: array
         items:
@@ -139,14 +145,14 @@ state:
   states:
     start:
       inputs:
+        annotations: >-
+          ${{ inputs.annotations }}
         prompt: ${{ inputs.prompt }}
         session: ${{ inputs.session }}
         documents: ${{ inputs.documents }}
       sequence: []
       outputs:
-        flow: >-
-          ${{ {'session': inputs.session, 'documents': inputs.documents, 'message': inputs.prompt, 'first': true}
-          }}
+        flow: "${{ {'session': inputs.session, 'annotations': inputs.annotations, 'documents': inputs.documents, 'message': inputs.prompt, 'first': true} }}"
       transitions:
       - to: propose
         when: true
@@ -200,13 +206,7 @@ state:
            && (inputs.turn.result.response.outcome != 'ask_user' ||
                (size(inputs.turn.result.response.questions) > 0
                 && inputs.turn.result.response.questions.all(q, q.id != 'annotations'))) }}
-        flow: >-
-          ${{ inputs.turn.result.?output_schema_valid.orValue(false) ? (jq([inputs.flow, {'repair_attempts': 0,
-          'repair_artifacts': {}, 'session': inputs.turn.result.?session.orValue(inputs.flow.session), 'first':
-          false, 'result': inputs.turn.result.?response.orValue({}), 'documents': jq([inputs.flow.?repair_base_documents.orValue(inputs.flow.documents),
-          jq({'files': inputs.turn.result.?response.orValue({}).?files.orValue([]), 'artifacts': inputs.turn.artifacts},
-          '. as $v | $v.files | map(select(.path as $p | $v.artifacts | has($p)) | {key: .path, value: $v.artifacts[.path]})
-          | from_entries')], 'add')}], 'add | del(.repair_base_documents)')) : inputs.flow }}
+        flow: "${{ inputs.turn.result.?output_schema_valid.orValue(false) ? (jq([inputs.flow, {'repair_attempts': 0, 'repair_artifacts': {}, 'session': inputs.turn.result.?session.orValue(inputs.flow.session), 'first': false, 'annotations': inputs.flow.?annotations.orValue([]) + inputs.turn.?annotations.orValue([]), 'result': inputs.turn.result.?response.orValue({}), 'documents': jq([inputs.flow.?repair_base_documents.orValue(inputs.flow.documents), jq({'files': inputs.turn.result.?response.orValue({}).?files.orValue([]), 'artifacts': inputs.turn.artifacts}, '. as $v | $v.files | map(select(.path as $p | $v.artifacts | has($p)) | {key: .path, value: $v.artifacts[.path]}) | from_entries')], 'add')}], 'add | del(.repair_base_documents)')) : inputs.flow }}"
         issues: >-
           ${{ inputs.turn.?issues.orValue([]) + ['Correct the creation proposal: review needs proposal.md, root-config.yaml with the exact proposed catalog configuration, unique
           cell names and repositories, and each cells/<name>/PURPOSE.md referenced in both cells and files. Clarification
@@ -246,6 +246,8 @@ state:
       - id: review
         include: ../kernel/review.yaml
         inputs:
+          annotations: >-
+            ${{ inputs.flow.?annotations.orValue([]) }}
           title: Review proposed cells
           documents: ${{ inputs.flow.documents }}
           fields:
@@ -303,6 +305,8 @@ state:
       - id: review
         include: ../kernel/review.yaml
         inputs:
+          annotations: >-
+            ${{ inputs.flow.?annotations.orValue([]) }}
           title: Clarify proposed cells
           documents: ${{ inputs.flow.documents }}
           fields: >-
@@ -354,6 +358,8 @@ state:
       - id: repair
         include: ../kernel/repair.yaml
         inputs:
+          annotations: >-
+            ${{ inputs.flow.?annotations.orValue([]) }}
           turn: ${{ inputs.turn }}
           issues: ${{ inputs.issues }}
           documents: ${{ inputs.flow.documents }}
@@ -377,6 +383,8 @@ state:
         payload:
           flow: '${{ jq([outputs.flow, {''disposition'': ''cancelled''}], ''add'') }}'
 outputs:
+  annotations: >-
+    ${{ state_output('approved', 'flow', state_output('stopped', 'flow', {})).?annotations.orValue([]) }}
   approved: ${{ state_exists('approved') }}
   session: ${{ state_output('approved', 'flow', state_output('stopped', 'flow', {})).session }}
   cells: ${{ state_output('approved', 'flow', {}).?result.orValue({}).?cells.orValue([]) }}

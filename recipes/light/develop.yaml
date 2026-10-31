@@ -1,6 +1,8 @@
 id: light-develop
 version: 1.0.0
 inputs:
+  annotations: >-
+    ${{ inputs.?annotations.orValue([]) }}
   prompt: ${{ inputs.prompt }}
   target_directory: ${{ inputs.target_directory }}
   session: ${{ inputs.session }}
@@ -31,6 +33,8 @@ state:
         when: true
     start:
       inputs:
+        annotations: >-
+          ${{ inputs.annotations }}
         request: ${{ inputs.prompt }}
         directory: ${{ inputs.target_directory }}
         session: ${{ inputs.session }}
@@ -50,11 +54,7 @@ state:
       outputs:
         valid: ${{ nonempty(inputs.directory) && !inputs.directory.startsWith('/') &&
           !inputs.directory.matches('(^|/)[.][.](/|$)') }}
-        flow: '${{ jq([{''message'': inputs.request, ''request'': inputs.request, ''target_directory'': inputs.directory,
-          ''session'': inputs.session, ''documents'': inputs.documents, ''threads'': {}, ''jobs'': {}, ''merge_chases'':
-          0, ''reviews'': {}, ''root_cell'': inputs.root_cell, ''root_ref'': inputs.root_ref, ''build_recipe'':
-          inputs.build_recipe, ''create_recipe'': inputs.create_recipe}, {''hook_settings'': inputs.hook_settings, ''settings_artifact'': inputs.settings_artifact,
-          ''require_verification'': inputs.require_verification}], ''add'') }}'
+        flow: "${{ jq([{'message': inputs.request, 'request': inputs.request, 'target_directory': inputs.directory, 'session': inputs.session, 'annotations': inputs.annotations, 'documents': inputs.documents, 'threads': {}, 'jobs': {}, 'merge_chases': 0, 'reviews': {}, 'root_cell': inputs.root_cell, 'root_ref': inputs.root_ref, 'build_recipe': inputs.build_recipe, 'create_recipe': inputs.create_recipe}, {'hook_settings': inputs.hook_settings, 'settings_artifact': inputs.settings_artifact, 'require_verification': inputs.require_verification}], 'add') }}"
       transitions:
       - to: reject_invalid_build_request
         when: '!outputs.valid'
@@ -87,11 +87,11 @@ state:
       sequence: []
       outputs:
         valid: ${{ size(vars.issues) == 0 }}
-        flow: |-
+        flow: |2-
           ${{ inputs.turn.result.?output_schema_valid.orValue(false) ? (jq([inputs.previous, {
            'repair_attempts': 0, 'repair_artifacts': {}, 'session': inputs.turn.result.?session.orValue(inputs.previous.session),
 
-           'result': inputs.turn.result.?response.orValue({}),
+           'result': inputs.turn.result.?response.orValue({}), 'annotations': inputs.previous.?annotations.orValue([]) + inputs.turn.?annotations.orValue([]),
            'documents': jq([inputs.previous.?repair_base_documents.orValue(inputs.previous.documents),
              jq({'files': inputs.turn.result.?response.orValue({}).?files.orValue([]), 'artifacts': inputs.turn.artifacts},
                 '. as $v | $v.files | map(select(.path as $p | $v.artifacts | has($p)) | {key: .path, value: $v.artifacts[.path]}) | from_entries')], 'add')}], 'add | del(.repair_base_documents)')) : inputs.previous }}
@@ -183,6 +183,8 @@ state:
       - id: review
         include: ../kernel/review.yaml
         inputs:
+          annotations: >-
+            ${{ inputs.flow.?annotations.orValue([]) }}
           title: Clarify the current build
           documents: ${{ jq(inputs.flow.documents, 'del(."build-settings.json", ."configuration.md",
             ."design-context.md")') }}
@@ -305,6 +307,8 @@ state:
       - id: outcome_review
         include: ../kernel/review.yaml
         inputs:
+          annotations: >-
+            ${{ inputs.flow.?annotations.orValue([]) }}
           title: '${{ inputs.flow.candidate_changed ? ''Review change synopsis and verification evidence'' : ''Review
             no-change rationale and verification evidence'' }}'
           documents: ${{ inputs.flow.documents }}
@@ -440,6 +444,8 @@ state:
       - id: repair
         include: ../kernel/repair.yaml
         inputs:
+          annotations: >-
+            ${{ inputs.flow.?annotations.orValue([]) }}
           turn: ${{ inputs.turn }}
           issues: ${{ inputs.issues }}
           documents: ${{ inputs.flow.documents }}
@@ -627,6 +633,8 @@ state:
         payload:
           flow: ${{ outputs.flow }}
 outputs:
+  annotations: >-
+    ${{ state_output('merge', 'flow', state_output('stopped', 'flow', state_output('handoff', 'flow', state_output('record', 'flow', {})))).?annotations.orValue([]) }}
   merged: ${{ nonempty(state_output('merge', 'merged_hash', '')) }}
   merged_hash: ${{ state_output('merge', 'merged_hash', '') }}
   target_branch: ${{ state_output('merge', 'target_branch', '') }}

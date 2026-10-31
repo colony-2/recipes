@@ -1,0 +1,92 @@
+recipe: ../build.yaml
+cases:
+- id: legacy-sidecar-import-preserves-originals
+  type: integration_case
+  runtime:
+    secrets:
+      jev_api_key: synthetic-jev
+    cells:
+      root:
+        files:
+          candidate.txt: original
+    observe_files:
+    - candidate.txt
+    - unapproved.txt
+    responses: []
+  inputs:
+    prompt: Improve the requested behavior.
+    documents:
+      evidence.md: &id001
+        kind: value
+        format: text
+        value: Original review evidence.
+      control.json:
+        kind: value
+        format: json
+        value:
+          _c2_recipe_sidecar: review_annotations/v1
+          annotations:
+          - id: evidence.md
+            ref: *id001
+            origin: source/occurrence
+            lineage:
+            - evidence.md
+            descriptor:
+              title: Original evidence
+              description: Measured evidence.
+            sources: []
+  mocks:
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#jev
+      behavior:
+        mode: return
+        outputs:
+          answers:
+            is_heavy:
+              type: noul
+              noul: 0.99
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: outside
+            summary: design response
+            files:
+            - path: design.md
+              description: Review evidence
+            questions: []
+            consultations: []
+            keys: []
+        artifacts:
+          design.md: '# design evidence'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: design
+                turn: 1outside
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: merged
+    value: false
+  - type: output_equals
+    path: disposition
+    value: outside
+  - type: cel_true
+    expr: '!calls.exists(c, c.op in ["squashrebasemerge", "squash", "merge"])'
+  - type: cel_true
+    expr: outputs.annotations.exists(a, a.id == "evidence.md" && a.descriptor.title == "Original evidence")
+  - type: cel_true
+    expr: '"evidence.md" in outputs.artifact_refs'

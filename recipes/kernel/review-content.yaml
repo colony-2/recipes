@@ -1,11 +1,15 @@
 id: review-content
 version: 1.0.0
 inputs:
+  annotations: >-
+    ${{ inputs.?annotations.orValue([]) }}
   title: ${{ inputs.title }}
   documents: ${{ inputs.documents }}
   fields: ${{ inputs.fields }}
   checkpoint: ${{ inputs.?checkpoint.orValue({}) }}
 sequence:
+- id: presentation_policy
+  include: ./review-presentation.yaml
 - id: collect_review_evidence
   op: command_execution
   const: true
@@ -16,12 +20,11 @@ sequence:
     producer.py:
       kind: value
       format: text
-      value: ${{ vars.program }}
+      value: ${{ sequence.presentation_policy.outputs.program.value + '\n' + vars.program }}
     request.json:
       kind: value
       format: json
-      value: '${{ {''title'': inputs.title, ''documents'': inputs.documents, ''fields'': inputs.fields, ''checkpoint'':
-        inputs.checkpoint} }}'
+      value: "${{ {'title': inputs.title, 'documents': inputs.documents, 'fields': inputs.fields, 'annotations': inputs.annotations, 'deployment': sequence.presentation_policy.outputs.deployment, 'checkpoint': inputs.checkpoint} }}"
     sources/: ${{ inputs.documents }}
   inputs:
     timeout: 30s
@@ -37,7 +40,7 @@ sequence:
     program:
       kind: value
       format: text
-      value: ${{ vars.program }}
+      value: ${{ sequence.presentation_policy.outputs.program.value + '\n' + vars.program }}
     activation: false
     provider: ''
     model: ''
@@ -51,7 +54,7 @@ sequence:
     producer.py:
       kind: value
       format: text
-      value: ${{ vars.program }}
+      value: ${{ sequence.presentation_policy.outputs.program.value + '\n' + vars.program }}
     bundle.json: ${{ sequence.synthesize_review.outputs.bundle }}
   inputs:
     timeout: 30s
@@ -66,12 +69,14 @@ sequence:
     documents: '${{ {''brief.md'': sequence.render_review_brief.artifacts[''brief.md''], ''review-provenance.json'':
       sequence.render_review_brief.artifacts[''review-provenance.json'']} }}'
 outputs:
+  presentation: >-
+    ${{ json_parse(sequence.render_review_brief.outputs.stdout).presentation }}
   documents: ${{ sequence.namespace_brief.outputs.documents }}
   mode: ${{ json_parse(sequence.render_review_brief.outputs.stdout).mode }}
   program:
     kind: value
     format: text
-    value: ${{ vars.program }}
+    value: ${{ sequence.presentation_policy.outputs.program.value + '\n' + vars.program }}
   bundle: ${{ sequence.collect_review_evidence.artifacts["bundle.json"] }}
 vars:
   program: |
@@ -86,13 +91,15 @@ vars:
     from urllib.parse import quote
 
     VERSION = 'review-brief/v1'
-    PRODUCER_VERSION = 'review-brief/v1.1'
+    PRODUCER_VERSION = 'review-brief/v1.2'
     FIELDS = ('decision_context', 'changes', 'risks', 'evidence_limits', 'consultation_outcomes')
     MAX_SOURCE = 128 * 1024
     MAX_RESPONSE = 32 * 1024
 
     def encoded(value):
-        return json.dumps(value, ensure_ascii=False, sort_keys=True)
+        # Preserve malformed optional Unicode as JSON escapes in deep provenance.
+        # Published presentation text has already passed strict UTF-8 validation.
+        return json.dumps(value, ensure_ascii=False, sort_keys=True).encode('utf-8', 'backslashreplace').decode('utf-8')
 
     def digest(value):
         return hashlib.sha256(value).hexdigest()
@@ -182,7 +189,7 @@ vars:
                 except (ValueError, AttributeError, OSError):
                     pass
         for index, (name, ref) in enumerate(sorted(documents.items())):
-            if is_generated(name) or name.rsplit('/', 1)[-1] in ('feedback.json', 'context.json', 'build-settings.json'):
+            if (isinstance(ref, dict) and ref.get('kind') == 'value' and isinstance(ref.get('value'), dict) and ref['value'].get('_c2_recipe_sidecar') == 'review_annotations/v1') or is_generated(name) or name.rsplit('/', 1)[-1] in ('feedback.json', 'context.json', 'build-settings.json'):
                 continue
             path = inbox / 'sources' / name
             try:
@@ -252,8 +259,10 @@ vars:
             if isinstance(final, dict):
                 for label, ref in final.items():
                     matches = [name for name, original in documents.items() if ref_identity(original) == ref_identity(ref)]
-                    if matches:
-                        resolved.append(sorted(matches)[0])
+                    if label in matches:
+                        resolved.append(label)
+                    elif len(matches) == 1:
+                        resolved.append(matches[0])
                     else:
                         unresolved.append(label)
             recorded['attached_final_document_ids'] = resolved
@@ -265,6 +274,7 @@ vars:
         bundle = {'version': VERSION, 'started_at': time.time(), 'title': data['title'], 'question': question,
                   'ledger': ledger, 'manifest': manifest, 'sources': sources, 'consultations': consultation,
                   'missing': missing, 'source_bytes': source_bytes, 'checkpoint': ctx,
+                  'documents': documents, 'annotations': data.get('annotations', []), 'deployment': data.get('deployment', {}),
                   'existing_ids': sorted(documents), 'attempts': 0, 'model': None,
                   'reason': 'deterministic default; model activation gate not passed'}
         # Inactive until worker setup deadlines and deployment evaluations are established.
@@ -407,6 +417,13 @@ vars:
         while any(name in bundle['existing_ids'] for name in (stem + '/brief.md', stem + '/review-provenance.json')):
             suffix += 1
             stem = 'review-briefs/' + identity + '-' + str(suffix)
+        presentation = assemble(bundle.get('documents', {}), bundle.get('annotations', []),
+                                stem + '/brief.md', stem + '/review-provenance.json',
+                                bundle['title'], bundle['checkpoint'], bundle.get('deployment', {}),
+                                [s['id'] for s in bundle['manifest']])
+        if presentation['diagnostics']:
+            lines.extend(['', '## Presentation coverage', ''])
+            lines.extend('- ' + safe(note) for note in presentation['diagnostics'])
         # Flat output files are namespaced by the recipe, preserving immutable refs.
         write('brief.md', '\n'.join(lines) + '\n')
         provenance = {k: bundle[k] for k in ('version', 'manifest', 'ledger', 'source_bytes', 'attempts', 'model', 'reason')}
@@ -415,8 +432,11 @@ vars:
                            'elapsed_seconds': max(0, time.time() - bundle['started_at']),
                            'candidate': bundle['checkpoint'].get('candidate', next((f['value'] for f in bundle['ledger'] if f['label'] == 'candidate identity'), None)),
                            'coverage': 'unclassified current text retained; source-specific exclusions recorded in manifest; originals retained', 'model_activation': bundle.get('activation', 'inactive')})
+        provenance['presentation'] = presentation
         write('review-provenance.json', provenance)
-        print(encoded({'prefix': stem + '/', 'mode': 'synthesis' if prose else 'fallback', 'reason': bundle['reason']}))
+        published_presentation = {k: v for k, v in presentation.items() if k not in ('associations', 'origins')}
+        published_presentation['association_count'] = len(presentation.get('associations', []))
+        print(encoded({'prefix': stem + '/', 'mode': 'synthesis' if prose else 'fallback', 'reason': bundle['reason'], 'presentation': published_presentation}))
 
     def check(bundle, output):
         bundle['attempts'] += 1
