@@ -1,0 +1,128 @@
+id: review-brief-fixture
+input_schema:
+  evidence:
+    type: string
+    default_value: |-
+      # Proposed behavior
+
+      Use two modes.
+
+      Postgres is unverified; purge remains unsupported.
+  title:
+    type: string
+    default_value: Review design
+  feedback:
+    type: string
+    default_value: ''
+  context_json:
+    type: string
+    default_value: '{}'
+  overflow:
+    type: boolean
+    default_value: false
+  review_question:
+    type: string
+    default_value: Approve the proposed behavior?
+  expected_evidence:
+    type: string
+    default_value: ''
+  absent_notice:
+    type: string
+    default_value: ''
+sequence:
+- id: review
+  include: ../../recipes/kernel/review.yaml
+  inputs:
+    title: ${{ inputs.title }}
+    documents:
+      design.md:
+        kind: value
+        format: text
+        value: '${{ inputs.overflow ? jq(131073, ''"x" * .'') : inputs.evidence }}'
+      context.json:
+        kind: value
+        format: json
+        value:
+          secret_internal: filtered
+      review-briefs/old/brief.md:
+        kind: value
+        format: text
+        value: OBSOLETE GENERATED SUMMARY MUST NOT BE EVIDENCE
+      hooks/optional.md:
+        kind: value
+        format: text
+        value: |-
+          # Optional hook
+
+          Status: skipped
+
+          No repository before_design hook is configured.
+    checkpoint: ${{ json_parse(inputs.context_json) }}
+    fields:
+    - id: decision
+      type: multiple_choice
+      question: ${{ inputs.review_question }}
+      required: true
+      options:
+      - label: Approve
+        value: approve
+      - label: Revise
+        value: revise
+    - id: feedback
+      type: paragraph_text
+      question: Requested changes
+      required: false
+- id: inspect_brief
+  op: command_execution
+  const: true
+  execution_needs:
+    packages:
+    - nix:github:NixOS/nixpkgs/e7439b6b14ad3cc35d05608ebca9bce01a25f5f8#python3
+  artifacts:
+    documents/: ${{ sequence.review.outputs.documents }}
+  inputs:
+    timeout: 30s
+    env:
+      INBOX: ${{ context.environment.op.inbox }}
+      OUTBOX: ${{ context.environment.op.outbox }}
+      EXPECTED_QUESTION: ${{ inputs.review_question }}
+      EXPECTED_EVIDENCE: ${{ inputs.expected_evidence }}
+      ABSENT_NOTICE: ${{ inputs.absent_notice }}
+    run: |-
+      python3 - <<'CHECK'
+      import json, os
+      from pathlib import Path
+      p=Path(os.environ['INBOX'])/'documents'
+      briefs=list(p.rglob('brief.md'))
+      assert len(briefs)==1
+      brief=briefs[0].read_text()
+      provenance=json.loads(next(p.rglob('review-provenance.json')).read_text())
+      assert os.environ['EXPECTED_QUESTION'] in brief
+      assert 'OBSOLETE GENERATED SUMMARY' not in brief
+      assert 'No repository before_design hook' not in brief
+      assert provenance['attempts']==0
+      assert provenance['model_activation']=='inactive'
+      assert 'design.md' in {s['id'] for s in provenance['manifest']}
+      expected=os.environ['EXPECTED_EVIDENCE']
+      if expected:
+          assert expected in brief, 'finding missing from brief: '+expected
+          assert any(expected in str(f['value']) for f in provenance['ledger']), 'finding missing from ledger: '+expected
+      notice=os.environ['ABSENT_NOTICE']
+      if notice:
+          assert notice not in brief, 'irrelevant absence notice retained'
+      print(brief[:16000] + "\n" + provenance["reason"])
+      CHECK
+outputs:
+  checked: ${{ sequence.inspect_brief.outputs.stdout }}
+  changed: ${{ sequence.review.outputs.changed }}
+  decision: ${{ sequence.review.outputs.response.fields.decision }}
+  documents: ${{ sequence.review.outputs.documents }}
+inputs:
+  evidence: ${{ inputs.evidence }}
+  title: ${{ inputs.title }}
+  feedback: ${{ inputs.feedback }}
+  context_json: ${{ inputs.context_json }}
+  overflow: ${{ inputs.overflow }}
+  review_question: ${{ inputs.review_question }}
+  expected_evidence: ${{ inputs.expected_evidence }}
+  absent_notice: ${{ inputs.absent_notice }}

@@ -1,0 +1,450 @@
+id: review-content
+version: 1.0.0
+inputs:
+  title: ${{ inputs.title }}
+  documents: ${{ inputs.documents }}
+  fields: ${{ inputs.fields }}
+  checkpoint: ${{ inputs.?checkpoint.orValue({}) }}
+sequence:
+- id: collect_review_evidence
+  op: command_execution
+  const: true
+  execution_needs:
+    packages:
+    - nix:github:NixOS/nixpkgs/e7439b6b14ad3cc35d05608ebca9bce01a25f5f8#python3
+  artifacts:
+    producer.py:
+      kind: value
+      format: text
+      value: ${{ vars.program }}
+    request.json:
+      kind: value
+      format: json
+      value: '${{ {''title'': inputs.title, ''documents'': inputs.documents, ''fields'': inputs.fields, ''checkpoint'':
+        inputs.checkpoint} }}'
+    sources/: ${{ inputs.documents }}
+  inputs:
+    timeout: 30s
+    env:
+      INBOX: ${{ context.environment.op.inbox }}
+      OUTBOX: ${{ context.environment.op.outbox }}
+    run: python3 "$INBOX/producer.py" prepare
+- id: synthesize_review
+  include: ./review-synthesis.yaml
+  inputs:
+    bundle: {}
+    bundle_ref: ${{ sequence.collect_review_evidence.artifacts['bundle.json'] }}
+    program:
+      kind: value
+      format: text
+      value: ${{ vars.program }}
+    activation: false
+    provider: ''
+    model: ''
+- id: render_review_brief
+  op: command_execution
+  const: true
+  execution_needs:
+    packages:
+    - nix:github:NixOS/nixpkgs/e7439b6b14ad3cc35d05608ebca9bce01a25f5f8#python3
+  artifacts:
+    producer.py:
+      kind: value
+      format: text
+      value: ${{ vars.program }}
+    bundle.json: ${{ sequence.synthesize_review.outputs.bundle }}
+  inputs:
+    timeout: 30s
+    env:
+      INBOX: ${{ context.environment.op.inbox }}
+      OUTBOX: ${{ context.environment.op.outbox }}
+    run: python3 "$INBOX/producer.py" render
+- id: namespace_brief
+  include: ./artifact-namespace.yaml
+  inputs:
+    prefix: ${{ json_parse(sequence.render_review_brief.outputs.stdout).prefix }}
+    documents: '${{ {''brief.md'': sequence.render_review_brief.artifacts[''brief.md''], ''review-provenance.json'':
+      sequence.render_review_brief.artifacts[''review-provenance.json'']} }}'
+outputs:
+  documents: ${{ sequence.namespace_brief.outputs.documents }}
+  mode: ${{ json_parse(sequence.render_review_brief.outputs.stdout).mode }}
+  program:
+    kind: value
+    format: text
+    value: ${{ vars.program }}
+  bundle: ${{ sequence.collect_review_evidence.artifacts["bundle.json"] }}
+vars:
+  program: |
+    import hashlib
+    import html
+    import json
+    import os
+    from pathlib import Path
+    import re
+    import sys
+    import time
+    from urllib.parse import quote
+
+    VERSION = 'review-brief/v1'
+    PRODUCER_VERSION = 'review-brief/v1.1'
+    FIELDS = ('decision_context', 'changes', 'risks', 'evidence_limits', 'consultation_outcomes')
+    MAX_SOURCE = 128 * 1024
+    MAX_RESPONSE = 32 * 1024
+
+    def encoded(value):
+        return json.dumps(value, ensure_ascii=False, sort_keys=True)
+
+    def digest(value):
+        return hashlib.sha256(value).hexdigest()
+
+    def safe(value):
+        return html.escape(str(value)).replace('[', '\\[').replace(']', '\\]').replace('`', '\\`')
+
+    def link(name):
+        if name.rsplit('/', 1)[-1] in ('context.json', 'feedback.json', 'conversation.json'):
+            return safe(name) + ' (internal evidence; reference preserved in provenance)'
+        return '[' + safe(name) + '](' + quote(name, safe='/.-_') + ')'
+
+    def write(name, value):
+        (outbox / name).write_text(encoded(value) if not isinstance(value, str) else value)
+
+    def read(name):
+        return json.loads((inbox / name).read_text())
+
+    def is_generated(name):
+        return bool(re.search(r'(^|/)review-briefs/', name)) or name.rsplit('/', 1)[-1] == 'review-provenance.json'
+
+    def identity_ref(ref):
+        if isinstance(ref, dict):
+            if ref.get('kind') == 'stored':
+                return ref.get('stored')
+            return {k: v for k, v in ref.items() if k != 'name'}
+        return ref
+
+    def paragraphs(text):
+        return [p.strip() for p in re.split(r'\n\s*\n', text) if p.strip()]
+
+    def clean_optional_hook_report(text, verification_required=False):
+        parts = paragraphs(text)
+        absence = re.compile(r'No repository [a-z_]+ hook is configured\.')
+        # Never infer optionality when the caller or source states an obligation.
+        if (verification_required and 'No repository verify hook is configured.' in parts) or re.search(r'\b(mandatory|required|must)\b', text, re.I):
+            return parts, False
+        if 'Status: skipped' not in parts or not any(absence.fullmatch(p) for p in parts):
+            return parts, False
+        known_boilerplate = (
+            r'# (?:Optional hook|[a-z_]+ hook)',
+            r'Status: skipped',
+            r'No repository [a-z_]+ hook is configured\.',
+            r'(?:Candidate|Result candidate): `[0-9a-f]{6,64}`',
+            r'Hook: `\.c2/recipes/hooks/build/[a-z_]+\.yaml`',
+            r'Evidence is attached under `hooks/[a-z_]+/`\.',
+        )
+        if all(any(re.fullmatch(pattern, p) for pattern in known_boilerplate) for p in parts):
+            return [], True
+        # Mixed or ambiguous reports retain status and every unrelated paragraph.
+        return [p for p in parts if not absence.fullmatch(p)], True
+
+    def prepare(data):
+        documents = data['documents']
+        ctx = data.get('checkpoint', {})
+        ledger = []
+        def fact(source, label, value):
+            ledger.append({'id': 'fact-' + str(len(ledger) + 1), 'source': source, 'label': label, 'value': value})
+        for key in ('phase', 'request', 'plan_keys', 'approved', 'assessment', 'verification', 'candidate', 'base'):
+            if key in ctx:
+                fact('checkpoint', key, ctx[key])
+        for key, job in sorted(ctx.get('jobs', {}).items()):
+            fact('checkpoint', 'prerequisite ' + key, {k: job[k] for k in ('status', 'job_id', 'outcome') if k in job})
+        # Only explicit current context establishes prerequisite authority.
+        thread_summaries = []
+        for key, thread in sorted(ctx.get('threads', {}).items()):
+            result = thread.get('result', {})
+            request = thread.get('request', {})
+            summary = {'key': key, 'kind': request.get('kind'), 'outcome': result.get('outcome', 'unknown'),
+                       'assessment': result.get('assessment', 'not_applicable'),
+                       'summary': result.get('summary', {}),
+                       'final_artifacts': result.get('final_artifacts', thread.get('documents', {}))}
+            thread_summaries.append({'source': 'checkpoint', 'recorded': summary})
+            fact('checkpoint', 'recorded consultation; agreement is not delivery', {k: summary[k] for k in ('key', 'kind', 'outcome', 'assessment')})
+        manifest, sources, consultation = [], [], thread_summaries
+        missing = []
+        final_refs = []
+        history_refs = []
+        for summary in thread_summaries:
+            final_refs.extend(summary['recorded']['final_artifacts'].values())
+        for name in documents:
+            if name.rsplit('/', 1)[-1] == 'conversation.json':
+                try:
+                    transcript = json.loads((inbox / 'sources' / name).read_text())
+                    final_refs.extend(transcript.get('final_artifacts', {}).values())
+                    history_refs.extend(transcript.get('documents', {}).values())
+                except (ValueError, AttributeError, OSError):
+                    pass
+        for index, (name, ref) in enumerate(sorted(documents.items())):
+            if is_generated(name) or name.rsplit('/', 1)[-1] in ('feedback.json', 'context.json', 'build-settings.json'):
+                continue
+            path = inbox / 'sources' / name
+            try:
+                raw = path.read_bytes()
+                text = raw.decode('utf-8')
+            except (OSError, UnicodeError):
+                manifest.append({'id': name, 'ref': ref, 'coverage': 'unreadable; original retained'})
+                missing.append(name)
+                continue
+            item = {'id': name, 'ref': ref, 'sha256': digest(raw), 'bytes': len(raw)}
+            if final_refs and re.search(r'(^|/)iter[0-9]+/', name) and any(identity_ref(ref) == identity_ref(r) for r in history_refs) and not any(identity_ref(ref) == identity_ref(r) for r in final_refs):
+                item['coverage'] = 'historical exchange; superseded by supplied final references, not current evidence'
+                manifest.append(item)
+                continue
+            is_conversation = name.rsplit('/', 1)[-1] == 'conversation.json'
+            if name.rsplit('/', 1)[-1] == 'merge-candidate.json':
+                try:
+                    candidate = json.loads(text)
+                    fact(name, 'candidate identity', {k: candidate[k] for k in ('head', 'base', 'change_digest') if k in candidate})
+                except (ValueError, TypeError):
+                    missing.append(name + ': invalid candidate evidence')
+            structured_conversation = False
+            if is_conversation:
+                try:
+                    conversation = json.loads(text)
+                    if not isinstance(conversation, dict):
+                        raise ValueError('not an object')
+                    status = {k: conversation[k] for k in ('outcome', 'assessment', 'summary', 'request', 'thread', 'final_artifacts') if k in conversation}
+                    consultation.append({'source': name, 'recorded': status})
+                    fact(name, 'consultation outcome (agreement is not delivery)', {k: status[k] for k in ('outcome', 'assessment') if k in status})
+                    # Avoid reviving superseded messages as current facts.
+                    text = encoded(status)
+                    structured_conversation = True
+                    item['coverage'] = 'recorded outcome and final references; transcript retained for history'
+                except (ValueError, TypeError):
+                    consultation.append({'source': name, 'uncertain': True})
+                    missing.append(name + ': unstructured consultation; no consensus inferred')
+            selected, cleaned = clean_optional_hook_report(text, ctx.get('require_verification', False))
+            if cleaned:
+                item['coverage'] = 'recognized optional-hook boilerplate removed; all other paragraphs retained'
+            if not selected:
+                item.setdefault('coverage', 'empty source; original retained')
+                manifest.append(item)
+                continue
+            source_text = '\n\n'.join(selected)
+            if structured_conversation:
+                selected = []  # Known structured outcomes are rendered by the consultation summary.
+            if name.rsplit('/', 1)[-1] == 'merge-candidate.json':
+                selected = []
+                item['coverage'] = 'candidate identity in ledger; complete inventory remains attached'
+            item.setdefault('coverage', 'unclassified current evidence retained in full; original retained')
+            sources.append({'id': name, 'text': source_text, 'excerpts': selected})
+            for p in selected:
+                # Without a trustworthy findings contract, every paragraph may be material.
+                # Attribute it rather than infer that it is verified, irrelevant, or safe to omit.
+                fact(name, 'unclassified source evidence; retained for review, not independently verified', p)
+            manifest.append(item)
+        def ref_identity(ref):
+            if isinstance(ref, dict) and ref.get('kind') == 'stored':
+                return ref.get('stored')
+            return ref
+        for conversation in consultation:
+            recorded = conversation.get('recorded', {})
+            final = recorded.get('final_artifacts', {})
+            resolved = []
+            unresolved = []
+            if isinstance(final, dict):
+                for label, ref in final.items():
+                    matches = [name for name, original in documents.items() if ref_identity(original) == ref_identity(ref)]
+                    if matches:
+                        resolved.append(sorted(matches)[0])
+                    else:
+                        unresolved.append(label)
+            recorded['attached_final_document_ids'] = resolved
+            recorded['unattached_final_document_ids'] = unresolved
+            if 'final_artifacts' in recorded:
+                del recorded['final_artifacts']
+        question = '\n'.join(str(f['question']) for f in data.get('fields', []) if f.get('question') and f.get('id') not in ('feedback', 'annotations', 'attachments')) or data['title']
+        source_bytes = sum(len(s['text'].encode('utf-8')) for s in sources)
+        bundle = {'version': VERSION, 'started_at': time.time(), 'title': data['title'], 'question': question,
+                  'ledger': ledger, 'manifest': manifest, 'sources': sources, 'consultations': consultation,
+                  'missing': missing, 'source_bytes': source_bytes, 'checkpoint': ctx,
+                  'existing_ids': sorted(documents), 'attempts': 0, 'model': None,
+                  'reason': 'deterministic default; model activation gate not passed'}
+        # Inactive until worker setup deadlines and deployment evaluations are established.
+        # Deliberately not controlled by untrusted checkpoint/source documents.
+        bundle['eligible'] = False
+        # Prior provenance supplies change metadata only, never current authoritative prose.
+        previous = []
+        for name in documents:
+            if name.rsplit('/', 1)[-1] == 'review-provenance.json':
+                try:
+                    history = json.loads((inbox / 'sources' / name).read_text())
+                    if history.get('producer') == VERSION and isinstance(history.get('created_at'), (int, float)):
+                        previous.append((history['created_at'], name, history))
+                except (ValueError, AttributeError, OSError):
+                    pass
+        if previous:
+            _, name, history = max(previous, key=lambda item: (item[0], item[1]))
+            old = {item['id']: item.get('sha256') for item in history.get('manifest', [])}
+            current = {item['id']: item.get('sha256') for item in manifest}
+            bundle['revision'] = {'previous_provenance_id': name,
+                'added': sorted(current.keys() - old.keys()),
+                'removed': sorted(old.keys() - current.keys()),
+                'changed': sorted(key for key in current.keys() & old.keys() if current[key] != old[key]),
+                'feedback_available': any(n.rsplit('/', 1)[-1] == 'feedback.json' for n in documents)}
+        if source_bytes > MAX_SOURCE:
+            bundle['reason'] = 'source overflow; no inference coverage; originals retained'
+        write('bundle.json', bundle)
+        print(encoded({'eligible': False, 'reason': bundle['reason']}))
+
+    def validate_response(bundle, output):
+        raw = output.get('response')
+        if isinstance(raw, str):
+            if len(raw.encode('utf-8')) > MAX_RESPONSE:
+                raise ValueError('response overflow')
+            raw = json.loads(raw)
+        if len(encoded(raw).encode('utf-8')) > MAX_RESPONSE:
+            raise ValueError('response overflow')
+        if not isinstance(raw, dict) or set(raw) != set(FIELDS) | {'source_document_ids'}:
+            raise ValueError('closed response schema required')
+        known = {s['id'] for s in bundle['sources']} | {'checkpoint'}
+        ids = raw['source_document_ids']
+        if not isinstance(ids, list) or len(ids) > 32 or any(not isinstance(x, str) or x not in known for x in ids):
+            raise ValueError('unknown source IDs')
+        facts = {f['id']: f for f in bundle['ledger']}
+        covered = set()
+        # Model prose is represented as cited claims; no uncontrolled metadata is accepted.
+        for field in FIELDS:
+            claims = raw[field]
+            if not isinstance(claims, list) or len(claims) > 32:
+                raise ValueError('bounded claim arrays required')
+            size = 0
+            for claim in claims:
+                if not isinstance(claim, dict) or set(claim) != {'text', 'sources', 'facts'}:
+                    raise ValueError('closed claim schema required')
+                text = claim['text']
+                if not isinstance(text, str) or len(text.encode('utf-8')) > 2048:
+                    raise ValueError('claim overflow')
+                size += len(text.encode('utf-8'))
+                refs, refs_facts = claim['sources'], claim['facts']
+                if not isinstance(refs, list) or not refs or len(refs) > 32 or any(not isinstance(x, str) or x not in ids for x in refs):
+                    raise ValueError('uncited or unknown claim')
+                if not isinstance(refs_facts, list) or len(refs_facts) > 32 or any(not isinstance(x, str) or x not in facts for x in refs_facts):
+                    raise ValueError('unknown fact')
+                covered.update(refs_facts)
+                # Critical structured assertions belong only to the immutable ledger.
+                if re.search(r'prerequisite|job.status|candidate|approved|verification passed', text, re.I):
+                    raise ValueError('critical assertions must remain verbatim in ledger')
+            if size > 8192:
+                raise ValueError('section overflow')
+        if set(facts) - covered:
+            raise ValueError('mandatory fact references missing')
+        return raw
+
+    def render(bundle, output=None):
+        prose = bundle.get('prose')
+        if output is not None:
+            bundle['attempts'] += 1
+            bundle['model'] = output.get('model')
+            try:
+                if time.time() - bundle['started_at'] > 130:
+                    raise ValueError('total synthesis budget exhausted')
+                prose = validate_response(bundle, output)
+                bundle['reason'] = 'validated synthesis'
+            except (ValueError, TypeError, KeyError) as error:
+                bundle['reason'] = str(error)
+        lines = ['# ' + safe(bundle['title']), '', 'Generated decision brief — ' + ('model synthesis' if prose else 'deterministic fallback') + '.', '', '## Decision needed', '', safe(bundle['question']), '']
+        if bundle.get('revision'):
+            revision = bundle['revision']
+            lines.extend(['## Since previous review', '', 'Compared with ' + link(revision['previous_provenance_id']) + ':', ''])
+            changes = False
+            for category in ('added', 'changed', 'removed'):
+                if revision[category]:
+                    changes = True
+                    # Removed sources are historical identifiers, not current clickable attachments.
+                    names = [safe(name) if category == 'removed' else link(name) for name in revision[category]]
+                    lines.extend([category.capitalize() + ' evidence: ' + ', '.join(names), ''])
+            if not changes:
+                lines.extend(['No source-content changes detected; the decision question and current findings still require review.', ''])
+            if revision['feedback_available']:
+                lines.extend(['Feedback or annotations are available to the requesting phase; they request revision, not approval.', ''])
+        if prose:
+            for field in FIELDS:
+                if prose[field]:
+                    lines.extend(['## ' + field.replace('_', ' ').capitalize(), ''])
+                    for claim in prose[field]:
+                        lines.extend([safe(claim['text']) + ' (' + ', '.join('checkpoint' if s == 'checkpoint' else link(s) for s in claim['sources']) + ')', ''])
+        if bundle['consultations']:
+            lines.extend(['## Consultation summary', '', 'Recorded agreements, assessments, and delivery are separate. Later final agreements govern scope; historical proposals are not current prerequisites.', ''])
+            for conversation in bundle['consultations']:
+                lines.extend([('checkpoint' if conversation['source'] == 'checkpoint' else link(conversation['source'])), ''])
+                for k, v in conversation.get('recorded', {}).items():
+                    if k == 'attached_final_document_ids':
+                        if v:
+                            lines.extend(['Final sources: ' + ', '.join(link(p) for p in v), ''])
+                    elif k == 'unattached_final_document_ids':
+                        if v:
+                            lines.extend(['Final references not attached here: ' + safe(', '.join(v)), ''])
+                    elif k == 'summary' and isinstance(v, dict):
+                        lines.extend([safe(v.get('text', 'No readable summary supplied.')), ''])
+                    else:
+                        lines.extend([safe(k) + ': ' + safe(v if isinstance(v, str) else encoded(v)), ''])
+                if conversation.get('uncertain'):
+                    lines.extend(['Unstructured consultation: no consensus inferred; consult original and final documents.', ''])
+        if bundle['ledger']:
+            lines.extend(['## Recorded facts, source evidence, and limits', ''])
+            for fact in bundle['ledger']:
+                source = 'checkpoint' if fact['source'] == 'checkpoint' else link(fact['source'])
+                value = fact['value'] if isinstance(fact['value'], str) else encoded(fact['value'])
+                lines.extend(['- ' + safe(fact['id']) + ' (' + source + '), ' + safe(fact['label']) + ': ' + safe(value), ''])
+        lines.extend(['## Coverage and sources', '', safe(bundle['reason']), '', 'Unclassified current evidence is retained conservatively and may expand this brief. Source statements are not newly performed verification. Original, historical, structured-inventory, and unreadable-source coverage is recorded below.', ''])
+        for missing in bundle['missing']:
+            lines.extend(['Missing or uncertain evidence: ' + safe(missing), ''])
+        for source in bundle['manifest']:
+            lines.append('- ' + link(source['id']) + ': ' + safe(source['coverage']))
+        if not bundle['sources']:
+            lines.extend(['', 'No readable proposal or outcome evidence was supplied. Review the missing evidence before deciding.'])
+        identity = digest(encoded({'question': bundle['question'], 'checkpoint': bundle['checkpoint'], 'manifest': bundle['manifest']}).encode())[:16]
+        stem = 'review-briefs/' + identity
+        suffix = 0
+        while any(name in bundle['existing_ids'] for name in (stem + '/brief.md', stem + '/review-provenance.json')):
+            suffix += 1
+            stem = 'review-briefs/' + identity + '-' + str(suffix)
+        # Flat output files are namespaced by the recipe, preserving immutable refs.
+        write('brief.md', '\n'.join(lines) + '\n')
+        provenance = {k: bundle[k] for k in ('version', 'manifest', 'ledger', 'source_bytes', 'attempts', 'model', 'reason')}
+        provenance.update({'producer': VERSION, 'producer_version': PRODUCER_VERSION, 'prompt_version': VERSION, 'schema_version': VERSION, 'created_at': bundle['started_at'], 'revision': bundle.get('revision'),
+                           'returned_provider': bundle.get('returned_provider'), 'requested_provider': bundle.get('requested_provider'), 'requested_model': bundle.get('requested_model'),
+                           'elapsed_seconds': max(0, time.time() - bundle['started_at']),
+                           'candidate': bundle['checkpoint'].get('candidate', next((f['value'] for f in bundle['ledger'] if f['label'] == 'candidate identity'), None)),
+                           'coverage': 'unclassified current text retained; source-specific exclusions recorded in manifest; originals retained', 'model_activation': bundle.get('activation', 'inactive')})
+        write('review-provenance.json', provenance)
+        print(encoded({'prefix': stem + '/', 'mode': 'synthesis' if prose else 'fallback', 'reason': bundle['reason']}))
+
+    def check(bundle, output):
+        bundle['attempts'] += 1
+        bundle['model'] = output.get('model')
+        bundle['returned_provider'] = output.get('provider')
+        retry = False
+        try:
+            if time.time() - bundle['started_at'] > 130:
+                raise ValueError('total synthesis budget exhausted')
+            if 'error' in output:
+                bundle['reason'] = str(output['error'])
+                retry = bool(re.search(r'timeout|timed out|429|503|rate.limit|temporar', bundle['reason'], re.I))
+            else:
+                bundle['prose'] = validate_response(bundle, output)
+                bundle['reason'] = 'validated synthesis'
+        except (ValueError, TypeError, KeyError) as error:
+            bundle['reason'] = str(error)
+            retry = True
+        retry = retry and bundle['attempts'] < 2 and time.time() - bundle['started_at'] < 55
+        write('bundle.json', bundle)
+        print(encoded({'retry': retry, 'valid': 'prose' in bundle}))
+
+    if __name__ == '__main__':
+        inbox, outbox = Path(os.environ['INBOX']), Path(os.environ['OUTBOX'])
+        outbox.mkdir(parents=True, exist_ok=True)
+        if sys.argv[1] == 'prepare':
+            prepare(read('request.json'))
+        elif sys.argv[1] == 'check':
+            check(read('bundle.json'), read('response.json'))
+        else:
+            render(read('bundle.json'), read('response.json') if (inbox / 'response.json').exists() else None)

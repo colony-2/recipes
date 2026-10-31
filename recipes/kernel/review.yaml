@@ -1,10 +1,18 @@
 id: kernel-review
-version: 0.1.0
+version: 1.0.0
 inputs:
   title: ${{ inputs.title }}
   documents: ${{ inputs.documents }}
   fields: ${{ inputs.fields }}
+  checkpoint: ${{ inputs.?checkpoint.orValue({}) }}
 sequence:
+- id: produce_review_brief
+  include: ./review-content.yaml
+  inputs:
+    title: ${{ inputs.title }}
+    documents: ${{ inputs.documents }}
+    fields: ${{ inputs.fields }}
+    checkpoint: ${{ inputs.checkpoint }}
 - id: request_human_review
   op: input
   inputs:
@@ -12,7 +20,7 @@ sequence:
       kind: review
       title: ${{ inputs.title }}
       documents: >-
-        ${{ jq(inputs.documents, 'with_entries(select((.key | split("/") | last) as $name | ["context.json",
+        ${{ jq(jq([inputs.documents, sequence.produce_review_brief.outputs.documents], 'add'), 'with_entries(select((.key | split("/") | last) as $name | ["context.json",
         "feedback.json", "conversation.json"] | index($name) | not))') }}
       fields: >-
         ${{ jq(inputs.fields, 'map(if .type == "multiple_choice" or .type == "checkboxes"
@@ -20,7 +28,7 @@ sequence:
 outputs:
   response: ${{ sequence.request_human_review.outputs }}
   documents: |-
-    ${{ jq([sequence.request_human_review.outputs.?artifact_refs.orValue({}), {'feedback.json': {'kind': 'value', 'name': 'feedback.json', 'format': 'json', 'value': {'questions': inputs.fields, 'response': sequence.request_human_review.outputs} } }], 'add') }}
+    ${{ jq([sequence.produce_review_brief.outputs.documents, sequence.request_human_review.outputs.?artifact_refs.orValue({}), {'feedback.json': {'kind': 'value', 'name': 'feedback.json', 'format': 'json', 'value': {'questions': inputs.fields, 'response': sequence.request_human_review.outputs} } }], 'add') }}
   changed: |-
     ${{ nonempty(sequence.request_human_review.outputs.fields.?feedback.orValue(''))
         || size(sequence.request_human_review.outputs.?artifact_refs.orValue({})) > 0 }}

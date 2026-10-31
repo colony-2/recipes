@@ -1,0 +1,155 @@
+id: review-validation-fixture
+sequence:
+- id: content
+  include: ../../recipes/kernel/review-content.yaml
+  inputs:
+    title: Review
+    fields:
+    - id: decision
+      question: Approve?
+    checkpoint: {}
+    documents:
+      design.md:
+        kind: value
+        format: text
+        value: Use concise review content.
+- id: validate
+  op: command_execution
+  execution_needs:
+    packages:
+    - nix:github:NixOS/nixpkgs/e7439b6b14ad3cc35d05608ebca9bce01a25f5f8#python3
+  artifacts:
+    producer.py: ${{ sequence.content.outputs.program }}
+  inputs:
+    env:
+      INBOX: ${{ context.environment.op.inbox }}
+    run: |-
+      python3 - <<'CHECK'
+      import copy
+      import json
+      import os
+      from pathlib import Path
+      import tempfile
+      import time
+
+      scope = {'__name__': 'producer_under_test'}
+      exec((Path(os.environ['INBOX'])/'producer.py').read_text(), scope)
+      validate = scope['validate_response']
+      render = scope['render']
+      base = {f: [] for f in scope['FIELDS']}
+      base['source_document_ids'] = ['design.md']
+      base['changes'] = [{'text': 'Deliver concise reviews.', 'sources': ['design.md'], 'facts': []}]
+      bundle = {'sources': [{'id':'design.md'}], 'ledger': []}
+      assert validate(bundle, {'response': base}) == base
+      assert validate(bundle, {'response': json.dumps(base)}) == base
+      checks = 2
+      for mutate in (
+          lambda x: x.update(extra=True),
+          lambda x: x.pop('risks'),
+          lambda x: x.update(changes='wrong type'),
+          lambda x: x.update(source_document_ids=['unknown']),
+          lambda x: x.update(changes=[{'text':'Uncited claim','sources':[],'facts':[]}]),
+          lambda x: x.update(changes=[{'text':'Claim','sources':['design.md'],'facts':['invented']}]),
+          lambda x: x.update(changes=[{'text':'Candidate approved','sources':['design.md'],'facts':[]}]),
+          lambda x: x.update(changes=[{'text':'x'*2049,'sources':['design.md'],'facts':[]}]),
+          lambda x: x.update(changes=[{'text':'λ'*1025,'sources':['design.md'],'facts':[]}]),
+          lambda x: x.update(changes=[{'text':'x','sources':['design.md'],'facts':[]}]*33),
+          lambda x: x.update(changes=[{'text':'x'*2048,'sources':['design.md'],'facts':[]}]*5),
+          lambda x: x.update(changes=[{'text':'x'*2048,'sources':['design.md'],'facts':[]}]*17),
+      ):
+          bad=copy.deepcopy(base); mutate(bad)
+          try: validate(bundle, {'response':bad})
+          except (ValueError, TypeError): checks+=1
+          else: raise AssertionError('invalid response accepted')
+      for value in ('not JSON', 'x'*32769):
+          try: validate(bundle, {'response':value})
+          except ValueError: checks+=1
+          else: raise AssertionError('malformed response accepted')
+      boundary=copy.deepcopy(base)
+      boundary['changes'][0]['text']='λ'*1024
+      assert validate(bundle, {'response':boundary}) == boundary
+      checks+=1
+      critical={'sources':[{'id':'design.md'}], 'ledger':[{'id':'fact-1','source':'design.md','label':'verification limit','value':'not rerun'}]}
+      try: validate(critical, {'response':base})
+      except ValueError: checks+=1
+      else: raise AssertionError('mandatory reference missing')
+      covered=copy.deepcopy(base);covered['changes'][0]['facts']=['fact-1']
+      assert validate(critical, {'response':covered}) == covered
+      checks+=1
+      # Production producer: missing evidence, collisions, frozen bytes and changed sources.
+      with tempfile.TemporaryDirectory() as root:
+          root=Path(root); scope['inbox']=root/'in';scope['outbox']=root/'out'
+          scope['inbox'].mkdir();scope['outbox'].mkdir()
+          request={'title':'Review revised outcome','fields':[{'id':'decision','question':'Accept this outcome?'}],
+                   'documents':{'design.md':{'kind':'value','value':'source'}},'checkpoint':{'approved':[]}}
+          scope['prepare'](request)
+          prepared=json.loads((scope['outbox']/'bundle.json').read_text())
+          assert prepared['missing']==['design.md']
+          render(prepared)
+          before=(scope['outbox']/'brief.md').read_bytes()
+          assert b'No readable proposal' in before
+          assert b'Accept this outcome?' in before
+          provenance=json.loads((scope['outbox']/'review-provenance.json').read_text())
+          assert provenance['attempts']==0
+          digest=scope['digest'](scope['encoded']({'question':prepared['question'],'checkpoint':prepared['checkpoint'],'manifest':prepared['manifest']}).encode())[:16]
+          prepared['existing_ids']=['review-briefs/'+digest+'/brief.md']
+          # Render's printed prefix must disambiguate existing historical references.
+          import contextlib, io
+          output=io.StringIO()
+          with contextlib.redirect_stdout(output):render(prepared)
+          assert json.loads(output.getvalue())['prefix'].endswith('-1/')
+          assert (scope['outbox']/'brief.md').read_bytes()==before
+          prepared['question']='Changed decision?'
+          render(prepared)
+          assert (scope['outbox']/'brief.md').read_bytes()!=before
+          checks+=7
+          # Expired total budgets never validate model prose or retry.
+          expired=copy.deepcopy(prepared);expired['started_at']=time.time()-131
+          output=io.StringIO()
+          with contextlib.redirect_stdout(output):scope['check'](expired, {'response':base})
+          assert not json.loads(output.getvalue())['retry']
+          assert 'prose' not in json.loads((scope['outbox']/'bundle.json').read_text())
+          checks+=1
+      # Consultation final-reference identity establishes current scope, not historical text.
+      with tempfile.TemporaryDirectory() as root:
+          root=Path(root); scope['inbox']=root/'in';scope['outbox']=root/'out'
+          (scope['inbox']/'sources').mkdir(parents=True);scope['outbox'].mkdir()
+          final_ref={'kind':'stored','stored':{'key':{'jobId':'final-job','taskOrdinal':1,'name':'agreement.md'}}}
+          documents={'consultations/api/iter1/proposal.md':{'kind':'value','value':'historical'},
+                     'consultations/api/iter2/agreement.md':final_ref,
+                     'consultations/api/conversation.json':{'kind':'value','value':'transcript'},
+                     'consultations/api/review-briefs/old/brief.md':{'kind':'value','value':'old-generated'}}
+          texts={'consultations/api/iter1/proposal.md':'Use three modes; obsolete proposal.',
+                 'consultations/api/iter2/agreement.md':'Accepted two-mode behavior. Postgres remains unverified.',
+                 'consultations/api/conversation.json':json.dumps({'outcome':'agreed','assessment':'revise','documents':documents,'final_artifacts':{'agreement.md':final_ref}}),
+                 'consultations/api/review-briefs/old/brief.md':'OBSOLETE GENERATED AGREEMENT'}
+          for name,text in texts.items():
+              target=scope['inbox']/'sources'/name;target.parent.mkdir(parents=True,exist_ok=True);target.write_text(text)
+          scope['prepare']({'title':'Review scope','fields':[],'documents':documents,'checkpoint':{'plan_keys':[]}})
+          b=json.loads((scope['outbox']/'bundle.json').read_text());render(b)
+          brief=(scope['outbox']/'brief.md').read_text()
+          assert 'Use three modes' not in brief and 'OBSOLETE GENERATED AGREEMENT' not in brief
+          assert 'Accepted two-mode behavior' in brief and 'Postgres remains unverified' in brief
+          assert 'revise' in brief and 'consultations/api/iter2/agreement.md' in brief
+          assert 'Final sources:' in brief
+          assert all(x['id']!='consultations/api/review-briefs/old/brief.md' for x in b['manifest'])
+          checks+=5
+      with tempfile.TemporaryDirectory() as root:
+          root=Path(root);scope['inbox']=root/'in';scope['outbox']=root/'out'
+          sources=scope['inbox']/'sources';sources.mkdir(parents=True);scope['outbox'].mkdir()
+          (sources/'design.md').write_text('Changed approved proposal.')
+          old_name='review-briefs/old/review-provenance.json'
+          old_path=sources/old_name;old_path.parent.mkdir(parents=True)
+          old_path.write_text(json.dumps({'producer':scope['VERSION'],'created_at':1,'manifest':[{'id':'design.md','sha256':'old-digest'}]}))
+          scope['prepare']({'title':'Review revision','fields':[],'documents':{'design.md':{},old_name:{}},'checkpoint':{}})
+          b=json.loads((scope['outbox']/'bundle.json').read_text())
+          assert b['revision']['changed']==['design.md']
+          assert all(x['id']!=old_name for x in b['manifest'])
+          render(b)
+          assert 'Since previous review' in (scope['outbox']/'brief.md').read_text()
+          checks+=3
+      print('passed '+str(checks)+' production validator and artifact checks')
+
+      CHECK
+outputs:
+  result: ${{ sequence.validate.outputs.stdout }}

@@ -1,0 +1,42 @@
+id: synthesis-fixture
+sequence:
+- id: content
+  include: ../../recipes/kernel/review-content.yaml
+  inputs:
+    title: Review
+    fields:
+    - id: decision
+      question: Approve?
+    checkpoint: {}
+    documents:
+      design.md:
+        kind: value
+        format: text
+        value: Use concise review content.
+- id: synthesis
+  include: ../../recipes/kernel/review-synthesis.yaml
+  inputs:
+    activation: true
+    provider: openai
+    model: configured-test-model
+    program: ${{ sequence.content.outputs.program }}
+    bundle_ref: ${{ sequence.content.outputs.bundle }}
+    bundle: {}
+- id: inspect
+  op: command_execution
+  artifacts:
+    bundle.json: ${{ sequence.synthesis.outputs.bundle }}
+  execution_needs:
+    packages:
+    - nix:github:NixOS/nixpkgs/e7439b6b14ad3cc35d05608ebca9bce01a25f5f8#python3
+  inputs:
+    env:
+      INBOX: ${{ context.environment.op.inbox }}
+    run: |-
+      python3 - <<'CHECK'
+      import json,os,pathlib
+      b=json.loads((pathlib.Path(os.environ['INBOX'])/'bundle.json').read_text())
+      print(json.dumps({'attempts':b['attempts'],'valid':'prose' in b,'reason':b['reason']}))
+      CHECK
+outputs:
+  result: ${{ json_parse(sequence.inspect.outputs.stdout) }}
