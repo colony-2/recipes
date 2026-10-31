@@ -18,7 +18,8 @@ been removed.
 At entry, [Jev classification](recipes/build/classify.yaml) reads the root purpose,
 `ARCHITECTURE.md`, and the first available README. It evaluates the scope, complexity,
 uncertainty, and risk of **this cell's work**, including whether its role is simply
-delegating bounded requests to existing children. Each child classifies its own work.
+delegating bounded requests to children or submitting reviewed creation to root. Root owns
+creation architecture and approval; each child classifies its own implementation.
 The operation explicitly references the `jev_api_key` secret. The published Jev
 manifest marks `api_key` with `x-secret: true`, allowing c2j to pass that reference.
 
@@ -34,7 +35,8 @@ The [light workflow](recipes/light/develop.yaml) runs:
 1. Implement and test using existing patterns, without separate design, test-statement,
    or plan-approval phases. Existing test expectations still apply.
 2. Consult serving cells inline, sequentially, and immediately launch agreed child
-   builds. There is no human plan-approval gate. Child builds can run concurrently;
+   builds. New-cell requests go to a root-owned creation job with its own human review.
+   There is no local human plan-approval gate. Child builds can run concurrently;
    the parent waits for every launched child before completing.
 3. Inspect the actual repository diff. Only no-change jobs with successful children
    may finish as `delegated` without local review. Without children, run verification
@@ -123,7 +125,10 @@ files outside `target_directory`. Renames appear as deletion/addition pairs. The
 checks complete inventory coverage and attaches `merge-review.md`, `merge-candidate.json`,
 and `merge-candidate.diff` to the existing outcome review. A `revise` verdict returns
 the findings to the original build session and repeats rebase, inspection, verification,
-and accounting. Execution errors propagate normally.
+and accounting. Invalid accounting resumes the reviewer session against the same candidate,
+with precise issues and preserved artifacts. After two automatic corrections, human
+recovery direction or cancellation is required. Safe validator-operation failures use
+bounded stage recovery; a changed candidate requires fresh inspection and review.
 
 The document shows the proposed squash subject and review message. The recipe appends
 `https://jobs.colony2.com/<tenant>/jobs/<jobid>` using c2j's current-job environment,
@@ -165,7 +170,7 @@ inline. Adjust `vars.inline_consultation_limit` in the coordinator to tune the t
 Stable keys prevent duplicate requests and submissions. Changed scope needs a new key and renewed plan approval.
 
 [Light coordination](recipes/light/coordinate.yaml) uses the same consultation
-kernel inline for every request. Stable keys still prevent duplicate submission;
+kernel inline for existing serving requests and delegates creation to root. Stable keys prevent duplicate submission;
 reusing a key with a different request requires correction. A completed child may
 report `delegated` or `unchanged` without a merge; both build paths accept those
 successful dispositions as dependency completion.
@@ -176,8 +181,8 @@ available. The default inline path includes the kernel shipped with the parent r
 the child path resolves the configured selector. Light always includes the shared
 kernel inline.
 
-On the heavy path, only agreed prerequisite keys explicitly listed in the approved
-proposal can be submitted. Each child receives the final agreement documents and
+On the heavy path, feature builds require agreed prerequisite keys explicitly listed in
+the approved proposal. Root creation uses its own dedicated human approval boundary. Each child receives the final agreement documents and
 an explicit execution request in a fresh session. The consultation transcript is
 bound as `consultation/conversation.json`, leaving the next consultation's own
 transcript filename available. Waiting preserves the caller's
@@ -192,16 +197,15 @@ Keys identify this build's agreed serving-cell requests; the parent's request id
 is not a local prerequisite. Builds without external prerequisites return `keys: []`.
 
 Root identity comes from `root_cell`/`root_ref`, falling back to `c2j self --json`.
-Creation eligibility always consults that root about project fit, existing owners,
-excluded alternatives, and technology tradeoffs. The shared [create recipe](create.yaml)
-starts a fresh session with the agreed creation brief and presents one consolidated
-proposal review.
-After approval, each new workspace starts with `initial: empty`, copies the
-approved `PURPOSE.md`, and publishes through `squashrebasemerge`. Gitvend creates
-an authorized missing repository during that ordinary push. The recipe then
-registers the published cells in the root's existing catalog and merges that
-root change separately.
-The created cell then needs its own feature consultation before a build is submitted.
+Both coordinators resolve target availability before consulting a serving cell. Explicit
+new-cell requests and unavailable targets go directly to the shared [create recipe](create.yaml)
+as a root-owned job, retaining the original request and probe evidence. Unknown access
+is distinct from confirmed absence and requires root resolution. Root reviews repository
+identity, exact initial `PURPOSE.md`, and exact `root-config.yaml` before any publication
+or catalog edit. Target-owned initialization children publish approved purposes; root
+then applies and publishes the approved catalog. Existing root settings and dependencies
+must be preserved. Feature work starts only after creation and registration succeed.
+A completed creation job with a failed domain outcome does not establish readiness.
 
 `consultation_recipe` defaults to the shared consultation selector on `main`;
 `create_recipe` defaults to the shared `create.yaml` selector on `main`, and
@@ -211,7 +215,7 @@ shared job service and workers. Workspace snapshots preserve the unmerged caller
 candidate; recipes do not manipulate Git packs or implement refresh workarounds.
 
 Creation requires c2j's [empty-workspace support](guides/GUIDE-Empty-Workspaces.md).
-Invoke it in the project root, or supply `root_cell` and `root_ref`. Repository
+Submit it as a root-owned job; a workspace override alone does not change ownership. Repository
 destinations and credentials come from project configuration and the reviewed
 proposal. No root recipe boilerplate or separate provisioning service is needed.
 See [creation behavior and failure handling](recipes/create/README.md).

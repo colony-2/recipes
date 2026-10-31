@@ -246,3 +246,20 @@ Validated on 2026-10-21 with c2j main `94484c909de1`: all 39 consultation runtim
 cases passed, including approximate references, bounded result repair, summary
 repair, and checkpoint preservation. Build integration and the matching/repair
 helpers have separate native suites.
+
+## Stage recovery and target routing
+
+`recovery.yaml` records stage errors and retained evidence in recovery artifacts.
+Only callers explicitly declaring a safe repeat get two automatic retries. Otherwise
+human direction or cancellation is required. This gate does not replay any operation;
+the caller selects the exact resume point. Human recovery direction never grants
+publication approval. File accounting uses it for validator execution errors; light
+coordination preserves failed children without resubmission; creation uses it to
+recover catalog application after publication.
+
+`resolve-target.yaml` resolves naming in a read-only empty scope and probes Git refs
+before serving checkout. It distinguishes ready, absent local repositories, empty,
+missing ref, and unknown access. `route-target.yaml` preserves the original request,
+submits/reuses root creation through `create-request.yaml`, and validates creation
+and registration evidence before permitting a serving consultation. Root creation
+has its own human review and may be coordinated by the light workflow.

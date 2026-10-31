@@ -17,12 +17,16 @@ input_schema:
   root_ref:
     type: string
     default_value: ''
+  initialize_recipe:
+    type: string
+    default_value: git+https://github.com/colony-2/recipes.git//recipes/create/initialize.yaml@main
 inputs:
   prompt: ${{ inputs.prompt }}
   session: ${{ inputs.?session.orValue({}) }}
   documents: ${{ inputs.documents }}
   root_cell: ${{ inputs.root_cell }}
   root_ref: ${{ inputs.root_ref }}
+  initialize_recipe: ${{ inputs.initialize_recipe }}
 sequence:
 - id: root
   workspace:
@@ -32,8 +36,9 @@ sequence:
     prompt: ${{ inputs.prompt }}
     session: ${{ inputs.session }}
     documents: ${{ inputs.documents }}
+    initialize_recipe: ${{ inputs.initialize_recipe }}
   state:
-    initial: review
+    initial: capture_catalog
     states:
       review:
         include: ./recipes/create/review.yaml
@@ -49,15 +54,17 @@ sequence:
         inputs:
           cells: ${{ states.review.outputs.cells }}
           documents: ${{ states.review.outputs.documents }}
+          initialize_recipe: ${{ inputs.initialize_recipe }}
+          review: ${{ states.review.outputs.review }}
         transitions:
-        - to: register
+        - to: apply_catalog
           when: outputs.error == ''
       register:
         inputs:
           created: ${{ states.publish.outputs.created }}
           documents: ${{ state_output('registration_repair', 'documents', states.review.outputs.documents) }}
           session: ${{ state_output('registration_repair', 'session', states.review.outputs.session) }}
-          read_only: ${{ state_exists('registration_repair') }}
+          read_only: true
           prompt: ${{ state_output('registration_repair', 'prompt', vars.initial_prompt) }}
           retained_artifacts: ${{ state_output('registration_repair', 'artifacts', {}) }}
         sequence:
@@ -66,8 +73,8 @@ sequence:
           inputs:
             read_only: ${{ inputs.read_only }}
             session: ${{ inputs.session }}
-            documents: "${{ jq([inputs.documents, {'created.json': {'kind': 'value', 'name': 'created.json', 'format':
-              'json', 'value': inputs.created} }], 'add') }}"
+            documents: '${{ jq([inputs.documents, {''created.json'': {''kind'': ''value'', ''name'': ''created.json'',
+              ''format'': ''json'', ''value'': inputs.created} }], ''add'') }}'
             prompt: ${{ inputs.prompt }}
             schema:
               type: object
@@ -102,18 +109,12 @@ sequence:
           when: true
         vars:
           initial_prompt: |
-            The approved cells have been published. Read created.json for the actual
-            repository URLs, branches, and revisions. Apply only the root catalog
-            changes described in the approved proposal, preserving existing entries.
-            Register these cells through the project's existing .c2/config.yaml
-            dependents format; update existing cell descriptions if appropriate.
-            Do not introduce a second catalog. Check the configuration is valid and
-            the created cells can be resolved through it.
-
-            Do not create repositories, push commits, submit jobs, or implement
-            product features. The workflow owns publication. Write completion.md
-            in the outbox describing registered cells and any remaining work.
-            Return completed=false if registration cannot be completed as approved.
+            The approved cells have been published and the exact human-approved root-config.yaml
+            has been copied to .c2/config.yaml. Read created.json for actual identities and revisions.
+            Verify the configuration preserves existing settings and registers the published cells
+            using the project's existing dependents semantics. Do not edit files, push, submit jobs,
+            or republish repositories. Return completed=false if the approved catalog is invalid.
+            Write completion.md describing the registered cells and remaining feature work.
       publish_cell_catalog:
         id: publish_cell_catalog
         op: squashrebasemerge
@@ -134,9 +135,8 @@ sequence:
           - 'Registration evidence is incomplete. The cell repositories have already been published: do not publish
             them again. Return a valid completion response and completion.md documenting registration; return completed=false
             if registration cannot be completed.'
-          documents: >-
-            ${{ jq([states.review.outputs.documents, {'created.json': states.register.outputs.records}], 'add')
-            }}
+          documents: '${{ jq([states.review.outputs.documents, {''created.json'': states.register.outputs.records}],
+            ''add'') }}'
           session: ${{ states.review.outputs.session }}
           attempts: ${{ state_output('registration_repair', 'attempts', 0) }}
         transitions:
@@ -144,30 +144,130 @@ sequence:
           when: outputs.retry
         - to: failed
           when: true
+      capture_catalog:
+        id: capture_catalog
+        op: command_execution
+        const: true
+        inputs:
+          env:
+            OUTBOX: ${{ context.environment.op.outbox }}
+            OWNER: ${{ context.workflow.cell }}
+            ROOT: ${{ context.workspace.cell }}
+          run: |
+            set -eu
+            test "$OWNER" = "$ROOT" || { echo "Creation must run as a root-owned job" >&2; exit 1; }
+            if test -f .c2/config.yaml; then cp .c2/config.yaml "$OUTBOX/catalog-base.yaml"; else : > "$OUTBOX/catalog-base.yaml"; fi
+        transitions:
+        - to: review
+          when: true
+      apply_catalog:
+        id: apply_catalog
+        op: command_execution
+        artifacts:
+          approved.yaml: ${{ states.review.outputs.documents['root-config.yaml'] }}
+          base.yaml: ${{ states.capture_catalog.artifacts['catalog-base.yaml'] }}
+          publication.json:
+            kind: value
+            name: publication.json
+            format: json
+            value: '${{ {''created'': states.publish.outputs.created, ''proposed'': states.review.outputs.cells}
+              }}'
+        inputs:
+          continue_on_error: true
+          env:
+            INBOX: ${{ context.environment.op.inbox }}
+          run: |
+            set -eu
+            test -s "$INBOX/approved.yaml"
+            if test -f .c2/config.yaml; then cmp .c2/config.yaml "$INBOX/base.yaml"; else test ! -s "$INBOX/base.yaml"; fi
+            python3 - <<'PYCODE'
+            import json, os, pathlib, subprocess, urllib.parse
+            inbox = pathlib.Path(os.environ['INBOX'])
+            def read(name):
+                return json.loads(subprocess.check_output(['yq', '-o=json', '.', str(inbox / name)]))
+            base, approved = read('base.yaml'), read('approved.yaml')
+            base = {} if base is None else base
+            if not isinstance(base, dict) or not isinstance(approved, dict):
+                raise ValueError('Root configuration must be a mapping.')
+            for key, value in base.items():
+                if key != 'dependents' and approved.get(key) != value:
+                    raise ValueError('Creation cannot remove or change existing root setting: ' + key)
+            old, new = base.get('dependents', []), approved.get('dependents', [])
+            def identity(repo):
+                if not isinstance(repo, str):
+                    return None
+                repo = repo.rstrip('/').removesuffix('.git')
+                if repo.startswith('file://'):
+                    return str(pathlib.Path(urllib.parse.unquote(urllib.parse.urlparse(repo).path)).resolve())
+                if '://' in repo:
+                    parsed = urllib.parse.urlparse(repo)
+                    return (parsed.hostname or '').lower() + parsed.path
+                if '@' in repo and ':' in repo:
+                    return repo.split('@', 1)[1].replace(':', '/', 1)
+                return repo
+            publication = json.loads((inbox / 'publication.json').read_text())
+            if isinstance(new, list):
+                for cell in publication['created']:
+                    proposal = next(c for c in publication['proposed'] if c['name'] == cell['cell'])
+                    identities = {identity(cell['repo']), identity(proposal['repo'])}
+                    entries = [e if isinstance(e, dict) else {'repo': e} for e in new]
+                    if not any(identity(e.get('repo')) in identities and e.get('ref', 'main') in ('main', 'refs/heads/main') for e in entries):
+                        raise ValueError('Approved catalog does not register published cell: ' + cell['cell'])
+            if isinstance(old, list):
+                if not isinstance(new, list) or any(entry not in new for entry in old):
+                    raise ValueError('Creation must preserve existing dependent entries.')
+            elif old != new:
+                raise ValueError('Creation must preserve existing discovery semantics.')
+            PYCODE
+            mkdir -p .c2
+            cp "$INBOX/approved.yaml" .c2/config.yaml
+        transitions:
+        - to: register
+          when: outputs.success
+        - to: catalog_recovery
+          when: true
+        execution_needs:
+          packages:
+          - nix:github:NixOS/nixpkgs/e7439b6b14ad3cc35d05608ebca9bce01a25f5f8#python3
+          - nix:github:NixOS/nixpkgs/e7439b6b14ad3cc35d05608ebca9bce01a25f5f8#yq-go
+      catalog_recovery:
+        include: ./recipes/kernel/recovery.yaml
+        inputs:
+          stage: apply approved root catalog
+          evidence: ${{ states.apply_catalog.outputs }}
+          documents: ${{ states.review.outputs.documents }}
+          safe_retry: false
+        transitions:
+        - to: apply_catalog
+          when: outputs.retry
+        - to: failed
+          when: true
   outputs:
     disposition: |-
       ${{ state_exists('publish_cell_catalog') ? (states.publish_cell_catalog.outputs.?error.orValue('') == '' ? 'created' : 'registration_failed')
-        : state_exists('register') ? 'registration_failed'
+        : state_exists('apply_catalog') ? 'registration_failed'
         : state_exists('publish') ? 'publication_failed' : states.review.outputs.disposition }}
     created_cells: ${{ state_output('publish', 'created', []) }}
-    merged: ${{ state_exists('publish_cell_catalog') && states.publish_cell_catalog.outputs.?error.orValue('') == '' }}
+    merged: ${{ state_exists('publish_cell_catalog') && states.publish_cell_catalog.outputs.?error.orValue('') ==
+      '' }}
     merged_hash: ${{ state_output('publish_cell_catalog', 'merged_hash', '') }}
-    session: >-
-      ${{ state_exists('register') ? states.register.outputs.turn.result.?session.orValue(states.review.outputs.session)
-      : states.review.outputs.session }}
-    summary: >-
-      ${{ state_exists('register') ? states.register.outputs.turn.result.?response.orValue({}).?summary.orValue('Root
-      registration did not complete.') : states.review.outputs.summary }}
+    session: '${{ state_exists(''register'') ? states.register.outputs.turn.result.?session.orValue(states.review.outputs.session)
+      : states.review.outputs.session }}'
+    summary: '${{ state_exists(''register'') ? states.register.outputs.turn.result.?response.orValue({}).?summary.orValue(''Root
+      registration did not complete.'') : states.review.outputs.summary }}'
     error: |-
       ${{ state_exists('publish_cell_catalog') ? states.publish_cell_catalog.outputs.?error.orValue('')
-        : state_exists('register') ? 'Cell repositories were published, but root registration did not complete.'
+        : state_exists('apply_catalog') ? 'Cell repositories were published, but root registration did not complete.'
         : state_output('publish', 'error', '') }}
     review: ${{ states.review.outputs.review }}
     artifact_refs: |-
-      ${{ jq([states.review.outputs.documents, state_exists('register')
-        ? jq([{'created.json': states.register.outputs.records},
-            jq(states.register.outputs.turn.artifacts, 'with_entries(select(.key == "completion.md"))')], 'add')
-        : {}], 'add') }}
+      ${{ jq([states.review.outputs.documents,
+        {'created.json': {'kind': 'value', 'name': 'created.json', 'format': 'json', 'value': state_output('publish', 'created', [])},
+         'initializations.json': {'kind': 'value', 'name': 'initializations.json', 'format': 'json', 'value': state_output('publish', 'initializations', [])} },
+        state_output('catalog_recovery', 'documents', {}),
+        state_output('registration_repair', 'documents', {}),
+        state_exists('register') ? jq(states.register.outputs.turn.artifacts, 'with_entries(select(.key == "completion.md"))') : {}], 'add') }}
+    initializations: ${{ state_output('publish', 'initializations', []) }}
 outputs:
   disposition: ${{ sequence.root.outputs.disposition }}
   created_cells: ${{ sequence.root.outputs.created_cells }}
@@ -178,3 +278,4 @@ outputs:
   error: ${{ sequence.root.outputs.error }}
   review: ${{ sequence.root.outputs.review }}
   artifact_refs: ${{ sequence.root.outputs.artifact_refs }}
+  initializations: ${{ sequence.root.outputs.initializations }}

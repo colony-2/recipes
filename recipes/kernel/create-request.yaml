@@ -1,0 +1,35 @@
+id: request-root-creation
+version: 1.0.0
+inputs:
+  flow: ${{ inputs.flow }}
+  request: ${{ inputs.request }}
+  target: ${{ inputs.target }}
+workspace:
+  cell: ${{ inputs.flow.root_cell }}
+  ref: ${{ inputs.flow.root_ref }}
+sequence:
+- id: submit_creation
+  op: recipes.run
+  inputs:
+    recipes: '${{ [{''cell_name'': context.workspace.cell, ''git'': {''base_repo'': context.git.repo, ''base_ref'':
+      context.git.ref, ''base_hash'': context.git.resolved_hash}, ''name'': inputs.flow.create_recipe, ''inputs'':
+      {''prompt'': ''Evaluate this creation or reconciliation request. Inspect create-request.json. Obtain human
+      approval of repository identity, exact initial contents, and root configuration before publication or catalog
+      edits. Preserve the original feature request for the requester. Request: '' + inputs.request.request, ''root_cell'':
+      inputs.flow.root_cell, ''root_ref'': inputs.flow.root_ref, ''documents'': jq([inputs.flow.documents, {''create-request.json'':
+      {''kind'': ''value'', ''name'': ''create-request.json'', ''format'': ''json'', ''value'': {''request'': inputs.request,
+      ''target'': inputs.target, ''requester_job'': context.workflow.job_id} } }], ''add'')} }] }}'
+- id: await_creation
+  op: recipe.await_result_soft
+  inputs:
+    target:
+      job: ${{ sequence.submit_creation.outputs.job_ids[0] }}
+    wait:
+      'on': job
+      condition: complete
+    return_when: terminal
+outputs:
+  job: '${{ {''job_id'': sequence.submit_creation.outputs.job_ids[0], ''kind'': ''create'', ''cell'': inputs.flow.root_cell,
+    ''target'': inputs.target, ''status'': sequence.await_creation.outputs.status, ''result'': sequence.await_creation.outputs.outputs,
+    ''failure'': sequence.await_creation.outputs.failure_message} }}'
+  documents: ${{ sequence.await_creation.outputs.outputs.?artifact_refs.orValue({}) }}

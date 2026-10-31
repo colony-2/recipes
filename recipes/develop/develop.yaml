@@ -162,8 +162,7 @@ state:
           flow: ${{ outputs.flow }}
       - to: repair
         when: 'outputs.flow.phase == ''implement'' && !outputs.flow.approved.all(k, k in outputs.flow.jobs && outputs.flow.jobs[k].status
-          == ''completed'' && (outputs.flow.jobs[k].kind == ''create'' ? outputs.flow.jobs[k].result.?disposition.orValue('''')
-          == ''created'' : (outputs.flow.jobs[k].result.?merged.orValue(false) || outputs.flow.jobs[k].result.?disposition.orValue('''')
+          == ''completed'' && (outputs.flow.jobs[k].kind == ''create'' ? outputs.flow.jobs[k].?ready.orValue(false) : (outputs.flow.jobs[k].result.?merged.orValue(false) || outputs.flow.jobs[k].result.?disposition.orValue('''')
           in [''delegated'', ''unchanged''])))'
         payload:
           flow: ${{ outputs.previous }}
@@ -529,6 +528,8 @@ state:
           documents: ${{ inputs.flow.documents }}
       outputs:
         approved: ${{ sequence.review.outputs.approved }}
+        cancelled: ${{ sequence.review.outputs.cancelled }}
+        stale: ${{ sequence.review.outputs.stale }}
         flow: >-
           ${{ jq([inputs.flow, {'reviewed_hook_digest': inputs.flow.hook_digest, 'reviewed_change_digest': sequence.review.outputs.change_digest,
           'candidate_changed': sequence.review.outputs.changed, 'commit_message': sequence.review.outputs.commit_message,
@@ -536,6 +537,14 @@ state:
           file accounting requested revision. Read merge-review.md, correct the inappropriate changes, and request
           inspection again.'}], 'add') }}
       transitions:
+      - to: stopped
+        when: outputs.cancelled
+        payload:
+          flow: "${{ jq([outputs.flow, {'disposition': 'cancelled'}], 'add') }}"
+      - to: rebase
+        when: outputs.stale
+        payload:
+          flow: ${{ outputs.flow }}
       - to: accept
         when: outputs.approved
         payload:

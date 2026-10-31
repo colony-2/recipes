@@ -1,0 +1,601 @@
+recipe: fixtures/accounting-repair.yaml
+cases:
+- id: repairs-empty-response
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          candidate.txt: original
+  mocks:
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            verdict: approve
+            subject: Update requested behavior
+            review_message: The requested behavior is implemented. Checks are recorded.
+            files: []
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: reviewer
+        artifacts:
+          review.json: Complete accounting exists here but response.files is authoritative.
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            verdict: approve
+            subject: Update requested behavior
+            review_message: The requested behavior is implemented. Checks are recorded.
+            files:
+            - &id001
+              path: candidate.txt
+              change: M
+              reason: Implement the requested behavior.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: reviewer
+    - &id002
+      repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: result.approved
+    value: true
+  - type: cel_true
+    expr: size(calls.filter(c, c.op == "extension_execution")) == 2
+  - type: cel_true
+    expr: calls.filter(c, c.op == "extension_execution")[1].inputs.inputs.session == calls.filter(c, c.op == "extension_execution")[0].outputs.session
+  - type: cel_true
+    expr: 'calls.filter(c, c.op == "extension_execution")[1].artifacts["repair.json"].contains("Missing file: candidate.txt")'
+  - type: cel_true
+    expr: calls.filter(c, c.op == "extension_execution")[1].artifacts["review.json"].contains("authoritative")
+  - type: cel_true
+    expr: '!calls.exists(c, c.op in ["merge", "squashrebasemerge", "recipes.run"]) && size(reviews) == 0'
+- id: repairs-duplicate
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          candidate.txt: original
+  mocks:
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            verdict: approve
+            subject: Update requested behavior
+            review_message: The requested behavior is implemented. Checks are recorded.
+            files:
+            - *id001
+            - *id001
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: reviewer
+        artifacts:
+          review.json: Complete accounting exists here but response.files is authoritative.
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            verdict: approve
+            subject: Update requested behavior
+            review_message: The requested behavior is implemented. Checks are recorded.
+            files:
+            - path: candidate.txt
+              change: M
+              reason: Implement the requested behavior.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: reviewer
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: result.approved
+    value: true
+  - type: cel_true
+    expr: size(calls.filter(c, c.op == "extension_execution")) == 2
+  - type: cel_true
+    expr: calls.filter(c, c.op == "extension_execution")[1].inputs.inputs.session == calls.filter(c, c.op == "extension_execution")[0].outputs.session
+  - type: cel_true
+    expr: calls.filter(c, c.op == "extension_execution")[1].artifacts["review.json"].contains("authoritative")
+  - type: cel_true
+    expr: '!calls.exists(c, c.op in ["merge", "squashrebasemerge", "recipes.run"]) && size(reviews) == 0'
+- id: repairs-wrong-change
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          candidate.txt: original
+  mocks:
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            verdict: approve
+            subject: Update requested behavior
+            review_message: The requested behavior is implemented. Checks are recorded.
+            files:
+            - path: candidate.txt
+              change: A
+              reason: Implement the requested behavior.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: reviewer
+        artifacts:
+          review.json: Complete accounting exists here but response.files is authoritative.
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            verdict: approve
+            subject: Update requested behavior
+            review_message: The requested behavior is implemented. Checks are recorded.
+            files:
+            - path: candidate.txt
+              change: M
+              reason: Implement the requested behavior.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: reviewer
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: result.approved
+    value: true
+  - type: cel_true
+    expr: size(calls.filter(c, c.op == "extension_execution")) == 2
+  - type: cel_true
+    expr: calls.filter(c, c.op == "extension_execution")[1].inputs.inputs.session == calls.filter(c, c.op == "extension_execution")[0].outputs.session
+  - type: cel_true
+    expr: calls.filter(c, c.op == "extension_execution")[1].artifacts["review.json"].contains("authoritative")
+  - type: cel_true
+    expr: '!calls.exists(c, c.op in ["merge", "squashrebasemerge", "recipes.run"]) && size(reviews) == 0'
+- id: repairs-blank-reason
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          candidate.txt: original
+  mocks:
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            verdict: approve
+            subject: Update requested behavior
+            review_message: The requested behavior is implemented. Checks are recorded.
+            files:
+            - path: candidate.txt
+              change: M
+              reason: ' '
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: reviewer
+        artifacts:
+          review.json: Complete accounting exists here but response.files is authoritative.
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            verdict: approve
+            subject: Update requested behavior
+            review_message: The requested behavior is implemented. Checks are recorded.
+            files:
+            - path: candidate.txt
+              change: M
+              reason: Implement the requested behavior.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: reviewer
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: result.approved
+    value: true
+  - type: cel_true
+    expr: size(calls.filter(c, c.op == "extension_execution")) == 2
+  - type: cel_true
+    expr: calls.filter(c, c.op == "extension_execution")[1].inputs.inputs.session == calls.filter(c, c.op == "extension_execution")[0].outputs.session
+  - type: cel_true
+    expr: calls.filter(c, c.op == "extension_execution")[1].artifacts["review.json"].contains("authoritative")
+  - type: cel_true
+    expr: '!calls.exists(c, c.op in ["merge", "squashrebasemerge", "recipes.run"]) && size(reviews) == 0'
+- id: repairs-extra
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          candidate.txt: original
+  mocks:
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            verdict: approve
+            subject: Update requested behavior
+            review_message: The requested behavior is implemented. Checks are recorded.
+            files:
+            - *id001
+            - path: extra
+              change: A
+              reason: unrelated
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: reviewer
+        artifacts:
+          review.json: Complete accounting exists here but response.files is authoritative.
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            verdict: approve
+            subject: Update requested behavior
+            review_message: The requested behavior is implemented. Checks are recorded.
+            files:
+            - path: candidate.txt
+              change: M
+              reason: Implement the requested behavior.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: reviewer
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: result.approved
+    value: true
+  - type: cel_true
+    expr: size(calls.filter(c, c.op == "extension_execution")) == 2
+  - type: cel_true
+    expr: calls.filter(c, c.op == "extension_execution")[1].inputs.inputs.session == calls.filter(c, c.op == "extension_execution")[0].outputs.session
+  - type: cel_true
+    expr: calls.filter(c, c.op == "extension_execution")[1].artifacts["review.json"].contains("authoritative")
+  - type: cel_true
+    expr: '!calls.exists(c, c.op in ["merge", "squashrebasemerge", "recipes.run"]) && size(reviews) == 0'
+- id: corrected-revision-remains-revision
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          candidate.txt: original
+  mocks:
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            verdict: approve
+            subject: Update requested behavior
+            review_message: The requested behavior is implemented. Checks are recorded.
+            files: []
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: reviewer
+        artifacts:
+          review.json: Complete accounting exists here but response.files is authoritative.
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            verdict: revise
+            subject: Update requested behavior
+            review_message: The requested behavior is implemented. Checks are recorded.
+            files:
+            - path: candidate.txt
+              change: M
+              reason: Implement the requested behavior.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: reviewer
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: result.approved
+    value: false
+  - type: cel_true
+    expr: size(calls.filter(c, c.op == "extension_execution")) == 2
+  - type: cel_true
+    expr: calls.filter(c, c.op == "extension_execution")[1].inputs.inputs.session == calls.filter(c, c.op == "extension_execution")[0].outputs.session
+  - type: cel_true
+    expr: 'calls.filter(c, c.op == "extension_execution")[1].artifacts["repair.json"].contains("Missing file: candidate.txt")'
+  - type: cel_true
+    expr: calls.filter(c, c.op == "extension_execution")[1].artifacts["review.json"].contains("authoritative")
+  - type: cel_true
+    expr: '!calls.exists(c, c.op in ["merge", "squashrebasemerge", "recipes.run"]) && size(reviews) == 0'
+- id: two-corrections-then-cancel
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          candidate.txt: original
+    responses:
+    - node_path: accounting-fixture/review/build-merge-review/accounting/accounting-response/repair/repair/result-repair/review/review/kernel-review/request_human_review
+      fields:
+        decision: cancel
+  mocks:
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            verdict: approve
+            subject: Update requested behavior
+            review_message: The requested behavior is implemented. Checks are recorded.
+            files: []
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: reviewer
+        artifacts:
+          review.json: Complete accounting exists here but response.files is authoritative.
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            verdict: approve
+            subject: Update requested behavior
+            review_message: The requested behavior is implemented. Checks are recorded.
+            files: []
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: reviewer
+        artifacts:
+          review.json: Complete accounting exists here but response.files is authoritative.
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            verdict: approve
+            subject: Update requested behavior
+            review_message: The requested behavior is implemented. Checks are recorded.
+            files: []
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: reviewer
+        artifacts:
+          review.json: Complete accounting exists here but response.files is authoritative.
+    - *id002
+  assertions:
+  - type: output_equals
+    path: result.cancelled
+    value: true
+  - type: cel_true
+    expr: size(calls.filter(c, c.op == "extension_execution")) == 3 && size(reviews) == 1
+  - type: cel_true
+    expr: '!calls.exists(c, c.op in ["merge", "squashrebasemerge", "recipes.run"])'
+- id: empty-candidate-allows-empty-accounting
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          candidate.txt: original
+  mocks:
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            verdict: approve
+            subject: Update requested behavior
+            review_message: The requested behavior is implemented. Checks are recorded.
+            files: []
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: reviewer
+        artifacts:
+          review.json: Complete accounting exists here but response.files is authoritative.
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: result.approved
+    value: true
+  - type: output_equals
+    path: result.changed
+    value: false
+  - type: cel_true
+    expr: size(calls.filter(c, c.op == "extension_execution")) == 1
+  inputs:
+    unchanged: true
+- id: validator-operation-failure-retries-without-model-replay
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          candidate.txt: original
+  mocks:
+    ops:
+    - match:
+        node_path: accounting-fixture/review/build-merge-review/accounting/accounting-response/validate/sequence/validate_accounting
+      behavior:
+        mode: return
+        outputs:
+          success: false
+          exit_code: 1
+          stdout: ''
+          stderr: Temporary validator runtime failure
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            verdict: approve
+            subject: Update requested behavior
+            review_message: The requested behavior is implemented. Checks are recorded.
+            files:
+            - path: candidate.txt
+              change: M
+              reason: Implement the requested behavior.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: reviewer
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: result.approved
+    value: true
+  - type: cel_true
+    expr: size(calls.filter(c, c.op == "extension_execution")) == 1 && size(reviews) == 0
+  - type: cel_true
+    expr: size(calls.filter(c, c.node_path.endsWith("validate_accounting"))) == 2

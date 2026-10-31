@@ -8,6 +8,7 @@ inputs:
   root_cell: ${{ inputs.root_cell }}
   root_ref: ${{ inputs.root_ref }}
   build_recipe: ${{ inputs.build_recipe }}
+  create_recipe: ${{ inputs.?create_recipe.orValue('git+https://github.com/colony-2/recipes.git//create.yaml@main') }}
   hook_settings: ${{ inputs.?hook_settings.orValue({}) }}
   settings_artifact: ${{ inputs.?settings_artifact.orValue(null) }}
   require_verification: ${{ inputs.?require_verification.orValue(false) }}
@@ -41,6 +42,7 @@ state:
         root_ref: '${{ inputs.root_ref != '''' ? inputs.root_ref : json_parse(states.discover_root_cell.outputs.stdout).?root_ref.orValue(''main'')
           }}'
         build_recipe: ${{ inputs.build_recipe }}
+        create_recipe: ${{ inputs.create_recipe }}
         hook_settings: ${{ inputs.hook_settings }}
         settings_artifact: ${{ inputs.settings_artifact }}
         require_verification: ${{ inputs.require_verification }}
@@ -51,7 +53,7 @@ state:
         flow: '${{ jq([{''message'': inputs.request, ''request'': inputs.request, ''target_directory'': inputs.directory,
           ''session'': inputs.session, ''documents'': inputs.documents, ''threads'': {}, ''jobs'': {}, ''merge_chases'':
           0, ''reviews'': {}, ''root_cell'': inputs.root_cell, ''root_ref'': inputs.root_ref, ''build_recipe'':
-          inputs.build_recipe}, {''hook_settings'': inputs.hook_settings, ''settings_artifact'': inputs.settings_artifact,
+          inputs.build_recipe, ''create_recipe'': inputs.create_recipe}, {''hook_settings'': inputs.hook_settings, ''settings_artifact'': inputs.settings_artifact,
           ''require_verification'': inputs.require_verification}], ''add'') }}'
       transitions:
       - to: reject_invalid_build_request
@@ -470,12 +472,11 @@ state:
         when: outputs.flow.jobs.exists(k, outputs.flow.jobs[k].status == 'running')
         payload:
           flow: ${{ outputs.flow }}
-      - to: reject_invalid_build_request
-        when: '!outputs.flow.jobs.all(k, outputs.flow.jobs[k].status == ''completed'' && (outputs.flow.jobs[k].result.?merged.orValue(false)
-          || outputs.flow.jobs[k].result.?disposition.orValue('''') in [''delegated'', ''unchanged'']))'
+      - to: dependency_recovery
+        when: '!outputs.flow.jobs.all(k, outputs.flow.jobs[k].status == ''completed'' && (outputs.flow.jobs[k].kind == ''create'' ? outputs.flow.jobs[k].?ready.orValue(false) : (outputs.flow.jobs[k].result.?merged.orValue(false)
+          || outputs.flow.jobs[k].result.?disposition.orValue('''') in [''delegated'', ''unchanged''])))'
         payload:
-          reason: A child completed without satisfying its requested work. Inspect its result before
-            continuing.
+          flow: ${{ outputs.flow }}
       - to: handoff
         when: outputs.flow.result.next == 'heavy'
         payload:
@@ -493,6 +494,23 @@ state:
         when: true
         payload:
           flow: ${{ outputs.flow }}
+    dependency_recovery:
+      include: ../kernel/recovery.yaml
+      # Completed effects are retained. This gate never resubmits children.
+      inputs:
+        stage: child coordination
+        evidence: ${{ states.finish.outputs.flow.jobs }}
+        documents: ${{ states.finish.outputs.flow.documents }}
+        safe_retry: false
+      transitions:
+      - to: work
+        when: outputs.retry
+        payload:
+          flow: "${{ jq([states.finish.outputs.flow, {'documents': outputs.documents, 'message': 'Read recovery evidence and human direction. Reconcile failed dependencies; do not duplicate recorded jobs.'}], 'add') }}"
+      - to: stopped
+        when: true
+        payload:
+          flow: "${{ jq([states.finish.outputs.flow, {'disposition': 'cancelled', 'documents': outputs.documents}], 'add') }}"
     wait_children:
       inputs:
         flow: ${{ transition.payload.flow }}

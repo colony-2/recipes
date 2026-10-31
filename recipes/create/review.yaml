@@ -113,7 +113,11 @@ vars:
 
     Prepare one outbox/proposal.md for the entire proposed set, including each repository
     URL, purpose, excluded alternatives, technology guidance, and the root
-    catalog changes. Write each initial purpose to outbox/cells/<name>/PURPOSE.md and list
+    catalog changes. Write the exact complete proposed root configuration to outbox/root-config.yaml,
+    preserving unrelated settings and the existing dependents format. List root-config.yaml in files.
+    Reviewers approve these exact bytes before the workflow edits .c2/config.yaml.
+    Initial repository contents consist exclusively of the approved PURPOSE.md; do not promise additional files.
+    Write each initial purpose to outbox/cells/<name>/PURPOSE.md and list
     these files in your response. If clarification is needed before preparing the proposal,
     return ask_user with focused questions; files and cells may be empty. Documents
     are optional for clarification and required for review.
@@ -121,6 +125,10 @@ vars:
     responsibilities only; product features need their own subsequent consultation.
     New cells always start on main; branch selection is fixed by the workflow.
 
+    Read create-request.json when supplied. An unavailable repository is not proof of absence.
+    For unknown access, confirm destination identity and creation eligibility with the human;
+    never overwrite existing history or interpret a transport failure as approval to recreate.
+    Preserve the original feature request for the requester; creation does not complete it.
     Do not push or provision repositories, submit jobs, or modify the root repository.
     The workflow owns initialization and integration after approval. Gitvend creates
     an allowed missing repository on an ordinary Git push; there is no separate
@@ -184,6 +192,7 @@ state:
            && (inputs.turn.result.response.outcome != 'review' ||
                (size(inputs.turn.result.response.cells) > 0
                 && inputs.turn.result.response.files.exists(f, f.path == 'proposal.md')
+                && inputs.turn.result.response.files.exists(f, f.path == 'root-config.yaml')
                 && inputs.turn.result.response.cells.all(c, c.purpose_path == 'cells/' + c.name + '/PURPOSE.md'
                     && inputs.turn.result.response.files.exists(f, f.path == c.purpose_path))
                 && size(inputs.turn.result.response.cells) == size(jq(inputs.turn.result.response.cells, 'map(.name) | unique'))
@@ -199,7 +208,7 @@ state:
           '. as $v | $v.files | map(select(.path as $p | $v.artifacts | has($p)) | {key: .path, value: $v.artifacts[.path]})
           | from_entries')], 'add')}], 'add | del(.repair_base_documents)')) : inputs.flow }}
         issues: >-
-          ${{ inputs.turn.?issues.orValue([]) + ['Correct the creation proposal: review needs proposal.md, unique
+          ${{ inputs.turn.?issues.orValue([]) + ['Correct the creation proposal: review needs proposal.md, root-config.yaml with the exact proposed catalog configuration, unique
           cell names and repositories, and each cells/<name>/PURPOSE.md referenced in both cells and files. Clarification
           needs focused questions, without requiring documents; annotations is reserved. No jobs may be submitted
           by the agent.'] }}
@@ -242,7 +251,7 @@ state:
           fields:
           - id: decision
             type: multiple_choice
-            question: Approve creation of the proposed cells and their root catalog entries?
+            question: Approve these repository destinations, exact initial PURPOSE.md contents, and the exact root-config.yaml catalog configuration?
             required: true
             options:
             - value: approve

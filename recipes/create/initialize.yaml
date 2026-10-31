@@ -1,0 +1,62 @@
+id: initialize-cell
+version: 1.0.0
+input_schema:
+  cell:
+    type: string
+    required: true
+  purpose:
+    type: artifact
+    required: true
+  approval:
+    type: artifact
+    required: true
+inputs:
+  cell: '${{ {''name'': inputs.cell} }}'
+  purpose: ${{ inputs.purpose }}
+  approval: ${{ inputs.approval }}
+state:
+  initial: write_approved_purpose
+  states:
+    write_approved_purpose:
+      id: write_approved_purpose
+      op: command_execution
+      artifacts:
+        PURPOSE.md: ${{ inputs.purpose }}
+        creation-approval.json: ${{ inputs.approval }}
+      inputs:
+        continue_on_error: true
+        working_directory: ${{ context.environment.op.worktree_path }}
+        env:
+          INBOX: ${{ context.environment.op.inbox }}
+          OWNER: ${{ context.workflow.cell }}
+          CELL: ${{ context.workspace.cell }}
+        run: |
+          set -eu
+          test "$OWNER" = "$CELL"
+          test -s "$INBOX/creation-approval.json"
+          test -s "$INBOX/PURPOSE.md"
+          cp "$INBOX/PURPOSE.md" PURPOSE.md
+      transitions:
+      - to: publish_new_cell
+        when: outputs.success
+    publish_new_cell:
+      id: publish_new_cell
+      op: squashrebasemerge
+      inputs:
+        commit_message: ${{ 'Create cell ' + inputs.cell.name + ' with approved purpose' }}
+      catch:
+      - when: true
+        continue:
+          outputs:
+            error: ${{ failure.message }}
+outputs:
+  error: |-
+    ${{ !states.write_approved_purpose.outputs.success ? 'Could not copy a nonempty approved PURPOSE.md.'
+      : states.publish_new_cell.outputs.?error.orValue('') }}
+  published: |-
+    ${{ states.write_approved_purpose.outputs.success && states.publish_new_cell.outputs.?error.orValue('') == ''
+      ? {'cell': inputs.cell.name, 'repo': context.git.repo,
+         'ref': states.publish_new_cell.outputs.target_branch,
+         'revision': states.publish_new_cell.outputs.merged_hash} : {} }}
+  owner: ${{ context.workflow.cell }}
+  repo: ${{ context.git.repo }}

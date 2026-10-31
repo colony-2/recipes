@@ -1,0 +1,67 @@
+id: stage-recovery
+version: 1.0.0
+inputs:
+  stage: ${{ inputs.stage }}
+  evidence: ${{ inputs.evidence }}
+  documents: ${{ inputs.documents }}
+  safe_retry: ${{ inputs.?safe_retry.orValue(false) }}
+  attempts: ${{ int(inputs.?attempts.orValue(0)) }}
+state:
+  initial: decide
+  states:
+    decide:
+      sequence: []
+      outputs:
+        documents: '${{ jq([inputs.documents, {''recovery.json'': {''kind'': ''value'', ''name'': ''recovery.json'',
+          ''format'': ''json'', ''value'': {''stage'': inputs.stage, ''error'': inputs.evidence, ''attempts'': inputs.attempts,
+          ''safe_retry'': inputs.safe_retry} }, ''recovery.md'': {''kind'': ''value'', ''name'': ''recovery.md'',
+          ''format'': ''text'', ''value'': ''# Recovery needed: '' + inputs.stage + ''\n\nInspect recovery.json
+          and retained evidence. Direction does not approve publication. Reconcile completed effects before repeating
+          side effects.''} }], ''add'') }}'
+      transitions:
+      - to: retry
+        when: inputs.safe_retry && inputs.attempts < 2
+      - to: review
+        when: true
+      inputs:
+        stage: ${{ inputs.stage }}
+        evidence: ${{ inputs.evidence }}
+        documents: ${{ inputs.documents }}
+        safe_retry: ${{ inputs.safe_retry }}
+        attempts: ${{ inputs.attempts }}
+    review:
+      include: ./review.yaml
+      inputs:
+        title: ${{ 'Recover ' + inputs.stage }}
+        documents: ${{ states.decide.outputs.documents }}
+        fields:
+        - id: decision
+          type: multiple_choice
+          question: Continue recovery with direction, or cancel?
+          required: true
+          options:
+          - value: retry
+            label: Give recovery direction
+          - value: cancel
+            label: Cancel
+        - id: feedback
+          type: paragraph_text
+          question: Explain the correction or reconciliation needed before continuing.
+          required: false
+      transitions:
+      - to: review
+        when: outputs.response.fields.decision == 'retry' && !outputs.changed
+      - to: retry
+        when: outputs.response.fields.decision == 'retry'
+    retry:
+      sequence: []
+      inputs:
+        stage: ${{ inputs.stage }}
+        evidence: ${{ inputs.evidence }}
+        documents: ${{ inputs.documents }}
+        safe_retry: ${{ inputs.safe_retry }}
+        attempts: ${{ inputs.attempts }}
+outputs:
+  retry: ${{ state_exists('retry') }}
+  attempts: ${{ inputs.attempts + 1 }}
+  documents: ${{ jq([states.decide.outputs.documents, state_output('review', 'documents', {})], 'add') }}

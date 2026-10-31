@@ -1,0 +1,421 @@
+recipe: fixtures/light-create.yaml
+cases:
+- id: creation-only-stays-light-and-reviews-in-root
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          PURPOSE.md: Coordinate bounded work; project architecture belongs to reviewed root creation.
+          keep.txt: original
+        file_sources:
+          .c2/recipes/initialize.yaml: ../recipes/create/initialize.yaml
+          .c2/recipes/reviewed-create.yaml: fixtures/reviewed-create.yaml
+          .c2/create.yaml: ../create.yaml
+          .c2/recipes/create/publish.yaml: ../recipes/create/publish.yaml
+          .c2/recipes/create/review.yaml: ../recipes/create/review.yaml
+          .c2/recipes/create/initialize.yaml: ../recipes/create/initialize.yaml
+          .c2/recipes/kernel/route-target.yaml: ../recipes/kernel/route-target.yaml
+          .c2/recipes/kernel/repair.yaml: ../recipes/kernel/repair.yaml
+          .c2/recipes/kernel/git-candidate.yaml: ../recipes/kernel/git-candidate.yaml
+          .c2/recipes/kernel/artifact-result.yaml: ../recipes/kernel/artifact-result.yaml
+          .c2/recipes/kernel/resolve-target.yaml: ../recipes/kernel/resolve-target.yaml
+          .c2/recipes/kernel/consultation.yaml: ../recipes/kernel/consultation.yaml
+          .c2/recipes/kernel/consultation-report.yaml: ../recipes/kernel/consultation-report.yaml
+          .c2/recipes/kernel/create-request.yaml: ../recipes/kernel/create-request.yaml
+          .c2/recipes/kernel/artifact-namespace.yaml: ../recipes/kernel/artifact-namespace.yaml
+          .c2/recipes/kernel/recovery.yaml: ../recipes/kernel/recovery.yaml
+          .c2/recipes/kernel/review.yaml: ../recipes/kernel/review.yaml
+          .c2/recipes/kernel/agent-turn.yaml: ../recipes/kernel/agent-turn.yaml
+      alpha: {}
+      beta: {}
+    responses:
+    - node_path: reviewed-create-fixture/create/root/root/review/review/creation-review/review/sequence/review/kernel-review/request_human_review
+      fields:
+        decision: approve
+    secrets:
+      jev_api_key: fixture
+  mocks:
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#jev
+      behavior:
+        mode: return
+        outputs:
+          answers:
+            is_heavy:
+              type: noul
+              noul: 0.01
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: consult
+            summary: Delegate reviewed creation.
+            files: []
+            questions: []
+            consultations:
+            - key: cells
+              kind: create
+              cell: alpha
+              ref: main
+              request: Propose alpha and beta with their initial purposes.
+              role: Root decides architecture.
+            keys: []
+            subject: Create approved cells
+            review_message: Root reviews creation.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: light
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: review
+            summary: Creation proposal
+            cells:
+            - name: alpha
+              repo: alpha
+              purpose_path: cells/alpha/PURPOSE.md
+            - name: beta
+              repo: beta
+              purpose_path: cells/beta/PURPOSE.md
+            files:
+            - path: proposal.md
+              description: Review document
+            - path: cells/alpha/PURPOSE.md
+              description: Review document
+            - path: cells/beta/PURPOSE.md
+              description: Review document
+            - path: root-config.yaml
+              description: Exact approved root configuration
+            questions: []
+        artifacts:
+          proposal.md: |-
+            # Proposed cells
+            Project fit, excluded alternatives, technology guidance and root catalog entries.
+          cells/alpha/PURPOSE.md: |
+            # alpha
+            Approved responsibilities.
+          cells/beta/PURPOSE.md: |
+            # beta
+            Approved responsibilities.
+          root-config.yaml: |
+            dependents:
+              - repo: alpha
+                ref: main
+              - repo: beta
+                ref: main
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: creation-review
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            completed: true
+            summary: Registered published cells
+        artifacts:
+          completion.md: |-
+            # Created cells
+            Continue with feature consultations.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: registered
+          worktree:
+            CELL_DESCRIPTIONS.md: |-
+              # Cells
+              alpha and beta: approved responsibilities.
+            .c2/config.yaml: |
+              dependents:
+                - repo: alpha
+                  ref: main
+                - repo: beta
+                  ref: main
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: Delegate reviewed creation.
+            files: []
+            questions: []
+            consultations: []
+            keys: []
+            subject: Create approved cells
+            review_message: Root created and registered both cells. No feature work was requested.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: light
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: result.process
+    value: light
+  - type: output_equals
+    path: result.disposition
+    value: delegated
+  - type: cel_true
+    expr: size(reviews) == 1
+  - type: cel_true
+    expr: size(calls.filter(c, c.op == "recipes.run")) == 3
+  - type: cel_true
+    expr: calls.filter(c, c.op == "squashrebasemerge").exists(c, c.cell == "alpha") && calls.filter(c, c.op == "squashrebasemerge").exists(c,
+      c.cell == "beta")
+  - type: cel_true
+    expr: '!calls.exists(c, c.node_path.contains("/heavy/"))'
+- id: feature-waits-for-creation-then-consults-new-owner
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          PURPOSE.md: Coordinate bounded work; project architecture belongs to reviewed root creation.
+          keep.txt: original
+        file_sources:
+          .c2/recipes/initialize.yaml: ../recipes/create/initialize.yaml
+          .c2/recipes/reviewed-create.yaml: fixtures/reviewed-create.yaml
+          .c2/create.yaml: ../create.yaml
+          .c2/recipes/create/publish.yaml: ../recipes/create/publish.yaml
+          .c2/recipes/create/review.yaml: ../recipes/create/review.yaml
+          .c2/recipes/create/initialize.yaml: ../recipes/create/initialize.yaml
+          .c2/recipes/kernel/route-target.yaml: ../recipes/kernel/route-target.yaml
+          .c2/recipes/kernel/repair.yaml: ../recipes/kernel/repair.yaml
+          .c2/recipes/kernel/git-candidate.yaml: ../recipes/kernel/git-candidate.yaml
+          .c2/recipes/kernel/artifact-result.yaml: ../recipes/kernel/artifact-result.yaml
+          .c2/recipes/kernel/resolve-target.yaml: ../recipes/kernel/resolve-target.yaml
+          .c2/recipes/kernel/consultation.yaml: ../recipes/kernel/consultation.yaml
+          .c2/recipes/kernel/consultation-report.yaml: ../recipes/kernel/consultation-report.yaml
+          .c2/recipes/kernel/create-request.yaml: ../recipes/kernel/create-request.yaml
+          .c2/recipes/kernel/artifact-namespace.yaml: ../recipes/kernel/artifact-namespace.yaml
+          .c2/recipes/kernel/recovery.yaml: ../recipes/kernel/recovery.yaml
+          .c2/recipes/kernel/review.yaml: ../recipes/kernel/review.yaml
+          .c2/recipes/kernel/agent-turn.yaml: ../recipes/kernel/agent-turn.yaml
+          .c2/recipes/dependency.yaml: fixtures/light-dependency.yaml
+      alpha: {}
+      beta: {}
+    responses:
+    - node_path: reviewed-create-fixture/create/root/root/review/review/creation-review/review/sequence/review/kernel-review/request_human_review
+      fields:
+        decision: approve
+    secrets:
+      jev_api_key: fixture
+  mocks:
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#jev
+      behavior:
+        mode: return
+        outputs:
+          answers:
+            is_heavy:
+              type: noul
+              noul: 0.01
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: consult
+            summary: Delegate feature to alpha, resolving creation first.
+            files: []
+            questions: []
+            consultations:
+            - key: cells
+              kind: feature
+              cell: alpha
+              ref: main
+              request: Implement widget documentation in alpha.
+              role: Root decides architecture.
+            keys: []
+            subject: Create approved cells
+            review_message: Root reviews creation.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: light
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: review
+            summary: Creation proposal
+            cells:
+            - name: alpha
+              repo: alpha
+              purpose_path: cells/alpha/PURPOSE.md
+            - name: beta
+              repo: beta
+              purpose_path: cells/beta/PURPOSE.md
+            files:
+            - path: proposal.md
+              description: Review document
+            - path: cells/alpha/PURPOSE.md
+              description: Review document
+            - path: cells/beta/PURPOSE.md
+              description: Review document
+            - path: root-config.yaml
+              description: Exact approved root configuration
+            questions: []
+        artifacts:
+          proposal.md: |-
+            # Proposed cells
+            Project fit, excluded alternatives, technology guidance and root catalog entries.
+          cells/alpha/PURPOSE.md: |
+            # alpha
+            Approved responsibilities.
+          cells/beta/PURPOSE.md: |
+            # beta
+            Approved responsibilities.
+          root-config.yaml: |
+            dependents:
+              - repo: alpha
+                ref: main
+              - repo: beta
+                ref: main
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: creation-review
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            completed: true
+            summary: Registered published cells
+        artifacts:
+          completion.md: |-
+            # Created cells
+            Continue with feature consultations.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: registered
+          worktree:
+            CELL_DESCRIPTIONS.md: |-
+              # Cells
+              alpha and beta: approved responsibilities.
+            .c2/config.yaml: |
+              dependents:
+                - repo: alpha
+                  ref: main
+                - repo: beta
+                  ref: main
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: alpha
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: agreed
+            thinking: The requested widget documentation fits this cell.
+            assessment: not_applicable
+            files:
+            - path: iter1/consultant/spec.md
+              description: Agreed feature scope
+        artifacts:
+          iter1/consultant/spec.md: '# Agreed widget feature scope'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: serving
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: Delegate reviewed creation.
+            files: []
+            questions: []
+            consultations: []
+            keys: []
+            subject: Create approved cells
+            review_message: Root created alpha and beta; alpha completed the agreed feature work.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: light
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: result.process
+    value: light
+  - type: output_equals
+    path: result.disposition
+    value: delegated
+  - type: cel_true
+    expr: size(reviews) == 1
+  - type: cel_true
+    expr: size(calls.filter(c, c.op == "recipes.run")) == 4
+  - type: cel_true
+    expr: calls.filter(c, c.op == "squashrebasemerge").exists(c, c.cell == "alpha") && calls.filter(c, c.op == "squashrebasemerge").exists(c,
+      c.cell == "beta")
+  - type: cel_true
+    expr: '!calls.exists(c, c.node_path.contains("/heavy/"))'
+  - type: cel_true
+    expr: outputs.result.dependencies.cells.kind == "feature" && outputs.result.dependencies.cells.status == "completed"
+      && outputs.result.dependencies["cells--creation"].kind == "create"

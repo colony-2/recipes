@@ -3,6 +3,9 @@ version: 1.0.0
 inputs:
   cells: ${{ inputs.cells }}
   documents: ${{ inputs.documents }}
+  initialize_recipe: ${{ inputs.?initialize_recipe.orValue('git+https://github.com/colony-2/recipes.git//recipes/create/initialize.yaml@main')
+    }}
+  review: ${{ inputs.review }}
 state:
   initial: publish
   states:
@@ -12,6 +15,9 @@ state:
         created: ${{ transition.payload.?created.orValue([]) }}
         cells: ${{ inputs.cells }}
         documents: ${{ inputs.documents }}
+        initialize_recipe: ${{ inputs.initialize_recipe }}
+        review: ${{ inputs.review }}
+        initializations: ${{ transition.payload.?initializations.orValue([]) }}
       sequence:
       - id: cell
         workspace:
@@ -21,57 +27,51 @@ state:
         inputs:
           cell: ${{ inputs.cells[inputs.index] }}
           purpose: ${{ inputs.documents[inputs.cells[inputs.index].purpose_path] }}
+          initialize_recipe: ${{ inputs.initialize_recipe }}
+          review: ${{ inputs.review }}
+          approval: '${{ {''kind'': ''value'', ''name'': ''creation-approval.json'', ''format'': ''json'', ''value'':
+            {''review'': inputs.review, ''cell'': inputs.cells[inputs.index], ''root_job'': context.workflow.job_id}
+            } }}'
         outputs:
-          error: |-
-            ${{ !states.write_approved_purpose.outputs.success ? 'Could not copy a nonempty approved PURPOSE.md.'
-              : states.publish_new_cell.outputs.?error.orValue('') }}
-          published: |-
-            ${{ states.write_approved_purpose.outputs.success && states.publish_new_cell.outputs.?error.orValue('') == ''
-              ? {'cell': inputs.cell.name, 'repo': context.git.repo,
-                 'ref': states.publish_new_cell.outputs.target_branch,
-                 'revision': states.publish_new_cell.outputs.merged_hash} : {} }}
-        state:
-          initial: write_approved_purpose
-          states:
-            write_approved_purpose:
-              id: write_approved_purpose
-              op: command_execution
-              artifacts:
-                PURPOSE.md: ${{ inputs.purpose }}
-              inputs:
-                continue_on_error: true
-                working_directory: ${{ context.environment.op.worktree_path }}
-                env:
-                  INBOX: ${{ context.environment.op.inbox }}
-                run: |
-                  set -eu
-                  test -s "$INBOX/PURPOSE.md"
-                  cp "$INBOX/PURPOSE.md" PURPOSE.md
-              transitions:
-              - to: publish_new_cell
-                when: outputs.success
-            publish_new_cell:
-              id: publish_new_cell
-              op: squashrebasemerge
-              inputs:
-                commit_message: ${{ 'Create cell ' + inputs.cell.name + ' with approved purpose' }}
-              catch:
-              - when: true
-                continue:
-                  outputs:
-                    error: ${{ failure.message }}
+          error: '${{ sequence.await_initialization.outputs.status != ''completed'' ? sequence.await_initialization.outputs.failure_message
+            : sequence.await_initialization.outputs.outputs.?error.orValue(''Initialization returned no result.'')
+            }}'
+          published: ${{ sequence.await_initialization.outputs.outputs.?published.orValue({}) }}
+          job_id: ${{ sequence.launch_initialization.outputs.job_ids[0] }}
+        sequence:
+        - id: launch_initialization
+          op: recipes.run
+          inputs:
+            git_ref: main
+            recipes: '${{ [{''cell_name'': context.workspace.cell, ''git'': {''base_repo'': context.git.repo, ''base_ref'':
+              ''main'', ''base_hash'': '''', ''author'': context.git.author}, ''name'': inputs.initialize_recipe, ''inputs'': {''cell'': inputs.cell.name,
+              ''purpose'': inputs.purpose, ''approval'': inputs.approval} }] }}'
+        - id: await_initialization
+          op: recipe.await_result_soft
+          inputs:
+            target:
+              job: ${{ sequence.launch_initialization.outputs.job_ids[0] }}
+            wait:
+              'on': job
+              condition: complete
+            return_when: terminal
       outputs:
         index: ${{ inputs.index }}
-        error: ${{ sequence.cell.outputs.?error.orValue('') }}
+        error: '${{ sequence.cell.outputs.error != '''' ? sequence.cell.outputs.error : (!nonempty(sequence.cell.outputs.published.?revision.orValue(''''))
+          ? ''Initialization returned no published revision.'' : '''') }}'
         created: |-
           ${{ sequence.cell.outputs.?error.orValue('') == ''
             ? inputs.created + [sequence.cell.outputs.published] : inputs.created }}
+        initializations: '${{ inputs.initializations + [{''job_id'': sequence.cell.outputs.job_id, ''cell'': inputs.cells[inputs.index],
+          ''error'': sequence.cell.outputs.error}] }}'
       transitions:
       - to: publish
         when: outputs.error == '' && int(outputs.index) + 1 < size(inputs.cells)
         payload:
           index: ${{ int(outputs.index) + 1 }}
           created: ${{ outputs.created }}
+          initializations: ${{ outputs.initializations }}
 outputs:
   created: ${{ states.publish.outputs.created }}
   error: ${{ states.publish.outputs.error }}
+  initializations: ${{ states.publish.outputs.initializations }}

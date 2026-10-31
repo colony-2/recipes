@@ -1,0 +1,46 @@
+id: target-lifecycle
+input_schema:
+  cell:
+    type: string
+    default_value: B
+  ref:
+    type: string
+    default_value: main
+  empty:
+    type: boolean
+    default_value: false
+inputs:
+  cell: ${{ inputs.cell }}
+  ref: ${{ inputs.ref }}
+  empty: ${{ inputs.empty }}
+sequence:
+- id: prepare
+  op: command_execution
+  const: true
+  inputs:
+    env:
+      REPO: ${{ context.git.repo }}
+      EMPTY: ${{ string(inputs.empty) }}
+    run: |
+      set -eu
+      case "$REPO" in /*) ;; *) exit 1 ;; esac
+      git -C "${REPO%/*}/B" rev-parse HEAD
+      if [ "$EMPTY" = true ]; then
+        git -C "${REPO%/*}/B" update-ref -d refs/heads/main
+      fi
+- id: resolve
+  include: ../../recipes/kernel/resolve-target.yaml
+  inputs:
+    cell: ${{ inputs.cell }}
+    ref: ${{ inputs.ref }}
+- id: restore_fixture
+  op: command_execution
+  const: true
+  inputs:
+    env:
+      REPO: ${{ context.git.repo }}
+      EMPTY: ${{ string(inputs.empty) }}
+      ORIGINAL: ${{ jq(sequence.prepare.outputs.stdout, 'rtrimstr("\n")') }}
+    run: if [ "$EMPTY" = true ]; then git -C "${REPO%/*}/B" update-ref refs/heads/main "$ORIGINAL"; fi
+outputs:
+  target: ${{ sequence.resolve.outputs.target }}

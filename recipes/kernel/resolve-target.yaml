@@ -1,0 +1,56 @@
+id: resolve-target
+version: 1.0.0
+inputs:
+  cell: ${{ inputs.cell }}
+  ref: ${{ inputs.ref }}
+# Empty scope resolves naming without fetching the potentially absent target.
+# This scope is read-only and never publishes or becomes the serving workspace.
+workspace:
+  cell: ${{ inputs.cell }}
+  ref: ${{ inputs.ref }}
+  initial: empty
+sequence:
+- id: probe_target
+  op: command_execution
+  const: true
+  execution_needs:
+    packages:
+    - nix:github:NixOS/nixpkgs/e7439b6b14ad3cc35d05608ebca9bce01a25f5f8#python3
+  inputs:
+    env:
+      TARGET_REPO: ${{ context.git.repo }}
+      TARGET_REF: ${{ inputs.ref }}
+      GIT_TERMINAL_PROMPT: '0'
+    run: |
+      python3 - <<'PY'
+      import json, os, pathlib, subprocess, urllib.parse
+      repo, ref = os.environ['TARGET_REPO'], os.environ['TARGET_REF']
+      local = urllib.parse.unquote(urllib.parse.urlparse(repo).path) if repo.startswith('file://') else repo if repo.startswith('/') else None
+      result = {'repo': repo, 'ref': ref, 'state': 'unknown', 'detail': ''}
+      if local and not pathlib.Path(local).exists():
+          result['state'] = 'absent'
+      else:
+          try:
+              probe = subprocess.run(['git', 'ls-remote', '--', repo], capture_output=True, text=True, timeout=30)
+              if probe.returncode:
+                  # Private 404s and authorization failures cannot prove absence.
+                  result['detail'] = 'Repository access could not be established (git exit %d).' % probe.returncode
+              else:
+                  refs = dict(line.split('\t', 1)[::-1] for line in probe.stdout.splitlines() if '\t' in line)
+                  names = [ref] if ref.startswith('refs/') or ref == 'HEAD' else ['refs/heads/' + ref, 'refs/tags/' + ref]
+                  revision = next((refs[name] for name in names if name in refs), '')
+                  if not revision and len(ref) == 40 and ref in refs.values():
+                      revision = ref
+                  result['state'] = 'ready' if revision else 'missing_ref' if refs else 'empty'
+                  result['revision'] = revision
+          except subprocess.TimeoutExpired:
+              result['detail'] = 'Repository probe timed out.'
+      print(json.dumps(result))
+      PY
+outputs:
+  target: ${{ json_parse(sequence.probe_target.outputs.stdout) }}
+catch:
+- when: true
+  continue:
+    outputs:
+      target: "${{ {'repo': inputs.cell, 'ref': inputs.ref, 'state': 'unknown', 'detail': failure.message} }}"

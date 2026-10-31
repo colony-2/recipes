@@ -12,118 +12,101 @@ sequence:
     read_only: true
     session: ${{ {} }}
     artifact_fields: ${{ [] }}
-    documents: >-
-      ${{ jq([inputs.documents, {'merge-candidate.json': sequence.candidate.outputs.documents['merge-candidate.json'],
-      'merge-candidate.diff': sequence.candidate.outputs.documents['merge-candidate.diff']}], 'add') }}
-    instructions: |
-      Independently review the exact candidate for publication. Do not edit the repository,
-      commit, push, merge, or submit jobs; return your review to the recipe.
-      Read the approved design, test statements, implementation assessment, and verification.
-      Repository verification hooks are optional unless required by the caller. Skipped verification does not
-      itself require revision or creating a script; report skipped checks honestly.
-      Read merge-candidate.json and merge-candidate.diff from the inbox, and inspect the repository
-      as needed. Account for EVERY file in the inventory, across the entire repository, including
-      additions, modifications, deletions, binary files, mode changes, and generated files.
-      Renames are deliberately represented as a deletion and addition; explain the relationship.
-      For each file explain what changed and WHY it belongs in this merge, relating it to the
-      approved request. Identify unrelated, accidental, unsafe, or unsupported changes explicitly.
-      Return verdict revise if any change is inappropriate or the evidence is insufficient;
-      explain the corrections in review_message and the relevant file reasons. Do not approve
-      changes merely because previous agents approved them. Use the exact inventory paths and
-      change codes, once each. Return a specific imperative commit subject (one line, <=72
-      characters) and a review_message explaining the outcome, rationale, verification, and
-      material limitations. The recipe renders the review document and appends the actual job URL.
-      When the inventory is empty, review_message must explain with evidence why the
-      request is satisfied without repository changes, including any child outcomes.
-      Missing work or inability to implement requires revise, not approval. The human
-      must review this no-change rationale before the job can complete.
+    documents: '${{ jq([inputs.documents, {''merge-candidate.json'': sequence.candidate.outputs.documents[''merge-candidate.json''],
+      ''merge-candidate.diff'': sequence.candidate.outputs.documents[''merge-candidate.diff'']}], ''add'') }}'
+    instructions: ${{ vars.instructions }}
     prompt: |
       Prepare the file accounting and proposed squash commit message for this request:
       {{ inputs.request }}
-    schema:
-      type: object
-      additionalProperties: false
-      required: [verdict, subject, review_message, files]
-      properties:
-        verdict:
-          type: string
-          enum: [approve, revise]
-        subject:
-          type: string
-        review_message:
-          type: string
-        files:
-          type: array
-          items:
-            type: object
-            additionalProperties: false
-            required: [path, change, reason]
-            properties:
-              path:
-                type: string
-              change:
-                type: string
-                enum: [A, M, D, T]
-              reason:
-                type: string
-- id: render_file_accounting
-  op: command_execution
-  execution_needs:
-    packages:
-    - nix:github:NixOS/nixpkgs/e7439b6b14ad3cc35d05608ebca9bce01a25f5f8#python3
-  const: true
+    schema: ${{ vars.schema }}
+  catch:
+  - when: true
+    continue:
+      outputs:
+        result: '${{ {''status'': ''failed'', ''output_schema_valid'': false, ''errorMessage'': failure.message}
+          }}'
+        artifacts: {}
+        jobs: {}
+        issues: []
+- id: accounting
+  include: ./accounting.yaml
   inputs:
-    env:
-      OUTBOX: ${{ context.environment.op.outbox }}
-      INBOX: ${{ context.environment.op.inbox }}
-    run: |
-      python3 - <<'PY'
-      import json, os, pathlib
-      candidate = json.loads((pathlib.Path(os.environ['INBOX']) / 'candidate.json').read_text())
-      result = json.loads((pathlib.Path(os.environ['INBOX']) / 'result.json').read_text())
-      if result.get('status') != 'completed' or not result.get('output_schema_valid'):
-          raise ValueError('File accounting reviewer did not return a completed schema-valid response')
-      review = result['response']
-      files = review['files']
-      expected = {(f['path'], f['change']) for f in candidate['files']}
-      actual = {(f['path'], f['change']) for f in files}
-      if actual != expected or len(files) != len(expected) or any(not f['reason'].strip() for f in files):
-          raise ValueError('File accounting must explain every changed file exactly once, with its actual change type')
-      subject, message = review['subject'].strip(), review['review_message'].strip()
-      if not subject or len(subject) > 72 or '\n' in subject or '\r' in subject or not message:
-          raise ValueError('File accounting requires a one-line subject (<=72 characters) and review message')
-      if review['verdict'] not in ('approve', 'revise'):
-          raise ValueError('File accounting requires an approve or revise verdict')
-      commit_message = subject + '\n\n' + message + '\n\nJob: ' + candidate['job_url']
-      lines = ['# Merge review', '', 'Verdict: ' + review['verdict'], '',
-               'Base: `' + candidate['base'] + '`', 'Candidate: `' + candidate['head'] + '`',
-               '', '## Proposed squash commit' if files else '## No-change rationale', '',
-               commit_message if files else message, '', '## File accounting', '']
-      labels = {'A': 'Added', 'M': 'Changed', 'D': 'Deleted', 'T': 'Changed type'}
-      for f in sorted(files, key=lambda f: f['path']):
-          lines.extend(['### ' + labels[f['change']] + ': ' + json.dumps(f['path'], ensure_ascii=False), '', f['reason'].strip(), ''])
-      if not files:
-          lines.append('No repository changes. Human acceptance is required to complete this job; no commit will be created.')
-      (pathlib.Path(os.environ['OUTBOX']) / 'merge-review.md').write_text('\n'.join(lines) + '\n')
-      print(json.dumps({'verdict': review['verdict'], 'commit_message': commit_message}))
-      PY
-  artifacts:
-    candidate.json:
-      kind: value
-      name: candidate.json
-      format: json
-      value: ${{ sequence.candidate.outputs.candidate }}
-    result.json:
-      kind: value
-      name: result.json
-      format: json
-      value: ${{ sequence.reviewer.outputs.result }}
+    turn: ${{ sequence.reviewer.outputs }}
+    candidate: ${{ sequence.candidate.outputs.candidate }}
+    documents: '${{ jq([inputs.documents, {''merge-candidate.json'': sequence.candidate.outputs.documents[''merge-candidate.json''],
+      ''merge-candidate.diff'': sequence.candidate.outputs.documents[''merge-candidate.diff'']}], ''add'') }}'
+    request: ${{ inputs.request }}
+    schema: ${{ vars.schema }}
+    instructions: ${{ vars.instructions }}
 outputs:
   changed: ${{ size(sequence.candidate.outputs.candidate.files) > 0 }}
   change_digest: ${{ sequence.candidate.outputs.candidate.change_digest }}
-  approved: ${{ json_parse(sequence.render_file_accounting.outputs.stdout).verdict == 'approve' }}
-  commit_message: ${{ json_parse(sequence.render_file_accounting.outputs.stdout).commit_message }}
-  documents: >-
-    ${{ {'merge-candidate.json': sequence.candidate.outputs.documents['merge-candidate.json'],
-    'merge-candidate.diff': sequence.candidate.outputs.documents['merge-candidate.diff'],
-    'merge-review.md': sequence.render_file_accounting.artifacts['merge-review.md']} }}
+  approved: ${{ sequence.accounting.outputs.approved }}
+  commit_message: ${{ sequence.accounting.outputs.commit_message }}
+  documents: ${{ sequence.accounting.outputs.documents }}
+  cancelled: ${{ sequence.accounting.outputs.cancelled }}
+  stale: ${{ sequence.accounting.outputs.stale }}
+vars:
+  schema:
+    type: object
+    additionalProperties: false
+    required:
+    - verdict
+    - subject
+    - review_message
+    - files
+    properties:
+      verdict:
+        type: string
+        enum:
+        - approve
+        - revise
+      subject:
+        type: string
+      review_message:
+        type: string
+      files:
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          required:
+          - path
+          - change
+          - reason
+          properties:
+            path:
+              type: string
+            change:
+              type: string
+              enum:
+              - A
+              - M
+              - D
+              - T
+            reason:
+              type: string
+  instructions: |
+    Independently review the exact candidate for publication. Do not edit the repository,
+    commit, push, merge, or submit jobs; return your review to the recipe.
+    Read the approved design, test statements, implementation assessment, and verification.
+    Repository verification hooks are optional unless required by the caller. Skipped verification does not
+    itself require revision or creating a script; report skipped checks honestly.
+    Read merge-candidate.json and merge-candidate.diff from the inbox, and inspect the repository
+    as needed. Account for EVERY file in the inventory, across the entire repository, including
+    additions, modifications, deletions, binary files, mode changes, and generated files.
+    Renames are deliberately represented as a deletion and addition; explain the relationship.
+    For each file explain what changed and WHY it belongs in this merge, relating it to the
+    approved request. Identify unrelated, accidental, unsafe, or unsupported changes explicitly.
+    Return verdict revise if any change is inappropriate or the evidence is insufficient;
+    explain the corrections in review_message and the relevant file reasons. Do not approve
+    changes merely because previous agents approved them. Use the exact inventory paths and
+    change codes, once each. Return a specific imperative commit subject (one line, <=72
+    characters) and a review_message explaining the outcome, rationale, verification, and
+    material limitations. The recipe renders the review document and appends the actual job URL.
+    When the inventory is empty, review_message must explain with evidence why the
+    request is satisfied without repository changes, including any child outcomes.
+    Missing work or inability to implement requires revise, not approval. The human
+    must review this no-change rationale before the job can complete.
+
+    Return accounting in response.files; writing review.json is not a substitute.
