@@ -1,0 +1,184 @@
+id: adaptive-agent
+version: 1.0.0
+inputs:
+  flow: ${{ inputs.flow }}
+  documents: ${{ inputs.documents }}
+vars:
+  schema:
+    type: object
+    additionalProperties: false
+    required:
+    - next
+    - summary
+    - files
+    - questions
+    - consultations
+    - keys
+    properties:
+      next:
+        type: string
+        enum:
+        - continue
+        - review
+        - ask_user
+        - consult
+        - submit
+        - blocked
+        - redesign
+        - outside
+      summary:
+        type: string
+        minLength: 1
+      files:
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          required:
+          - path
+          - description
+          properties:
+            path:
+              type: string
+              minLength: 1
+            description:
+              type: string
+              minLength: 1
+            title: {}
+            role: {}
+            order: {}
+            source_paths: {}
+      questions:
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          required:
+          - id
+          - type
+          - question
+          - required
+          - options
+          properties:
+            id:
+              type: string
+              minLength: 1
+            type:
+              type: string
+              enum:
+              - paragraph_text
+              - short_answer
+              - multiple_choice
+              - checkboxes
+            question:
+              type: string
+              minLength: 1
+            required:
+              type: boolean
+            options:
+              type: array
+              items:
+                type: object
+                additionalProperties: false
+                required:
+                - value
+                - label
+                properties:
+                  value:
+                    type: string
+                  label:
+                    type: string
+      consultations:
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          required:
+          - key
+          - kind
+          - cell
+          - ref
+          - request
+          - role
+          properties:
+            key:
+              type: string
+              pattern: ^[a-zA-Z0-9_-]+$
+            kind:
+              type: string
+              enum:
+              - feature
+              - create
+            cell:
+              type: string
+            ref:
+              type: string
+            request:
+              type: string
+              minLength: 1
+            role:
+              type: string
+              minLength: 1
+      keys:
+        type: array
+        items:
+          type: string
+          minLength: 1
+  instructions: |
+    A cell is one repository with a responsibility. Read PURPOSE.md when present;
+    otherwise infer responsibility from the repository. A task directory does not change ownership.
+    Do local work here. Request serving consultation before another cell changes, using a stable
+    key and bounded outcome. The workflow submits and tracks agreed child jobs. Continue independent
+    work; wait when needed. Check recorded keys before requesting more work. Propose new cells
+    through the project root; creation establishes ownership, not the feature itself.
+    The workflow owns commits, rebase, merge, publication, and job submission. Never run git rebase,
+    reset history, push, or start jobs yourself. Use typed workflow state below and bound documents.
+    File descriptors require a useful description; supply title, role (primary/supporting/diagnostic),
+    order and source_paths to organize human review. List only actual deliverables relative to outbox.
+  phases:
+    design: |
+      Develop design.md: behavior, responsibility, alternatives, interfaces, compatibility,
+      acceptance outcomes, and external prerequisites. Consult serving cells as needed. Preserve the
+      original request after cell creation. Return review with agreed prerequisite keys when ready.
+      No implementation in this phase. Ask for human input only for a specific unresolved decision;
+      there is no routine human design approval. Use redesign for material changes in scope.
+    test-plan: |
+      Before implementation, publish test-statements.md with stable statement IDs. Each Markdown
+      statement is at most 30 words and uses expectation language, annotated with filenames, priority,
+      unit/integration level and dependencies. Cover positive and negative critical cases. Preserve
+      existing expectations; additions describe new behavior, changes/removals require a deprecation
+      plan. Read design.md if present; design is optional, formal test statements are not. Return review
+      with the current agreed prerequisite keys. Do not implement during this phase.
+    implement: |
+      Complete the request against the recorded design (when present) and formal test statements.
+      Investigate, implement, run meaningful checks, and repair failures using repository tooling.
+      Use consult before external work, submit agreed keys, and blocked only after independent work.
+      Return review with implementation.md explaining changes and limitations and test-results.md
+      mapping statement IDs to passed/failed/skipped/not-run with evidence. No-change outcomes need
+      an evidence-backed explanation. Do not weaken expectations or required verification to pass.
+      For response_invalid, correct only the response and missing documents; do not edit code.
+      For rebase_conflict, the workflow has saved the ENTIRE local diff and moved the workspace onto
+      the recorded target using the native rebase op. Reconcile all saved local work with that target;
+      read rebase-repair artifacts, preserve concurrent work, test, and request fresh review. Do not
+      run rebase or modify Git history. Local changes are persisted by the runtime.
+
+      Do not replace test-statements.md during implementation; return redesign to change the plan.
+sequence:
+- id: turn
+  include: ../kernel/agent-turn.yaml
+  inputs:
+    prompt: |
+      {{ vars.instructions }}
+      ${{ vars.phases[inputs.flow.phase] }}
+      Workflow inputs:
+      ${{ json_stringify(jq(inputs.flow, 'del(.session, .documents, .result, .repair_artifacts, .repair_base_documents)')) }}
+      Repository guidance:
+      ${{ inputs.flow.hook_settings.?prompt_additions.orValue({})[?{'design': 'design', 'test-plan': 'test_plan', 'implement': 'implementation'}[inputs.flow.phase]].orValue('') }}
+    instructions: ${{ vars.instructions }}
+    schema: ${{ vars.schema }}
+    session: ${{ inputs.flow.session }}
+    documents: ${{ inputs.documents }}
+    read_only: ${{ inputs.flow.phase != 'implement' || has(inputs.flow.repair_base_documents) }}
+    retained_artifacts: ${{ inputs.flow.?repair_artifacts.orValue({}) }}
+outputs:
+  turn: ${{ sequence.turn.outputs }}

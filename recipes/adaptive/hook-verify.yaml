@@ -1,0 +1,101 @@
+id: adaptive-hook-verify
+inputs:
+  request: ${{ inputs.?request.orValue('') }}
+  target_directory: ${{ inputs.?target_directory.orValue('.') }}
+  documents: ${{ inputs.?documents.orValue({}) }}
+  settings: ${{ inputs.?settings.orValue(null) }}
+  round: ${{ inputs.?round.orValue(0) }}
+  before: '${{ inputs.?candidate.orValue(context.git.hash != '''' ? context.git.hash : context.git.resolved_hash)
+    }}'
+sequence:
+- id: invoke_hook
+  include:
+    recipe: cell://.c2/recipes/hooks/build/verify.yaml
+    if_missing:
+      outputs:
+        api_version: c2.build-hook/v1
+        status: skipped
+        summary: No repository verify hook is configured.
+        artifact_refs: {}
+  inputs:
+    api_version: c2.build-hook/v1
+    request: ${{ inputs.request }}
+    target_directory: ${{ inputs.target_directory }}
+    candidate: ${{ context.git.hash }}
+    base: ${{ context.git.execution.base_hash }}
+    documents: ${{ inputs.documents }}
+    settings: ${{ inputs.settings }}
+  expect_outputs:
+    type: object
+    additionalProperties: false
+    required:
+    - api_version
+    - status
+    - summary
+    - artifact_refs
+    properties:
+      api_version:
+        type: string
+        enum:
+        - c2.build-hook/v1
+      status:
+        type: string
+        enum:
+        - passed
+        - failed
+        - skipped
+      summary:
+        type: string
+        minLength: 1
+        maxLength: 8192
+      artifact_refs:
+        type: object
+        maxProperties: 64
+        propertyNames:
+          pattern: ^[a-zA-Z0-9_-][a-zA-Z0-9_./-]*$
+        additionalProperties:
+          type: object
+      failure:
+        type: object
+  catch:
+  - when: failure.kind != 'cancellation'
+    continue:
+      outputs:
+        api_version: c2.build-hook/v1
+        status: failed
+        summary: ${{ failure.message }}
+        artifact_refs: {}
+        failure: ${{ json_parse(json_stringify(failure)) }}
+outputs:
+  result: '${{ inputs.before != (context.git.hash != '''' ? context.git.hash : context.git.resolved_hash) ? {''status'':''failed'',
+    ''ok'':false, ''summary'':''Read-only hook changed the candidate.'', ''failure'':{ } } : ({''status'': (((sequence.invoke_hook.outputs.artifact_refs.all(k,
+    !k.startsWith(''/'') && !k.contains(''..'') && !k.contains(''\\'') && !(k in [''__git_state_thin_pack__'', ''diff_from_parent.diff'',
+    ''diff_from_base.diff''])) && jq({''refs'': sequence.invoke_hook.outputs.artifact_refs, ''produced'': sequence.invoke_hook.artifacts,
+    ''bound'': inputs.documents, ''job'': context.workflow.job_id}, ''. as $v | [$v.produced[], $v.bound[]] | map(del(.name))
+    as $known | $v.refs | all(.[]; (.kind == "value" and (.format | IN("text", "json"))) or (. as $r | (.kind ==
+    "stored" and .stored.key.jobId == $v.job and ($known | index($r | del(.name)) != null)) or ([$v.bound[] | del(.name)]
+    | index($r | del(.name)) != null)))''))) ? sequence.invoke_hook.outputs.status : ''failed''), ''ok'': (((sequence.invoke_hook.outputs.artifact_refs.all(k,
+    !k.startsWith(''/'') && !k.contains(''..'') && !k.contains(''\\'') && !(k in [''__git_state_thin_pack__'', ''diff_from_parent.diff'',
+    ''diff_from_base.diff''])) && jq({''refs'': sequence.invoke_hook.outputs.artifact_refs, ''produced'': sequence.invoke_hook.artifacts,
+    ''bound'': inputs.documents, ''job'': context.workflow.job_id}, ''. as $v | [$v.produced[], $v.bound[]] | map(del(.name))
+    as $known | $v.refs | all(.[]; (.kind == "value" and (.format | IN("text", "json"))) or (. as $r | (.kind ==
+    "stored" and .stored.key.jobId == $v.job and ($known | index($r | del(.name)) != null)) or ([$v.bound[] | del(.name)]
+    | index($r | del(.name)) != null)))''))) ? sequence.invoke_hook.outputs.status : ''failed'') == ''passed'',
+    ''summary'': ((sequence.invoke_hook.outputs.artifact_refs.all(k, !k.startsWith(''/'') && !k.contains(''..'')
+    && !k.contains(''\\'') && !(k in [''__git_state_thin_pack__'', ''diff_from_parent.diff'', ''diff_from_base.diff'']))
+    && jq({''refs'': sequence.invoke_hook.outputs.artifact_refs, ''produced'': sequence.invoke_hook.artifacts, ''bound'':
+    inputs.documents, ''job'': context.workflow.job_id}, ''. as $v | [$v.produced[], $v.bound[]] | map(del(.name))
+    as $known | $v.refs | all(.[]; (.kind == "value" and (.format | IN("text", "json"))) or (. as $r | (.kind ==
+    "stored" and .stored.key.jobId == $v.job and ($known | index($r | del(.name)) != null)) or ([$v.bound[] | del(.name)]
+    | index($r | del(.name)) != null)))''))) ? sequence.invoke_hook.outputs.summary : ''Hook returned unsafe or
+    unavailable evidence; export bound or produced artifacts only.'', ''failure'': sequence.invoke_hook.outputs.?failure.orValue({})})
+    }}'
+  artifact_refs: '${{ ((sequence.invoke_hook.outputs.artifact_refs.all(k, !k.startsWith(''/'') && !k.contains(''..'')
+    && !k.contains(''\\'') && !(k in [''__git_state_thin_pack__'', ''diff_from_parent.diff'', ''diff_from_base.diff'']))
+    && jq({''refs'': sequence.invoke_hook.outputs.artifact_refs, ''produced'': sequence.invoke_hook.artifacts, ''bound'':
+    inputs.documents, ''job'': context.workflow.job_id}, ''. as $v | [$v.produced[], $v.bound[]] | map(del(.name))
+    as $known | $v.refs | all(.[]; (.kind == "value" and (.format | IN("text", "json"))) or (. as $r | (.kind ==
+    "stored" and .stored.key.jobId == $v.job and ($known | index($r | del(.name)) != null)) or ([$v.bound[] | del(.name)]
+    | index($r | del(.name)) != null)))''))) ? jq({''prefix'': ''hooks/verify/'' + string(inputs.round) + ''/'',
+    ''refs'': sequence.invoke_hook.outputs.artifact_refs}, ''. as $v | .refs | to_entries | map(.key = ($v.prefix
+    + .key) | .value.name = .key) | from_entries'') : {} }}'

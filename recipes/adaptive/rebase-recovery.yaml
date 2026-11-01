@@ -1,0 +1,37 @@
+id: adaptive-rebase-recovery
+inputs:
+  flow: ${{ inputs.flow }}
+  failure: ${{ json_parse(json_stringify(inputs.failure)) }}
+sequence:
+- id: preserve_candidate
+  op: command_execution
+  inputs:
+    env:
+      BASE: ${{ inputs.failure.attrs.rebase.base_hash }}
+      CANDIDATE: ${{ inputs.failure.attrs.rebase.candidate_hash }}
+      OUTBOX: ${{ context.environment.op.outbox }}
+    run: |
+      set -eu
+      test "$(git rev-parse HEAD)" = "$CANDIDATE"
+      test -z "$(git status --porcelain)"
+      git diff --binary --no-ext-diff --no-renames "$BASE" "$CANDIDATE" > "$OUTBOX/candidate.diff"
+      git log --format=fuller "$BASE..$CANDIDATE" > "$OUTBOX/commits.log"
+      # Full candidate delta is durable evidence; only this known clean candidate is reset.
+      git reset --hard "$BASE" >/dev/null
+- id: adopt_recorded_target
+  op: rebase
+  retry:
+    maximum_attempts: 1
+  inputs:
+    target_base_hash: ${{ inputs.failure.attrs.rebase.target_base_hash }}
+- id: evidence
+  include: ../kernel/artifact-namespace.yaml
+  inputs:
+    prefix: ${{ 'rebase-repair-' + string(int(inputs.flow.rebase_repairs) + 1) + '/' }}
+    documents: '${{ jq([inputs.failure.attrs.rebase.diagnostics, {''candidate.diff'': sequence.preserve_candidate.artifacts[''candidate.diff''],
+      ''commits.log'': sequence.preserve_candidate.artifacts[''commits.log'']}], ''add'') }}'
+outputs:
+  flow: '${{ jq([inputs.flow, {''phase'': ''implement'', ''rebase_repairs'': int(inputs.flow.rebase_repairs) + 1,
+    ''event'': ''rebase_conflict'', ''rebase_recovery'': inputs.failure, ''documents'': jq([inputs.flow.documents,
+    sequence.evidence.outputs.documents], ''add'')}], ''add | del(.verification, .reviews.outcome, .assessment,
+    .commit_message, .reviewed_change_digest, .reviewed_hook_digest, .reuse_merge_approval, .chase_pending)'') }}'

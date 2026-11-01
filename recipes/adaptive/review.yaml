@@ -1,0 +1,46 @@
+id: adaptive-review
+inputs:
+  title: ${{ inputs.title }}
+  documents: ${{ inputs.documents }}
+  fields: ${{ inputs.fields }}
+  annotations: ${{ inputs.?annotations.orValue([]) }}
+sequence:
+- id: request_human_review
+  op: input
+  inputs:
+    form: '${{ jq([{''kind'': ''review'', ''title'': inputs.title, ''documents'': inputs.documents, ''fields'':
+      jq(inputs.fields, ''map(if .type == "multiple_choice" or .type == "checkboxes" then . else del(.options) end)''),
+      ''document_metadata'': jq({''documents'': inputs.documents, ''annotations'': inputs.annotations}, vars.metadata_query)},
+      ''merge-review.md'' in inputs.documents ? {''overview_document_id'': ''merge-review.md''} : {}], ''add'')
+      }}'
+vars:
+  metadata_query: |
+    def safe_text($limit): type == "string" and length > 0 and length <= $limit and (test("[[:cntrl:]]") | not);
+    . as $v |
+    reduce ($v.annotations[] | select(type == "object")) as $a ({};
+     if ($a.id | type) == "string" and ($v.documents | has($a.id)) and
+     (($v.documents[$a.id] | del(.name)) == ($a.ref | del(.name))) then
+     .[$a.id] = ((if ($a.descriptor | type) == "object" then $a.descriptor else {} end) | to_entries | map(select(
+       (.key == "title" and (.value | safe_text(120))) or
+       (.key == "description" and (.value | safe_text(300))) or
+       (.key == "role" and (.value | IN("primary", "supporting", "diagnostic"))) or
+       (.key == "order" and (.value | type == "number" and . >= 0 and . <= 1000000 and . == floor)))) | from_entries) +
+     {source_document_ids: [($a.sources | if type == "array" then .[] else empty end) | select(type == "object") | select(has("id")) |
+     select(. as $s | ($v.documents | has($s.id)) and (($v.documents[$s.id] | del(.name)) == ($s.ref | del(.name)))) | .id] | unique | .[:128]}
+     else . end) |
+     . as $metadata |
+     reduce ($v.documents | keys[]) as $id ($metadata;
+     (if $id == "merge-review.md" then {title: "Merge decision", role: "primary", order: 0}
+     elif $id == "test-statements.md" then {title: "Acceptance expectations", role: "primary", order: 1}
+     elif $id == "test-results.md" then {title: "Test outcomes and gaps", role: "primary", order: 2}
+     elif $id == "assessment.md" then {title: "Independent findings", role: "primary", order: 3}
+     elif $id == "design.md" then {title: "Design and scope", role: "supporting", order: 4}
+     elif $id == "implementation.md" then {title: "Implementation evidence", role: "supporting", order: 5}
+     else {} end) as $defaults |
+     if $defaults != {} then .[$id] = $defaults + (.[$id] // {}) + {role:$defaults.role, order:$defaults.order} else . end)
+outputs:
+  response: ${{ sequence.request_human_review.outputs }}
+  documents: ${{ jq([inputs.documents, sequence.request_human_review.outputs.?artifact_refs.orValue({})], 'add')
+    }}
+  changed: ${{ nonempty(sequence.request_human_review.outputs.fields.?feedback.orValue('')) || size(sequence.request_human_review.outputs.?artifact_refs.orValue({}))
+    > 0 }}

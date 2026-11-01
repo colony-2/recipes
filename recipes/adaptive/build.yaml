@@ -1,0 +1,114 @@
+id: adaptive-build
+version: 1.0.0
+inputs:
+  annotations: '${{ jq({''direct'': json_parse(inputs.annotations_json), ''documents'': inputs.documents}, ''[if
+    (.direct | type) == "array" then .direct else [] end] + [.documents[] | select(.kind == "value" and (.value
+    | type) == "object" and .value._c2_recipe_sidecar == "review_annotations/v1") | .value.annotations | select(type
+    == "array")] | add'') }}'
+  prompt: ${{ inputs.prompt }}
+  target_directory: ${{ inputs.target_directory }}
+  session: ${{ inputs.?session.orValue({}) }}
+  documents: ${{ inputs.documents }}
+  root_cell: ${{ inputs.root_cell }}
+  root_ref: ${{ inputs.root_ref }}
+  consultation_recipe: ${{ inputs.consultation_recipe }}
+  build_recipe: ${{ inputs.build_recipe }}
+  create_recipe: ${{ inputs.create_recipe }}
+  require_verification: ${{ inputs.require_verification }}
+  max_iterations: ${{ inputs.max_iterations }}
+sequence:
+- id: initial_candidate
+  op: command_execution
+  const: true
+  inputs:
+    run: |
+      set -eu
+      case "$MAX_ITERATIONS" in ""|*[!0-9]*|0) echo 'max_iterations must be a positive integer' >&2; exit 1;; esac
+      set -eu
+      case "$TARGET" in ""|/*|..|../*|*/../*|*/..) echo 'Invalid repository-relative target directory' >&2; exit 1;; esac
+      test -d "$TARGET" || { echo 'Target directory does not exist' >&2; exit 1; }
+      git rev-parse HEAD
+    env:
+      TARGET: ${{ inputs.target_directory }}
+      MAX_ITERATIONS: ${{ string(inputs.max_iterations) }}
+- id: configure
+  include: ./hook-configure.yaml
+  workspace:
+    cell: ${{ context.git.repo }}
+    ref: ${{ context.git.ref }}
+  inputs:
+    request: ${{ inputs.prompt }}
+    target_directory: ${{ inputs.target_directory }}
+    documents: ${{ inputs.documents }}
+    candidate: ${{ jq(sequence.initial_candidate.outputs.stdout, 'split("\\n")[0]') }}
+- id: configuration_gate
+  state:
+    initial:
+    - to: ok
+      when: inputs.status in ['passed', 'skipped']
+    - to: invalid
+      when: true
+    states:
+      ok:
+        sequence: []
+      invalid:
+        id: invalid_configuration
+        op: command_execution
+        inputs:
+          run: exit 1
+        catch:
+        - when: true
+          fail:
+            code: BUILD_CONFIGURATION_INVALID
+            message: Configuration hook failed.
+  inputs:
+    status: '${{ size(sequence.configure.outputs.settings.consultations.map(c, c.key)) == size(jq(sequence.configure.outputs.settings.consultations,
+      ''map(.key) | unique'')) ? sequence.configure.outputs.result.status : ''failed'' }}'
+- id: classify
+  include: ./classify.yaml
+  workspace:
+    cell: ${{ context.git.repo }}
+    ref: ${{ context.git.ref }}
+  inputs:
+    request: ${{ inputs.prompt }}
+- id: run
+  workspace:
+    cell: ${{ context.git.repo }}
+    ref: ${{ context.git.ref }}
+  inputs:
+    annotations: ${{ inputs.annotations }}
+    prompt: ${{ inputs.prompt }}
+    target_directory: ${{ inputs.target_directory }}
+    session: ${{ inputs.?session.orValue({}) }}
+    documents: ${{ jq([inputs.documents, sequence.configure.outputs.artifact_refs], 'add') }}
+    root_cell: ${{ inputs.root_cell }}
+    root_ref: ${{ inputs.root_ref }}
+    consultation_recipe: ${{ inputs.consultation_recipe }}
+    build_recipe: ${{ inputs.build_recipe }}
+    create_recipe: ${{ inputs.create_recipe }}
+    hook_settings: ${{ sequence.configure.outputs.settings }}
+    settings_artifact: ${{ sequence.configure.outputs.settings_artifact }}
+    require_verification: ${{ inputs.require_verification }}
+    design_required: ${{ sequence.classify.outputs.design_required || sequence.configure.outputs.settings.require_design
+      || sequence.configure.outputs.settings.consultations.exists(c, c.checkpoint in ['before_design', 'plan_assessment'])
+      }}
+    max_iterations: ${{ inputs.max_iterations }}
+  include: ./develop.yaml
+outputs:
+  annotations: ${{ sequence.run.outputs.annotations }}
+  merged: ${{ sequence.run.outputs.merged }}
+  merged_hash: ${{ sequence.run.outputs.merged_hash }}
+  target_branch: ${{ sequence.run.outputs.target_branch }}
+  session: ${{ sequence.run.outputs.session }}
+  assistant_summary: ${{ sequence.run.outputs.assistant_summary }}
+  disposition: ${{ sequence.run.outputs.disposition }}
+  result: ${{ sequence.run.outputs.result }}
+  artifact_refs: ${{ sequence.run.outputs.artifact_refs }}
+  consultations: ${{ sequence.run.outputs.consultations }}
+  dependencies: ${{ sequence.run.outputs.dependencies }}
+  reviews: ${{ sequence.run.outputs.reviews }}
+  verification: ${{ sequence.run.outputs.verification }}
+  process: adaptive
+  classification: ${{ sequence.classify.outputs }}
+  publication: ${{ sequence.run.outputs.publication }}
+  rebase_repairs: ${{ sequence.run.outputs.rebase_repairs }}

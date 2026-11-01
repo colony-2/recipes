@@ -1,9 +1,12 @@
 # Build recipe process
 
-Conceptual view of [build.yaml](build.yaml), the
+Original flow, retained for reference. The current entrypoint is documented in
+[Adaptive build process](ADAPTIVE_BUILD_PROCESS.md).
+
+Conceptual view of the [legacy entry fixture](recipe-tests/fixtures/legacy-build.yaml), the
 [light workflow](recipes/light/develop.yaml), and the
 [heavy workflow](recipes/develop/develop.yaml). Boxes group related operations;
-diamonds show decisions. This documents the current recipes, not a proposed flow.
+diamonds show decisions. These legacy recipes remain available.
 
 ## Main workflow
 

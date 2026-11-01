@@ -1,0 +1,154 @@
+id: adaptive-inspect
+inputs:
+  role: ${{ inputs.role }}
+  request: ${{ inputs.request }}
+  documents: ${{ inputs.documents }}
+  assignment: ${{ inputs.?assignment.orValue('') }}
+  evidence: ${{ inputs.?evidence.orValue({}) }}
+vars:
+  schema:
+    type: object
+    additionalProperties: false
+    required:
+    - verdict
+    - summary
+    - subject
+    - files
+    properties:
+      verdict:
+        type: string
+        enum:
+        - approve
+        - revise
+      summary:
+        type: string
+        minLength: 1
+      subject:
+        type: string
+        maxLength: 72
+      files:
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          required:
+          - path
+          - description
+          properties:
+            path:
+              type: string
+              minLength: 1
+            description:
+              type: string
+              minLength: 1
+            title: {}
+            role: {}
+            order: {}
+            source_paths: {}
+  prompts:
+    assessment: |
+      Independently assess the candidate against the request, design if present, formal test statements,
+      test-results.md, and verification evidence. Inspect code and tests for missing behavior, inappropriate
+      changes, compatibility risks, and inadequate coverage. Write assessment.md with concrete findings,
+      severity, evidence, and disposition. Return approve only when no blocking findings remain. Never
+      edit, publish, submit jobs, or treat agreement on adverse findings as a pass. Preserve skipped and
+      failed tests explicitly. For a configured specialist, address its assignment and checkpoint.
+    summary: |
+      Prepare merge-review.md for a human decision on this exact candidate. Read implementation.md,
+      test-statements.md, test-results.md, assessment.md, specialist reports, verification and child outcomes.
+      Read merge-candidate.diff and the actual inventory. Account for every changed file, grouping related
+      changes where useful, with their purpose and relationship to the request. Explain outcome, evidence,
+      limitations, adverse findings, skipped tests, and no-change rationale when relevant. Propose an
+      imperative single-line commit subject of at most 72 characters. Return revise for missing work or
+      inadequate evidence. Preserve authoritative facts; never infer a passing test or completed child.
+      Annotate the overview primary/order 0 and reference its evidence using source_paths. Do not edit
+      code, submit jobs, or publish. Correct invalid responses without changing the candidate.
+state:
+  initial: evaluate
+  states:
+    evaluate:
+      inputs:
+        attempt: ${{ transition.payload.?attempt.orValue(0) }}
+        session: ${{ transition.payload.?session.orValue({}) }}
+        documents: ${{ transition.payload.?documents.orValue(inputs.documents) }}
+        issues: ${{ transition.payload.?issues.orValue([]) }}
+        role: ${{ inputs.role }}
+        request: ${{ inputs.request }}
+        assignment: ${{ inputs.assignment }}
+        evidence: ${{ inputs.evidence }}
+      sequence:
+      - id: agent
+        include: ../kernel/agent-turn.yaml
+        inputs:
+          prompt: |
+            ${{ vars.prompts[inputs.role] }}
+            Request: {{ inputs.request }}
+            Assignment: {{ inputs.assignment }}
+            Evidence: ${{ json_stringify(inputs.evidence) }}
+            Response corrections: ${{ json_stringify(inputs.issues) }}
+          instructions: |
+            A cell is one repository with a responsibility. Read PURPOSE.md when present;
+            otherwise infer responsibility from the repository. A task directory does not change ownership.
+            Do local work here. Request serving consultation before another cell changes, using a stable
+            key and bounded outcome. The workflow submits and tracks agreed child jobs. Continue independent
+            work; wait when needed. Check recorded keys before requesting more work. Propose new cells
+            through the project root; creation establishes ownership, not the feature itself.
+            The workflow owns commits, rebase, merge, publication, and job submission. Never run git rebase,
+            reset history, push, or start jobs yourself. Use typed workflow state below and bound documents.
+            File descriptors require a useful description; supply title, role (primary/supporting/diagnostic),
+            order and source_paths to organize human review. List only actual deliverables relative to outbox.
+          schema: ${{ vars.schema }}
+          session: ${{ inputs.session }}
+          documents: ${{ inputs.documents }}
+          read_only: true
+      outputs:
+        turn: ${{ sequence.agent.outputs }}
+        attempt: ${{ inputs.attempt }}
+        documents: ${{ jq([inputs.documents, sequence.agent.outputs.artifacts], 'add') }}
+      transitions:
+      - to: check
+        when: true
+    check:
+      sequence: []
+      inputs:
+        turn: ${{ states.evaluate.outputs.turn }}
+        role: ${{ inputs.role }}
+      vars:
+        issues: '${{ states.evaluate.outputs.turn.issues + (states.evaluate.outputs.turn.result.?status.orValue(''failed'')
+          != ''completed'' || !states.evaluate.outputs.turn.result.?output_schema_valid.orValue(false) ? [''Return
+          a completed schema-valid review.''] : []) + (!((inputs.role == ''summary'' ? ''merge-review.md'' : ''assessment.md'')
+          in states.evaluate.outputs.turn.artifacts) ? [''Publish the required review document.''] : []) + (inputs.role
+          == ''summary'' && !states.evaluate.outputs.turn.result.?response.orValue({}).?subject.orValue('''').matches(''^[^[:cntrl:]]{1,72}$'')
+          ? [''Return a single-line commit subject.''] : []) }}'
+      outputs:
+        valid: ${{ size(vars.issues) == 0 }}
+        issues: ${{ vars.issues }}
+      transitions:
+      - to: failed
+        when: states.evaluate.outputs.turn.result.?status.orValue('failed') != 'completed' || size(states.evaluate.outputs.turn.jobs.?job_ids.orValue([]))
+          > 0
+      - to: evaluate
+        when: '!outputs.valid && states.evaluate.outputs.attempt < 2'
+        payload:
+          attempt: ${{ int(states.evaluate.outputs.attempt) + 1 }}
+          session: ${{ states.evaluate.outputs.turn.result.?session.orValue({}) }}
+          documents: ${{ states.evaluate.outputs.documents }}
+          issues: ${{ outputs.issues }}
+      - to: failed
+        when: '!outputs.valid'
+    failed:
+      id: invalid_review
+      op: command_execution
+      inputs:
+        run: exit 1
+      catch:
+      - when: true
+        fail:
+          code: BUILD_REVIEW_INVALID
+          message: ${{ jq(states.check.outputs.issues, 'join("; ")') }}
+outputs:
+  approved: ${{ states.evaluate.outputs.turn.result.response.verdict == 'approve' }}
+  response: ${{ states.evaluate.outputs.turn.result.response }}
+  documents: ${{ states.evaluate.outputs.documents }}
+  annotations: ${{ states.evaluate.outputs.turn.annotations }}
+  artifact_refs: ${{ states.evaluate.outputs.turn.artifacts }}
