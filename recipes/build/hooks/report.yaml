@@ -64,6 +64,16 @@ state:
         run: |-
           echo "Hook exported an unsafe artifact name" >&2
           exit 1
+      catch:
+      - when: failure.kind != 'cancellation'
+        fail:
+          code: HOOK_ARTIFACT_INVALID
+          message: >-
+            ${{ 'The ' + inputs.hook + ' hook exported unsafe or reserved artifact names: ' +
+              jq(inputs.result.artifact_refs.filter(k, k.startsWith('/') || k.contains('..') || k.contains('\\\\') ||
+                k in ['__git_state_thin_pack__', 'diff_from_parent.diff', 'diff_from_base.diff']), 'join(", ")') +
+              '. Export only the hook evidence files, not the entire operation artifact map.' }}
+          cause: ${{ failure }}
 outputs:
   artifact_refs: ${{ states.render.outputs.artifact_refs }}
   result: "${{ {'status': inputs.result.status, 'ok': inputs.result.status == 'passed', 'summary': inputs.result.summary,

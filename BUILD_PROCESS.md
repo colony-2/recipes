@@ -28,7 +28,7 @@ flowchart TD
         LSP -->|Yes| LV[Run verify hook; record evidence]
         LV --> LVP{Verification permits completion?}
         LVP -->|Failed| LI
-        LVP -->|Required but skipped| Failed
+        LVP -->|Required but skipped| LI
         LVP -->|Yes| Delegated{No local changes and successful children?}
         Delegated -->|Yes| DelegatedDone([Complete: delegated])
         Delegated -->|No| Synopsis[Create synopsis.md: outcome, file inventory, evidence, proposed commit message]
@@ -61,7 +61,7 @@ flowchart TD
         HAP -->|Yes| HV[Run verify hook; record verification.md and evidence]
         HV --> HVP{Verification permits completion?}
         HVP -->|Failed| HI
-        HVP -->|Required but skipped| Failed
+        HVP -->|Required but skipped| HI
         HVP -->|Yes| Accounting[Fresh reviewer accounts for every changed file and proposes commit message]
         Accounting --> AccountOK{File accounting acceptable and current?}
         AccountOK -->|Revise| HI
@@ -113,7 +113,9 @@ flowchart TD
   then resume the current phase. Answers do not approve a plan. A request outside
   the cell's purpose can finish with `outside`; light first settles launched children.
 - **Verification:** skipped checks permit normal review unless
-  `require_verification` is true. Light delegated outcomes also pass through
+  `require_verification` is true. Required skips and hook execution, validation,
+  or report failures return to implementation with diagnostics. Cancellation
+  still stops execution. Light delegated outcomes also pass through
   preparation, specialists, and verification. Heavy no-change outcomes still
   require independent assessment and human acceptance.
 - **Review:** approval accompanied by feedback or uploaded edits requires revision
@@ -185,7 +187,7 @@ flowchart TD
     SpecialistOK -->|Yes| Verify[Run fresh verification]
     Verify --> Verified{Verification permits completion?}
     Verified -->|Failed| Repair
-    Verified -->|Required but skipped| Fail
+    Verified -->|Required but skipped| Repair
     Verified -->|Yes| Changed{Local changes remain?}
     Changed -->|No| Done([Complete: delegated or unchanged])
     Changed -->|Yes| Merge[Squash and attempt merge again]

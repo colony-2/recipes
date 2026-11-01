@@ -302,14 +302,9 @@ state:
       outputs:
         ok: ${{ sequence.verify.outputs.allowed }}
         flow: '${{ jq([inputs.flow, {''verification'': sequence.verify.outputs.evidence, ''documents'': jq([inputs.flow.documents,
-          sequence.verify.outputs.artifact_refs], ''add''), ''message'': ''Verification did not pass. Read verification.md
+          sequence.verify.outputs.artifact_refs], ''add''), ''message'': ''Verification did not pass or required verification was skipped. Configure or repair .c2/recipes/hooks/build/verify.yaml and its checks. Read verification.md
           and its attached evidence, resolve the issue, and request inspection again.''}], ''add'') }}'
       transitions:
-      - to: reject_invalid_build_request
-        when: outputs.flow.require_verification && outputs.flow.verification.status == 'skipped'
-        payload:
-          reason: Verification is required, but the repository verify hook is absent or skipped. Configure
-            .c2/recipes/hooks/build/verify.yaml.
       - to: stopped
         when: outputs.ok && !outputs.flow.candidate_changed && size(outputs.flow.jobs) > 0
         payload:
@@ -333,7 +328,9 @@ state:
       - to: work
         when: true
         payload:
-          flow: ${{ outputs.flow }}
+          flow: >-
+            ${{ jq(outputs.flow, 'del(.reviews.outcome, .assessment, .commit_message, .reviewed_change_digest,
+            .reviewed_hook_digest, .reuse_merge_approval, .chase_pending, .review_hint)') }}
     accept:
       inputs:
         flow: ${{ transition.payload.flow }}

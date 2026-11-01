@@ -181,8 +181,16 @@ cases:
         op: command_execution
       behavior:
         mode: passthrough
-  assertions: []
-  expect_error: command execution failed
+  assertions:
+  - type: cel_true
+    expr: outputs.result.status == "failed" && !outputs.ok && !outputs.allowed
+  - type: cel_true
+    expr: outputs.result.failure.message.contains('command execution failed') && outputs.result.failure.node.path != ""
+  - type: cel_true
+    expr: >-
+      calls.exists(c, c.node_path.endsWith("/read_evidence") &&
+      "verification.md" in c.artifacts && "hooks/verify/0/failure.json" in c.artifacts &&
+      c.artifacts["verification.md"].contains("Verification failed"))
 - id: invalid-yaml
   type: integration_case
   runtime:
@@ -198,8 +206,16 @@ cases:
         op: command_execution
       behavior:
         mode: passthrough
-  assertions: []
-  expect_error: yaml
+  assertions:
+  - type: cel_true
+    expr: outputs.result.status == "failed" && !outputs.ok && !outputs.allowed
+  - type: cel_true
+    expr: outputs.result.failure.message.contains('yaml') && outputs.result.failure.node.path != ""
+  - type: cel_true
+    expr: >-
+      calls.exists(c, c.node_path.endsWith("/read_evidence") &&
+      "verification.md" in c.artifacts && "hooks/verify/0/failure.json" in c.artifacts &&
+      c.artifacts["verification.md"].contains("Verification failed"))
 - id: invalid-output
   type: integration_case
   runtime:
@@ -222,8 +238,16 @@ cases:
         op: command_execution
       behavior:
         mode: passthrough
-  assertions: []
-  expect_error: status
+  assertions:
+  - type: cel_true
+    expr: outputs.result.status == "failed" && !outputs.ok && !outputs.allowed
+  - type: cel_true
+    expr: outputs.result.failure.message.contains('status') && outputs.result.failure.node.path != ""
+  - type: cel_true
+    expr: >-
+      calls.exists(c, c.node_path.endsWith("/read_evidence") &&
+      "verification.md" in c.artifacts && "hooks/verify/0/failure.json" in c.artifacts &&
+      c.artifacts["verification.md"].contains("Verification failed"))
 - id: unsafe-artifact
   type: integration_case
   runtime:
@@ -247,8 +271,16 @@ cases:
         op: command_execution
       behavior:
         mode: passthrough
-  assertions: []
-  expect_error: "must not contain '..' segments"
+  assertions:
+  - type: cel_true
+    expr: outputs.result.status == "failed" && !outputs.ok && !outputs.allowed
+  - type: cel_true
+    expr: outputs.result.failure.message.contains("must not contain '..' segments") && outputs.result.failure.node.path != ""
+  - type: cel_true
+    expr: >-
+      calls.exists(c, c.node_path.endsWith("/read_evidence") &&
+      "verification.md" in c.artifacts && "hooks/verify/0/failure.json" in c.artifacts &&
+      c.artifacts["verification.md"].contains("Verification failed"))
 - id: mutation-rejected
   type: integration_case
   runtime:
@@ -276,8 +308,16 @@ cases:
         op: command_execution
       behavior:
         mode: passthrough
-  assertions: []
-  expect_error: command execution failed
+  assertions:
+  - type: cel_true
+    expr: outputs.result.status == "failed" && !outputs.ok && !outputs.allowed
+  - type: cel_true
+    expr: outputs.result.failure.message.contains('command execution failed') && outputs.result.failure.node.path != ""
+  - type: cel_true
+    expr: >-
+      calls.exists(c, c.node_path.endsWith("/read_evidence") &&
+      "verification.md" in c.artifacts && "hooks/verify/0/failure.json" in c.artifacts &&
+      c.artifacts["verification.md"].contains("Verification failed"))
 - id: relative-include
   type: integration_case
   runtime:
@@ -340,8 +380,16 @@ cases:
         op: command_execution
       behavior:
         mode: passthrough
-  assertions: []
-  expect_error: command execution failed
+  assertions:
+  - type: cel_true
+    expr: outputs.result.status == "failed" && !outputs.ok && !outputs.allowed
+  - type: cel_true
+    expr: outputs.result.failure.message.contains('command execution failed') && outputs.result.failure.node.path != ""
+  - type: cel_true
+    expr: >-
+      calls.exists(c, c.node_path.endsWith("/read_evidence") &&
+      "verification.md" in c.artifacts && "hooks/verify/0/failure.json" in c.artifacts &&
+      c.artifacts["verification.md"].contains("Verification failed"))
 - id: suite-timeout
   type: integration_case
   runtime:
@@ -369,5 +417,152 @@ cases:
         op: command_execution
       behavior:
         mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.result.status == "failed" && !outputs.ok && !outputs.allowed
+  - type: cel_true
+    expr: outputs.result.failure.message.contains('command execution timed out') && outputs.result.failure.node.path != ""
+  - type: cel_true
+    expr: >-
+      calls.exists(c, c.node_path.endsWith("/read_evidence") &&
+      "verification.md" in c.artifacts && "hooks/verify/0/failure.json" in c.artifacts &&
+      c.artifacts["verification.md"].contains("Verification failed"))
+- id: reserved-artifact-report-invalid
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          .c2/recipes/hooks/build/verify.yaml: "id: reserved-artifact-verify\nsequence: []\noutputs:\n  api_version:\
+            \ c2.build-hook/v1\n  status: passed\n  summary: Checks passed but the hook report is invalid.\n  artifact_refs:\n\
+            \    __git_state_thin_pack__:\n      kind: value\n      name: __git_state_thin_pack__\n      format:\
+            \ text\n      value: Reserved runtime state is not hook evidence.\n"
+  inputs: {}
+  mocks:
+    ops:
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.result.status == "failed" && !outputs.allowed && !outputs.ok
+  - type: cel_true
+    expr: outputs.result.failure.code == "HOOK_ARTIFACT_INVALID" && outputs.result.failure.message.contains("__git_state_thin_pack__")
+  - type: cel_true
+    expr: outputs.result.failure.node.path.contains("/report/build-hook-report/invalid/")
+  - type: cel_true
+    expr: calls.exists(c, c.node_path.endsWith("/read_evidence") && "hooks/verify/0/failure.json" in c.artifacts
+      && c.artifacts["verification.md"].contains("__git_state_thin_pack__") && !("__git_state_thin_pack__" in c.artifacts))
+- id: report-render-fails
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          .c2/recipes/hooks/build/verify.yaml: "id: fixture-verify\ninputs:\n  target_directory: ${{ inputs.target_directory\
+            \ }}\nsequence:\n- id: run_suite\n  op: command_execution\n  const: true\n  inputs:\n    env:\n    \
+            \  TARGET: '{{ context.environment.op.worktree_path }}/{{ inputs.target_directory }}'\n      OUTBOX:\
+            \ ${{ context.environment.op.outbox }}\n    run: |\n      cd \"$TARGET\" || exit 1\n      if (\n   \
+            \   bash ./build.sh\n      ) > \"$OUTBOX/tests.log\" 2>&1; then printf passed; else printf failed; fi\n\
+            outputs:\n  api_version: c2.build-hook/v1\n  status: ${{ sequence.run_suite.outputs.stdout }}\n  summary:\
+            \ Fixture repository checks completed.\n  artifact_refs: \"${{ {'tests.log': sequence.run_suite.artifacts['tests.log']}\
+            \ }}\"\n"
+          component/build.sh: echo verified
+  inputs:
+    target_directory: component
+  mocks:
+    ops:
+    - match:
+        node_path: verification-fixture/check/development-verify/check/build-hook-verify/report/build-hook-report/render/sequence/render_hook_report
+      behavior:
+        mode: fail
+        error:
+          message: Cannot render verification report
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: '!outputs.allowed && outputs.result.status == "failed" && outputs.result.failure.message.contains("Cannot
+      render verification report")'
+- id: cancelled-hook-stays-cancelled
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          .c2/recipes/hooks/build/verify.yaml: "id: fixture-verify\nsequence:\n- id: error\n  op: command_execution\n\
+            \  inputs:\n    run: exit 7\n  catch:\n  - when: true\n    fail:\n      kind: cancellation\n      code:\
+            \ cancelled\n      message: Verification cancelled by user.\noutputs:\n  api_version: c2.build-hook/v1\n\
+            \  status: passed\n  summary: Fixture verify completed.\n  artifact_refs: {}\n"
+  inputs: {}
+  mocks:
+    ops:
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
   assertions: []
-  expect_error: command execution timed out
+  expect_error: Verification cancelled by user.
+- id: denied-hook-capability
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          .c2/recipes/hooks/build/verify.yaml: "id: fixture-verify\nsequence:\n- id: error\n  op: command_execution\n\
+            \  inputs:\n    run: exit 7\noutputs:\n  api_version: c2.build-hook/v1\n  status: passed\n  summary:\
+            \ Fixture verify completed.\n  artifact_refs: {}\n"
+  inputs: {}
+  mocks:
+    ops:
+    - match:
+        node_path: verification-fixture/check/development-verify/check/build-hook-verify/invoke_hook/fixture-verify/error
+      behavior:
+        mode: fail
+        error:
+          message: 'Denied verify-hook capability: test service credentials'
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.result.status == "failed" && !outputs.ok && !outputs.allowed
+  - type: cel_true
+    expr: outputs.result.failure.message.contains("Denied verify-hook capability")
+  - type: cel_true
+    expr: calls.exists(c, c.node_path.endsWith("/read_evidence") && "verification.md" in c.artifacts && "hooks/verify/0/failure.json"
+      in c.artifacts && c.artifacts["verification.md"].contains("Verification failed"))
+- id: missing-hook-evidence
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          .c2/recipes/hooks/build/verify.yaml: "id: missing-evidence-verify\nsequence: []\noutputs:\n  api_version:\
+            \ c2.build-hook/v1\n  status: passed\n  summary: Checks passed but the hook report is invalid.\n  artifact_refs:\n\
+            \    tests.log:\n      kind: stored\n      name: tests.log\n      stored:\n        key:\n          jobId:\
+            \ missing-fixture-job\n          taskOrdinal: 0\n          name: tests.log\n          sizeBytes: 123\n"
+  inputs: {}
+  mocks:
+    ops:
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.result.status == "failed" && !outputs.allowed && !outputs.ok
+  - type: cel_true
+    expr: outputs.result.failure.node.path.contains("/report/")
+  - type: cel_true
+    expr: calls.exists(c, c.node_path.endsWith("/read_evidence") && "hooks/verify/0/failure.json" in c.artifacts
+      && "verification.md" in c.artifacts)

@@ -64,13 +64,23 @@ outputs:
 ```
 
 A semantic `failed` result returns the evidence to implementation for repair.
-The shell above translates a test exit status into that result. An operation
-error or timeout propagates as an execution failure instead. Verification must not
-change the managed candidate; move formatters and generators into prepare.
+The shell above translates a test exit status into that result. Verification
+also returns to implementation when hook loading, execution, output validation,
+candidate checks, or report generation fails. This includes timeouts and denied
+capabilities. The build supplies `verification.md` and a structured failure under
+`hooks/verify/<round>/failure.json`, preserving the original failure origin.
+Invalid hook artifact maps are not rebound to produce this fallback report;
+original task logs remain in the job story. Cancellation still stops execution.
+Verification must not change the managed candidate; move formatters and generators
+into prepare. A mutation is failed verification requiring repair, never approval.
 
 Verification is optional by default. To require it, set **the build input**
 `require_verification: true` when submitting the build. This is not a configure
-setting. An absent or explicitly skipped verify hook then blocks completion.
+setting. An absent or explicitly skipped verify hook then returns to implementation
+to configure or repair verification. It cannot permit completion. Repair is
+followed by fresh rebase, assessment, verification, and normal outcome review;
+failed verification clears approval reuse. Failures outside verification retain
+their existing propagation, including implementation-agent and publish-hook errors.
 
 For an existing GitHub Actions workflow, use the
 [verify-gha example](../examples/build-hooks/verify-gha.yaml) as `verify.yaml`.
@@ -336,6 +346,9 @@ versions called this flag `--recipe-file`; check your installed `submit --help`.
 For deterministic tests, use runtime-backed integration cases with fixture hook
 files. [Verification tests](../recipe-tests/verification.test.yaml) demonstrate
 passing, failing, absent, malformed, and timed-out hooks; the
+[verification recovery tests](../recipe-tests/verification-recovery.test.yaml)
+exercise implementation repair and successful re-verification on both build paths;
+the
 [integrated hook tests](../recipe-tests/build-hooks-flow.test.yaml) demonstrate both
 build paths and security review. Static validation alone does not load late hooks.
 

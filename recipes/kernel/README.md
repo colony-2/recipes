@@ -224,6 +224,13 @@ They cover propagation through includes to a caller catch, consultation and
 assessment errors, rejection diagnostics, and normal completed-result routing. Their fast
 cases mock operations; the invalid-directory case uses the native runtime.
 
+Verification has an explicit caller-level recovery policy in
+`recipes/develop/verify.yaml`: non-cancellation exceptions from the entire verify
+hook pipeline become failed verification with standalone diagnostic artifacts.
+Both build paths return that evidence to implementation, including when required
+verification is missing or skipped. This policy does not catch implementation or
+publication errors. See `verification.test.yaml` and `verification-recovery.test.yaml`.
+
 `rebase-policy.yaml` exports the shared structured-conflict predicate used inside
 both build state catches. `rebase-recovery.yaml` preserves the original failure,
 namespaces its durable diagnostics, increments the separate two-repair allowance,
