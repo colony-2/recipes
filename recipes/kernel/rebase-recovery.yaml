@@ -1,0 +1,26 @@
+# Called only by the narrowly classified rebase state catch. Preserve immutable
+# diagnostic identities while namespacing each round for subsequent workers.
+id: rebase-recovery
+version: 1.0.0
+inputs:
+  flow: ${{ inputs.flow }}
+  failure: ${{ json_parse(json_stringify(inputs.failure)) }}
+sequence:
+- id: diagnostics
+  include: ./artifact-namespace.yaml
+  inputs:
+    prefix: ${{ 'rebase-repair-' + string(int(inputs.flow.?rebase_repairs.orValue(0)) + 1) + '/' }}
+    documents: ${{ inputs.failure.attrs.rebase.diagnostics }}
+outputs:
+  flow: >-
+    ${{ jq([inputs.flow, {
+      'rebase_repairs': int(inputs.flow.?rebase_repairs.orValue(0)) + 1,
+      'rebase_recovery': inputs.failure,
+      'rebase_recovery_pending': true,
+      'documents': jq([inputs.flow.documents, sequence.diagnostics.outputs.documents,
+        {'rebase-repair-' + string(int(inputs.flow.?rebase_repairs.orValue(0)) + 1) + '/failure.json':
+          {'kind': 'value', 'format': 'json', 'value': inputs.failure,
+           'name': 'rebase-repair-' + string(int(inputs.flow.?rebase_repairs.orValue(0)) + 1) + '/failure.json'} }], 'add'),
+      'message': 'Repair the recorded rebase conflict. Read context.json rebase_recovery and the rebase-repair diagnostic artifacts. The native operation aborted and restored the original clean candidate; no active rebase survived. Preserve the request and approved planning documents. Fetch the recorded target if needed and start a fresh local rebase onto target_base_hash from base_hash; resolve conflicts using the supplied evidence and both versions. You may create local commits and continue ONLY this newly started rebase to complete reconciliation. Do not push, merge, or submit jobs. Leave a clean completed history containing the target, with no active rebase or unmerged index. Run relevant tests, describe the resolution and validation in your deliverable, and return review. The recipe will resolve upstream again, rebase, and repeat validation and outcome approval.'
+    }], '''add | del(.verification, .reuse_merge_approval, .review_hint, .chase_pending,
+      .reviews.outcome, .assessment, .commit_message, .reviewed_change_digest, .reviewed_hook_digest)''') }}

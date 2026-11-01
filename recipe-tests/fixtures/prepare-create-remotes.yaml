@@ -2,6 +2,8 @@ id: prepare-create-remotes
 version: '1'
 inputs:
   occupied: ${{ inputs.?occupied.orValue('') }}
+  reject_publication: ${{ inputs.?reject_publication.orValue('') }}
+  advance_catalog: ${{ inputs.?advance_catalog.orValue(false) }}
 sequence:
 - id: prepare
   op: command_execution
@@ -10,6 +12,8 @@ sequence:
     env:
       ROOT_REPO: ${{ context.git.repo }}
       OCCUPIED: ${{ inputs.?occupied.orValue('') }}
+      REJECT_PUBLICATION: ${{ inputs.reject_publication }}
+      ADVANCE_CATALOG: ${{ string(inputs.advance_catalog) }}
     run: |
       set -eu
       # The native runner seeds main in every fixture. Keep that seed under another
@@ -25,5 +29,29 @@ sequence:
           git -C "$fixture_cells/$cell" branch -m main fixture-seed
         fi
       done
+      if [ -n "$REJECT_PUBLICATION" ]; then
+        case "$REJECT_PUBLICATION" in alpha|beta|root) ;; *) exit 1 ;; esac
+        # Real receive-pack rejection, exercised by the native Git operations.
+        hook="$fixture_cells/$REJECT_PUBLICATION/.git/hooks/pre-receive"
+        printf '#!/bin/sh\necho publication-denied >&2\nexit 1\n' > "$hook"
+        chmod +x "$hook"
+      fi
+      if [ "$ADVANCE_CATALOG" = true ]; then
+        hook="$fixture_root/.git/hooks/pre-receive"
+        printf "#!/bin/sh\nrepo='%s'\n" "$fixture_root" > "$hook"
+        cat >> "$hook" <<'HOOK'
+      set -eu
+      # A separate writer advances the established branch during the push.
+      # Use only existing objects, outside receive-pack's quarantine.
+      unset GIT_DIR GIT_WORK_TREE GIT_QUARANTINE_PATH GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES
+      old=$(git -C "$repo" rev-parse refs/heads/main)
+      tree=$(git -C "$repo" rev-parse "$old^{tree}")
+      new=$(git -C "$repo" -c user.name=Fixture -c user.email=fixture@example.test commit-tree "$tree" -p "$old" -m 'Concurrent catalog update')
+      git -C "$repo" update-ref refs/heads/main "$new" "$old"
+      echo fixture-catalog-advanced >&2
+      exit 1
+      HOOK
+        chmod +x "$hook"
+      fi
 outputs:
   ready: ${{ sequence.prepare.outputs.success }}

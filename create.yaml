@@ -1,5 +1,7 @@
 id: create
 version: 1.0.0
+retry:
+  maximum_attempts: 1
 input_schema:
   annotations_json:
     type: string
@@ -124,15 +126,22 @@ sequence:
             or republish repositories. Return completed=false if the approved catalog is invalid.
             Write completion.md describing the registered cells and remaining feature work.
       publish_cell_catalog:
-        id: publish_cell_catalog
-        op: squashrebasemerge
-        inputs:
-          commit_message: Register approved new cells
-        catch:
-        - when: true
-          continue:
-            outputs:
-              error: ${{ failure.message }}
+        # Do not rebase after catalog verification. Advancement must fail until
+        # catalog recovery has its own bounded verification and approval flow.
+        retry:
+          maximum_attempts: 1
+        sequence:
+        - id: squash_cell_catalog
+          op: squash
+          inputs:
+            commit_message: Register approved new cells
+        - id: merge_cell_catalog
+          op: merge
+          retry:
+            maximum_attempts: 1
+        outputs:
+          merged_hash: ${{ sequence.merge_cell_catalog.outputs.merged_hash }}
+          target_branch: ${{ sequence.merge_cell_catalog.outputs.target_branch }}
       failed:
         sequence: []
       registration_repair:
@@ -254,19 +263,18 @@ sequence:
     annotations: >-
       ${{ states.review.outputs.?annotations.orValue([]) + (state_exists('register') ? states.register.outputs.turn.?annotations.orValue([]) : []) }}
     disposition: |-
-      ${{ state_exists('publish_cell_catalog') ? (states.publish_cell_catalog.outputs.?error.orValue('') == '' ? 'created' : 'registration_failed')
+      ${{ state_exists('publish_cell_catalog') ? 'created'
         : state_exists('apply_catalog') ? 'registration_failed'
         : state_exists('publish') ? 'publication_failed' : states.review.outputs.disposition }}
     created_cells: ${{ state_output('publish', 'created', []) }}
-    merged: ${{ state_exists('publish_cell_catalog') && states.publish_cell_catalog.outputs.?error.orValue('') ==
-      '' }}
+    merged: ${{ state_exists('publish_cell_catalog') }}
     merged_hash: ${{ state_output('publish_cell_catalog', 'merged_hash', '') }}
     session: '${{ state_exists(''register'') ? states.register.outputs.turn.result.?session.orValue(states.review.outputs.session)
       : states.review.outputs.session }}'
     summary: '${{ state_exists(''register'') ? states.register.outputs.turn.result.?response.orValue({}).?summary.orValue(''Root
       registration did not complete.'') : states.review.outputs.summary }}'
     error: |-
-      ${{ state_exists('publish_cell_catalog') ? states.publish_cell_catalog.outputs.?error.orValue('')
+      ${{ state_exists('publish_cell_catalog') ? ''
         : state_exists('apply_catalog') ? 'Cell repositories were published, but root registration did not complete.'
         : state_output('publish', 'error', '') }}
     review: ${{ states.review.outputs.review }}
@@ -274,6 +282,7 @@ sequence:
       ${{ jq([states.review.outputs.documents,
         {'created.json': {'kind': 'value', 'name': 'created.json', 'format': 'json', 'value': state_output('publish', 'created', [])},
          'initializations.json': {'kind': 'value', 'name': 'initializations.json', 'format': 'json', 'value': state_output('publish', 'initializations', [])} },
+        state_output('publish', 'artifact_refs', {}),
         state_output('catalog_recovery', 'documents', {}),
         state_output('registration_repair', 'documents', {}),
         state_exists('register') ? jq(states.register.outputs.turn.artifacts, 'with_entries(select(.key == "completion.md"))') : {}], 'add') }}

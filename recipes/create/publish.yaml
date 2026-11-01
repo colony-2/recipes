@@ -1,5 +1,7 @@
 id: publish-cells
 version: 1.0.0
+retry:
+  maximum_attempts: 1
 inputs:
   cells: ${{ inputs.cells }}
   documents: ${{ inputs.documents }}
@@ -29,13 +31,13 @@ state:
           purpose: ${{ inputs.documents[inputs.cells[inputs.index].purpose_path] }}
           initialize_recipe: ${{ inputs.initialize_recipe }}
           review: ${{ inputs.review }}
+          created: ${{ inputs.created }}
+          initializations: ${{ inputs.initializations }}
           approval: '${{ {''kind'': ''value'', ''name'': ''creation-approval.json'', ''format'': ''json'', ''value'':
             {''review'': inputs.review, ''cell'': inputs.cells[inputs.index], ''root_job'': context.workflow.job_id}
             } }}'
         outputs:
-          error: '${{ sequence.await_initialization.outputs.status != ''completed'' ? sequence.await_initialization.outputs.failure_message
-            : sequence.await_initialization.outputs.outputs.?error.orValue(''Initialization returned no result.'')
-            }}'
+          error: ${{ sequence.await_initialization.outputs.outputs.?error.orValue('Initialization returned no result.') }}
           published: ${{ sequence.await_initialization.outputs.outputs.?published.orValue({}) }}
           job_id: ${{ sequence.launch_initialization.outputs.job_ids[0] }}
         sequence:
@@ -46,24 +48,37 @@ state:
             recipes: '${{ [{''cell_name'': context.workspace.cell, ''git'': {''base_repo'': context.git.repo, ''base_ref'':
               ''main'', ''base_hash'': '''', ''author'': context.git.author}, ''name'': inputs.initialize_recipe, ''inputs'': {''cell'': inputs.cell.name,
               ''purpose'': inputs.purpose, ''approval'': inputs.approval} }] }}'
+        - id: record_pending
+          include: ./publication-record.yaml
+          inputs:
+            created: ${{ inputs.created }}
+            initializations: >-
+              ${{ inputs.initializations + [{'job_id': sequence.launch_initialization.outputs.job_ids[0],
+                'cell': inputs.cell, 'status': 'pending'}] }}
         - id: await_initialization
-          op: recipe.await_result_soft
+          op: recipe.await_result
           inputs:
             target:
               job: ${{ sequence.launch_initialization.outputs.job_ids[0] }}
             wait:
               'on': job
-              condition: complete
-            return_when: terminal
+              condition: success
+      - id: record_completed
+        include: ./publication-record.yaml
+        inputs:
+          created: >-
+            ${{ sequence.cell.outputs.error == '' && nonempty(sequence.cell.outputs.published.?revision.orValue(''))
+              ? inputs.created + [sequence.cell.outputs.published] : inputs.created }}
+          initializations: >-
+            ${{ inputs.initializations + [{'job_id': sequence.cell.outputs.job_id,
+              'cell': inputs.cells[inputs.index], 'error': sequence.cell.outputs.error, 'status': 'completed'}] }}
       outputs:
         index: ${{ inputs.index }}
         error: '${{ sequence.cell.outputs.error != '''' ? sequence.cell.outputs.error : (!nonempty(sequence.cell.outputs.published.?revision.orValue(''''))
           ? ''Initialization returned no published revision.'' : '''') }}'
-        created: |-
-          ${{ sequence.cell.outputs.?error.orValue('') == ''
-            ? inputs.created + [sequence.cell.outputs.published] : inputs.created }}
-        initializations: '${{ inputs.initializations + [{''job_id'': sequence.cell.outputs.job_id, ''cell'': inputs.cells[inputs.index],
-          ''error'': sequence.cell.outputs.error}] }}'
+        created: ${{ sequence.record_completed.outputs.created }}
+        initializations: ${{ sequence.record_completed.outputs.initializations }}
+        artifact_refs: ${{ sequence.record_completed.outputs.artifact_refs }}
       transitions:
       - to: publish
         when: outputs.error == '' && int(outputs.index) + 1 < size(inputs.cells)
@@ -75,3 +90,4 @@ outputs:
   created: ${{ states.publish.outputs.created }}
   error: ${{ states.publish.outputs.error }}
   initializations: ${{ states.publish.outputs.initializations }}
+  artifact_refs: ${{ states.publish.outputs.artifact_refs }}

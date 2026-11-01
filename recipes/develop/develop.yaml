@@ -12,6 +12,9 @@ inputs:
   consultation_recipe: ${{ inputs.consultation_recipe }}
   build_recipe: ${{ inputs.build_recipe }}
   create_recipe: ${{ inputs.create_recipe }}
+  prior_rebase_repairs: ${{ inputs.?prior_rebase_repairs.orValue(0) }}
+  prior_rebase_recovery_pending: ${{ inputs.?prior_rebase_recovery_pending.orValue(false) }}
+  prior_rebase_recovery: ${{ inputs.?prior_rebase_recovery.orValue({}) }}
   prior_merge_chases: ${{ inputs.?prior_merge_chases.orValue(0) }}
   prior_dependencies: ${{ inputs.?prior_dependencies.orValue({}) }}
   prior_consultations: ${{ inputs.?prior_consultations.orValue({}) }}
@@ -55,18 +58,24 @@ state:
         consultation_recipe: ${{ inputs.consultation_recipe }}
         build_recipe: ${{ inputs.build_recipe }}
         create_recipe: ${{ inputs.create_recipe }}
+        prior_rebase_repairs: ${{ inputs.prior_rebase_repairs }}
+        prior_rebase_recovery_pending: ${{ inputs.prior_rebase_recovery_pending }}
+        prior_rebase_recovery: ${{ inputs.prior_rebase_recovery }}
         prior_merge_chases: ${{ inputs.prior_merge_chases }}
         prior_dependencies: ${{ inputs.prior_dependencies }}
         prior_consultations: ${{ inputs.prior_consultations }}
         hook_settings: ${{ inputs.hook_settings }}
         settings_artifact: ${{ inputs.settings_artifact }}
         require_verification: ${{ inputs.require_verification }}
-      sequence: []
+      sequence:
+      - id: rebase_policy
+        include: ../kernel/rebase-policy.yaml
       outputs:
+        rebase_policy: ${{ sequence.rebase_policy.outputs.predicate }}
         valid: >-
           ${{ nonempty(inputs.directory) && !inputs.directory.startsWith('/') && !inputs.directory.matches('(^|/)[.][.](/|$)')
           }}
-        flow: "${{ jq([{'phase': 'design', 'last_phase': '', 'message': inputs.request, 'request': inputs.request, 'target_directory': inputs.directory, 'session': inputs.session, 'annotations': inputs.annotations, 'documents': inputs.documents, 'threads': inputs.prior_consultations, 'jobs': inputs.prior_dependencies, 'merge_chases': inputs.prior_merge_chases, 'approved': [], 'plan_keys': [], 'reviews': {}, 'root_cell': inputs.root_cell, 'root_ref': inputs.root_ref, 'consultation_recipe': inputs.consultation_recipe, 'build_recipe': inputs.build_recipe, 'create_recipe': inputs.create_recipe}, {'hook_settings': inputs.hook_settings, 'settings_artifact': inputs.settings_artifact, 'require_verification': inputs.require_verification}], 'add') }}"
+        flow: "${{ jq([{'phase': 'design', 'last_phase': '', 'message': inputs.request, 'request': inputs.request, 'target_directory': inputs.directory, 'session': inputs.session, 'annotations': inputs.annotations, 'documents': inputs.documents, 'threads': inputs.prior_consultations, 'jobs': inputs.prior_dependencies, 'merge_chases': inputs.prior_merge_chases, 'rebase_repairs': inputs.prior_rebase_repairs, 'rebase_recovery': inputs.prior_rebase_recovery, 'rebase_recovery_pending': inputs.prior_rebase_recovery_pending, 'approved': [], 'plan_keys': [], 'reviews': {}, 'root_cell': inputs.root_cell, 'root_ref': inputs.root_ref, 'consultation_recipe': inputs.consultation_recipe, 'build_recipe': inputs.build_recipe, 'create_recipe': inputs.create_recipe}, {'hook_settings': inputs.hook_settings, 'settings_artifact': inputs.settings_artifact, 'require_verification': inputs.require_verification}], 'add') }}"
       transitions:
       - to: reject_invalid_build_request
         when: '!outputs.valid'
@@ -421,6 +430,8 @@ state:
         payload:
           flow: ${{ outputs.flow }}
     rebase:
+      retry:
+        max_attempts: 1
       inputs:
         flow: ${{ transition.payload.flow }}
       sequence:
@@ -436,13 +447,42 @@ state:
             git ls-remote --exit-code -- "$REPO" "refs/heads/${BRANCH#refs/heads/}"
       - id: rebase_candidate
         op: rebase
+        retry:
+          max_attempts: 1
         inputs:
           target_base_hash: ${{ jq(sequence.resolve_upstream_head.outputs.stdout, 'split("\t")[0]') }}
       outputs:
-        flow: ${{ inputs.flow }}
+        flow: ${{ jq(inputs.flow, 'del(.rebase_recovery_pending)') }}
       transitions:
       - to: prepare
         when: 'true'
+        payload:
+          flow: ${{ outputs.flow }}
+      catch:
+      - id: repair_restored_rebase_conflict
+        # A failed child has no outputs. Guard the versioned native envelope and
+        # preserve the original failure when evidence or recovery allowance is absent.
+        when: >-
+          transition.payload.flow.?rebase_repairs.orValue(0) < 2 &&
+          jq(json_parse(json_stringify(failure)), states.start.outputs.rebase_policy)
+        to: rebase_repair
+        payload:
+          flow: ${{ transition.payload.flow }}
+    rebase_repair:
+      inputs:
+        flow: ${{ transition.payload.flow }}
+        failure: ${{ transition.failure }}
+      sequence:
+      - id: recovery
+        include: ../kernel/rebase-recovery.yaml
+        inputs:
+          flow: ${{ inputs.flow }}
+          failure: ${{ inputs.failure }}
+      outputs:
+        flow: ${{ sequence.recovery.outputs.flow }}
+      transitions:
+      - to: work
+        when: true
         payload:
           flow: ${{ outputs.flow }}
     inspect_chased_candidate:
@@ -868,3 +908,4 @@ outputs:
     ${{ state_output('merge', 'flow', state_output('stopped', 'flow', state_output('record', 'flow', {}))).?verification.orValue({})
     }}
   publication: ${{ state_output('merge', 'flow', {}).?publication.orValue({}) }}
+  rebase_repairs: ${{ state_output('merge', 'flow', state_output('stopped', 'flow', state_output('record', 'flow', {}))).?rebase_repairs.orValue(0) }}

@@ -1,0 +1,41 @@
+recipe: fixtures/rebase-native-repair.yaml
+cases:
+- id: clean-restored-candidate-repaired-and-refreshed
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          candidate.txt: original
+    observe_files: [candidate.txt, upstream.txt]
+  mocks:
+    ops:
+    - repeat: true
+      match: {op: command_execution}
+      behavior: {mode: passthrough}
+  assertions:
+  - type: cel_true
+    expr: outputs.refreshed && outputs.flow.rebase_repairs == 1 && outputs.flow.merge_chases == 2
+  - type: cel_true
+    expr: >-
+      outputs.flow.session.retained && outputs.flow.approved == ["prerequisite"] &&
+      outputs.flow.reviews.design == "approved" && !has(outputs.flow.reviews.outcome) &&
+      !has(outputs.flow.verification) && !has(outputs.flow.reuse_merge_approval) &&
+      !has(outputs.flow.chase_pending) && !has(outputs.flow.reviewed_change_digest)
+  - type: cel_true
+    expr: >-
+      outputs.flow.rebase_recovery.code == "REBASE_CONFLICT" &&
+      outputs.flow.rebase_recovery.attrs.rebase.workspace_restored &&
+      outputs.flow.rebase_recovery.attrs.rebase.conflicts.exists(c, c.path == "candidate.txt")
+  - type: cel_true
+    expr: >-
+      calls.exists(c, c.node_path.endsWith("/repair/sequence/reconcile") &&
+      "rebase-repair-1/_c2j/rebase/conflict-index.z" in c.artifacts &&
+      "rebase-repair-1/failure.json" in c.artifacts && "design.md" in c.artifacts &&
+      "test-statements.md" in c.artifacts)
+  - type: cel_true
+    expr: size(calls.filter(c, c.op == "rebase")) == 2
+  - type: cel_true
+    expr: >-
+      outputs.flow.rebase_recovery_pending &&
+      outputs.flow.documents["rebase-repair-1/failure.json"].name == "rebase-repair-1/failure.json"

@@ -7,20 +7,43 @@ input_schema:
   occupied:
     type: string
     default_value: ''
+  reject_publication:
+    type: string
+    default_value: ''
+  capture_failure:
+    type: boolean
+    default_value: false
+  advance_catalog:
+    type: boolean
+    default_value: false
 inputs:
   prompt: ${{ inputs.prompt }}
   occupied: ${{ inputs.?occupied.orValue('') }}
+  reject_publication: ${{ inputs.?reject_publication.orValue('') }}
+  capture_failure: ${{ inputs.?capture_failure.orValue(false) }}
+  advance_catalog: ${{ inputs.?advance_catalog.orValue(false) }}
+# Optional test boundary: production create remains uncaught. Most failure tests
+# use expect_error; this boundary is only for inspecting structured identity.
+catch:
+- when: inputs.capture_failure
+  continue:
+    outputs:
+      failed: true
+      failure: ${{ json_parse(json_stringify(failure)) }}
 sequence:
 - id: prepare
   include: ./prepare-create-remotes.yaml
   inputs:
     occupied: ${{ inputs.occupied }}
+    reject_publication: ${{ inputs.reject_publication }}
+    advance_catalog: ${{ inputs.advance_catalog }}
 - id: run
   include: ../../create.yaml
   inputs:
     prompt: ${{ inputs.prompt }}
     initialize_recipe: ${{ 'git+file://' + context.git.repo + '//.c2/recipes/initialize.yaml@main' }}
 outputs:
+  failed: false
   disposition: ${{ sequence.run.outputs.disposition }}
   created_cells: ${{ sequence.run.outputs.created_cells }}
   merged: ${{ sequence.run.outputs.merged }}

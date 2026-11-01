@@ -1,0 +1,324 @@
+# Real child jobs and Git pushes; only model decisions and targeted routing errors are mocked.
+recipe: fixtures/create-main.yaml
+cases:
+- id: initial-push-rejection-fails-creation
+  type: integration_case
+  inputs:
+    prompt: Create the approved cells.
+    reject_publication: alpha
+  runtime: &creation_runtime
+    cells:
+      root:
+        files:
+          PURPOSE.md: Project root
+          keep.txt: original
+        file_sources:
+          .c2/recipes/initialize.yaml: ../recipes/create/initialize.yaml
+      alpha: {}
+      beta: {}
+    responses:
+    - node_path: create-main/run/create/root/review/review/creation-review/review/sequence/review/kernel-review/request_human_review
+      fields:
+        decision: approve
+  mocks:
+    ops:
+    - &proposal
+      match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: review
+            summary: Creation proposal
+            cells:
+            - name: alpha
+              repo: alpha
+              purpose_path: cells/alpha/PURPOSE.md
+            - name: beta
+              repo: beta
+              purpose_path: cells/beta/PURPOSE.md
+            files:
+            - path: proposal.md
+              description: Review document
+            - path: cells/alpha/PURPOSE.md
+              description: Review document
+            - path: cells/beta/PURPOSE.md
+              description: Review document
+            - path: root-config.yaml
+              description: Exact approved root configuration
+            questions: []
+        artifacts:
+          proposal.md: |-
+            # Proposed cells
+            Project fit, excluded alternatives, technology guidance and root catalog entries.
+          cells/alpha/PURPOSE.md: |
+            # alpha
+            Approved responsibilities.
+          cells/beta/PURPOSE.md: |
+            # beta
+            Approved responsibilities.
+          root-config.yaml: |
+            dependents:
+              - repo: alpha
+                ref: main
+              - repo: beta
+                ref: main
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: creation-review
+    - &commands
+      repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: repositories.root.new_commits == 0
+  - type: cel_true
+    expr: '!calls.exists(c, (c.op == "rebase" || (c.op == "squashrebasemerge" && c.cell == "root")))'
+  - type: cel_true
+    expr: '!calls.exists(c, c.node_path.contains("/apply_catalog/") || (c.op == "merge" && c.cell == "root"))'
+  - type: cel_true
+    expr: size(calls.filter(c, c.op == "recipes.run")) == 1
+  - type: cel_true
+    expr: repositories.alpha.new_commits == 0 && repositories.beta.new_commits == 0
+  - type: cel_true
+    expr: calls.exists(c, c.node_path.endsWith("record_pending/creation-publication-record/record") && c.outputs.success
+      && c.artifacts["initializations.json"].contains("job_id") && c.artifacts["initializations.json"].contains("pending"))
+  expect_error: publication-denied
+- id: later-push-rejection-retains-published-cell
+  type: integration_case
+  inputs:
+    prompt: Create the approved cells.
+    reject_publication: beta
+  runtime: *creation_runtime
+  mocks:
+    ops:
+    - *proposal
+    - *commands
+  assertions:
+  - type: cel_true
+    expr: repositories.root.new_commits == 0
+  - type: cel_true
+    expr: '!calls.exists(c, (c.op == "rebase" || (c.op == "squashrebasemerge" && c.cell == "root")))'
+  - type: cel_true
+    expr: '!calls.exists(c, c.node_path.contains("/apply_catalog/") || (c.op == "merge" && c.cell == "root"))'
+  - type: cel_true
+    expr: size(calls.filter(c, c.op == "recipes.run")) == 2
+  - type: cel_true
+    expr: calls.exists(c, c.op == "squashrebasemerge" && c.cell == "alpha" && "outputs" in c && size(c.outputs.merged_hash)
+      == 40) && repositories.beta.new_commits == 0
+  - type: cel_true
+    expr: calls.exists(c, c.node_path.endsWith("record_pending/creation-publication-record/record") && c.outputs.success
+      && c.artifacts["created.json"].contains('"cell":"alpha"') && c.artifacts["created.json"].contains("revision")
+      && c.artifacts["initializations.json"].contains('"name":"beta"'))
+  expect_error: publication-denied
+- id: catalog-push-rejection-fails-creation
+  type: integration_case
+  inputs:
+    prompt: Create the approved cells.
+    reject_publication: root
+  runtime: *creation_runtime
+  mocks:
+    ops:
+    - *proposal
+    - &registration
+      match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            completed: true
+            summary: Registered published cells
+        artifacts:
+          completion.md: |-
+            # Created cells
+            Continue with feature consultations.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                phase: registered
+          worktree:
+            CELL_DESCRIPTIONS.md: |-
+              # Cells
+              alpha and beta: approved responsibilities.
+            .c2/config.yaml: |
+              dependents:
+                - repo: alpha
+                  ref: main
+                - repo: beta
+                  ref: main
+    - *commands
+  assertions:
+  - type: cel_true
+    expr: repositories.root.new_commits == 0
+  - type: cel_true
+    expr: '!calls.exists(c, (c.op == "rebase" || (c.op == "squashrebasemerge" && c.cell == "root")))'
+  - type: cel_true
+    expr: calls.exists(c, c.op == "squashrebasemerge" && c.cell == "alpha" && "outputs" in c && size(c.outputs.merged_hash)
+      == 40) && calls.exists(c, c.op == "squashrebasemerge" && c.cell == "beta" && "outputs" in c && size(c.outputs.merged_hash)
+      == 40)
+  - type: cel_true
+    expr: calls.exists(c, c.node_path.endsWith("record_completed/creation-publication-record/record") && c.outputs.success
+      && c.artifacts["created.json"].contains('"cell":"alpha"') && c.artifacts["created.json"].contains('"cell":"beta"'))
+  expect_error: publication-denied
+- id: initial-403-preserves-original-failure
+  type: integration_case
+  inputs:
+    prompt: Create the approved cells.
+    capture_failure: true
+  runtime: *creation_runtime
+  mocks:
+    ops:
+    - match:
+        op: squashrebasemerge
+        cell: alpha
+      behavior:
+        mode: fail
+        error:
+          message: 'HTTP 403: no discoverable writable refs'
+    - *proposal
+    - *commands
+  assertions:
+  - type: cel_true
+    expr: outputs.failed && outputs.failure.kind == "task_error" && !has(outputs.failure.code)
+  - type: cel_true
+    expr: outputs.failure.node.op == "squashrebasemerge" && outputs.failure.node.id == "publish_new_cell"
+  - type: cel_true
+    expr: 'outputs.failure.message == "HTTP 403: no discoverable writable refs"'
+  - type: cel_true
+    expr: '!calls.exists(c, (c.op == "rebase" || (c.op == "squashrebasemerge" && c.cell == "root")))'
+  - type: cel_true
+    expr: repositories.root.new_commits == 0
+- id: root-merge-preserves-original-failure
+  type: integration_case
+  inputs:
+    prompt: Create the approved cells.
+    capture_failure: true
+  runtime: *creation_runtime
+  mocks:
+    ops:
+    - match:
+        op: merge
+        cell: root
+      behavior:
+        mode: fail
+        error:
+          message: 'HTTP 403: no discoverable writable refs'
+    - *proposal
+    - *registration
+    - *commands
+  assertions:
+  - type: cel_true
+    expr: outputs.failed && outputs.failure.kind == "task_error" && !has(outputs.failure.code)
+  - type: cel_true
+    expr: outputs.failure.node.op == "merge" && outputs.failure.node.id == "merge_cell_catalog"
+  - type: cel_true
+    expr: 'outputs.failure.message == "HTTP 403: no discoverable writable refs"'
+  - type: cel_true
+    expr: '!calls.exists(c, (c.op == "rebase" || (c.op == "squashrebasemerge" && c.cell == "root")))'
+  - type: cel_true
+    expr: repositories.root.new_commits == 0
+- id: alpha-preparation-preserves-original-failure
+  type: integration_case
+  inputs:
+    prompt: Create the approved cells.
+    capture_failure: true
+  runtime: *creation_runtime
+  mocks:
+    ops:
+    - match:
+        op: squashrebasemerge
+        cell: alpha
+      behavior:
+        mode: fail
+        error:
+          message: Could not prepare approved publication
+    - *proposal
+    - *commands
+  assertions:
+  - type: cel_true
+    expr: outputs.failed && outputs.failure.kind == "task_error" && !has(outputs.failure.code)
+  - type: cel_true
+    expr: outputs.failure.node.op == "squashrebasemerge" && outputs.failure.node.id == "publish_new_cell"
+  - type: cel_true
+    expr: outputs.failure.message == "Could not prepare approved publication"
+  - type: cel_true
+    expr: '!calls.exists(c, (c.op == "rebase" || (c.op == "squashrebasemerge" && c.cell == "root")))'
+  - type: cel_true
+    expr: repositories.root.new_commits == 0
+  - type: cel_true
+    expr: '!calls.exists(c, c.op == "merge" && c.cell == "alpha")'
+- id: root-squash-preserves-original-failure
+  type: integration_case
+  inputs:
+    prompt: Create the approved cells.
+    capture_failure: true
+  runtime: *creation_runtime
+  mocks:
+    ops:
+    - match:
+        op: squash
+        cell: root
+      behavior:
+        mode: fail
+        error:
+          message: Could not prepare approved publication
+    - *proposal
+    - *registration
+    - *commands
+  assertions:
+  - type: cel_true
+    expr: outputs.failed && outputs.failure.kind == "task_error" && !has(outputs.failure.code)
+  - type: cel_true
+    expr: outputs.failure.node.op == "squash" && outputs.failure.node.id == "squash_cell_catalog"
+  - type: cel_true
+    expr: outputs.failure.message == "Could not prepare approved publication"
+  - type: cel_true
+    expr: '!calls.exists(c, (c.op == "rebase" || (c.op == "squashrebasemerge" && c.cell == "root")))'
+  - type: cel_true
+    expr: repositories.root.new_commits == 0
+  - type: cel_true
+    expr: '!calls.exists(c, c.op == "merge" && c.cell == "root")'
+- id: catalog-advancement-propagates-without-rebase
+  type: integration_case
+  inputs:
+    prompt: Create the approved cells.
+    advance_catalog: true
+    capture_failure: true
+  runtime: *creation_runtime
+  mocks:
+    ops:
+    - *proposal
+    - *registration
+    - *commands
+  assertions:
+  - type: cel_true
+    expr: outputs.failed && outputs.failure.code == "MERGE_UPSTREAM_ADVANCED"
+  - type: cel_true
+    expr: outputs.failure.node.op == "merge" && outputs.failure.node.id == "merge_cell_catalog"
+  - type: cel_true
+    expr: outputs.failure.attrs.phase == "push" && outputs.failure.attrs.push_error.contains("fixture-catalog-advanced")
+  - type: cel_true
+    expr: '!calls.exists(c, (c.op == "rebase" || (c.op == "squashrebasemerge" && c.cell == "root"))) && size(calls.filter(c,
+      c.op == "merge" && c.cell == "root")) == 1'
+  - type: cel_true
+    expr: size(calls.filter(c, c.op == "recipes.run")) == 2 && size(reviews) == 1
+  - type: cel_true
+    expr: repositories.root.new_commits == 1 && !(".c2/config.yaml" in repositories.root.files)
+  - type: cel_true
+    expr: calls.exists(c, c.op == "squashrebasemerge" && c.cell == "alpha" && "outputs" in c && size(c.outputs.merged_hash)
+      == 40) && calls.exists(c, c.op == "squashrebasemerge" && c.cell == "beta" && "outputs" in c && size(c.outputs.merged_hash)
+      == 40)

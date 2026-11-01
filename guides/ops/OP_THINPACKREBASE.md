@@ -24,6 +24,14 @@ history, unavailable ancestry, uncommitted changes, and conflicts remain errors.
 The `git_context_patch` output is descriptive; the native op applies an explicit
 workspace persistence update. Arbitrary outputs with that name do not update it.
 
+For structured failures use c2j `e7e2184f843500db9d6fe3dd2b6149a25de26aba`
+or a build containing that change. `REBASE_CONFLICT` carries versioned hashes,
+conflict paths, restoration status, and durable diagnostic refs in
+`failure.attrs.rebase`. Failed replay aborts and retains the original candidate;
+there is no active rebase to continue on the next worker. See the
+[native contract](../../thinpackrebase-op-spec.md) and
+[bounded build recovery policy](OP_GIT_INTEGRATION.md#structured-rebase-conflict-recovery).
+
 ## Input Structure
 
 ```json

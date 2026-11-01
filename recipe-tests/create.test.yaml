@@ -114,7 +114,7 @@ cases:
   - type: cel_true
     expr: repositories.root.files[".c2/config.yaml"].contains("alpha")
   - type: cel_true
-    expr: size(calls.filter(c, c.op == "squashrebasemerge")) == 3
+    expr: size(calls.filter(c, c.op == "squashrebasemerge")) == 2 && size(calls.filter(c, c.op == "merge")) == 1 && size(calls.filter(c, c.op == "squash")) == 1 && !calls.exists(c, c.op == "rebase")
   - type: cel_true
     expr: calls.filter(c, c.op == "extension_execution")[1].artifacts["created.json"].contains("revision")
   - type: cel_true
@@ -177,7 +177,7 @@ cases:
   - type: cel_true
     expr: outputs.disposition == "declined" && size(outputs.created_cells) == 0 && !outputs.merged
   - type: cel_true
-    expr: '!calls.exists(c, c.op == "squashrebasemerge") && size(reviews) == 0'
+    expr: '!calls.exists(c, c.op in ["squash", "merge", "squashrebasemerge"]) && size(reviews) == 0'
 - id: redirected
   type: integration_case
   inputs:
@@ -229,7 +229,7 @@ cases:
   - type: cel_true
     expr: outputs.disposition == "redirected" && size(outputs.created_cells) == 0 && !outputs.merged
   - type: cel_true
-    expr: '!calls.exists(c, c.op == "squashrebasemerge") && size(reviews) == 0'
+    expr: '!calls.exists(c, c.op in ["squash", "merge", "squashrebasemerge"]) && size(reviews) == 0'
 - id: cancel
   type: integration_case
   inputs:
@@ -300,7 +300,7 @@ cases:
   - type: cel_true
     expr: outputs.disposition == "cancelled" && !outputs.merged
   - type: cel_true
-    expr: '!calls.exists(c, c.op == "squashrebasemerge")'
+    expr: '!calls.exists(c, c.op in ["squash", "merge", "squashrebasemerge"])'
 - id: missing-purpose
   type: integration_case
   inputs:
@@ -445,6 +445,7 @@ cases:
     expr: outputs.disposition == "cancelled" && !outputs.merged
 - id: existing-branch
   type: integration_case
+  expect_error: destination must be absent
   inputs:
     prompt: Create the approved cells.
     occupied: alpha
@@ -512,11 +513,10 @@ cases:
         mode: passthrough
   assertions:
   - type: cel_true
-    expr: outputs.disposition == "publication_failed" && !outputs.merged
-  - type: cel_true
-    expr: size(outputs.created_cells) == 0
-  - type: cel_true
     expr: repositories.alpha.new_commits == 0 && repositories.root.new_commits == 0
+  - type: cel_true
+    expr: '!calls.exists(c, c.node_path.contains("/apply_catalog/") || (c.op == "merge" && c.cell == "root"))'
+
 - id: revise-then-cancel
   type: integration_case
   inputs:
@@ -630,7 +630,7 @@ cases:
         mode: passthrough
   assertions:
   - type: cel_true
-    expr: size(reviews) == 2 && !calls.exists(c, c.op == "squashrebasemerge")
+    expr: size(reviews) == 2 && !calls.exists(c, c.op in ["squash", "merge", "squashrebasemerge"])
   - type: cel_true
     expr: calls.filter(c, c.op == "extension_execution")[1].inputs.inputs.session == calls.filter(c, c.op == "extension_execution")[0].outputs.session
   - type: cel_true
@@ -751,7 +751,7 @@ cases:
         mode: passthrough
   assertions:
   - type: cel_true
-    expr: size(reviews) == 2 && !calls.exists(c, c.op == "squashrebasemerge")
+    expr: size(reviews) == 2 && !calls.exists(c, c.op in ["squash", "merge", "squashrebasemerge"])
 - id: registration-incomplete
   type: integration_case
   inputs:
@@ -860,11 +860,12 @@ cases:
   - type: cel_true
     expr: repositories.root.new_commits == 0
   - type: cel_true
-    expr: size(calls.filter(c, c.op == "squashrebasemerge")) == 2
+    expr: size(calls.filter(c, c.op == "squashrebasemerge")) == 2 && !calls.exists(c, c.op in ["rebase", "squash", "merge"])
   - type: cel_true
     expr: outputs.disposition == "registration_failed" && !outputs.merged
 - id: later-publication-fails
   type: integration_case
+  expect_error: destination must be absent
   inputs:
     prompt: Create the approved cells.
     occupied: beta
@@ -944,9 +945,10 @@ cases:
   - type: cel_true
     expr: size(calls.filter(c, c.op == "extension_execution")) == 1
   - type: cel_true
-    expr: outputs.disposition == "publication_failed" && !outputs.merged
+    expr: calls.exists(c, c.node_path.endsWith("record_pending/creation-publication-record/record") && c.outputs.success && c.artifacts["created.json"].contains('"cell":"alpha"') && c.artifacts["created.json"].contains('"revision":'))
   - type: cel_true
-    expr: size(outputs.created_cells) == 1 && outputs.created_cells[0].cell == "alpha"
+    expr: '!calls.exists(c, c.node_path.contains("/apply_catalog/") || (c.op == "merge" && c.cell == "root"))'
+
 - id: failed-model-result
   type: integration_case
   inputs:
@@ -980,7 +982,7 @@ cases:
   - type: cel_true
     expr: outputs.disposition == "invalid" && !outputs.merged
   - type: cel_true
-    expr: size(reviews) == 0 && !calls.exists(c, c.op == "squashrebasemerge")
+    expr: size(reviews) == 0 && !calls.exists(c, c.op in ["squash", "merge", "squashrebasemerge"])
 - id: clarification-then-cancel
   type: integration_case
   inputs:
@@ -1239,7 +1241,7 @@ cases:
   - type: cel_true
     expr: repositories.alpha.new_commits == 0 && repositories.root.new_commits == 0
   - type: cel_true
-    expr: '!calls.exists(c, c.op == "squashrebasemerge")'
+    expr: '!calls.exists(c, c.op in ["squash", "merge", "squashrebasemerge"])'
 - id: creation-resolves-linked-purpose-references
   type: integration_case
   inputs:
@@ -1354,7 +1356,7 @@ cases:
   - type: cel_true
     expr: repositories.root.files[".c2/config.yaml"].contains("alpha")
   - type: cel_true
-    expr: size(calls.filter(c, c.op == "squashrebasemerge")) == 3
+    expr: size(calls.filter(c, c.op == "squashrebasemerge")) == 2 && size(calls.filter(c, c.op == "merge")) == 1 && size(calls.filter(c, c.op == "squash")) == 1 && !calls.exists(c, c.op == "rebase")
   - type: cel_true
     expr: calls.filter(c, c.op == "extension_execution")[1].artifacts["created.json"].contains("revision")
   - type: cel_true
@@ -1490,7 +1492,7 @@ cases:
   - type: cel_true
     expr: outputs.disposition == "created" && outputs.merged
   - type: cel_true
-    expr: size(calls.filter(c, c.op == "squashrebasemerge")) == 3
+    expr: size(calls.filter(c, c.op == "squashrebasemerge")) == 2 && size(calls.filter(c, c.op == "merge")) == 1 && size(calls.filter(c, c.op == "squash")) == 1 && !calls.exists(c, c.op == "rebase")
   - type: cel_true
     expr: size(calls.filter(c, c.op == "extension_execution")) == 3
   - type: cel_true
@@ -1605,7 +1607,7 @@ cases:
   - type: cel_true
     expr: calls.filter(c, c.op == "input")[0].node_path.contains("/questions/")
   - type: cel_true
-    expr: '!calls.exists(c, c.op == "squashrebasemerge")'
+    expr: '!calls.exists(c, c.op in ["squash", "merge", "squashrebasemerge"])'
 - id: clarification-with-unresolved-optional-references
   type: integration_case
   inputs:
@@ -1723,7 +1725,7 @@ cases:
   - type: cel_true
     expr: calls.filter(c, c.op == "input")[0].node_path.contains("/questions/")
   - type: cel_true
-    expr: '!calls.exists(c, c.op == "squashrebasemerge")'
+    expr: '!calls.exists(c, c.op in ["squash", "merge", "squashrebasemerge"])'
 - id: invalid-approved-catalog-recovers-without-republication
   type: integration_case
   inputs:
@@ -1804,7 +1806,7 @@ cases:
   - type: cel_true
     expr: size(outputs.created_cells) == 2 && !outputs.merged
   - type: cel_true
-    expr: size(calls.filter(c, c.op == "squashrebasemerge")) == 2 && size(reviews) == 2
+    expr: size(calls.filter(c, c.op == "squashrebasemerge")) == 2 && !calls.exists(c, c.op in ["rebase", "squash", "merge"]) && size(reviews) == 2
   - type: cel_true
     expr: '!(".c2/config.yaml" in repositories.root.changed_files)'
 - id: omitted-catalog-cell-cannot-establish-registration
@@ -1889,6 +1891,6 @@ cases:
   - type: cel_true
     expr: size(outputs.created_cells) == 2 && !outputs.merged
   - type: cel_true
-    expr: size(calls.filter(c, c.op == "squashrebasemerge")) == 2 && size(reviews) == 2
+    expr: size(calls.filter(c, c.op == "squashrebasemerge")) == 2 && !calls.exists(c, c.op in ["rebase", "squash", "merge"]) && size(reviews) == 2
   - type: cel_true
     expr: '!(".c2/config.yaml" in repositories.root.changed_files)'

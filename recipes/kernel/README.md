@@ -224,6 +224,14 @@ They cover propagation through includes to a caller catch, consultation and
 assessment errors, rejection diagnostics, and normal completed-result routing. Their fast
 cases mock operations; the invalid-directory case uses the native runtime.
 
+`rebase-policy.yaml` exports the shared structured-conflict predicate used inside
+both build state catches. `rebase-recovery.yaml` preserves the original failure,
+namespaces its durable diagnostics, increments the separate two-repair allowance,
+and clears candidate-dependent approval and verification before returning to the
+implementation session. Only confirmed restored conflicts with complete evidence
+can enter this path; other failures retain their original propagation. See
+[the Git integration guide](../../guides/ops/OP_GIT_INTEGRATION.md#structured-rebase-conflict-recovery).
+
 Run the native suites with a current c2j and the op's declared tools available:
 
 ```sh

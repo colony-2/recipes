@@ -19,7 +19,11 @@ Creation has three publication boundaries:
 2. `publish.yaml` resolves an `initial: empty` workspace and submits a separate
    `initialize.yaml` job inheriting that empty workspace. The child is owned by
    the destination cell, receives the exact approved purpose and approval artifact,
-   and publishes `main` through `squashrebasemerge`. It does not fetch an absent
+   and publishes `main` through `squashrebasemerge` in its empty-workspace mode.
+   Its failures propagate without advancement recovery. The initial operation
+   is retained because separate native squash changes the configured committer
+   in the tested runtime; see the [validation report](../../recipe-tests/creation-publication-validation.md).
+   It does not fetch an absent
    target or discover a recipe from that target. `initialize_recipe` defaults to
    the shared initialization selector; override it to test an unpublished revision.
    The root job never pushes the new repository itself.
@@ -28,7 +32,8 @@ Creation has three publication boundaries:
    the approved bytes into `.c2/config.yaml`. Existing settings, dependent entries,
    and discovery configuration must be preserved. The root agent verifies registration
    read-only and supplies `completion.md`; it cannot silently rewrite approved
-   contents. Root publishes its catalog change separately.
+   contents. Root squashes and merges its catalog change separately, without
+   implicitly rebasing after verification.
 
 The native runtime preserves the parent repository while each child publishes
 independent initial history. Gitvend may create an authorized missing repository
@@ -43,8 +48,25 @@ references. `initializations` retains child-job identities and errors, including
 partial publication. Callers require the domain outcome and matching published
 identity; a completed child job alone does not mean a cell is ready.
 
-An existing destination branch is never overwritten. Initialization failures
-return `publication_failed`, without starting registration. Catalog application
+An existing destination branch is never overwritten. Git publication failures
+fail the initialization job and propagate through the root's required
+`recipe.await_result` wait, without starting registration. Catalog squash or
+merge failures also fail the root creation job. These failures retain native
+diagnostics; there is no catch that converts them into normal recipe outputs.
+Creation publication has no advancement chase or enclosing retry. Catalog
+advancement therefore fails until a dedicated recovery flow can reverify and
+review the candidate with a durable recovery bound.
+
+Completed steps persist `created.json` and `initializations.json` before each
+child wait and after each successful initialization. If a later child fails,
+the pending record identifies its job and retains earlier published revisions.
+If catalog publication fails, the completed record identifies all published
+cells. These artifacts remain in job history even when final recipe outputs
+are unavailable. Use the recorded child job for its terminal diagnostics;
+`pending` describes the checkpoint before waiting, not its eventual status.
+
+Non-publication initialization errors, such as an empty approved purpose,
+retain their `publication_failed` result. Catalog application
 failures enter a human recovery loop; retry only reapplies the approved catalog,
 never publication. Cancellation retains published cells and reports
 `registration_failed`. If root changed during review, reconcile that change
@@ -52,11 +74,15 @@ before retrying; do not overwrite newer configuration.
 
 Incomplete registration evidence resumes the same read-only session. Two automatic
 response corrections are followed by human direction or cancellation. Declared
-registration failure (`completed: false`) or a rejected catalog merge returns
+registration failure (`completed: false`) returns
 `registration_failed` with publication evidence retained. Multiple repositories
 are not an atomic transaction. Do not restart the entire creation request or
 remove successful repositories to recover a later failure. Lost push acknowledgements
 and task replay use c2j's publication reconciliation rather than a fresh child.
+The separate catalog Git operations require c2j v0.0.104 or later; use a runtime with
+the [structured merge contract](../../guides/ops/OP_GIT_INTEGRATION.md) and
+native child-failure propagation. Heavy/light approval reuse after rebase is
+unchanged by this creation correction.
 
 ## Routing and light work
 
@@ -80,3 +106,7 @@ Native suites use disposable repositories, real child jobs, artifacts, reviews,
 and Git publication with mocked model decisions. Live gateway authorization and
 remote repository provisioning remain deployment integration checks. See
 [recovery and creation expectations](../../recipe-tests/recovery-creation-statements.md).
+Publication failure regressions and evidence requirements are listed in
+[creation publication expectations](../../recipe-tests/creation-publication-statements.md).
+See the [validation results](../../recipe-tests/creation-publication-validation.md)
+for native execution coverage and known runtime limitations.

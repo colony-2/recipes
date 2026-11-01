@@ -1,5 +1,7 @@
 id: initialize-cell
 version: 1.0.0
+retry:
+  maximum_attempts: 1
 input_schema:
   cell:
     type: string
@@ -40,21 +42,20 @@ state:
       - to: publish_new_cell
         when: outputs.success
     publish_new_cell:
+      # Keep the existing empty-workspace identity behavior until native squash
+      # preserves its configured committer. Publication errors must propagate.
       id: publish_new_cell
       op: squashrebasemerge
+      retry:
+        maximum_attempts: 1
       inputs:
         commit_message: ${{ 'Create cell ' + inputs.cell.name + ' with approved purpose' }}
-      catch:
-      - when: true
-        continue:
-          outputs:
-            error: ${{ failure.message }}
 outputs:
   error: |-
     ${{ !states.write_approved_purpose.outputs.success ? 'Could not copy a nonempty approved PURPOSE.md.'
-      : states.publish_new_cell.outputs.?error.orValue('') }}
+      : '' }}
   published: |-
-    ${{ states.write_approved_purpose.outputs.success && states.publish_new_cell.outputs.?error.orValue('') == ''
+    ${{ states.write_approved_purpose.outputs.success
       ? {'cell': inputs.cell.name, 'repo': context.git.repo,
          'ref': states.publish_new_cell.outputs.target_branch,
          'revision': states.publish_new_cell.outputs.merged_hash} : {} }}

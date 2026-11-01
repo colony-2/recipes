@@ -38,7 +38,8 @@ the job without another review or merge. If the local changes differ, the
 normal review gates run again. Up to **three chases** are
 allowed after the initial merge attempt; a fourth stale failure propagates from
 the merge op. Revisions and light-to-heavy escalation retain the consumed budget.
-Squash failures, unrelated merge errors, and rebase conflicts propagate normally.
+Squash failures and unrelated merge errors propagate normally. Rebase conflicts
+have the separate bounded recovery policy below.
 
 Approval reuse compares a digest of the local Git changes: paths, before/after
 blob IDs, and file modes, with renames represented as deletion/addition. Commit
@@ -56,6 +57,40 @@ Use a c2j build/release containing that contract. Keep enclosing and job retry
 policies at one attempt so they do not restart the development workflow after
 its chase budget is exhausted. See the
 [contract and acceptance requirements](../REQUIREMENTS_MERGE_UPSTREAM_ADVANCED.md).
+
+## Structured rebase conflict recovery
+
+Heavy and light builds require the structured rebase contract in c2j commit
+`e7e2184f843500db9d6fe3dd2b6149a25de26aba` (operation metadata 1.1.0,
+failure payload version 1). The older `a501d923f053` binary does not provide it.
+See [the native contract](../../thinpackrebase-op-spec.md).
+
+Only `REBASE_CONFLICT` from the intended `rebase_candidate` operation is
+repairable, with confirmed workspace restoration, complete hashes, conflict
+paths, and durable diagnostic references. Missing or unsupported evidence,
+cleanup failure, cancellation, timeout, and other errors retain their original
+failure. The shared [predicate](../../recipes/kernel/rebase-policy.yaml) checks
+the structured envelope; it never classifies errors by their message.
+
+Each build allows **two automatic conflict repairs**, independently of its
+three merge chases. The counter and evidence survive revisions and light-to-heavy
+handoff. Recovery binds diagnostics under `rebase-repair-N/`, retains the
+implementation session and approved documents, and clears candidate verification,
+outcome approval, and approval reuse. The third conflict propagates unchanged.
+
+The failed native rebase has already aborted. The implementation agent starts
+a fresh local replay against the recorded target and may make only the local
+commits needed to finish it. It must leave a clean completed history; it never
+publishes. That permission applies only while `rebase_recovery_pending` is true.
+The recipe then resolves upstream again and performs native rebase, preparation,
+assessment/specialists, verification, file accounting/synopsis, and human outcome
+review. Ordinary nonconflicting chases can still reuse approval as described above.
+
+If repair fails, the job fails; the originating failure and diagnostic artifacts
+remain in the story and repair task's bound inputs. Keep enclosing and job retry
+policies at one attempt, as with merge chases, so a new attempt cannot reset the
+allowance. [Tests and validation](../../recipe-tests/rebase-recovery-validation.md)
+cover the native conflict contract and recipe recovery routes.
 
 These operations require clean, committed workspaces; ordinary preceding writing
 ops persist their changes automatically. For an empty workspace, use `squash`

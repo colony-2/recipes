@@ -1,0 +1,137 @@
+# Real Git repair stands in for the implementation agent's local commands.
+# Every native task restores its own managed workspace and binds durable refs.
+id: rebase-native-repair
+state:
+  initial: seed
+  states:
+    seed:
+      sequence:
+      - id: policy
+        include: ../../recipes/kernel/rebase-policy.yaml
+      - id: candidate
+        op: command_execution
+        inputs:
+          run: printf corrected > candidate.txt
+      - id: advance
+        op: command_execution
+        const: true
+        inputs:
+          env:
+            REPO: ${{ context.git.repo }}
+          run: |
+            set -eu
+            printf upstream > "$REPO/candidate.txt"
+            printf 'Keep the concurrent change\n' > "$REPO/upstream.txt"
+            git -C "$REPO" add candidate.txt upstream.txt
+            git -C "$REPO" commit -m 'Concurrent conflicting change' >/dev/null
+            git -C "$REPO" rev-parse HEAD
+      outputs:
+        predicate: ${{ sequence.policy.outputs.predicate }}
+        target: ${{ jq(sequence.advance.outputs.stdout, 'split("\n")[0]') }}
+      transitions:
+      - to: rebase
+        when: true
+    rebase:
+      inputs:
+        target: ${{ states.seed.outputs.target }}
+      sequence:
+      - id: rebase_candidate
+        op: rebase
+        retry: {max_attempts: 1}
+        inputs:
+          target_base_hash: ${{ inputs.target }}
+      catch:
+      - when: jq(json_parse(json_stringify(failure)), states.seed.outputs.predicate)
+        to: repair
+    repair:
+      inputs:
+        failure: ${{ transition.failure }}
+      sequence:
+      - id: handoff
+        include: ../../recipes/kernel/rebase-recovery.yaml
+        inputs:
+          failure: ${{ inputs.failure }}
+          flow:
+            request: Correct the widget and preserve concurrent work.
+            session: {retained: true}
+            documents:
+              design.md: {kind: value, format: text, value: Approved design}
+              test-statements.md: {kind: value, format: text, value: Approved expectations}
+            approved: [prerequisite]
+            merge_chases: 2
+            rebase_repairs: 0
+            reviews: {design: approved, outcome: accepted}
+            verification: {status: passed}
+            reuse_merge_approval: true
+            chase_pending: true
+            reviewed_change_digest: previous
+      - id: reconcile
+        op: command_execution
+        artifacts:
+          ./: ${{ sequence.handoff.outputs.flow.documents }}
+        inputs:
+          env:
+            BASE: ${{ inputs.failure.attrs.rebase.base_hash }}
+            CANDIDATE: ${{ inputs.failure.attrs.rebase.candidate_hash }}
+            TARGET: ${{ inputs.failure.attrs.rebase.target_base_hash }}
+            INBOX: ${{ context.environment.op.inbox }}
+          run: |
+            set -eu
+            test "$(git rev-parse HEAD)" = "$CANDIDATE"
+            test -z "$(git status --porcelain)"
+            test ! -d "$(git rev-parse --git-path rebase-merge)"
+            test ! -d "$(git rev-parse --git-path rebase-apply)"
+            test -s "$INBOX/rebase-repair-1/_c2j/rebase/conflict.diff"
+            test -s "$INBOX/rebase-repair-1/_c2j/rebase/replayed-commit.patch"
+            test -s "$INBOX/rebase-repair-1/failure.json"
+            test -s "$INBOX/design.md"
+            git fetch origin "$TARGET"
+            if git rebase --onto "$TARGET" "$BASE"; then
+              echo 'Expected the recorded conflict' >&2
+              exit 1
+            fi
+            test -n "$(git ls-files -u)"
+            printf corrected > candidate.txt
+            git add candidate.txt
+            GIT_EDITOR=true git -c user.name='Repair fixture' -c user.email=repair@example.test rebase --continue
+            test -z "$(git status --porcelain)"
+            git merge-base --is-ancestor "$TARGET" HEAD
+      outputs:
+        flow: ${{ sequence.handoff.outputs.flow }}
+      transitions:
+      - to: refresh
+        when: true
+    refresh:
+      inputs:
+        target: ${{ states.seed.outputs.target }}
+      sequence:
+      - id: resolve_upstream_head
+        op: command_execution
+        const: true
+        inputs:
+          env:
+            REPO: ${{ context.git.repo }}
+          run: git ls-remote --exit-code "$REPO" refs/heads/main
+      - id: rebase_candidate
+        op: rebase
+        inputs:
+          target_base_hash: ${{ jq(sequence.resolve_upstream_head.outputs.stdout, 'split("\t")[0]') }}
+      - id: verify_repaired_candidate
+        op: command_execution
+        const: true
+        inputs:
+          env:
+            BASE: ${{ context.git.execution.base_hash }}
+            TARGET: ${{ inputs.target }}
+          run: |
+            set -eu
+            test "$BASE" = "$TARGET"
+            test "$(cat candidate.txt)" = corrected
+            test "$(cat upstream.txt)" = 'Keep the concurrent change'
+            test -z "$(git status --porcelain)"
+            git merge-base --is-ancestor "$TARGET" HEAD
+      outputs:
+        refreshed: true
+outputs:
+  refreshed: ${{ states.refresh.outputs.refreshed }}
+  flow: ${{ states.repair.outputs.flow }}
