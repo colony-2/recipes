@@ -14,7 +14,7 @@ vars:
       $v.documents + {($id): {kind: "value", name: $id, format: "json",
         value: {_c2_recipe_sidecar: "review_annotations/v1", annotations: $v.annotations}}} end
   inline_consultation_limit: 40
-  shared_consultation_recipe: git+https://github.com/colony-2/recipes.git//recipes/kernel/consultation.yaml@main
+  shared_consultation_recipe: git+https://github.com/colony-2/recipes.git//recipes/adaptive/consultation.yaml@main
   new_serving_consultations: |-
     ${{ jq([inputs.requests, inputs.flow.threads],
         '.[1] as $threads | [.[0][] | select(.kind == "feature") | .key | select(. as $key | $threads | has($key) | not)] | unique | length') }}
@@ -77,7 +77,7 @@ state:
           states.route.outputs.target.repo, ''consultant_ref'': states.route.outputs.target.ref, ''consultant_role'':
           states.pick.outputs.item.role, ''requester_session'': states.route.outputs.flow.session, ''documents'':
           jq({''documents'': states.route.outputs.flow.documents, ''annotations'': states.route.outputs.flow.?annotations.orValue([]),
-          ''origin'': context.invocation.hash}, vars.sidecar_pack), ''include_summary'': false} }] }}'
+          ''origin'': context.invocation.hash}, vars.sidecar_pack)} }] }}'
       transitions:
       - to: record
         when: true
@@ -86,7 +86,7 @@ state:
             {states.pick.outputs.key: {''request'': states.pick.outputs.item, ''target'': states.route.outputs.target,
             ''job_id'': outputs.job_ids[0], ''status'': ''running''} }], ''add'')} }}'
     consult_inline:
-      include: ../kernel/consultation.yaml
+      include: ./consultation.yaml
       inputs:
         annotations_json: ${{ json_stringify(states.route.outputs.flow.?annotations.orValue([])) }}
         thread: ${{ states.pick.outputs.key }}
@@ -116,7 +116,7 @@ state:
         thread: ${{ states.pick.outputs.flow.threads[states.pick.outputs.key] }}
       sequence:
       - id: starter
-        include: ../kernel/artifact-namespace.yaml
+        include: ./document-bindings.yaml
         inputs:
           prefix: consultation/
           documents: '${{ {''conversation.json'': inputs.thread.result.continuation} }}'
@@ -195,7 +195,7 @@ state:
         patch: ${{ transition.payload.patch }}
       sequence:
       - id: namespace
-        include: ../kernel/artifact-namespace.yaml
+        include: ./document-bindings.yaml
         inputs:
           annotations: ${{ inputs.patch.?annotations.orValue([]) }}
           prefix: '${{ (inputs.action == ''blocked'' && inputs.key in inputs.flow.jobs ? ''jobs/'' : ''consultations/'')
@@ -217,7 +217,7 @@ state:
         error: 'Invalid coordination request: use distinct request keys, configured targets and create_recipe for
           creation, agreed serving scope, and known wait dependencies.'
     route:
-      include: ../kernel/route-target.yaml
+      include: ./route-target.yaml
       inputs:
         flow: ${{ states.pick.outputs.flow }}
         request: ${{ states.pick.outputs.item }}

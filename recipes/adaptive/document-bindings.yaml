@@ -1,0 +1,18 @@
+# Consumer aliases for simultaneous child/specialist documents with colliding names.
+# Hook results never pass through this helper. Stored identities remain unchanged.
+id: adaptive-document-bindings
+version: 1.0.0
+inputs:
+  prefix: ${{ inputs.prefix }}
+  documents: ${{ json_parse(json_stringify(inputs.documents)) }}
+  annotations: ${{ inputs.?annotations.orValue([]) }}
+sequence: []
+outputs:
+  documents: |-
+    ${{ jq({'prefix': inputs.prefix, 'documents': inputs.documents},
+      '. as $v | $v.documents | to_entries | map(.key = ($v.prefix + .key) | .value.name = .key) | from_entries') }}
+  attachment_map: '${{ jq({''prefix'': inputs.prefix, ''documents'': inputs.documents}, ''. as $v | $v.documents
+    | keys | map({key: ., value: ($v.prefix + .)}) | from_entries'') }}'
+  annotations: |-
+    ${{ jq({'prefix': inputs.prefix, 'documents': inputs.documents, 'annotations': inputs.annotations},
+      '. as $v | [(.annotations // [])[] | . as $a | select(($a.id as $id | $v.documents | has($id)) and (($v.documents[$a.id] | del(.name)) == ($a.ref | del(.name)))) | .id = ($v.prefix + .id) | .lineage += [.id] | .sources |= map(. as $s | if has("id") and ($v.documents[$s.id] | del(.name)) == ($s.ref | del(.name)) then .id = ($v.prefix + .id) | .lineage += [.id] else . end)]') }}

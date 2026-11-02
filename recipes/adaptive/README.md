@@ -1,7 +1,9 @@
 # Adaptive build
 
-The root `build.yaml` selects this implementation. Existing build recipes remain
-available. One adaptive loop replaces light/heavy routing.
+The root `build.yaml` selects this implementation. Execution, artifact, Git, and
+serving-consultation helpers are owned here; there are no kernel recipe includes.
+Existing build recipes remain available. One adaptive loop replaces light/heavy
+routing.
 
 See [the process diagrams](../../ADAPTIVE_BUILD_PROCESS.md) for the main workflow,
 mandatory serving consultation, native rebase recovery, and approval reuse.
@@ -30,7 +32,7 @@ flowchart TD
 
 Seven prompt roles: design decision (`classify.yaml`), design, test statements,
 implementation (`agent.yaml`), independent assessment and merge summary
-(`inspect.yaml`), and serving agreement (`../kernel/consultation.yaml`). Configured
+(`inspect.yaml`), and serving agreement (`consultation.yaml`). Configured
 specialists reuse assessment. Hooks return structured values and evidence directly;
 there is no report-rendering agent or artifact-inspection task per hook.
 
@@ -59,9 +61,14 @@ fails the job even when the preceding merge succeeded.
 
 Small state travels through inputs/outputs. Documents, diffs, logs, and transcripts
 are artifacts. Existing hook contracts still receive a `build-settings.json` value
-artifact for compatibility; the workflow itself uses typed settings. Hooks can
-return bound evidence or evidence produced by this job. Artifact-loading errors
-from verification evidence return to implementation at the next existing task.
+artifact for compatibility; the workflow itself uses typed settings.
+
+c2j enforces declared hook output contracts. Hook values and artifact references
+pass through unchanged, without custom provenance checks or name prefixes. Only
+current verification evidence is bound alongside formal documents. Native loading
+or binding-collision failures return to implementation at the next existing task.
+Child and specialist documents use consumer-specific aliases when their names
+would otherwise collide; those aliases never change hook outputs.
 
 Tests are in `../../recipe-tests/adaptive/`. Run with c2j supporting structured
 rebase failures and review annotations:

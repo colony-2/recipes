@@ -4,7 +4,6 @@ inputs:
   target_directory: ${{ inputs.?target_directory.orValue('.') }}
   documents: ${{ inputs.?documents.orValue({}) }}
   settings: ${{ inputs.?settings.orValue(null) }}
-  round: ${{ inputs.?round.orValue(0) }}
   merged_hash: ${{ inputs.merged_hash }}
   target_branch: ${{ inputs.target_branch }}
   base: ${{ inputs.base }}
@@ -56,7 +55,11 @@ sequence:
         type: object
         maxProperties: 64
         propertyNames:
-          pattern: ^[a-zA-Z0-9_-][a-zA-Z0-9_./-]*$
+          not:
+            enum:
+            - __git_state_thin_pack__
+            - diff_from_parent.diff
+            - diff_from_base.diff
         additionalProperties:
           type: object
       failure:
@@ -72,34 +75,5 @@ sequence:
         failure: ${{ json_parse(json_stringify(failure)) }}
 outputs:
   result: '${{ inputs.before != (context.git.hash != '''' ? context.git.hash : context.git.resolved_hash) ? {''status'':''failed'',
-    ''ok'':false, ''summary'':''Read-only hook changed the candidate.'', ''failure'':{ } } : ({''status'': (((sequence.invoke_hook.outputs.artifact_refs.all(k,
-    !k.startsWith(''/'') && !k.contains(''..'') && !k.contains(''\\'') && !(k in [''__git_state_thin_pack__'', ''diff_from_parent.diff'',
-    ''diff_from_base.diff''])) && jq({''refs'': sequence.invoke_hook.outputs.artifact_refs, ''produced'': sequence.invoke_hook.artifacts,
-    ''bound'': inputs.documents, ''job'': context.workflow.job_id}, ''. as $v | [$v.produced[], $v.bound[]] | map(del(.name))
-    as $known | $v.refs | all(.[]; (.kind == "value" and (.format | IN("text", "json"))) or (. as $r | (.kind ==
-    "stored" and .stored.key.jobId == $v.job and ($known | index($r | del(.name)) != null)) or ([$v.bound[] | del(.name)]
-    | index($r | del(.name)) != null)))''))) ? sequence.invoke_hook.outputs.status : ''failed''), ''ok'': (((sequence.invoke_hook.outputs.artifact_refs.all(k,
-    !k.startsWith(''/'') && !k.contains(''..'') && !k.contains(''\\'') && !(k in [''__git_state_thin_pack__'', ''diff_from_parent.diff'',
-    ''diff_from_base.diff''])) && jq({''refs'': sequence.invoke_hook.outputs.artifact_refs, ''produced'': sequence.invoke_hook.artifacts,
-    ''bound'': inputs.documents, ''job'': context.workflow.job_id}, ''. as $v | [$v.produced[], $v.bound[]] | map(del(.name))
-    as $known | $v.refs | all(.[]; (.kind == "value" and (.format | IN("text", "json"))) or (. as $r | (.kind ==
-    "stored" and .stored.key.jobId == $v.job and ($known | index($r | del(.name)) != null)) or ([$v.bound[] | del(.name)]
-    | index($r | del(.name)) != null)))''))) ? sequence.invoke_hook.outputs.status : ''failed'') == ''passed'',
-    ''summary'': ((sequence.invoke_hook.outputs.artifact_refs.all(k, !k.startsWith(''/'') && !k.contains(''..'')
-    && !k.contains(''\\'') && !(k in [''__git_state_thin_pack__'', ''diff_from_parent.diff'', ''diff_from_base.diff'']))
-    && jq({''refs'': sequence.invoke_hook.outputs.artifact_refs, ''produced'': sequence.invoke_hook.artifacts, ''bound'':
-    inputs.documents, ''job'': context.workflow.job_id}, ''. as $v | [$v.produced[], $v.bound[]] | map(del(.name))
-    as $known | $v.refs | all(.[]; (.kind == "value" and (.format | IN("text", "json"))) or (. as $r | (.kind ==
-    "stored" and .stored.key.jobId == $v.job and ($known | index($r | del(.name)) != null)) or ([$v.bound[] | del(.name)]
-    | index($r | del(.name)) != null)))''))) ? sequence.invoke_hook.outputs.summary : ''Hook returned unsafe or
-    unavailable evidence; export bound or produced artifacts only.'', ''failure'': sequence.invoke_hook.outputs.?failure.orValue({})})
-    }}'
-  artifact_refs: '${{ ((sequence.invoke_hook.outputs.artifact_refs.all(k, !k.startsWith(''/'') && !k.contains(''..'')
-    && !k.contains(''\\'') && !(k in [''__git_state_thin_pack__'', ''diff_from_parent.diff'', ''diff_from_base.diff'']))
-    && jq({''refs'': sequence.invoke_hook.outputs.artifact_refs, ''produced'': sequence.invoke_hook.artifacts, ''bound'':
-    inputs.documents, ''job'': context.workflow.job_id}, ''. as $v | [$v.produced[], $v.bound[]] | map(del(.name))
-    as $known | $v.refs | all(.[]; (.kind == "value" and (.format | IN("text", "json"))) or (. as $r | (.kind ==
-    "stored" and .stored.key.jobId == $v.job and ($known | index($r | del(.name)) != null)) or ([$v.bound[] | del(.name)]
-    | index($r | del(.name)) != null)))''))) ? jq({''prefix'': ''hooks/publish/'' + string(inputs.round) + ''/'',
-    ''refs'': sequence.invoke_hook.outputs.artifact_refs}, ''. as $v | .refs | to_entries | map(.key = ($v.prefix
-    + .key) | .value.name = .key) | from_entries'') : {} }}'
+    ''summary'':''Read-only hook changed the candidate.''} : sequence.invoke_hook.outputs }}'
+  artifact_refs: ${{ sequence.invoke_hook.outputs.artifact_refs }}

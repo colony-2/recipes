@@ -1,0 +1,153 @@
+id: adaptive-agent-turn
+version: 0.1.0
+inputs:
+  prompt: ${{ inputs.prompt }}
+  instructions: ${{ inputs.?instructions.orValue('') }}
+  schema: ${{ inputs.schema }}
+  session: ${{ inputs.?session.orValue({}) }}
+  documents: ${{ inputs.?documents.orValue({}) }}
+  read_only: ${{ inputs.?read_only.orValue(true) }}
+  retained_artifacts: ${{ inputs.?retained_artifacts.orValue({}) }}
+  artifact_fields: ${{ inputs.?artifact_fields.orValue(['files.*.path']) }}
+  evidence_documents: ${{ inputs.?evidence_documents.orValue({}) }}
+state:
+  initial:
+  - to: resume_read_only_session
+    when: inputs.read_only && size(inputs.session) > 0
+  - to: start_read_only_session
+    when: inputs.read_only
+  - to: resume_implementation_session
+    when: size(inputs.session) > 0
+  - to: start_implementation_session
+    when: true
+  states:
+    start_implementation_session:
+      id: start_implementation_session
+      op: nix:github:colony-2/c2ops/published#codex
+      # Two unprefixed sets let c2j detect collisions before invoking the agent.
+      artifacts:
+        ./: ${{ inputs.documents }}
+        .: ${{ inputs.evidence_documents }}
+      inputs:
+        api:
+          api_key: ${{ context.secrets.?codex_api_key.orValue(null) }}
+        prompt: |
+          {{ inputs.prompt }}
+
+          Artifact directories for this turn:
+          inbox: {{ context.environment.op.inbox }}
+          outbox: {{ context.environment.op.outbox }}
+          References to inbox/ and outbox/ mean these directories, outside the repository.
+          Write deliverables in this outbox. In structured output, use paths relative to
+          the outbox, such as design.md or iter1/consultant/reply.md. Omit the outbox/
+          prefix and absolute directory from returned artifact paths.
+        instructions: ${{ inputs.instructions }}
+        output:
+          schema: ${{ inputs.schema }}
+      transitions:
+      - to: normalize
+        when: true
+    resume_implementation_session:
+      id: resume_implementation_session
+      op: nix:github:colony-2/c2ops/published#codex
+      artifacts:
+        ./: ${{ inputs.documents }}
+        .: ${{ inputs.evidence_documents }}
+      inputs:
+        api:
+          api_key: ${{ context.secrets.?codex_api_key.orValue(null) }}
+        prompt: |
+          {{ inputs.prompt }}
+
+          Artifact directories for this turn:
+          inbox: {{ context.environment.op.inbox }}
+          outbox: {{ context.environment.op.outbox }}
+          References to inbox/ and outbox/ mean these directories, outside the repository.
+          Write deliverables in this outbox. In structured output, use paths relative to
+          the outbox, such as design.md or iter1/consultant/reply.md. Omit the outbox/
+          prefix and absolute directory from returned artifact paths.
+        session: ${{ inputs.session }}
+        output:
+          schema: ${{ inputs.schema }}
+      transitions:
+      - to: normalize
+        when: true
+    start_read_only_session:
+      id: start_read_only_session
+      op: nix:github:colony-2/c2ops/published#codex
+      const: true
+      artifacts:
+        ./: ${{ inputs.documents }}
+        .: ${{ inputs.evidence_documents }}
+      inputs:
+        api:
+          api_key: ${{ context.secrets.?codex_api_key.orValue(null) }}
+        prompt: |
+          {{ inputs.prompt }}
+
+          Artifact directories for this turn:
+          inbox: {{ context.environment.op.inbox }}
+          outbox: {{ context.environment.op.outbox }}
+          References to inbox/ and outbox/ mean these directories, outside the repository.
+          Write deliverables in this outbox. In structured output, use paths relative to
+          the outbox, such as design.md or iter1/consultant/reply.md. Omit the outbox/
+          prefix and absolute directory from returned artifact paths.
+        instructions: ${{ inputs.instructions }}
+        output:
+          schema: ${{ inputs.schema }}
+      transitions:
+      - to: normalize
+        when: true
+    resume_read_only_session:
+      id: resume_read_only_session
+      op: nix:github:colony-2/c2ops/published#codex
+      const: true
+      artifacts:
+        ./: ${{ inputs.documents }}
+        .: ${{ inputs.evidence_documents }}
+      inputs:
+        api:
+          api_key: ${{ context.secrets.?codex_api_key.orValue(null) }}
+        prompt: |
+          {{ inputs.prompt }}
+
+          Artifact directories for this turn:
+          inbox: {{ context.environment.op.inbox }}
+          outbox: {{ context.environment.op.outbox }}
+          References to inbox/ and outbox/ mean these directories, outside the repository.
+          Write deliverables in this outbox. In structured output, use paths relative to
+          the outbox, such as design.md or iter1/consultant/reply.md. Omit the outbox/
+          prefix and absolute directory from returned artifact paths.
+        session: ${{ inputs.session }}
+        output:
+          schema: ${{ inputs.schema }}
+      transitions:
+      - to: normalize
+        when: true
+    normalize:
+      include: ./artifact-result.yaml
+      inputs:
+        result: '${{ (inputs.read_only ? (size(inputs.session) > 0 ? states.resume_read_only_session : states.start_read_only_session)
+          : (size(inputs.session) > 0 ? states.resume_implementation_session : states.start_implementation_session)).outputs
+          }}'
+        artifacts: '${{ jq(json_parse(json_stringify([inputs.retained_artifacts, (inputs.read_only ? (size(inputs.session)
+          > 0 ? states.resume_read_only_session : states.start_read_only_session) : (size(inputs.session) > 0 ?
+          states.resume_implementation_session : states.start_implementation_session)).artifacts])), ''add'') }}'
+        fields: ${{ inputs.artifact_fields }}
+        bound_inputs: ${{ jq([inputs.documents, inputs.evidence_documents], 'add') }}
+outputs:
+  response_schema: ${{ inputs.schema }}
+  annotations: ${{ states.normalize.outputs.annotations }}
+  result: ${{ states.normalize.outputs.result }}
+  artifacts: ${{ states.normalize.outputs.artifacts }}
+  jobs: '${{ (inputs.read_only ? (size(inputs.session) > 0 ? states.resume_read_only_session : states.start_read_only_session)
+    : (size(inputs.session) > 0 ? states.resume_implementation_session : states.start_implementation_session)).?jobs.orValue({})
+    }}'
+  cell: ${{ context.workspace.cell }}
+  base_hash: ${{ context.git.resolved_hash }}
+  issues: ${{ states.normalize.outputs.issues }}
+  matches: ${{ states.normalize.outputs.matches }}
+  original_response: '${{ (inputs.read_only ? (size(inputs.session) > 0 ? states.resume_read_only_session : states.start_read_only_session)
+    : (size(inputs.session) > 0 ? states.resume_implementation_session : states.start_implementation_session)).outputs.?response.orValue({})
+    }}'
+  checkpoint: ${{ states.normalize.outputs.result.?session.orValue(inputs.session) }}

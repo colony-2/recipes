@@ -1,0 +1,49 @@
+recipe: foreign-evidence.yaml
+cases:
+- id: child-job-evidence-keeps-identity
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          .c2/recipes/hooks/build/verify.yaml: |
+            id: child-evidence-hook
+            inputs:
+              settings: ${{ inputs.settings }}
+            outputs:
+              api_version: c2.build-hook/v1
+              artifact_refs: ${{ {'tests.log':inputs.settings.value.report} }}
+              status: passed
+              summary: Evidence from a child job.
+            sequence: []
+          .c2/recipes/evidence.yaml: |
+            id: evidence
+            outputs:
+              artifact_refs: '${{ {''tests.log'': sequence.write.artifacts[''tests.log'']} }}'
+            sequence:
+            - const: true
+              id: write
+              inputs:
+                env:
+                  OUTBOX: ${{ context.environment.op.outbox }}
+                run: printf foreign > "$OUTBOX/tests.log"
+              op: command_execution
+  inputs: {}
+  mocks:
+    ops:
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: log
+    value: foreign
+  - type: output_equals
+    path: allowed
+    value: true
+  - type: cel_true
+    expr: outputs.artifact_refs["tests.log"].stored.key.jobId != calls.filter(c, c.node_path.endsWith("/read_evidence"))[0].job_id
+  - type: cel_true
+    expr: outputs.artifact_refs["tests.log"].name == "tests.log"

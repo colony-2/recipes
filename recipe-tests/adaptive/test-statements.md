@@ -22,3 +22,6 @@ before implementation; dependencies are recorded per statement.
 | A15 | High | integration | c2j, Git, Nix | Iteration exhaustion requests direction; cancellation and no-change completion retain their distinct outcomes. | recipes/adaptive/develop.yaml |
 | A16 | Critical | integration | c2j, Git, Nix | New-cell creation preserves root approval and publication requirements and does not satisfy the original feature request by itself. | recipes/adaptive/coordinate.yaml |
 | A17 | Critical | integration | c2j, Git, Nix | Implementation cannot replace established test expectations; revised plans preserve expectations or provide a deprecation plan. | recipes/adaptive/develop.yaml |
+| A18 | High | integration | c2j, Git | Hook results retain artifact names and immutable references; c2j enforces output contracts without a recipe validation task. | recipes/adaptive/hook-verify.yaml |
+| A19 | Critical | integration | c2j, Git, Nix | Adaptive builds and serving consultations run with no kernel recipe files available. | recipes/adaptive/build.yaml, recipes/adaptive/consultation.yaml |
+| A20 | High | integration | c2j, Git, Nix | Each verification attempt consumes current evidence; missing evidence or conflicting bindings return to implementation without replacing formal documents. | recipes/adaptive/develop.yaml |

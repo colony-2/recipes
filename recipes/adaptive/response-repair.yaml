@@ -1,0 +1,57 @@
+id: adaptive-response-repair
+inputs:
+  turn: ${{ inputs.turn }}
+  issues: ${{ inputs.issues }}
+  documents: ${{ inputs.documents }}
+  session: ${{ inputs.?session.orValue({}) }}
+  attempts: ${{ int(inputs.?attempts.orValue(0)) }}
+state:
+  initial:
+  - to: automatic
+    when: inputs.attempts < 2 && size(inputs.turn.result.?session.orValue(inputs.session)) > 0 && size(inputs.turn.jobs.?job_ids.orValue([])) == 0
+  - to: review
+    when: true
+  states:
+    automatic:
+      sequence: []
+    review:
+      include: ./review.yaml
+      inputs:
+        title: Serving consultation needs response correction
+        documents: ${{ jq([inputs.documents, inputs.turn.artifacts], 'add') }}
+        annotations: ${{ inputs.turn.?annotations.orValue([]) }}
+        fields:
+        - id: decision
+          type: multiple_choice
+          question: ${{ jq(inputs.issues, 'join("; ")') }}
+          required: true
+          options:
+          - value: retry
+            label: Give direction and retry
+          - value: cancel
+            label: Cancel this consultation
+        - id: feedback
+          type: paragraph_text
+          question: Direction for correction; required to retry.
+          required: false
+        - id: annotations
+          type: file_upload
+          question: Optional corrected documents.
+          required: false
+      transitions:
+      - to: review
+        when: outputs.response.fields.decision == 'retry' && !outputs.changed
+outputs:
+  retry: ${{ state_exists('automatic') || states.review.outputs.response.fields.decision == 'retry' }}
+  attempts: "${{ state_exists('automatic') ? inputs.attempts + 1 : 0 }}"
+  session: ${{ inputs.turn.result.?session.orValue(inputs.session) }}
+  artifacts: ${{ jq([inputs.turn.artifacts, state_output('review', 'response', {}).?artifact_refs.orValue({})], 'add') }}
+  documents: ${{ jq([inputs.documents, inputs.turn.artifacts, state_output('review', 'documents', {})], 'add') }}
+  prompt: |
+    Correct the response and any missing deliverables using the same schema.
+    Do not implement, submit jobs, push, or treat correction as agreement.
+    Existing documents are in inbox and remain eligible as returned artifacts.
+    Issues: ${{ json_stringify(inputs.issues) }}
+    Previous response: ${{ json_stringify(inputs.turn.result.?response.orValue({})) }}
+    Human direction: ${{ json_stringify(state_output('review', 'response', {}).?fields.orValue({})) }}
+  base_hash: ${{ inputs.turn.?base_hash.orValue('') }}

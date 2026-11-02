@@ -1,0 +1,925 @@
+recipe: ../../recipes/adaptive/consultation.yaml
+cases:
+- id: serving-first-response-agreement
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          PURPOSE.md: Client application
+          candidate.txt: original
+      B:
+        files:
+          PURPOSE.md: Serving API
+          candidate.txt: target
+    observe_files:
+    - candidate.txt
+    - experiment.txt
+    secrets:
+      codex_api_key: synthetic
+  inputs:
+    thread: validation-api
+    request: Provide a compatible validation API.
+    consultant_cell: B
+    consultant_role: Own the serving API; assess scope and compatibility.
+  mocks:
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: B
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: agreed
+            thinking: 'consultant reply 1: agreed'
+            files:
+            - path: iter1/consultant/feature-spec.md
+              description: Consultation document
+            assessment: not_applicable
+        artifacts:
+          iter1/consultant/feature-spec.md: '# Accepted feature'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                session_id: consultant
+                iteration: 1
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: outcome
+    value: agreed
+  - type: cel_true
+    expr: '!calls.exists(c, c.op.startsWith("recipe.run") || c.op == "squashrebasemerge")'
+  - type: output_equals
+    path: state.iteration
+    value: 1
+  - type: cel_true
+    expr: outputs.consultant_session == calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex"))[0].outputs.session
+  - type: cel_true
+    expr: outputs.requester_session == outputs.requester_start_session
+  - type: cel_true
+    expr: '"iter1/consultant/feature-spec.md" in outputs.final_artifacts'
+  - type: cel_true
+    expr: '!calls.exists(c, c.op == "extension_execution" && c.inputs.selector.contains("rule_gate"))'
+- id: serving-bidirectional-documents-and-sessions
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          PURPOSE.md: Client application
+          candidate.txt: original
+      B:
+        files:
+          PURPOSE.md: Serving API
+          candidate.txt: target
+    observe_files:
+    - candidate.txt
+    - experiment.txt
+    secrets:
+      codex_api_key: synthetic
+  inputs:
+    thread: validation-api
+    request: Provide a compatible validation API.
+    consultant_cell: B
+    consultant_role: Own the serving API; assess scope and compatibility.
+  mocks:
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: B
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: continue
+            thinking: 'consultant reply 1: continue'
+            files:
+            - path: iter1/consultant/feature-spec.md
+              description: Consultation document
+            assessment: not_applicable
+        artifacts:
+          iter1/consultant/feature-spec.md: '# Proposed feature'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                session_id: consultant
+                iteration: 1
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: continue
+            thinking: 'requester reply 2: continue'
+            files:
+            - path: iter2/requester/test-statements.md
+              description: Consultation document
+            assessment: not_applicable
+        artifacts:
+          iter2/requester/test-statements.md: '# Acceptance outcomes'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                session_id: requester
+                iteration: 2
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: B
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: agreed
+            thinking: 'consultant reply 2: agreed'
+            files:
+            - path: iter2/consultant/feature-spec.md
+              description: Consultation document
+            - path: iter2/consultant/test-statements.md
+              description: Consultation document
+            assessment: not_applicable
+        artifacts:
+          iter2/consultant/feature-spec.md: '# Accepted feature'
+          iter2/consultant/test-statements.md: '# Accepted tests'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                session_id: consultant
+                iteration: 2
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: outcome
+    value: agreed
+  - type: cel_true
+    expr: '!calls.exists(c, c.op.startsWith("recipe.run") || c.op == "squashrebasemerge")'
+  - type: output_equals
+    path: state.iteration
+    value: 2
+  - type: cel_true
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex"))[2].inputs.inputs.session
+      == calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex"))[0].outputs.session
+  - type: cel_true
+    expr: outputs.requester_session == calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex"))[1].outputs.session
+  - type: cel_true
+    expr: outputs.consultant_session == calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex"))[2].outputs.session
+  - type: cel_true
+    expr: '!("instructions" in calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex"))[2].inputs.inputs)'
+  - type: cel_true
+    expr: '"instructions" in calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex"))[0].inputs.inputs'
+  - type: cel_true
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex"))[1].artifacts["iter1/consultant/feature-spec.md"]
+      == "# Proposed feature"
+  - type: cel_true
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex"))[2].artifacts["iter2/requester/test-statements.md"]
+      == "# Acceptance outcomes"
+  - type: cel_true
+    expr: size(outputs.artifacts) == 4
+  - type: cel_true
+    expr: '!calls.exists(c, c.op == "extension_execution" && c.inputs.selector.contains("rule_gate"))'
+  - type: cel_true
+    expr: 'calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex"))[0].inputs.inputs.instructions.contains("Purpose:
+      Provide a compatible validation API.")'
+  - type: cel_true
+    expr: '!calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex"))[0].inputs.inputs.prompt.contains("Consultant
+      assignment:")'
+  - type: cel_true
+    expr: '!calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex"))[2].inputs.inputs.prompt.contains("Purpose:")'
+  - type: cel_true
+    expr: '!calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex"))[2].inputs.inputs.prompt.contains("iter1/consultant/feature-spec.md")'
+  - type: cel_true
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex"))[2].inputs.inputs.prompt.contains("iter2/requester/test-statements.md")
+  - type: cel_true
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex"))[2].artifacts["iter1/consultant/feature-spec.md"]
+      == "# Proposed feature"
+- id: serving-declined
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          PURPOSE.md: Client application
+          candidate.txt: original
+      B:
+        files:
+          PURPOSE.md: Serving API
+          candidate.txt: target
+    observe_files:
+    - candidate.txt
+    - experiment.txt
+    secrets:
+      codex_api_key: synthetic
+  inputs:
+    thread: validation-api
+    request: Provide a compatible validation API.
+    consultant_cell: B
+    consultant_role: Own the serving API; assess scope and compatibility.
+  mocks:
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: B
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: declined
+            thinking: 'consultant reply 1: declined'
+            files: []
+            assessment: not_applicable
+        artifacts: {}
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                session_id: consultant
+                iteration: 1
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: outcome
+    value: declined
+  - type: cel_true
+    expr: '!calls.exists(c, c.op.startsWith("recipe.run") || c.op == "squashrebasemerge")'
+  - type: cel_true
+    expr: '!calls.exists(c, c.op == "extension_execution" && c.inputs.selector.contains("rule_gate"))'
+- id: serving-consultant-requests-human-deconfliction
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          PURPOSE.md: Client application
+          candidate.txt: original
+      B:
+        files:
+          PURPOSE.md: Serving API
+          candidate.txt: target
+    observe_files:
+    - candidate.txt
+    - experiment.txt
+    responses:
+    - node_path: adaptive-consultation/request_consultation_direction/request_consultation_direction/adaptive-review/request_human_review
+      fields:
+        direction: Preserve compatibility and add opt-in strict validation.
+    secrets:
+      codex_api_key: synthetic
+  inputs:
+    thread: validation-api
+    request: Provide a compatible validation API.
+    consultant_cell: B
+    consultant_role: Own the serving API; assess scope and compatibility.
+  mocks:
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: B
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: needs_review
+            thinking: 'consultant reply 1: needs_review'
+            files: []
+            assessment: not_applicable
+        artifacts: {}
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                session_id: consultant
+                iteration: 1
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: continue
+            thinking: 'requester reply 2: continue'
+            files: []
+            assessment: not_applicable
+        artifacts: {}
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                session_id: requester
+                iteration: 2
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: B
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: agreed
+            thinking: 'consultant reply 2: agreed'
+            files: []
+            assessment: not_applicable
+        artifacts: {}
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                session_id: consultant
+                iteration: 2
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: outcome
+    value: agreed
+  - type: output_equals
+    path: state.round
+    value: 2
+  - type: output_equals
+    path: state.iteration
+    value: 2
+  - type: output_equals
+    path: state.round_iterations
+    value: 1
+  - type: review_document_exists
+    node_path: adaptive-consultation/request_consultation_direction/request_consultation_direction/adaptive-review/request_human_review
+    path: conversation.json
+  - type: cel_true
+    expr: outputs.state.transcript.exists(t, t.participant == "expert")
+  - type: cel_true
+    expr: size(reviews) == 1
+- id: serving-requester-cancelled
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          PURPOSE.md: Client application
+          candidate.txt: original
+      B:
+        files:
+          PURPOSE.md: Serving API
+          candidate.txt: target
+    observe_files:
+    - candidate.txt
+    - experiment.txt
+    secrets:
+      codex_api_key: synthetic
+  inputs:
+    thread: validation-api
+    request: Provide a compatible validation API.
+    consultant_cell: B
+    consultant_role: Own the serving API; assess scope and compatibility.
+  mocks:
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: B
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: continue
+            thinking: 'consultant reply 1: continue'
+            files: []
+            assessment: not_applicable
+        artifacts: {}
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                session_id: consultant
+                iteration: 1
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: cancelled
+            thinking: 'requester reply 2: cancelled'
+            files: []
+            assessment: not_applicable
+        artifacts: {}
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                session_id: requester
+                iteration: 2
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: outcome
+    value: cancelled
+  - type: cel_true
+    expr: '!calls.exists(c, c.op.startsWith("recipe.run") || c.op == "squashrebasemerge")'
+  - type: output_equals
+    path: state.iteration
+    value: 1
+  - type: cel_true
+    expr: '!calls.exists(c, c.op == "extension_execution" && c.inputs.selector.contains("rule_gate"))'
+- id: serving-failed-cannot-agree
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          PURPOSE.md: Client application
+          candidate.txt: original
+      B:
+        files:
+          PURPOSE.md: Serving API
+          candidate.txt: target
+    observe_files:
+    - candidate.txt
+    - experiment.txt
+    secrets:
+      codex_api_key: synthetic
+  inputs:
+    thread: validation-api
+    request: Provide a compatible validation API.
+    consultant_cell: B
+    consultant_role: Own the serving API; assess scope and compatibility.
+  mocks:
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: B
+      behavior:
+        mode: return
+        outputs:
+          status: failed
+          output_schema_valid: true
+          response:
+            outcome: agreed
+            thinking: 'consultant reply 1: agreed'
+            files: []
+            assessment: not_applicable
+        artifacts: {}
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                session_id: consultant
+                iteration: 1
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: outcome
+    value: failed
+  - type: cel_true
+    expr: '!calls.exists(c, c.op.startsWith("recipe.run") || c.op == "squashrebasemerge")'
+  - type: output_equals
+    path: state.iteration
+    value: 0
+  - type: cel_true
+    expr: '!calls.exists(c, c.op == "extension_execution" && c.inputs.selector.contains("rule_gate"))'
+- id: serving-execution-error-propagates
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          PURPOSE.md: Client application
+          candidate.txt: original
+      B:
+        files:
+          PURPOSE.md: Serving API
+          candidate.txt: target
+    observe_files:
+    - candidate.txt
+    - experiment.txt
+    secrets:
+      codex_api_key: synthetic
+  inputs:
+    thread: validation-api
+    request: Provide a compatible validation API.
+    consultant_cell: B
+    consultant_role: Own the serving API; assess scope and compatibility.
+  mocks:
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: B
+      behavior:
+        mode: fail
+        error:
+          message: Model execution unavailable
+  assertions:
+  - type: cel_true
+    expr: '!calls.exists(c, c.op == "command_execution")'
+  expect_error: Model execution unavailable
+- id: serving-consultation-repair-preserves-iteration-and-session
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          PURPOSE.md: Client application
+          candidate.txt: original
+      B:
+        files:
+          PURPOSE.md: Serving API
+          candidate.txt: target
+    observe_files:
+    - candidate.txt
+    - experiment.txt
+    secrets:
+      codex_api_key: synthetic
+  inputs:
+    thread: validation-api
+    request: Provide a compatible validation API.
+    consultant_cell: B
+    consultant_role: Own the serving API; assess scope and compatibility.
+  mocks:
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: B
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: agreed
+            thinking: 'consultant reply 1: agreed'
+            files:
+            - path: missing.md
+              description: Consultation document
+            assessment: not_applicable
+        artifacts:
+          iter1/consultant/feature-spec.md: '# Accepted feature'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                session_id: consultant
+                iteration: 1
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: B
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: agreed
+            thinking: 'consultant reply 1: agreed'
+            files:
+            - path: iter1/consultant/feature-spec.md
+              description: Consultation document
+            assessment: not_applicable
+        artifacts: {}
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                session_id: consultant
+                iteration: 1
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: outcome
+    value: agreed
+  - type: cel_true
+    expr: '!calls.exists(c, c.op.startsWith("recipe.run") || c.op == "squashrebasemerge")'
+  - type: output_equals
+    path: state.iteration
+    value: 1
+  - type: cel_true
+    expr: outputs.consultant_session == calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex"))[1].outputs.session
+  - type: cel_true
+    expr: outputs.requester_session == outputs.requester_start_session
+  - type: cel_true
+    expr: '"iter1/consultant/feature-spec.md" in outputs.final_artifacts'
+  - type: cel_true
+    expr: '!calls.exists(c, c.op == "extension_execution" && c.inputs.selector.contains("rule_gate"))'
+  - type: cel_true
+    expr: size(calls.filter(c, c.op == "extension_execution")) == 2
+  - type: cel_true
+    expr: calls.filter(c, c.op == "extension_execution")[1].inputs.inputs.session == calls.filter(c, c.op == "extension_execution")[0].outputs.session
+- id: serving-response-repair-human-retry
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          PURPOSE.md: Client application
+          candidate.txt: original
+      B:
+        files:
+          PURPOSE.md: Serving API
+          candidate.txt: target
+    observe_files:
+    - candidate.txt
+    - experiment.txt
+    secrets:
+      codex_api_key: synthetic
+    responses:
+    - node_path: adaptive-consultation/turn/sequence/exchange/repair/repair/adaptive-response-repair/review/review/adaptive-review/request_human_review
+      fields:
+        decision: retry
+        feedback: Use the retained feature-spec.md.
+  inputs:
+    thread: validation-api
+    request: Provide a compatible validation API.
+    consultant_cell: B
+    consultant_role: Own the serving API; assess scope and compatibility.
+  mocks:
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: B
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: agreed
+            thinking: 'consultant reply 1: agreed'
+            files:
+            - path: missing.md
+              description: Consultation document
+            assessment: not_applicable
+        artifacts:
+          iter1/consultant/feature-spec.md: '# Accepted feature'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                session_id: consultant
+                iteration: 1
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: B
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: agreed
+            thinking: 'consultant reply 1: agreed'
+            files:
+            - path: missing.md
+              description: Consultation document
+            assessment: not_applicable
+        artifacts:
+          iter1/consultant/feature-spec.md: '# Accepted feature'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                session_id: consultant
+                iteration: 1
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: B
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: agreed
+            thinking: 'consultant reply 1: agreed'
+            files:
+            - path: missing.md
+              description: Consultation document
+            assessment: not_applicable
+        artifacts:
+          iter1/consultant/feature-spec.md: '# Accepted feature'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                session_id: consultant
+                iteration: 1
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: B
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: agreed
+            thinking: 'consultant reply 1: agreed'
+            files:
+            - path: iter1/consultant/feature-spec.md
+              description: Consultation document
+            assessment: not_applicable
+        artifacts: {}
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                session_id: consultant
+                iteration: 1
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: outcome
+    value: agreed
+  - type: cel_true
+    expr: size(reviews) == 1
+  - type: cel_true
+    expr: size(calls.filter(c, c.op == "extension_execution")) == 4
+  - type: cel_true
+    expr: '!calls.exists(c, has(c.artifacts) && ("repair.json" in c.artifacts || "feedback.json" in c.artifacts))'
+- id: serving-response-repair-human-cancel
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          PURPOSE.md: Client application
+          candidate.txt: original
+      B:
+        files:
+          PURPOSE.md: Serving API
+          candidate.txt: target
+    observe_files:
+    - candidate.txt
+    - experiment.txt
+    secrets:
+      codex_api_key: synthetic
+    responses:
+    - node_path: adaptive-consultation/turn/sequence/exchange/repair/repair/adaptive-response-repair/review/review/adaptive-review/request_human_review
+      fields:
+        decision: cancel
+        feedback: ''
+  inputs:
+    thread: validation-api
+    request: Provide a compatible validation API.
+    consultant_cell: B
+    consultant_role: Own the serving API; assess scope and compatibility.
+  mocks:
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: B
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: agreed
+            thinking: 'consultant reply 1: agreed'
+            files:
+            - path: missing.md
+              description: Consultation document
+            assessment: not_applicable
+        artifacts:
+          iter1/consultant/feature-spec.md: '# Accepted feature'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                session_id: consultant
+                iteration: 1
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: B
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: agreed
+            thinking: 'consultant reply 1: agreed'
+            files:
+            - path: missing.md
+              description: Consultation document
+            assessment: not_applicable
+        artifacts:
+          iter1/consultant/feature-spec.md: '# Accepted feature'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                session_id: consultant
+                iteration: 1
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: B
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: agreed
+            thinking: 'consultant reply 1: agreed'
+            files:
+            - path: missing.md
+              description: Consultation document
+            assessment: not_applicable
+        artifacts:
+          iter1/consultant/feature-spec.md: '# Accepted feature'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                session_id: consultant
+                iteration: 1
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: outcome
+    value: cancelled
+  - type: cel_true
+    expr: size(reviews) == 1
+  - type: cel_true
+    expr: size(calls.filter(c, c.op == "extension_execution")) == 3
+  - type: cel_true
+    expr: '!calls.exists(c, has(c.artifacts) && ("repair.json" in c.artifacts || "feedback.json" in c.artifacts))'

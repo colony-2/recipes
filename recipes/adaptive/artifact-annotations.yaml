@@ -1,0 +1,38 @@
+id: adaptive-artifact-annotations
+inputs:
+  result: ${{ inputs.result }}
+  artifacts: ${{ inputs.artifacts }}
+  bound_inputs: ${{ inputs.?bound_inputs.orValue({}) }}
+sequence:
+- id: inventory
+  inputs:
+    result: ${{ inputs.result }}
+    artifacts: ${{ inputs.artifacts }}
+    bound: ${{ inputs.bound_inputs }}
+  sequence: []
+  outputs:
+    files: '${{ jq({''files'': inputs.result.?response.orValue({}).?files.orValue([]), ''artifacts'': inputs.artifacts},
+      ''. as $v | [.files[]? | select(type == "object" and (.path | type == "string")) | select(.path as $p | $v.artifacts
+      | has($p))]'') }}'
+    available: '${{ jq({''files'': inputs.result.?response.orValue({}).?files.orValue([]), ''artifacts'': inputs.artifacts,
+      ''bound'': inputs.bound}, ''. as $v | [$v.bound, ([$v.files[]? | select(type == "object" and (.path | type
+      == "string")) | select(.path as $p | $v.artifacts | has($p)) | {key: .path, value: $v.artifacts[.path]}] |
+      from_entries)] | add'') }}'
+- id: associate
+  inputs:
+    files: ${{ sequence.inventory.outputs.files }}
+    available: ${{ sequence.inventory.outputs.available }}
+    artifacts: ${{ inputs.artifacts }}
+  sequence: []
+  outputs:
+    annotations: |-
+      ${{ inputs.files.map(f, {'id': f.path, 'lineage': [f.path],
+        'origin': context.workflow.job_id + '/' + context.invocation.hash,
+        'ref': inputs.artifacts[f.path], 'descriptor': f,
+        'sources': jq(f, 'if (.source_paths | type) == "array" then [.source_paths[] | select(type == "string")] else [] end').map(p,
+          {'requested': p, 'match': path_match(p, jq(inputs.available, 'keys'))}),
+        'inventory': inputs.available}) }}
+outputs:
+  annotations: |-
+    ${{ jq(json_parse(json_stringify(sequence.associate.outputs.annotations)),
+      '(. // []) | map(. as $a | .sources |= ((. // []) | map(. as $s | if .match.status == "matched" then {id: .match.path, lineage: [.match.path], ref: $a.inventory[.match.path]} else {requested: .requested, issue: .match.status} end)) | del(.inventory))') }}

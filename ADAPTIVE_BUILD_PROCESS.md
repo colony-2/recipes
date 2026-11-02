@@ -136,4 +136,10 @@ flowchart TD
 The agent reconciles the saved delta with concurrent changes; it never performs
 the rebase itself. Small control state travels through inputs and outputs. Diffs,
 documents, command output, and consultation transcripts remain artifacts. Hooks
-return values and evidence directly, without a second report-inspection task.
+return values and original artifact references directly. c2j enforces the declared
+output contract; there is no custom reference validator or second report-inspection
+task. Verification keeps only current evidence, separate from formal documents.
+
+The adaptive entry and its local helpers do not include kernel recipes. Serving
+agreement and response correction use the adaptive review flow; external child
+build and root-creation jobs remain explicit integration boundaries.

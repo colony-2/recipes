@@ -5,7 +5,7 @@ state:
     seed:
       sequence:
       - id: policy
-        include: ../../recipes/kernel/rebase-policy.yaml
+        include: ../../recipes/adaptive/rebase-policy.yaml
       - id: candidate
         op: command_execution
         inputs:
@@ -16,19 +16,13 @@ state:
         inputs:
           env:
             REPO: ${{ context.git.repo }}
-          run: 'set -eu
-
+          run: |
+            set -eu
             printf upstream > "$REPO/candidate.txt"
-
-            printf ''Keep the concurrent change\n'' > "$REPO/upstream.txt"
-
+            printf 'Keep the concurrent change\n' > "$REPO/upstream.txt"
             git -C "$REPO" add candidate.txt upstream.txt
-
-            git -C "$REPO" commit -m ''Concurrent conflicting change'' >/dev/null
-
+            git -C "$REPO" commit -m 'Concurrent conflicting change' >/dev/null
             git -C "$REPO" rev-parse HEAD
-
-            '
       outputs:
         predicate: ${{ sequence.policy.outputs.predicate }}
         target: ${{ jq(sequence.advance.outputs.stdout, 'split("\n")[0]') }}
@@ -42,7 +36,7 @@ state:
       - id: rebase_candidate
         op: rebase
         retry:
-          max_attempts: 1
+          maximum_attempts: 1
         inputs:
           target_base_hash: ${{ inputs.target }}
       catch:
@@ -81,6 +75,12 @@ state:
             reuse_merge_approval: true
             chase_pending: true
             reviewed_change_digest: previous
+            verification_artifacts:
+              old-checks.log:
+                kind: value
+                name: old-checks.log
+                format: text
+                value: Prior candidate results
       - id: reconcile
         op: command_execution
         artifacts:
@@ -91,25 +91,16 @@ state:
             CANDIDATE: ${{ inputs.failure.attrs.rebase.candidate_hash }}
             TARGET: ${{ inputs.failure.attrs.rebase.target_base_hash }}
             INBOX: ${{ context.environment.op.inbox }}
-          run: 'set -eu
-
+          run: |
+            set -eu
             # The workflow, not this implementation task, adopted the target through rebase.
-
             test "$(git rev-parse HEAD)" = "$TARGET"
-
             test -z "$(git status --porcelain)"
-
-            test -s "$INBOX/rebase-repair-1/candidate.diff"
-
-            test -s "$INBOX/rebase-repair-1/_c2j/rebase/conflict.diff"
-
+            test -s "$INBOX/candidate.diff"
+            test -s "$INBOX/_c2j/rebase/conflict.diff"
             test -s "$INBOX/design.md"
-
-            test "$(cat upstream.txt)" = ''Keep the concurrent change''
-
+            test "$(cat upstream.txt)" = 'Keep the concurrent change'
             printf corrected > candidate.txt
-
-            '
       outputs:
         flow: ${{ sequence.handoff.outputs.flow }}
       transitions:
@@ -137,19 +128,13 @@ state:
           env:
             BASE: ${{ context.git.execution.base_hash }}
             TARGET: ${{ inputs.target }}
-          run: 'set -eu
-
+          run: |
+            set -eu
             test "$BASE" = "$TARGET"
-
             test "$(cat candidate.txt)" = corrected
-
-            test "$(cat upstream.txt)" = ''Keep the concurrent change''
-
+            test "$(cat upstream.txt)" = 'Keep the concurrent change'
             test -z "$(git status --porcelain)"
-
             git merge-base --is-ancestor "$TARGET" HEAD
-
-            '
       outputs:
         refreshed: true
 outputs:
