@@ -1,0 +1,278 @@
+recipe: command-diagnostics.yaml
+cases:
+- id: native-command-streams-replace-prior-attempt
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          .c2/recipes/hooks/build/verify.yaml: |
+            id: diagnostic-hook
+            inputs:
+              request: ${{ inputs.request }}
+            sequence:
+            - id: nested
+              include: ./checks.yaml
+              inputs:
+                request: ${{ inputs.request }}
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: Command succeeded.
+              artifact_refs: {}
+          .c2/recipes/hooks/build/checks.yaml: |
+            id: nested-checks
+            inputs:
+              request: ${{ inputs.request }}
+            sequence:
+            - id: validate
+              op: command_execution
+              const: true
+              inputs:
+                run: printf 'checking %s\n' "$ATTEMPT"; printf 'missing %s tool\n' "$ATTEMPT"
+                  >&2; exit 7
+                env:
+                  ATTEMPT: ${{ inputs.request }}
+  assertions:
+  - type: cel_true
+    expr: outputs.first.result.status == "failed" && !outputs.first.allowed
+  - type: cel_true
+    expr: size(outputs.first.artifact_refs) == 2
+  - type: cel_true
+    expr: outputs.first.result.failure.attrs.command.version == 1
+  - type: cel_true
+    expr: outputs.first.result.failure.node.id == "validate"
+  - type: output_equals
+    path: first_streams
+    value: |-
+      stdout:
+      checking first
+      stderr:
+      missing first tool
+      end
+  - type: cel_true
+    expr: outputs.first.result.failure.attrs.command.exit_code == 7
+  - type: cel_true
+    expr: outputs.first.result.failure.kind == "task_error"
+  - type: cel_true
+    expr: outputs.first.result.failure.attrs.command.timed_out == false
+  - type: cel_true
+    expr: outputs.second.result.status == "failed" && !outputs.second.allowed
+  - type: cel_true
+    expr: size(outputs.second.artifact_refs) == 2
+  - type: cel_true
+    expr: outputs.second.result.failure.attrs.command.version == 1
+  - type: cel_true
+    expr: outputs.second.result.failure.node.id == "validate"
+  - type: output_equals
+    path: second_streams
+    value: |-
+      stdout:
+      checking second
+      stderr:
+      missing second tool
+      end
+  - type: cel_true
+    expr: outputs.second.result.failure.attrs.command.exit_code == 7
+  - type: cel_true
+    expr: outputs.second.result.failure.kind == "task_error"
+  - type: cel_true
+    expr: outputs.second.result.failure.attrs.command.timed_out == false
+  - type: cel_true
+    expr: outputs.first.artifact_refs["_c2j/command/stderr.txt"].stored.key.taskOrdinal != outputs.second.artifact_refs["_c2j/command/stderr.txt"].stored.key.taskOrdinal
+  mocks:
+    ops:
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+- id: native-command-timeout-retains-partial-streams
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          .c2/recipes/hooks/build/verify.yaml: |
+            id: diagnostic-hook
+            inputs:
+              request: ${{ inputs.request }}
+            sequence:
+            - id: nested
+              include: ./checks.yaml
+              inputs:
+                request: ${{ inputs.request }}
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: Command succeeded.
+              artifact_refs: {}
+          .c2/recipes/hooks/build/checks.yaml: |
+            id: nested-checks
+            inputs:
+              request: ${{ inputs.request }}
+            sequence:
+            - id: validate
+              op: command_execution
+              const: true
+              inputs:
+                run: printf 'checking %s\n' "$ATTEMPT"; printf 'waiting %s tool\n' "$ATTEMPT"
+                  >&2; sleep 30
+                env:
+                  ATTEMPT: ${{ inputs.request }}
+                timeout: 1s
+  assertions:
+  - type: cel_true
+    expr: outputs.first.result.status == "failed" && !outputs.first.allowed
+  - type: cel_true
+    expr: size(outputs.first.artifact_refs) == 2
+  - type: cel_true
+    expr: outputs.first.result.failure.attrs.command.version == 1
+  - type: cel_true
+    expr: outputs.first.result.failure.node.id == "validate"
+  - type: output_equals
+    path: first_streams
+    value: |-
+      stdout:
+      checking first
+      stderr:
+      waiting first tool
+      end
+  - type: cel_true
+    expr: outputs.first.result.failure.attrs.command.exit_code == -1
+  - type: cel_true
+    expr: outputs.first.result.failure.kind == "timeout"
+  - type: cel_true
+    expr: outputs.first.result.failure.attrs.command.timed_out == true
+  - type: cel_true
+    expr: outputs.second.result.status == "failed" && !outputs.second.allowed
+  - type: cel_true
+    expr: size(outputs.second.artifact_refs) == 2
+  - type: cel_true
+    expr: outputs.second.result.failure.attrs.command.version == 1
+  - type: cel_true
+    expr: outputs.second.result.failure.node.id == "validate"
+  - type: output_equals
+    path: second_streams
+    value: |-
+      stdout:
+      checking second
+      stderr:
+      waiting second tool
+      end
+  - type: cel_true
+    expr: outputs.second.result.failure.attrs.command.exit_code == -1
+  - type: cel_true
+    expr: outputs.second.result.failure.kind == "timeout"
+  - type: cel_true
+    expr: outputs.second.result.failure.attrs.command.timed_out == true
+  - type: cel_true
+    expr: outputs.first.artifact_refs["_c2j/command/stderr.txt"].stored.key.taskOrdinal != outputs.second.artifact_refs["_c2j/command/stderr.txt"].stored.key.taskOrdinal
+  mocks:
+    ops:
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+- id: native-command-empty-streams-remain-bindable
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          .c2/recipes/hooks/build/verify.yaml: |
+            id: diagnostic-hook
+            inputs:
+              request: ${{ inputs.request }}
+            sequence:
+            - id: nested
+              include: ./checks.yaml
+              inputs:
+                request: ${{ inputs.request }}
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: Command succeeded.
+              artifact_refs: {}
+          .c2/recipes/hooks/build/checks.yaml: |
+            id: nested-checks
+            inputs:
+              request: ${{ inputs.request }}
+            sequence:
+            - id: validate
+              op: command_execution
+              const: true
+              inputs:
+                run: exit 9
+                env:
+                  ATTEMPT: ${{ inputs.request }}
+  assertions:
+  - type: cel_true
+    expr: outputs.first.result.status == "failed" && !outputs.first.allowed
+  - type: cel_true
+    expr: size(outputs.first.artifact_refs) == 2
+  - type: cel_true
+    expr: outputs.first.result.failure.attrs.command.version == 1
+  - type: cel_true
+    expr: outputs.first.result.failure.node.id == "validate"
+  - type: output_equals
+    path: first_streams
+    value: |-
+      stdout:
+      stderr:
+      end
+  - type: cel_true
+    expr: outputs.first.result.failure.attrs.command.exit_code == 9
+  - type: cel_true
+    expr: outputs.first.result.failure.kind == "task_error"
+  - type: cel_true
+    expr: outputs.first.result.failure.attrs.command.timed_out == false
+  - type: cel_true
+    expr: outputs.second.result.status == "failed" && !outputs.second.allowed
+  - type: cel_true
+    expr: size(outputs.second.artifact_refs) == 2
+  - type: cel_true
+    expr: outputs.second.result.failure.attrs.command.version == 1
+  - type: cel_true
+    expr: outputs.second.result.failure.node.id == "validate"
+  - type: output_equals
+    path: second_streams
+    value: |-
+      stdout:
+      stderr:
+      end
+  - type: cel_true
+    expr: outputs.second.result.failure.attrs.command.exit_code == 9
+  - type: cel_true
+    expr: outputs.second.result.failure.kind == "task_error"
+  - type: cel_true
+    expr: outputs.second.result.failure.attrs.command.timed_out == false
+  - type: cel_true
+    expr: outputs.first.artifact_refs["_c2j/command/stderr.txt"].stored.key.taskOrdinal != outputs.second.artifact_refs["_c2j/command/stderr.txt"].stored.key.taskOrdinal
+  mocks:
+    ops:
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+- id: missing-command-diagnostics-preserves-original-failure
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          .c2/recipes/hooks/build/verify.yaml: '[invalid'
+  assertions:
+  - type: cel_true
+    expr: outputs.first.result.status == "failed" && size(outputs.first.artifact_refs) == 0
+  - type: cel_true
+    expr: outputs.first.result.summary.contains("yaml")
+  mocks:
+    ops:
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough

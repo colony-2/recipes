@@ -51,6 +51,8 @@ Design normally needs no human approval. One outcome review presents
 design/implementation documents. c2j annotations prioritize documents and retain
 identity-checked sources. Review can restart design with feedback. Specific agent
 questions and the configurable iteration limit are additional human checkpoints.
+Review metadata omits self-links when an agent reuses or revises a document with
+the same name; annotations and valid links to other current documents are retained.
 
 Native rebase failures enter repair only with restored workspaces and complete
 structured diagnostics. Conflict recovery saves the entire binary delta before
@@ -69,6 +71,12 @@ current verification evidence is bound alongside formal documents. Native loadin
 or binding-collision failures return to implementation at the next existing task.
 Child and specialist documents use consumer-specific aliases when their names
 would otherwise collide; those aliases never change hook outputs.
+
+Caught verification command failures forward c2j's stored stdout/stderr references
+to the implementation turn, with exit code and timeout details in the failure.
+This requires c2j's [command failure diagnostics](../../GUIDE-Command-Failure-Diagnostics.md)
+contract (implemented in c2j `bcb7040`). Failures without stream evidence still
+return to implementation with their original error.
 
 Tests are in `../../recipe-tests/adaptive/`. Run with c2j supporting structured
 rebase failures and review annotations:
