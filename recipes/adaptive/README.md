@@ -43,7 +43,12 @@ the actual operation; schemas,
 permissions, artifact bindings, and decisions stay in the consuming recipes.
 See [shared prompt authoring and validation](../../guides/IMPLEMENTATION_SHARED_PROMPTS.md).
 The [readability cleanup](../../guides/IMPLEMENTATION_RECIPE_READABILITY.md)
-explains the remaining structured-input and artifact-identity constraints.
+explains artifact identity and the template changes. The public build, creation,
+and consultation contracts now use schema v2: annotations travel as native arrays
+with typed artifact references, and sessions use `checkpoint`. No annotation JSON
+strings or transport sidecars are needed. Internal helpers without input schemas
+remain unversioned and already pass native values directly. See the
+[schema v2 migration](../../guides/IMPLEMENTATION_RECIPE_SCHEMA_V2.md).
 
 A serving consultation **must agree before another cell's child job is submitted**.
 The coordinator owns submission, waiting, stable keys, and recorded results. Cell
@@ -110,8 +115,8 @@ assessment findings also request intervention instead of repeating the same turn
 See [the direct-state implementation report](../../guides/IMPLEMENTATION_DIRECT_RECIPE_STATE.md)
 for the ownership of state values and validation results.
 
-Tests are in `../../recipe-tests/adaptive/`. Run with c2j supporting structured
-rebase failures and review annotations:
+Tests are in `../../recipe-tests/adaptive/`. Run with c2j supporting schema v2,
+structured rebase failures, and review annotations (`2537a3c` or later):
 
 ```sh
 c2j test run --directory recipe-tests/adaptive --parallelism 2

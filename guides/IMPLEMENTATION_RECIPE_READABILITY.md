@@ -62,17 +62,22 @@ CEL expressions would not simplify the contract.
 
 ## Actual c2j constraints
 
-The inspected c2j implementation at
+These constraints describe the earlier cleanup. The
+[schema v2 migration](IMPLEMENTATION_RECIPE_SCHEMA_V2.md) removes its remaining
+JSON input and annotation sidecar workarounds from the active recipes.
+
+The implementation inspected during that cleanup, at
 `f1a153b898c57e93e9b01477d08cc02c1509ee4b` accepts public recipe input types
 `string`, `number`, `boolean`, `object`, `artifact`, and `artifact_map`.
 Here `object` means a session/object checkpoint, not an ordinary JSON object;
 `any`, plain maps, and arrays are unsupported by recipe input validation.
 
-That leaves narrow JSON strings at public job/test boundaries for values such as
+That required narrow JSON strings at public job/test boundaries for values such as
 consultation request lists, annotations, and saved coordinator threads/jobs. They
 are decoded at the boundary and passed as ordinary values internally. Removing
 that transport convention completely requires c2j to support ordinary structured
-inputs; it does not require a replacement workflow context object in recipes.
+inputs, now available in schema v2; it does not require a replacement workflow
+context object in recipes.
 
 Some empty values are meaningful: an artifact-map default means no files, an
 absent session means start a session, and the native test runner requires

@@ -21,6 +21,14 @@ Treat each op as a remote durable step:
 
 The most common authoring mistake is assuming a later step can read a path written by an earlier step without artifact plumbing. It cannot.
 
+For new declared input contracts, set root `schema_version: 2`. This is separate
+from the recipe release `version`. Use `object` and `array` for structured values,
+`checkpoint` for sessions, and `artifact` for document references. Forward whole
+values with `${{ inputs.name }}` instead of JSON encoding them. Model response
+schemas are still JSON Schema; their `type: object` declarations do not change.
+Each include selects its own schema version. See the
+[structured-input migration and example](IMPLEMENTATION_RECIPE_SCHEMA_V2.md).
+
 Keep these references open while authoring:
 
 - `NODE_SCOPE_SPEC.md`

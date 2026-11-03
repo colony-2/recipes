@@ -16,13 +16,6 @@ inputs:
   threads: ${{ inputs.threads }}
   jobs: ${{ inputs.jobs }}
 vars:
-  sidecar_pack: |2-
-     . as $v | if ($v.annotations // [] | length) == 0 then .documents else
-      ("__review_annotations__/" + $v.origin + "/") as $prefix |
-      ([range(0; ($v.documents | length) + 1) | ($prefix + tostring + ".json") |
-        select(. as $k | $v.documents | has($k) | not)][0]) as $id |
-      $v.documents + {($id): {kind: "value", name: $id, format: "json",
-        value: {_c2_recipe_sidecar: "review_annotations/v1", annotations: $v.annotations}}} end
   inline_consultation_limit: 40
   shared_consultation_recipe: git+https://github.com/colony-2/recipes.git//recipes/adaptive/consultation.yaml@main
   new_serving_consultations: |-
@@ -93,13 +86,22 @@ state:
       id: launch_serving_consultation
       op: recipes.run
       inputs:
-        recipes: '${{ [{''cell_name'': context.workspace.cell, ''git'': {''base_repo'': context.git.repo, ''base_ref'':
-          context.git.ref, ''base_hash'': context.git.resolved_hash}, ''name'': inputs.consultation_recipe, ''inputs'':
-          {''thread'': states.pick.outputs.key, ''request'': states.pick.outputs.item.request, ''consultant_cell'':
-          states.route.outputs.target.repo, ''consultant_ref'': states.route.outputs.target.ref, ''consultant_role'':
-          states.pick.outputs.item.role, ''requester_session'': states.pick.outputs.session, ''documents'': jq({''documents'':
-          states.route.outputs.documents, ''annotations'': states.route.outputs.?annotations.orValue([]), ''origin'':
-          context.invocation.hash}, vars.sidecar_pack)} }] }}'
+        recipes:
+        - cell_name: ${{ context.workspace.cell }}
+          git:
+            base_repo: ${{ context.git.repo }}
+            base_ref: ${{ context.git.ref }}
+            base_hash: ${{ context.git.resolved_hash }}
+          name: ${{ inputs.consultation_recipe }}
+          inputs:
+            thread: ${{ states.pick.outputs.key }}
+            request: ${{ states.pick.outputs.item.request }}
+            consultant_cell: ${{ states.route.outputs.target.repo }}
+            consultant_ref: ${{ states.route.outputs.target.ref }}
+            consultant_role: ${{ states.pick.outputs.item.role }}
+            requester_session: ${{ states.pick.outputs.session }}
+            documents: ${{ states.route.outputs.documents }}
+            annotations: ${{ states.route.outputs.?annotations.orValue([]) }}
       transitions:
       - to: record
         when: true
@@ -111,7 +113,6 @@ state:
     consult_inline:
       include: ./consultation.yaml
       inputs:
-        annotations_json: ${{ json_stringify(states.route.outputs.?annotations.orValue([])) }}
         thread: ${{ states.pick.outputs.key }}
         request: ${{ states.pick.outputs.item.request }}
         consultant_cell: ${{ states.route.outputs.target.repo }}
@@ -119,6 +120,7 @@ state:
         consultant_role: ${{ states.pick.outputs.item.role }}
         requester_session: ${{ states.pick.outputs.session }}
         documents: ${{ states.route.outputs.documents }}
+        annotations: ${{ states.route.outputs.?annotations.orValue([]) }}
       transitions:
       - to: record
         when: true
@@ -154,12 +156,19 @@ state:
       - id: launch_prerequisite_build
         op: recipes.run
         inputs:
-          recipes: '${{ [{''cell_name'': context.workspace.cell, ''git'': {''base_repo'': context.git.repo, ''base_ref'':
-            context.git.ref, ''base_hash'': context.git.resolved_hash}, ''name'': inputs.thread.request.kind == ''create''
-            ? inputs.create_recipe : inputs.build_recipe, ''inputs'': {''prompt'': sequence.prompts.outputs.children.prerequisite,
-            ''documents'': jq({''documents'': jq([inputs.thread.result.final_artifacts, sequence.starter.outputs.documents],
-            ''add''), ''annotations'': inputs.thread.result.?annotations.orValue([]), ''origin'': context.invocation.hash},
-            vars.sidecar_pack), ''root_cell'': inputs.root_cell, ''root_ref'': inputs.root_ref} }] }}'
+          recipes:
+          - cell_name: ${{ context.workspace.cell }}
+            git:
+              base_repo: ${{ context.git.repo }}
+              base_ref: ${{ context.git.ref }}
+              base_hash: ${{ context.git.resolved_hash }}
+            name: "${{ inputs.thread.request.kind == 'create' ? inputs.create_recipe : inputs.build_recipe }}"
+            inputs:
+              prompt: ${{ sequence.prompts.outputs.children.prerequisite }}
+              documents: ${{ jq([inputs.thread.result.final_artifacts, sequence.starter.outputs.documents], 'add') }}
+              annotations: ${{ inputs.thread.result.?annotations.orValue([]) }}
+              root_cell: ${{ inputs.root_cell }}
+              root_ref: ${{ inputs.root_ref }}
       outputs:
         job_id: ${{ sequence.launch_prerequisite_build.outputs.job_ids[0] }}
       transitions:
