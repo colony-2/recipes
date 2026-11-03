@@ -6,18 +6,22 @@ inputs:
   session: ${{ inputs.?session.orValue({}) }}
   attempts: ${{ int(inputs.?attempts.orValue(0)) }}
 state:
-  initial:
-  - to: automatic
-    when: inputs.attempts < 2 && size(inputs.turn.result.?session.orValue(inputs.session)) > 0 && size(inputs.turn.jobs.?job_ids.orValue([])) == 0
-  - to: review
-    when: true
+  initial: prompts
   states:
+    prompts:
+      include: ./prompts.yaml
+      transitions:
+      - to: automatic
+        when: inputs.attempts < 2 && size(inputs.turn.result.?session.orValue(inputs.session)) > 0 &&
+          size(inputs.turn.jobs.?job_ids.orValue([])) == 0
+      - to: review
+        when: true
     automatic:
       sequence: []
     review:
       include: ./review.yaml
       inputs:
-        title: Serving consultation needs response correction
+        title: ${{ states.prompts.outputs.repair.title }}
         documents: ${{ jq([inputs.documents, inputs.turn.artifacts], 'add') }}
         annotations: ${{ inputs.turn.?annotations.orValue([]) }}
         fields:
@@ -27,16 +31,16 @@ state:
           required: true
           options:
           - value: retry
-            label: Give direction and retry
+            label: ${{ states.prompts.outputs.repair.retry_label }}
           - value: cancel
-            label: Cancel this consultation
+            label: ${{ states.prompts.outputs.repair.cancel_label }}
         - id: feedback
           type: paragraph_text
-          question: Direction for correction; required to retry.
+          question: ${{ states.prompts.outputs.repair.feedback_question }}
           required: false
         - id: annotations
           type: file_upload
-          question: Optional corrected documents.
+          question: ${{ states.prompts.outputs.repair.annotations_question }}
           required: false
       transitions:
       - to: review
@@ -48,12 +52,12 @@ outputs:
   artifacts: ${{ jq([inputs.turn.artifacts, state_output('review', 'response', {}).?artifact_refs.orValue({})], 'add') }}
   documents: >-
     ${{ jq([inputs.documents, inputs.turn.artifacts, state_output('review', 'documents', {}),
-    {'error/response-corrections.md': {'kind':'value', 'name':'error/response-corrections.md', 'format':'text', 'value':jq(inputs.issues, 'map("- " + .) | join("\n")')},
-     'error/previous-response.json': {'kind':'value', 'name':'error/previous-response.json', 'format':'json', 'value':inputs.turn.result.?response.orValue({})} },
-    state_exists('review') ? {'feedback/direction.md': {'kind':'value', 'name':'feedback/direction.md', 'format':'text', 'value':state_output('review', 'response', {}).?fields.orValue({}).?feedback.orValue('')} } : {}], 'add') }}
-  prompt: |
-    Correct the response and any missing deliverables using the same schema.
-    Do not implement, submit jobs, push, or treat correction as agreement.
-    Existing documents are in inbox and remain eligible as returned artifacts.
-    Read error/ for the corrections and previous response. Read feedback/ when present for human direction.
+    {'error/response-corrections.md': {'kind':'value', 'name':'error/response-corrections.md', 'format':'text', 'value':jq(inputs.issues,
+    'map("- " + .) | join("\n")')},
+     'error/previous-response.json': {'kind':'value', 'name':'error/previous-response.json', 'format':'json', 'value':inputs.turn.result.?response.orValue({})}
+    },
+    state_exists('review') ? {'feedback/direction.md': {'kind':'value', 'name':'feedback/direction.md', 'format':'text',
+    'value':state_output('review', 'response', {}).?fields.orValue({}).?feedback.orValue('')} } : {}], 'add') }}
+  prompt: |-
+    ${{ states.prompts.outputs.repair.prompt }}
   base_hash: ${{ inputs.turn.?base_hash.orValue('') }}

@@ -5,14 +5,16 @@ inputs:
   fields: ${{ inputs.fields }}
   annotations: ${{ inputs.?annotations.orValue([]) }}
 sequence:
+- id: prompts
+  include: ./prompts.yaml
 - id: request_human_review
   op: input
   inputs:
-    form: '${{ jq([{''kind'': ''review'', ''title'': inputs.title, ''documents'': inputs.documents, ''fields'':
-      jq(inputs.fields, ''map(if .type == "multiple_choice" or .type == "checkboxes" then . else del(.options) end)''),
-      ''document_metadata'': jq({''documents'': inputs.documents, ''annotations'': inputs.annotations}, vars.metadata_query)},
-      ''merge-review.md'' in inputs.documents ? {''overview_document_id'': ''merge-review.md''} : {}], ''add'')
-      }}'
+    form: '${{ jq([{''kind'': ''review'', ''title'': inputs.title, ''documents'': inputs.documents, ''fields'': jq(inputs.fields,
+      ''map(if .type == "multiple_choice" or .type == "checkboxes" then . else del(.options) end)''), ''document_metadata'':
+      jq({''documents'': inputs.documents, ''annotations'': inputs.annotations, ''titles'': sequence.prompts.outputs.human.document_titles},
+      vars.metadata_query)}, ''merge-review.md'' in inputs.documents ? {''overview_document_id'': ''merge-review.md''} : {}],
+      ''add'') }}'
 vars:
   metadata_query: |
     def safe_text($limit): type == "string" and length > 0 and length <= $limit and (test("[[:cntrl:]]") | not);
@@ -30,12 +32,12 @@ vars:
      else . end) |
      . as $metadata |
      reduce ($v.documents | keys[]) as $id ($metadata;
-     (if $id == "merge-review.md" then {title: "Merge decision", role: "primary", order: 0}
-     elif $id == "test-statements.md" then {title: "Acceptance expectations", role: "primary", order: 1}
-     elif $id == "test-results.md" then {title: "Test outcomes and gaps", role: "primary", order: 2}
-     elif $id == "assessment.md" then {title: "Independent findings", role: "primary", order: 3}
-     elif $id == "design.md" then {title: "Design and scope", role: "supporting", order: 4}
-     elif $id == "implementation.md" then {title: "Implementation evidence", role: "supporting", order: 5}
+     (if $id == "merge-review.md" then {title: $v.titles[$id], role: "primary", order: 0}
+     elif $id == "test-statements.md" then {title: $v.titles[$id], role: "primary", order: 1}
+     elif $id == "test-results.md" then {title: $v.titles[$id], role: "primary", order: 2}
+     elif $id == "assessment.md" then {title: $v.titles[$id], role: "primary", order: 3}
+     elif $id == "design.md" then {title: $v.titles[$id], role: "supporting", order: 4}
+     elif $id == "implementation.md" then {title: $v.titles[$id], role: "supporting", order: 5}
      else {} end) as $defaults |
      if $defaults != {} then .[$id] = $defaults + (.[$id] // {}) + {role:$defaults.role, order:$defaults.order} else . end)
 outputs:

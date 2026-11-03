@@ -22,8 +22,13 @@ inputs:
   prompt_additions: ${{ inputs.?prompt_additions.orValue({}) }}
   consultations: ${{ inputs.?consultations.orValue([]) }}
 state:
-  initial: discover_root_cell
+  initial: prompts
   states:
+    prompts:
+      include: ./prompts.yaml
+      transitions:
+      - to: discover_root_cell
+        when: true
     discover_root_cell:
       id: discover_root_cell
       op: command_execution
@@ -414,14 +419,17 @@ state:
         annotations: ${{ transition.payload.annotations }}
         turn: ${{ states.work.outputs.turn }}
       sequence:
+      - id: prompts
+        include: ./prompts.yaml
       - id: review
         include: ./review.yaml
         inputs:
           annotations: ${{ inputs.annotations }}
-          title: Clarify the current build
+          title: ${{ sequence.prompts.outputs.human.questions.title }}
           documents: ${{ inputs.documents }}
-          fields: ${{ inputs.turn.result.response.questions + [{'id':'annotations','type':'file_upload','question':'Optional
-            supporting documents or annotations.','required':false}] }}
+          fields: ${{ inputs.turn.result.response.questions +
+            [{'id':'annotations','type':'file_upload','question':sequence.prompts.outputs.human.questions.annotations_question,'required':false}]
+            }}
       - id: feedback
         include: ./feedback-documents.yaml
         inputs:
@@ -838,42 +846,42 @@ state:
       inputs:
         documents: ${{ transition.payload.documents }}
         annotations: ${{ transition.payload.annotations }}
-        review_hint: ${{ transition.payload.?review_hint.orValue('Requested changes or guidance (required when requesting
-          changes).') }}
+        review_hint: ${{ transition.payload.?review_hint.orValue(states.prompts.outputs.human.requested_changes) }}
         candidate: ${{ states.prepare.outputs.candidate }}
         artifact_refs: ${{ states.verify.outputs.artifact_refs }}
       sequence:
+      - id: prompts
+        include: ./prompts.yaml
       - id: outcome_review
         include: ./review.yaml
         inputs:
           annotations: ${{ inputs.annotations }}
-          title: '${{ size(inputs.candidate.files) > 0 ? ''Review outcome, verification evidence, and file accounting''
-            : ''Review no-change rationale and verification evidence'' }}'
+          title: '${{ size(inputs.candidate.files) > 0 ? sequence.prompts.outputs.human.accept.title_changed : sequence.prompts.outputs.human.accept.title_unchanged
+            }}'
           documents: ${{ jq([inputs.documents, inputs.artifact_refs], 'add') }}
           fields:
           - id: decision
             type: multiple_choice
-            question: '${{ size(inputs.candidate.files) > 0 ? ''Accept the file accounting, reported verification
-              status, and proposed commit message in merge-review.md, and merge this candidate into the target branch?''
-              : ''Accept the rationale in merge-review.md that this request is satisfied without repository changes,
-              and complete this job?'' }}'
+            question: '${{ size(inputs.candidate.files) > 0 ? sequence.prompts.outputs.human.accept.decision_question_changed
+              : sequence.prompts.outputs.human.accept.decision_question_unchanged }}'
             required: true
             options:
             - value: accept
-              label: '${{ size(inputs.candidate.files) > 0 ? ''Accept and merge'' : ''Accept no-change outcome'' }}'
+              label: '${{ size(inputs.candidate.files) > 0 ? sequence.prompts.outputs.human.accept.accept_label_changed :
+                sequence.prompts.outputs.human.accept.accept_label_unchanged }}'
             - value: revise
-              label: Revise implementation
+              label: ${{ sequence.prompts.outputs.human.accept.revise_label }}
             - value: redesign
-              label: Change requirements or design
+              label: ${{ sequence.prompts.outputs.human.accept.redesign_label }}
             - value: cancel
-              label: Cancel
+              label: ${{ sequence.prompts.outputs.human.accept.cancel_label }}
           - id: feedback
             type: paragraph_text
             question: ${{ inputs.review_hint }}
             required: false
           - id: annotations
             type: file_upload
-            question: Optional annotated documents; uploads request revision and another review.
+            question: ${{ sequence.prompts.outputs.human.accept.annotations_question }}
             required: false
       - id: feedback
         include: ./feedback-documents.yaml
@@ -919,7 +927,7 @@ state:
       - to: accept
         when: true
         payload:
-          review_hint: Please describe requested changes or attach annotated documents before requesting revision.
+          review_hint: ${{ states.prompts.outputs.human.revision_hint }}
           documents: ${{ outputs.documents }}
           annotations: ${{ outputs.annotations }}
     merge:
@@ -1066,25 +1074,27 @@ state:
         retained_artifacts: ${{ transition.payload.?retained_artifacts.orValue(states.dispatch.outputs.retained_artifacts)
           }}
       sequence:
+      - id: prompts
+        include: ./prompts.yaml
       - id: direction
         include: ./review.yaml
         inputs:
-          title: Build needs direction after bounded attempts
+          title: ${{ sequence.prompts.outputs.human.iteration_limit.title }}
           documents: ${{ inputs.documents }}
           annotations: ${{ inputs.annotations }}
           fields:
           - id: decision
             type: multiple_choice
-            question: Continue with direction or cancel?
+            question: ${{ sequence.prompts.outputs.human.iteration_limit.decision_question }}
             required: true
             options:
             - value: continue
-              label: Continue
+              label: ${{ sequence.prompts.outputs.human.iteration_limit.continue_label }}
             - value: cancel
-              label: Cancel
+              label: ${{ sequence.prompts.outputs.human.iteration_limit.cancel_label }}
           - id: feedback
             type: paragraph_text
-            question: Direction for another bounded attempt.
+            question: ${{ sequence.prompts.outputs.human.iteration_limit.feedback_question }}
             required: false
       - id: feedback
         include: ./feedback-documents.yaml
@@ -1122,12 +1132,14 @@ state:
       inputs:
         documents: ${{ transition.payload.documents }}
         annotations: ${{ transition.payload.annotations }}
-        reason: ${{ transition.payload.?reason.orValue('Resolve the reported blocker before retrying.') }}
+        reason: ${{ transition.payload.?reason.orValue(states.prompts.outputs.human.blocker) }}
       sequence:
+      - id: prompts
+        include: ./prompts.yaml
       - id: request_intervention
         include: ./review.yaml
         inputs:
-          title: Resolve a specific build blocker
+          title: ${{ sequence.prompts.outputs.human.intervention.title }}
           documents: ${{ inputs.documents }}
           annotations: ${{ inputs.annotations }}
           fields:
@@ -1137,18 +1149,18 @@ state:
             required: true
             options:
             - value: continue
-              label: Capability or evidence supplied
+              label: ${{ sequence.prompts.outputs.human.intervention.continue_label }}
             - value: redesign
-              label: Change requirements or validation plan
+              label: ${{ sequence.prompts.outputs.human.intervention.redesign_label }}
             - value: cancel
-              label: Cancel
+              label: ${{ sequence.prompts.outputs.human.intervention.cancel_label }}
           - id: feedback
             type: paragraph_text
-            question: Describe the intervention, responsible actor, and what changed.
+            question: ${{ sequence.prompts.outputs.human.intervention.feedback_question }}
             required: true
           - id: annotations
             type: file_upload
-            question: Supporting evidence or revised direction
+            question: ${{ sequence.prompts.outputs.human.intervention.annotations_question }}
             required: false
       - id: feedback
         include: ./feedback-documents.yaml

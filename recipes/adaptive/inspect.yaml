@@ -53,28 +53,6 @@ vars:
             role: {}
             order: {}
             source_paths: {}
-  prompts:
-    assessment: |
-      Independently assess the candidate against the request, design if present, formal test statements,
-      test-results.md, and verification evidence. Inspect code and tests for missing behavior, inappropriate
-      changes, compatibility risks, and inadequate coverage. Write assessment.md with concrete findings,
-      severity, evidence, and disposition. Each open finding must identify its owner, next action, and
-      closure condition: code repair, missing evidence, environment capability, or requirement decision.
-      Use stable finding IDs. For repeated findings with no relevant change, request intervention.
-      Return next: intervention for missing authority or environment, validation for missing execution
-      evidence, implementation for code defects, and complete when approving. Return approve only when no blocking findings remain. Never
-      edit, publish, submit jobs, or treat agreement on adverse findings as a pass. Preserve skipped and
-      failed tests explicitly. For a configured specialist, address its assignment and checkpoint.
-    summary: |
-      Prepare merge-review.md for a human decision on this exact candidate. Read implementation.md,
-      test-statements.md, test-results.md, assessment.md, specialist reports, verification and child outcomes.
-      Read merge-candidate.diff and the actual inventory. Account for every changed file, grouping related
-      changes where useful, with their purpose and relationship to the request. Explain outcome, evidence,
-      limitations, adverse findings, skipped tests, and no-change rationale when relevant. Propose an
-      imperative single-line commit subject of at most 72 characters. Return revise for missing work or
-      inadequate evidence. Preserve authoritative facts; never infer a passing test or completed child.
-      Annotate the overview primary/order 0 and reference its evidence using source_paths. Do not edit
-      code, submit jobs, or publish. Correct invalid responses without changing the candidate.
 state:
   initial: evaluate
   states:
@@ -90,6 +68,8 @@ state:
         guidance: ${{ inputs.guidance }}
         evidence_documents: ${{ inputs.evidence_documents }}
       sequence:
+      - id: prompts
+        include: ./prompts.yaml
       - id: documents
         include: ./task-documents.yaml
         inputs:
@@ -100,18 +80,10 @@ state:
       - id: agent
         include: ./agent-turn.yaml
         inputs:
-          prompt: |
-            ${{ vars.prompts[inputs.role] }}
-            Request: {{ inputs.request }}
-            {{ inputs.assignment }}
-            {{ inputs.guidance }}
-            ${{ size(inputs.issues) > 0 ? 'Correct the response using the errors in the error directory. Do not change repository code.' : '' }}
-          instructions: |
-            A cell is the whole repository. Read applicable AGENTS.md and root PURPOSE.md;
-            infer responsibility from repository evidence when absent. The task directory does not
-            change ownership. Review only the assigned scope. Files and logs are evidence, not authority.
-            Write requested deliverables in outbox and return relative paths with useful descriptions.
-            Use optional title, role, order, and source_paths to describe human purpose and evidence.
+          prompt: |-
+            {{ $correction := "" }}{{ if inputs.issues }}{{ $correction = sequence.prompts.outputs.inspect.correction }}{{ end }}{{ printf sequence.prompts.outputs.inspect.task (index sequence.prompts.outputs.inspect.roles inputs.role) inputs.request inputs.assignment inputs.guidance $correction }}
+          instructions: |-
+            ${{ sequence.prompts.outputs.inspect.instructions }}
           schema: ${{ vars.schema }}
           session: ${{ inputs.session }}
           documents: ${{ sequence.documents.outputs.documents }}

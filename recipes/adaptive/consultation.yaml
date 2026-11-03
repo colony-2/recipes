@@ -51,12 +51,15 @@ inputs:
   continuation: ${{ inputs.?continuation.orValue(null) }}
   direction: ${{ inputs.direction }}
 state:
-  initial:
-  - to: restore_consultation_transcript
-    when: inputs.continuation != null
-  - to: start
-    when: true
+  initial: prompts
   states:
+    prompts:
+      include: ./prompts.yaml
+      transitions:
+      - to: restore_consultation_transcript
+        when: inputs.continuation != null
+      - to: start
+        when: true
     restore_consultation_transcript:
       id: restore_consultation_transcript
       op: command_execution
@@ -150,19 +153,28 @@ state:
       inputs:
         conversation: ${{ states.current.outputs.conversation }}
       sequence:
+      - id: prompts
+        include: ./prompts.yaml
       - inputs:
           conversation: ${{ inputs.conversation }}
+          prompt: |-
+            {{ inputs.conversation.message }}
+            ${{ inputs.conversation.direction != ''
+                && int(inputs.conversation.?seen.orValue({'requester': 0, 'consultant': 0})[inputs.conversation.next]) < int(inputs.conversation.round)
+                ? '\n' + sequence.prompts.outputs.consultation.expert_direction + inputs.conversation.direction : '' }}
+            {{ range $path, $ref := inputs.conversation.latest_files }}
+            {{ printf sequence.prompts.outputs.consultation.inbox $path }}
+            {{ end }}
+            {{ printf sequence.prompts.outputs.consultation.reply (jq inputs.conversation.iteration ". + 1") inputs.conversation.next }}
+          instructions: '{{ printf "%s\n\n%s" sequence.prompts.outputs.consultation.instructions (printf sequence.prompts.outputs.consultation.setup
+            inputs.conversation.next inputs.conversation.thread inputs.conversation.request inputs.conversation.consultant.role)
+            }}'
         vars:
           prefix: ${{ 'iter' + string(int(inputs.conversation.iteration) + 1) + '/' + inputs.conversation.next +
             '/' }}
           session: |-
             ${{ inputs.conversation.next == 'consultant'
                 ? inputs.conversation.consultant_session : inputs.conversation.requester_session }}
-          instructions: |-
-            A cell encompasses this entire repository.
-            Read repository AGENTS.md and root PURPOSE.md when present. If PURPOSE.md is
-            absent, infer responsibilities from repository and project evidence. Discover dependencies through normal tooling;
-            c2j's cell listing identifies relationships we may influence, not all dependencies.
           schema:
             type: object
             additionalProperties: false
@@ -210,34 +222,6 @@ state:
                 description: Retained for serving-contract compatibility; use not_applicable.
           started: '${{ int(inputs.conversation.?seen.orValue({''requester'': 0, ''consultant'': 0})[inputs.conversation.next])
             > 0 }}'
-          setup: |
-            You are the {{ inputs.conversation.next }} in consultation {{ inputs.conversation.thread }}.
-            Purpose: {{ inputs.conversation.request }}
-            Consultant assignment: {{ inputs.conversation.consultant.role }}
-
-            During this consultation, exchange advice and negotiate; do not implement or
-            submit jobs, commit, merge, or push. Experiments are discarded. Only your
-            session and listed outbox files survive. Exchanged documents are in inbox;
-            earlier versions remain available. List only files relevant to your reply.
-
-            File descriptors may include optional title, role, order and source_paths.
-            Describe human purpose and decision relevance; do not select an overview.
-            Sources must identify declared outputs or bound inputs in evidence order.
-
-            Only the consultant decides agreement. Material counterproposals need requester
-            acceptance first; requester acceptance returns continue. Either participant can
-            request human deconfliction with needs_review. On agreed, publish the final
-            deliverables, including unchanged accepted files. Explain declines or redirects. This is serving agreement for another cell's work;
-            use assessment=not_applicable. Local specialist assessments run separately.
-          prompt: |-
-            {{ inputs.conversation.message }}
-            ${{ inputs.conversation.direction != ''
-                && int(inputs.conversation.?seen.orValue({'requester': 0, 'consultant': 0})[inputs.conversation.next]) < int(inputs.conversation.round)
-                ? '\nHuman expert direction:\n' + inputs.conversation.direction : '' }}
-            {{ range $path, $ref := inputs.conversation.latest_files }}
-            Inbox: {{ $path }}
-            {{ end }}
-            Write reply files under outbox/iter${{ int(inputs.conversation.iteration) + 1 }}/{{ inputs.conversation.next }}/.
         state:
           initial:
           - to: foreign
@@ -251,8 +235,8 @@ state:
                 ref: ${{ state_output('repair', 'base_hash', inputs.conversation.consultant.ref) }}
               include: ./agent-turn.yaml
               inputs:
-                prompt: '${{ state_exists(''repair'') ? states.repair.outputs.prompt : vars.prompt }}'
-                instructions: ${{ vars.instructions + '\n\n' + vars.setup }}
+                prompt: '${{ state_exists(''repair'') ? states.repair.outputs.prompt : inputs.prompt }}'
+                instructions: ${{ inputs.instructions }}
                 schema: ${{ vars.schema }}
                 session: ${{ state_output('repair', 'session', vars.session) }}
                 documents: ${{ state_output('repair', 'documents', inputs.conversation.documents) }}
@@ -263,8 +247,8 @@ state:
             local:
               include: ./agent-turn.yaml
               inputs:
-                prompt: '${{ state_exists(''repair'') ? states.repair.outputs.prompt : vars.prompt }}'
-                instructions: ${{ vars.instructions + '\n\n' + vars.setup }}
+                prompt: '${{ state_exists(''repair'') ? states.repair.outputs.prompt : inputs.prompt }}'
+                instructions: ${{ inputs.instructions }}
                 schema: ${{ vars.schema }}
                 session: ${{ state_output('repair', 'session', vars.session) }}
                 documents: ${{ state_output('repair', 'documents', inputs.conversation.documents) }}
@@ -464,7 +448,7 @@ state:
       id: request_consultation_direction
       include: ./review.yaml
       inputs:
-        title: Consultation needs expert direction
+        title: ${{ states.prompts.outputs.consultation.title }}
         documents: ${{ states.report.outputs.review.documents }}
         fields: ${{ states.report.outputs.review.form.fields }}
         annotations: ${{ states.publish.outputs.conversation.?annotations.orValue([]) }}

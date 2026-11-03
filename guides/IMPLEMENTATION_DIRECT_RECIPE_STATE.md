@@ -1,8 +1,9 @@
 # Direct recipe state and file handoffs
 
 This work fits the recipes cell and changes the active adaptive build path.
-Externalized prompts remain set aside. No c2j or c2ops implementation changes are
-needed. Acceptance statements were defined before implementation in
+Prompt externalization was deferred during this refactor and is addressed by the
+[shared prompt follow-up](IMPLEMENTATION_SHARED_PROMPTS.md). No c2j or c2ops
+implementation changes are needed. Acceptance statements were defined before implementation in
 [direct-state-statements.md](../recipe-tests/adaptive/direct-state-statements.md).
 
 ## State ownership

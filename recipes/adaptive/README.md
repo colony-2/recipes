@@ -36,6 +36,12 @@ implementation (`agent.yaml`), independent assessment and merge summary
 specialists reuse assessment. Hooks return structured values and evidence directly;
 there is no report-rendering agent or artifact-inspection task per hook.
 
+Authored prompts and human-review wording live in [prompts.yaml](prompts.yaml),
+an empty-sequence include with named text outputs. It creates no worker tasks.
+Consumers select text and format runtime values at their own scope; schemas,
+permissions, artifact bindings, and decisions stay in the consuming recipes.
+See [shared prompt authoring and validation](../../guides/IMPLEMENTATION_SHARED_PROMPTS.md).
+
 A serving consultation **must agree before another cell's child job is submitted**.
 The coordinator owns submission, waiting, stable keys, and recorded results. Cell
 creation retains the shared root-owner agreement and readiness gates. Creation
