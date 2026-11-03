@@ -4,15 +4,32 @@ id: adaptive-document-bindings
 version: 1.0.0
 inputs:
   prefix: ${{ inputs.prefix }}
-  documents: ${{ json_parse(json_stringify(inputs.documents)) }}
+  documents: ${{ inputs.documents }}
   annotations: ${{ inputs.?annotations.orValue([]) }}
 sequence: []
 outputs:
   documents: |-
-    ${{ jq({'prefix': inputs.prefix, 'documents': inputs.documents},
-      '. as $v | $v.documents | to_entries | map(.key = ($v.prefix + .key) | .value.name = .key) | from_entries') }}
-  attachment_map: '${{ jq({''prefix'': inputs.prefix, ''documents'': inputs.documents}, ''. as $v | $v.documents
-    | keys | map({key: ., value: ($v.prefix + .)}) | from_entries'') }}'
+    ${{ jq({'prefix': inputs.prefix, 'documents': inputs.documents}, vars.rename_documents) }}
+  attachment_map: |-
+    ${{ jq({'prefix': inputs.prefix, 'documents': inputs.documents}, vars.attachment_map) }}
   annotations: |-
-    ${{ jq({'prefix': inputs.prefix, 'documents': inputs.documents, 'annotations': inputs.annotations},
-      '. as $v | [(.annotations // [])[] | . as $a | select(($a.id as $id | $v.documents | has($id)) and (($v.documents[$a.id] | del(.name)) == ($a.ref | del(.name)))) | .id = ($v.prefix + .id) | .lineage += [.id] | .sources |= map(. as $s | if has("id") and ($v.documents[$s.id] | del(.name)) == ($s.ref | del(.name)) then .id = ($v.prefix + .id) | .lineage += [.id] else . end)]') }}
+    ${{ jq({'prefix': inputs.prefix, 'documents': inputs.documents, 'annotations': inputs.annotations}, vars.rename_annotations) }}
+vars:
+  rename_documents: |
+    .prefix as $prefix |
+    .documents | with_entries(.key = ($prefix + .key) | .value.name = .key)
+  attachment_map: |
+    .prefix as $prefix |
+    .documents | keys | map({key: ., value: ($prefix + .)}) | from_entries
+  rename_annotations: |
+    . as $context |
+    # An alias changes the visible name, never the artifact identity.
+    def same_document:
+      has("id") and (.id as $id | $context.documents | has($id)) and
+      (($context.documents[.id] | del(.name)) == (.ref | del(.name)));
+    def rename:
+      .id = ($context.prefix + .id) | .lineage += [.id];
+    [.annotations[] |
+     select(same_document) |
+     rename |
+     .sources |= map(if same_document then rename else . end)]

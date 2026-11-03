@@ -111,7 +111,7 @@ state:
                  'max_iterations': int(inputs.max_iterations),
                  'next': 'consultant', 'outcome': 'continue',
                  'message': inputs.request, 'direction': '',
-                 'seen': {'requester': 0, 'consultant': 0}, 'latest_files': inputs.documents,
+                 'seen': {'requester': 0, 'consultant': 0},
                  'annotations': inputs.annotations, 'documents': inputs.documents, 'final_artifacts': {},
                  'transcript': [{'participant': 'requester', 'iteration': 1,
                    'thinking': inputs.request, 'files': inputs.documents}]}
@@ -127,7 +127,6 @@ state:
                      'round_iterations': 0, 'max_iterations': int(inputs.max_iterations),
                      'next': 'requester', 'outcome': 'continue',
                      'annotations': inputs.continuation.?annotations.orValue([]) + inputs.annotations, 'documents': jq([inputs.continuation.documents, inputs.documents], 'add'),
-                     'latest_files': inputs.documents,
                      'transcript': inputs.continuation.transcript + [
                        {'participant': 'expert', 'thinking': inputs.direction, 'files': inputs.documents}]}], 'add') }}
       transitions:
@@ -155,20 +154,23 @@ state:
       sequence:
       - id: prompts
         include: ./prompts.yaml
+        inputs:
+          request: ${{ inputs.conversation.request }}
+          participant: ${{ inputs.conversation.next }}
+          thread: ${{ inputs.conversation.thread }}
+          consultant_role: ${{ inputs.conversation.consultant.role }}
+          reply_directory: ${{ 'iter' + string(int(inputs.conversation.iteration) + 1) + '/' + inputs.conversation.next
+            + '/' }}
+          message: ${{ inputs.conversation.message }}
+          direction: "${{ inputs.conversation.direction != '' && int(inputs.conversation.?seen.orValue({'requester': 0, 'consultant':
+            0})[inputs.conversation.next]) < int(inputs.conversation.round) ? inputs.conversation.direction : '' }}"
       - inputs:
           conversation: ${{ inputs.conversation }}
-          prompt: |-
-            {{ inputs.conversation.message }}
-            ${{ inputs.conversation.direction != ''
-                && int(inputs.conversation.?seen.orValue({'requester': 0, 'consultant': 0})[inputs.conversation.next]) < int(inputs.conversation.round)
-                ? '\n' + sequence.prompts.outputs.consultation.expert_direction + inputs.conversation.direction : '' }}
-            {{ range $path, $ref := inputs.conversation.latest_files }}
-            {{ printf sequence.prompts.outputs.consultation.inbox $path }}
-            {{ end }}
-            {{ printf sequence.prompts.outputs.consultation.reply (jq inputs.conversation.iteration ". + 1") inputs.conversation.next }}
-          instructions: '{{ printf "%s\n\n%s" sequence.prompts.outputs.consultation.instructions (printf sequence.prompts.outputs.consultation.setup
-            inputs.conversation.next inputs.conversation.thread inputs.conversation.request inputs.conversation.consultant.role)
-            }}'
+          prompt: ${{ sequence.prompts.outputs.consultation.task }}
+          instructions: |-
+            {{ sequence.prompts.outputs.consultation.instructions }}
+
+            {{ sequence.prompts.outputs.consultation.setup }}
         vars:
           prefix: ${{ 'iter' + string(int(inputs.conversation.iteration) + 1) + '/' + inputs.conversation.next +
             '/' }}
@@ -343,7 +345,7 @@ state:
                            'assessment': inputs.previous.next == 'consultant' ? inputs.turn.result.response.?assessment.orValue('') : '',
                  'seen': jq([inputs.previous.?seen.orValue({'requester': 0, 'consultant': 0}),
                              {inputs.previous.next: int(inputs.previous.round)}], 'add'),
-                 'annotations': inputs.previous.?annotations.orValue([]) + inputs.turn.?annotations.orValue([]), 'latest_files': sequence.resolve.outputs.files,
+                 'annotations': inputs.previous.?annotations.orValue([]) + inputs.turn.?annotations.orValue([]),
                  'next': inputs.previous.next == 'consultant' ? 'requester' : 'consultant',
                  'iteration': int(inputs.previous.iteration) + (inputs.previous.next == 'consultant' ? 1 : 0),
                  'round_iterations': int(inputs.previous.round_iterations) + (inputs.previous.next == 'consultant' ? 1 : 0),
@@ -468,7 +470,6 @@ state:
                  {'outcome': 'continue', 'next': 'requester',
                   'round': int(inputs.previous.round) + 1, 'round_iterations': 0,
                   'direction': inputs.direction,
-                  'latest_files': inputs.response.?artifact_refs.orValue({}),
                   'documents': jq([inputs.previous.documents, inputs.review, inputs.response.?artifact_refs.orValue({})], 'add'),
                   'transcript': inputs.previous.transcript + [
                     {'participant': 'expert', 'thinking': inputs.direction,

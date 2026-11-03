@@ -1,24 +1,29 @@
 id: agent-inbox-fixture
 inputs:
-  arguments: ${{ json_parse(inputs.data_json) }}
+  documents: ${{ inputs.documents }}
+  evidence: ${{ inputs.evidence }}
+  errors: ${{ inputs.errors }}
+  feedback_documents: ${{ inputs.feedback_documents }}
+  feedback: ${{ inputs.feedback }}
+  error_summary: ${{ inputs.error_summary }}
+  error_name: ${{ inputs.error_name }}
 sequence:
 - id: errors
   include: ../../recipes/adaptive/error-documents.yaml
   inputs:
-    summary: ${{ inputs.arguments.?error_summary.orValue('') }}
-    name: ${{ inputs.arguments.?error_name.orValue('verification.md') }}
-    artifacts: ${{ inputs.arguments.?errors.orValue({}) }}
+    summary: ${{ inputs.error_summary }}
+    name: ${{ inputs.error_name }}
+    artifacts: ${{ inputs.errors }}
 - id: feedback
   include: ../../recipes/adaptive/feedback-documents.yaml
   inputs:
-    fields: ${{ inputs.arguments.?feedback.orValue({}) }}
-    documents: ${{ inputs.arguments.?feedback_documents.orValue({}) }}
+    fields: "${{ inputs.feedback == '' ? {} : {'feedback': inputs.feedback} }}"
+    documents: ${{ inputs.feedback_documents }}
 - id: files
   include: ../../recipes/adaptive/task-documents.yaml
   inputs:
-    documents: ${{ jq([inputs.arguments.documents,sequence.feedback.outputs.documents], 'add') }}
-    evidence: '${{ inputs.arguments.?error_summary.orValue('''') != '''' ? sequence.errors.outputs.documents : inputs.arguments.evidence
-      }}'
+    documents: ${{ jq([inputs.documents,sequence.feedback.outputs.documents], 'add') }}
+    evidence: "${{ inputs.error_summary != '' ? sequence.errors.outputs.documents : inputs.evidence }}"
 - id: read
   op: command_execution
   const: true
@@ -33,6 +38,24 @@ outputs:
   documents: ${{ sequence.files.outputs.documents }}
   evidence: ${{ sequence.files.outputs.evidence }}
 input_schema:
-  data_json:
+  documents:
+    type: artifact_map
+    default_value: {}
+  evidence:
+    type: artifact_map
+    default_value: {}
+  errors:
+    type: artifact_map
+    default_value: {}
+  feedback_documents:
+    type: artifact_map
+    default_value: {}
+  feedback:
     type: string
-    default_value: '{}'
+    default_value: ''
+  error_summary:
+    type: string
+    default_value: ''
+  error_name:
+    type: string
+    default_value: verification.md

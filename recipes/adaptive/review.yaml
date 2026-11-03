@@ -10,36 +10,62 @@ sequence:
 - id: request_human_review
   op: input
   inputs:
-    form: '${{ jq([{''kind'': ''review'', ''title'': inputs.title, ''documents'': inputs.documents, ''fields'': jq(inputs.fields,
-      ''map(if .type == "multiple_choice" or .type == "checkboxes" then . else del(.options) end)''), ''document_metadata'':
-      jq({''documents'': inputs.documents, ''annotations'': inputs.annotations, ''titles'': sequence.prompts.outputs.human.document_titles},
-      vars.metadata_query)}, ''merge-review.md'' in inputs.documents ? {''overview_document_id'': ''merge-review.md''} : {}],
-      ''add'') }}'
+    form:
+      kind: review
+      title: ${{ inputs.title }}
+      documents: ${{ inputs.documents }}
+      fields: ${{ jq(inputs.fields, vars.form_fields) }}
+      document_metadata: |-
+        ${{ jq({'documents': inputs.documents, 'annotations': inputs.annotations, 'titles': sequence.prompts.outputs.human.document_titles}, vars.metadata_query) }}
+      overview_document_id: "${{ 'merge-review.md' in inputs.documents ? 'merge-review.md' : '' }}"
 vars:
   metadata_query: |
-    def safe_text($limit): type == "string" and length > 0 and length <= $limit and (test("[[:cntrl:]]") | not);
-    . as $v |
-    reduce ($v.annotations[] | select(type == "object")) as $a ({};
-     if ($a.id | type) == "string" and ($v.documents | has($a.id)) and
-     (($v.documents[$a.id] | del(.name)) == ($a.ref | del(.name))) then
-     .[$a.id] = ((if ($a.descriptor | type) == "object" then $a.descriptor else {} end) | to_entries | map(select(
-       (.key == "title" and (.value | safe_text(120))) or
-       (.key == "description" and (.value | safe_text(300))) or
-       (.key == "role" and (.value | IN("primary", "supporting", "diagnostic"))) or
-       (.key == "order" and (.value | type == "number" and . >= 0 and . <= 1000000 and . == floor)))) | from_entries) +
-     {source_document_ids: [($a.sources | if type == "array" then .[] else empty end) | select(type == "object") | select(has("id") and .id != $a.id) |
-     select(. as $s | ($v.documents | has($s.id)) and (($v.documents[$s.id] | del(.name)) == ($s.ref | del(.name)))) | .id] | unique | .[:128]}
-     else . end) |
-     . as $metadata |
-     reduce ($v.documents | keys[]) as $id ($metadata;
-     (if $id == "merge-review.md" then {title: $v.titles[$id], role: "primary", order: 0}
-     elif $id == "test-statements.md" then {title: $v.titles[$id], role: "primary", order: 1}
-     elif $id == "test-results.md" then {title: $v.titles[$id], role: "primary", order: 2}
-     elif $id == "assessment.md" then {title: $v.titles[$id], role: "primary", order: 3}
-     elif $id == "design.md" then {title: $v.titles[$id], role: "supporting", order: 4}
-     elif $id == "implementation.md" then {title: $v.titles[$id], role: "supporting", order: 5}
-     else {} end) as $defaults |
-     if $defaults != {} then .[$id] = $defaults + (.[$id] // {}) + {role:$defaults.role, order:$defaults.order} else . end)
+    def safe_text($limit):
+      type == "string" and length > 0 and length <= $limit and
+      (test("[[:cntrl:]]") | not);
+
+    def descriptor:
+      (if type == "object" then . else {} end) |
+      with_entries(select(
+        (.key == "title" and (.value | safe_text(120))) or
+        (.key == "description" and (.value | safe_text(300))) or
+        (.key == "role" and (.value | IN("primary", "supporting", "diagnostic"))) or
+        (.key == "order" and (.value | type == "number" and . >= 0 and . <= 1000000 and . == floor))
+      ));
+
+    . as $context |
+    # Names can change during binding; content identities must still match.
+    def current_document:
+      (.id | type) == "string" and
+      (.id as $id | $context.documents | has($id)) and
+      (($context.documents[.id] | del(.name)) == (.ref | del(.name)));
+
+    def source_ids($id):
+      [(.sources | if type == "array" then .[] else empty end) |
+       select(type == "object" and .id != $id) |
+       select(current_document) | .id] | unique | .[:128];
+
+    # Last valid annotation for the current artifact wins; stale ones are ignored.
+    reduce (.annotations[] | select(type == "object") | select(current_document)) as $annotation ({};
+      .[$annotation.id] = ($annotation.descriptor | descriptor) +
+        {source_document_ids: ($annotation | source_ids(.id))}
+    ) |
+    # Required review documents retain their roles and order, even with custom titles.
+    reduce ($context.documents | keys[]) as $id (.;
+      (if $id == "merge-review.md" then {role: "primary", order: 0}
+       elif $id == "test-statements.md" then {role: "primary", order: 1}
+       elif $id == "test-results.md" then {role: "primary", order: 2}
+       elif $id == "assessment.md" then {role: "primary", order: 3}
+       elif $id == "design.md" then {role: "supporting", order: 4}
+       elif $id == "implementation.md" then {role: "supporting", order: 5}
+       else null end) as $priority |
+      if $priority == null then . else
+        .[$id] = {title: $context.titles[$id]} + (.[$id] // {}) + $priority
+      end
+    )
+  form_fields: |
+    map(if .type == "multiple_choice" or .type == "checkboxes"
+        then . else del(.options) end)
 outputs:
   response: ${{ sequence.request_human_review.outputs }}
   documents: ${{ jq([inputs.documents, sequence.request_human_review.outputs.?artifact_refs.orValue({})], 'add')

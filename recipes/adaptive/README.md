@@ -38,9 +38,12 @@ there is no report-rendering agent or artifact-inspection task per hook.
 
 Authored prompts and human-review wording live in [prompts.yaml](prompts.yaml),
 an empty-sequence include with named text outputs. It creates no worker tasks.
-Consumers select text and format runtime values at their own scope; schemas,
+Consumers pass named inputs to ordinary templates and resolve worker paths at
+the actual operation; schemas,
 permissions, artifact bindings, and decisions stay in the consuming recipes.
 See [shared prompt authoring and validation](../../guides/IMPLEMENTATION_SHARED_PROMPTS.md).
+The [readability cleanup](../../guides/IMPLEMENTATION_RECIPE_READABILITY.md)
+explains the remaining structured-input and artifact-identity constraints.
 
 A serving consultation **must agree before another cell's child job is submitted**.
 The coordinator owns submission, waiting, stable keys, and recorded results. Cell

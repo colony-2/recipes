@@ -25,44 +25,54 @@ For example, a sequence imports the text before consuming it:
 sequence:
 - id: prompts
   include: ./prompts.yaml
+  inputs:
+    request: ${{ inputs.request }}
+    target_directory: ${{ inputs.target_directory }}
+    phase: ${{ inputs.assignment == '' ? inputs.phase : inputs.assignment }}
+    guidance: ${{ inputs.guidance }}
 - id: turn
   include: ./agent-turn.yaml
   inputs:
     instructions: ${{ sequence.prompts.outputs.agent.instructions }}
-    prompt: '{{ printf sequence.prompts.outputs.agent.task inputs.request inputs.target_directory (index sequence.prompts.outputs.agent.phases (or inputs.assignment inputs.phase)) inputs.guidance }}'
+    prompt: ${{ sequence.prompts.outputs.agent.task }}
     # Existing schema, session, documents, and permission inputs remain here.
 ```
 
 The consumer selects the assignment. `agent.task` contains the complete framing:
 
 ```text
-Request: %s
-Target directory: %s
+Request: {{ inputs.request }}
+Target directory: {{ inputs.target_directory }}
 
-%s
+${{ inputs.phase == '' ? '' : vars.phases[inputs.phase] }}
 Review the errors in the error directory when present, and address the feedback directory's current comments.
 Read consultations/ and jobs/ when present for recorded agreements and outcomes. Do not duplicate recorded work.
-%s
+{{ inputs.guidance }}
 ```
 
-Go-template `printf` supplies request, target directory, selected phase text, and
-guidance. Plain text needs only an output reference. Format arguments are
-documented next to their definitions. Literal percent signs in a **format** must
-be written as `%%`; percent signs and template-like expressions in supplied
-arguments remain literal data. Do not put consumer-specific template expressions
-in the shared definitions: this include evaluates its own outputs normally and
-does not provide deferred template evaluation.
+The include renders ordinary templates using its named inputs. Consumers pass
+only the values they need; scalar defaults let static-text consumers omit inputs.
+Request text containing percent signs or template-like expressions remains data.
+There is no positional formatting convention or second template-evaluation pass.
+Phase selection remains in the consumer; the include looks up the selected text.
 
 The turn wrapper formats the artifact-directory footer at the actual operation:
 
 ```yaml
-prompt: '{{ printf states.prompts.outputs.turn.prompt inputs.prompt context.environment.op.inbox context.environment.op.outbox }}'
+prompt: |-
+  {{ inputs.prompt }}
+
+  {{ states.prompts.outputs.turn.directories }}
+  inbox: {{ context.environment.op.inbox }}
+  outbox: {{ context.environment.op.outbox }}
+  {{ states.prompts.outputs.turn.artifacts }}
 ```
 
 Thus paths belong to the worker executing the operation, including a foreign
 cell or resumed session. Standing instructions are still supplied only when
 starting a session. Response correction still reads `error/`; normal tasks still
 refer to directories rather than enumerating failure filenames.
+Consultation turns also refer to inbox rather than listing exchanged filenames.
 
 ## Scope and source behavior
 
@@ -84,7 +94,12 @@ Existing resolved-source persistence captures the expanded recipe. This pattern
 uses ordinary include resolution and does not introduce a descendant-only path
 restriction or a new import feature.
 
-## Validation
+## Initial extraction validation
+
+The results below describe the initial extraction committed as `777a2b6`.
+The subsequent [readability cleanup](IMPLEMENTATION_RECIPE_READABILITY.md)
+replaces positional formatting with the named templates shown above and records
+its own validation.
 
 [Acceptance statements](../recipe-tests/adaptive/shared-prompts-statements.md)
 were written before implementation. The native shared-prompts fixture retains

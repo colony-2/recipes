@@ -8,31 +8,61 @@ sequence:
   inputs:
     result: ${{ inputs.result }}
     artifacts: ${{ inputs.artifacts }}
-    bound: ${{ inputs.bound_inputs }}
   sequence: []
   outputs:
-    files: '${{ jq({''files'': inputs.result.?response.orValue({}).?files.orValue([]), ''artifacts'': inputs.artifacts},
-      ''. as $v | [.files[]? | select(type == "object" and (.path | type == "string")) | select(.path as $p | $v.artifacts
-      | has($p))]'') }}'
-    available: '${{ jq({''files'': inputs.result.?response.orValue({}).?files.orValue([]), ''artifacts'': inputs.artifacts,
-      ''bound'': inputs.bound}, ''. as $v | [$v.bound, ([$v.files[]? | select(type == "object" and (.path | type
-      == "string")) | select(.path as $p | $v.artifacts | has($p)) | {key: .path, value: $v.artifacts[.path]}] |
-      from_entries)] | add'') }}'
+    files: "${{ jq({'files': inputs.result.?response.orValue({}).?files.orValue([]), 'artifacts': inputs.artifacts}, vars.declared_files)
+      }}"
 - id: associate
   inputs:
     files: ${{ sequence.inventory.outputs.files }}
-    available: ${{ sequence.inventory.outputs.available }}
+    available: "${{ jq({'files': sequence.inventory.outputs.files, 'artifacts': inputs.artifacts, 'bound': inputs.bound_inputs},
+      vars.available_documents) }}"
     artifacts: ${{ inputs.artifacts }}
   sequence: []
   outputs:
     annotations: |-
-      ${{ inputs.files.map(f, {'id': f.path, 'lineage': [f.path],
+      ${{ inputs.files.map(file, {
+        'id': file.path,
+        'lineage': [file.path],
         'origin': context.workflow.job_id + '/' + context.invocation.hash,
-        'ref': inputs.artifacts[f.path], 'descriptor': f,
-        'sources': jq(f, 'if (.source_paths | type) == "array" then [.source_paths[] | select(type == "string")] else [] end').map(p,
-          {'requested': p, 'match': path_match(p, jq(inputs.available, 'keys'))}),
-        'inventory': inputs.available}) }}
+        'ref': inputs.artifacts[file.path],
+        'descriptor': file,
+        'sources': jq(file, vars.source_paths).map(path, {
+          'requested': path,
+          'match': path_match(path, jq(inputs.available, 'keys'))
+        })
+      }) }}
+    available: ${{ inputs.available }}
 outputs:
   annotations: |-
-    ${{ jq(json_parse(json_stringify(sequence.associate.outputs.annotations)),
-      '(. // []) | map(. as $a | .sources |= ((. // []) | map(. as $s | if .match.status == "matched" then {id: .match.path, lineage: [.match.path], ref: $a.inventory[.match.path]} else {requested: .requested, issue: .match.status} end)) | del(.inventory))') }}
+    ${{ jq({
+      'annotations': sequence.associate.outputs.annotations,
+      'documents': sequence.associate.outputs.available
+    }, vars.resolve_sources) }}
+vars:
+  declared_files: |
+    . as $context |
+    [.files[]? |
+     select(type == "object" and (.path | type == "string")) |
+     select(.path as $path | $context.artifacts | has($path))]
+  available_documents: |
+    . as $context |
+    .bound + (.files | map({key: .path, value: $context.artifacts[.path]}) | from_entries)
+  source_paths: |
+    if (.source_paths | type) == "array"
+    then [.source_paths[] | select(type == "string")]
+    else [] end
+  resolve_sources: |
+    .documents as $documents |
+    .annotations | map(
+      .sources |= map(
+        if .match.status == "matched" then {
+          id: .match.path,
+          lineage: [.match.path],
+          ref: $documents[.match.path]
+        } else {
+          requested: .requested,
+          issue: .match.status
+        } end
+      )
+    )
