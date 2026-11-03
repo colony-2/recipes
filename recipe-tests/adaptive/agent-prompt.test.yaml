@@ -6,10 +6,11 @@ cases:
     secrets:
       codex_api_key: synthetic
   inputs:
-    flow_json: '{"phase": "design", "event": "start", "session": {}, "request": "Preserve filters in CSV export",
-      "target_directory": "services/orders", "hook_settings": {"variables": {"internal": "internal-setting-sentinel"},
-      "prompt_additions": {"design": "Preserve CSV API"}}, "iterations": 99, "documents": {"build-settings.json":
-      {"kind": "value", "name": "build-settings.json", "format": "json", "value": {"internal": "internal-setting-sentinel"}}}}'
+    arguments_json: '{"phase": "design", "session": {}, "request": "Preserve filters in CSV export", "target_directory":
+      "services/orders", "hook_settings": {"variables": {"internal": "internal-setting-sentinel"}, "prompt_additions":
+      {"design": "Preserve CSV API"}}, "iterations": 99, "documents": {"build-settings.json": {"kind": "value", "name":
+      "build-settings.json", "format": "json", "value": {"internal": "internal-setting-sentinel"}}}, "assignment":
+      "", "guidance": "Preserve CSV API"}'
   mocks:
     ops:
     - match:
@@ -58,11 +59,12 @@ cases:
     secrets:
       codex_api_key: synthetic
   inputs:
-    flow_json: '{"phase": "implement", "event": "response_invalid", "session": {}, "request": "Preserve filters
-      in CSV export", "target_directory": "services/orders", "hook_settings": {"variables": {"internal": "internal-setting-sentinel"},
-      "prompt_additions": {"design": "Preserve CSV API"}}, "iterations": 99, "documents": {"build-settings.json":
-      {"kind": "value", "name": "build-settings.json", "format": "json", "value": {"internal": "internal-setting-sentinel"}}},
-      "issues": ["Missing file"], "repair_base_documents": {}}'
+    arguments_json: '{"phase": "implement", "session": {}, "request": "Preserve filters in CSV export", "target_directory":
+      "services/orders", "hook_settings": {"variables": {"internal": "internal-setting-sentinel"}, "prompt_additions":
+      {"design": "Preserve CSV API"}}, "iterations": 99, "documents": {"build-settings.json": {"kind": "value", "name":
+      "build-settings.json", "format": "json", "value": {"internal": "internal-setting-sentinel"}}}, "issues": ["Missing
+      file"], "repair_base_documents": {}, "assignment": "repair", "guidance": "", "evidence_documents": {"error/response-corrections.md":
+      {"kind": "value", "name": "error/response-corrections.md", "format": "text", "value": "Missing file"}}}'
   mocks:
     ops:
     - match:
@@ -99,11 +101,11 @@ cases:
     secrets:
       codex_api_key: synthetic
   inputs:
-    flow_json: '{"phase": "implement", "event": "assessment", "session": {}, "request": "Preserve filters in CSV
-      export", "target_directory": "services/orders", "hook_settings": {"variables": {"internal": "internal-setting-sentinel"},
-      "prompt_additions": {"design": "Preserve CSV API"}}, "iterations": 99, "documents": {"build-settings.json":
-      {"kind": "value", "name": "build-settings.json", "format": "json", "value": {"internal": "internal-setting-sentinel"}}},
-      "assessment_next": "validation"}'
+    arguments_json: '{"phase": "implement", "session": {}, "request": "Preserve filters in CSV export", "target_directory":
+      "services/orders", "hook_settings": {"variables": {"internal": "internal-setting-sentinel"}, "prompt_additions":
+      {"design": "Preserve CSV API"}}, "iterations": 99, "documents": {"build-settings.json": {"kind": "value", "name":
+      "build-settings.json", "format": "json", "value": {"internal": "internal-setting-sentinel"}}}, "assessment_next":
+      "validation", "assignment": "validation", "guidance": ""}'
   mocks:
     ops:
     - match:
@@ -130,3 +132,41 @@ cases:
   - type: cel_true
     expr: calls.filter(c,c.node_path.endsWith("/start_implementation_session"))[0].inputs.inputs.prompt.contains("Preserve
       repository code and formal expectations")
+- id: failure-files-need-no-parallel-state
+  type: integration_case
+  runtime:
+    secrets:
+      codex_api_key: synthetic
+  inputs:
+    arguments_json: '{"request": "Repair the failed check", "target_directory": ".", "phase": "implement", "documents":
+      {}, "evidence_documents": {"error/validate_export.log": {"kind": "value", "name": "error/validate_export.log",
+      "format": "text", "value": "Command: validate-export\n[stderr] unexpected filter"}}}'
+  mocks:
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: Done
+            files: []
+            questions: []
+            consultations: []
+            keys: []
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: review
+  assertions:
+  - type: cel_true
+    expr: calls.filter(c,c.node_path.endsWith("/start_implementation_session"))[0].inputs.inputs.prompt.contains("errors
+      in the error directory") && !calls.filter(c,c.node_path.endsWith("/start_implementation_session"))[0].inputs.inputs.prompt.contains("validate_export.log")
+  - type: cel_true
+    expr: calls.filter(c,c.node_path.endsWith("/start_implementation_session"))[0].artifacts["error/validate_export.log"].contains("unexpected
+      filter")

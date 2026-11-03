@@ -47,6 +47,17 @@ Each node owns its scope; children inherit from the container but cannot see int
 - Previously completed states via `states.<state-id>.artifacts["name"]`.
 - In state `transitions.when`, `outputs.*` refers to the current state's outputs.
 
+For a state implemented as a sequence, resolve references to enclosing sibling
+states in that state's `inputs:` mapping. Its nested sequence consumes those
+explicit inputs; it does not automatically inherit the enclosing `states`
+namespace. Export any result needed outside the sequence through the state's
+`outputs:`.
+
+Transition expressions run in the enclosing state-machine scope: `inputs.*`
+refers to that machine's inputs, while `outputs.*` is the completed state's
+exported result. State-local inputs needed by a transition must be exported, or
+the transition can reference the original producing state directly when valid.
+
 `initial` supports either:
 - String shortcut: `initial: validate`
 - Transition object/list using the same `to` + `when` shape as regular `transitions`

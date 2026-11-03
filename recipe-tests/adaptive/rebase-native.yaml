@@ -45,46 +45,24 @@ state:
     repair:
       inputs:
         failure: ${{ transition.failure }}
+        documents:
+          design.md:
+            kind: value
+            format: text
+            value: Approved design
+          test-statements.md:
+            kind: value
+            format: text
+            value: Approved expectations
       sequence:
       - id: handoff
         include: ../../recipes/adaptive/rebase-recovery.yaml
         inputs:
           failure: ${{ inputs.failure }}
-          flow:
-            request: Correct the widget and preserve concurrent work.
-            session:
-              retained: true
-            documents:
-              design.md:
-                kind: value
-                format: text
-                value: Approved design
-              test-statements.md:
-                kind: value
-                format: text
-                value: Approved expectations
-            approved:
-            - prerequisite
-            merge_chases: 2
-            rebase_repairs: 0
-            reviews:
-              design: approved
-              outcome: accepted
-            verification:
-              status: passed
-            reuse_merge_approval: true
-            chase_pending: true
-            reviewed_change_digest: previous
-            verification_artifacts:
-              old-checks.log:
-                kind: value
-                name: old-checks.log
-                format: text
-                value: Prior candidate results
       - id: reconcile
         op: command_execution
         artifacts:
-          ./: ${{ sequence.handoff.outputs.flow.documents }}
+          ./: ${{ jq([inputs.documents,sequence.handoff.outputs.documents], 'add') }}
         inputs:
           env:
             BASE: ${{ inputs.failure.attrs.rebase.base_hash }}
@@ -96,13 +74,13 @@ state:
             # The workflow, not this implementation task, adopted the target through rebase.
             test "$(git rev-parse HEAD)" = "$TARGET"
             test -z "$(git status --porcelain)"
-            test -s "$INBOX/candidate.diff"
-            test -s "$INBOX/_c2j/rebase/conflict.diff"
+            test -s "$INBOX/error/rebase/candidate.diff"
+            test -s "$INBOX/error/rebase/conflict.diff"
             test -s "$INBOX/design.md"
             test "$(cat upstream.txt)" = 'Keep the concurrent change'
             printf corrected > candidate.txt
       outputs:
-        flow: ${{ sequence.handoff.outputs.flow }}
+        documents: ${{ jq([inputs.documents,sequence.handoff.outputs.documents], 'add') }}
       transitions:
       - to: refresh
         when: true
@@ -139,4 +117,4 @@ state:
         refreshed: true
 outputs:
   refreshed: ${{ states.refresh.outputs.refreshed }}
-  flow: ${{ states.repair.outputs.flow }}
+  documents: ${{ states.repair.outputs.documents }}

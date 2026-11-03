@@ -61,9 +61,12 @@ reuse approval after fresh verification; changed content or hook policy requires
 new review. Upstream chasing and conflict repairs are bounded. Publication failure
 fails the job even when the preceding merge succeeded.
 
-Small state travels through inputs/outputs. Documents, diffs, logs, and transcripts
-are artifacts. Existing hook contracts still receive a `build-settings.json` value
-artifact for compatibility; the workflow itself uses typed settings.
+Helpers take specific inputs; there is no shared `flow` object. Decisions read
+verification, assessment, candidate, and coordination outputs directly. Native
+state run history supplies iteration and recovery counts. Documents, annotations,
+and changing sessions cross scope boundaries explicitly. Existing hook contracts
+still receive a `build-settings.json` artifact for compatibility; the main loop
+receives only the configure outputs it uses.
 
 c2j enforces declared hook output contracts. Hook values and artifact references
 pass through unchanged, without custom provenance checks or name prefixes. Only
@@ -79,6 +82,10 @@ task permissions, availability, routes, and child restrictions using `c2j self`.
 Current verification failures bind native command/extension execution logs under
 `error/`. Human feedback and assessment aliases appear under `feedback/`; original
 documents remain available for source links. Hook settings remain recipe data.
+Verification and recovery prepare these bindings where the failure occurs.
+Agents receive the resulting files and a directory-level instruction, without an
+event record, failure object, or filename inventory. Typed operation results still
+control verification and merge gates; log text is not parsed to infer success.
 This requires the version-2 [execution diagnostics](../../GUIDE-Command-Failure-Diagnostics.md)
 contract and self discovery (validated with c2j `f1a153b898c5`). Historical version-1
 streams are supported without inventing ordering. Missing diagnostics produce an
@@ -90,6 +97,9 @@ prerequisite work still uses the existing coordinator. Read-only reviews and
 negotiations cannot submit jobs. Empty-key capability blockers and explicit
 assessment interventions request focused human direction. Repeated unchanged
 assessment findings also request intervention instead of repeating the same turn.
+
+See [the direct-state implementation report](../../guides/IMPLEMENTATION_DIRECT_RECIPE_STATE.md)
+for the ownership of state values and validation results.
 
 Tests are in `../../recipe-tests/adaptive/`. Run with c2j supporting structured
 rebase failures and review annotations:

@@ -1,8 +1,15 @@
 id: adaptive-agent
 version: 1.0.0
 inputs:
-  flow: ${{ inputs.flow }}
-  documents: ${{ inputs.documents }}
+  request: ${{ inputs.request }}
+  target_directory: ${{ inputs.target_directory }}
+  phase: ${{ inputs.phase }}
+  assignment: ${{ inputs.?assignment.orValue('') }}
+  session: ${{ inputs.?session.orValue({}) }}
+  documents: ${{ inputs.?documents.orValue({}) }}
+  evidence_documents: ${{ inputs.?evidence_documents.orValue({}) }}
+  guidance: ${{ inputs.?guidance.orValue('') }}
+  retained_artifacts: ${{ inputs.?retained_artifacts.orValue({}) }}
 vars:
   schema:
     type: object
@@ -165,33 +172,37 @@ vars:
       push, merge, or publish. Return blocked with keys: [] for missing tools, permissions, or environments;
       describe the specific intervention and responsible actor in summary and blocker.md.
       Do not replace test-statements.md during implementation; return redesign to change the plan.
+    repair: Correct the response using the errors in the error directory and the supplied schema. Write missing deliverables.
+      Do not edit repository code or change the plan.
+    rebase: Reconcile the saved changes in the error directory with the current checkout. The recipe has adopted the
+      target. Preserve all local and concurrent work; do not run rebase or modify Git history. Run relevant tests,
+      update implementation.md and test-results.md, and return review.
+    validation: 'Read the feedback directory and execute the assigned bounded validation. Update implementation.md
+      and test-results.md with results. Preserve repository code and formal expectations. Return blocked with keys:
+      [] if the required authority or environment is unavailable.'
 sequence:
 - id: documents
   include: ./task-documents.yaml
   inputs:
-    flow: ${{ inputs.flow }}
     documents: ${{ inputs.documents }}
-    evidence: ${{ inputs.flow.?verification_artifacts.orValue({}) }}
+    evidence: ${{ inputs.evidence_documents }}
 - id: turn
   include: ./agent-turn.yaml
   inputs:
     prompt: |
-      Request: {{ inputs.flow.request }}
-      Target directory: {{ inputs.flow.target_directory }}
+      Request: {{ inputs.request }}
+      Target directory: {{ inputs.target_directory }}
 
-      ${{ inputs.flow.?event.orValue('') == 'response_invalid' ? 'Correct the response using the errors in the error directory and the supplied schema. Write missing deliverables. Do not edit repository code or change the plan.' : inputs.flow.?event.orValue('') == 'rebase_conflict' ? 'Reconcile the saved changes in the error directory with the current checkout. The recipe has already adopted the target. Preserve all local and concurrent work; do not run rebase or modify Git history. Run relevant tests, update implementation.md and test-results.md, and return review.' : vars.phases[inputs.flow.phase] }}
-      ${{ inputs.flow.?event.orValue('') == 'assessment' && inputs.flow.?assessment_next.orValue('') == 'validation' ? 'This return is for missing validation evidence. Read feedback/assessment.md, execute the assigned bounded validation, and update implementation.md and test-results.md with results. Preserve repository code and formal expectations. Return blocked with keys: [] if the required authority or environment is unavailable.' : '' }}
-      ${{ sequence.documents.outputs.documents.exists(k, k.startsWith('error/')) || sequence.documents.outputs.evidence.exists(k, k.startsWith('error/')) ? 'Review the errors in the error directory and address the problems for this task.' : '' }}
-      ${{ sequence.documents.outputs.documents.exists(k, k.startsWith('feedback/')) ? 'Read the feedback directory and address the current comments.' : '' }}
-      ${{ size(inputs.flow.?threads.orValue({})) > 0 ? 'Read consultations/ for recorded keys, scope agreements, and current status.' : '' }}
-      ${{ size(inputs.flow.?jobs.orValue({})) > 0 ? 'Read jobs/ for current external outcomes. Do not duplicate recorded work.' : '' }}
-      ${{ inputs.flow.hook_settings.?prompt_additions.orValue({})[?{'design': 'design', 'test-plan': 'test_plan', 'implement': 'implementation'}[inputs.flow.phase]].orValue('') }}
+      ${{ vars.phases[inputs.assignment == '' ? inputs.phase : inputs.assignment] }}
+      Review the errors in the error directory when present, and address the feedback directory's current comments.
+      Read consultations/ and jobs/ when present for recorded agreements and outcomes. Do not duplicate recorded work.
+      {{ inputs.guidance }}
     instructions: ${{ vars.instructions }}
     schema: ${{ vars.schema }}
-    session: ${{ inputs.flow.session }}
+    session: ${{ inputs.session }}
     documents: ${{ sequence.documents.outputs.documents }}
-    read_only: ${{ inputs.flow.phase != 'implement' || has(inputs.flow.repair_base_documents) }}
-    retained_artifacts: ${{ inputs.flow.?repair_artifacts.orValue({}) }}
+    read_only: ${{ inputs.phase != 'implement' || inputs.assignment == 'repair' }}
+    retained_artifacts: ${{ inputs.retained_artifacts }}
     evidence_documents: ${{ sequence.documents.outputs.evidence }}
 outputs:
   turn: ${{ sequence.turn.outputs }}

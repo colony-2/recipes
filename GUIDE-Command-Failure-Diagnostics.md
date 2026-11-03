@@ -10,9 +10,11 @@ Bind `_c2j/execution/<node-id>.log` into the next agent's `error/` directory.
 The log supplies portable directory context, command, timestamped attributed
 output, and results. Forward references; never embed the log in prompts.
 
-The adaptive verify helpers preserve both failure types. `task-documents.yaml`
-provides consumer aliases without replacing the original stored identity.
-When no log exists, a short error document preserves the actual failure.
+The adaptive verify helpers preserve both failure types. `error-documents.yaml`
+prepares error-directory aliases at the producing step without replacing the
+original stored identity. When no log exists, a short error document preserves
+the actual failure. Agent helpers bind those prepared artifacts without another
+failure-context record or path inventory.
 
 Command stdout/stderr fields are bounded previews. Set
 `capture_diagnostics: always` for commands whose successful validation evidence

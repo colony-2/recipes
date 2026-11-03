@@ -18,18 +18,6 @@ sequence:
   include: ../../recipes/adaptive/coordinate.yaml
   inputs:
     action: consult
-    flow:
-      phase: design
-      session: ${{ sequence.seed.outputs.session }}
-      documents: ${{ {} }}
-      threads: ${{ {} }}
-      jobs: ${{ {} }}
-      approved: []
-      root_cell: R
-      root_ref: main
-      consultation_recipe: ${{ inputs.consultation_recipe }}
-      build_recipe: dependency
-      create_recipe: dependency
     requests:
     - key: api
       kind: feature
@@ -43,6 +31,17 @@ sequence:
       ref: main
       request: Update worker architecture documentation.
       role: Assess existing owners for overlap and document worker boundaries.
+    phase: design
+    session: ${{ sequence.seed.outputs.session }}
+    documents: ${{ {} }}
+    threads: ${{ {} }}
+    jobs: ${{ {} }}
+    root_cell: R
+    root_ref: main
+    consultation_recipe: ${{ inputs.consultation_recipe }}
+    build_recipe: dependency
+    create_recipe: dependency
+    annotations: ${{ [] }}
 - id: independent
   op: command_execution
   inputs:
@@ -54,8 +53,17 @@ sequence:
     keys:
     - api
     - worker
-    flow: '${{ jq([sequence.launch.outputs.flow, {''session'': sequence.independent.outputs.session}], ''add'')
-      }}'
+    session: ${{ sequence.independent.outputs.session }}
+    documents: ${{ sequence.launch.outputs.documents }}
+    annotations: ${{ sequence.launch.outputs.annotations }}
+    threads: ${{ sequence.launch.outputs.threads }}
+    jobs: ${{ sequence.launch.outputs.jobs }}
+    root_cell: R
+    root_ref: main
+    consultation_recipe: ${{ inputs.consultation_recipe }}
+    build_recipe: dependency
+    create_recipe: dependency
+    phase: design
 - id: submit
   include: ../../recipes/adaptive/coordinate.yaml
   inputs:
@@ -63,8 +71,17 @@ sequence:
     keys:
     - api
     - worker
-    flow: '${{ jq([sequence.await_consultations.outputs.flow, {''phase'': ''implement'', ''approved'': [''api'',
-      ''worker'']}], ''add'') }}'
+    session: ${{ sequence.await_consultations.outputs.session }}
+    documents: ${{ sequence.await_consultations.outputs.documents }}
+    annotations: ${{ sequence.await_consultations.outputs.annotations }}
+    threads: ${{ sequence.await_consultations.outputs.threads }}
+    jobs: ${{ sequence.await_consultations.outputs.jobs }}
+    root_cell: R
+    root_ref: main
+    consultation_recipe: ${{ inputs.consultation_recipe }}
+    build_recipe: dependency
+    create_recipe: dependency
+    phase: implement
 - id: repeat_submit
   include: ../../recipes/adaptive/coordinate.yaml
   inputs:
@@ -72,7 +89,17 @@ sequence:
     keys:
     - api
     - worker
-    flow: ${{ sequence.submit.outputs.flow }}
+    session: ${{ sequence.submit.outputs.session }}
+    documents: ${{ sequence.submit.outputs.documents }}
+    annotations: ${{ sequence.submit.outputs.annotations }}
+    threads: ${{ sequence.submit.outputs.threads }}
+    jobs: ${{ sequence.submit.outputs.jobs }}
+    root_cell: R
+    root_ref: main
+    consultation_recipe: ${{ inputs.consultation_recipe }}
+    build_recipe: dependency
+    create_recipe: dependency
+    phase: implement
 - id: await_jobs
   include: ../../recipes/adaptive/coordinate.yaml
   inputs:
@@ -80,23 +107,34 @@ sequence:
     keys:
     - api
     - worker
-    flow: ${{ sequence.repeat_submit.outputs.flow }}
+    session: ${{ sequence.repeat_submit.outputs.session }}
+    documents: ${{ sequence.repeat_submit.outputs.documents }}
+    annotations: ${{ sequence.repeat_submit.outputs.annotations }}
+    threads: ${{ sequence.repeat_submit.outputs.threads }}
+    jobs: ${{ sequence.repeat_submit.outputs.jobs }}
+    root_cell: R
+    root_ref: main
+    consultation_recipe: ${{ inputs.consultation_recipe }}
+    build_recipe: dependency
+    create_recipe: dependency
+    phase: implement
 - id: read_evidence
   op: command_execution
   const: true
   artifacts:
-    ./: ${{ sequence.await_jobs.outputs.flow.documents }}
+    ./: ${{ sequence.await_jobs.outputs.documents }}
   inputs:
     env:
       INBOX: ${{ context.environment.op.inbox }}
-    run: 'test -f "$INBOX/consultations/api/iter1/consultant/spec.md"
-
+    run: |
+      test -f "$INBOX/consultations/api/iter1/consultant/spec.md"
       test -f "$INBOX/consultations/worker/iter1/consultant/spec.md"
-
       ! cmp -s "$INBOX/consultations/api/iter1/consultant/spec.md" "$INBOX/consultations/worker/iter1/consultant/spec.md"
-
-      '
 outputs:
   valid: ${{ sequence.await_jobs.outputs.valid }}
-  flow: ${{ sequence.await_jobs.outputs.flow }}
   independent_session: ${{ sequence.independent.outputs.session }}
+  session: ${{ sequence.await_jobs.outputs.session }}
+  documents: ${{ sequence.await_jobs.outputs.documents }}
+  annotations: ${{ sequence.await_jobs.outputs.annotations }}
+  threads: ${{ sequence.await_jobs.outputs.threads }}
+  jobs: ${{ sequence.await_jobs.outputs.jobs }}

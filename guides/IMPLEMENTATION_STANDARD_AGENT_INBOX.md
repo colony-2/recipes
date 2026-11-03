@@ -8,6 +8,11 @@ Status: implemented for the active adaptive build path. This document supersedes
 the runtime feature sketches in the original proposal. The runtime baseline was
 built locally as `/tmp/c2j-agent-inbox-bin`; the system-installed binary was older.
 
+Follow-up: [direct recipe state](IMPLEMENTATION_DIRECT_RECIPE_STATE.md) removes
+the internal `flow` object and moves error-file preparation to producing steps.
+That report supersedes this document's internal helper descriptions; the standard
+inbox and new-session instruction contracts remain in place.
+
 Sources reviewed:
 
 - [Execution diagnostics](https://github.com/colony-2/c2j/blob/f1a153b898c57e93e9b01477d08cc02c1509ee4b/GUIDE-Command-Failure-Diagnostics.md).

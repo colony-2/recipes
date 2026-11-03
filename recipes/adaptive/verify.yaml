@@ -22,7 +22,17 @@ sequence:
       outputs:
         result: ${{ {'status':'failed','ok':false,'summary':failure.message,'failure':json_parse(json_stringify(failure))}
           }}
-        artifact_refs: ${{ jq([failure.?attrs.orValue({}).?command.orValue({}).?diagnostics.orValue({}), failure.?attrs.orValue({}).?extension.orValue({}).?diagnostics.orValue({})], 'add') }}
+        artifact_refs: ${{ jq([failure.?attrs.orValue({}).?command.orValue({}).?diagnostics.orValue({}), failure.?attrs.orValue({}).?extension.orValue({}).?diagnostics.orValue({})],
+          'add') }}
+- id: errors
+  include: ./error-documents.yaml
+  inputs:
+    artifacts: ${{ sequence.check.outputs.artifact_refs }}
+    name: verification.md
+    summary: '${{ ''Verification: '' + sequence.check.outputs.result.status + ''\n'' + sequence.check.outputs.result.summary
+      + (inputs.require_verification && sequence.check.outputs.result.status == ''skipped'' ? ''\nVerification is
+      required; configure or repair the check.'' : '''') + ''\nRead accompanying logs when available. Missing logs
+      do not indicate success.'' }}'
 outputs:
   ok: ${{ sequence.check.outputs.result.status == 'passed' }}
   allowed: ${{ sequence.check.outputs.result.status == 'passed' || (sequence.check.outputs.result.status == 'skipped'
@@ -31,3 +41,9 @@ outputs:
   evidence: ${{ sequence.check.outputs.result }}
   review_documents: ${{ {} }}
   artifact_refs: ${{ sequence.check.outputs.artifact_refs }}
+  agent_artifacts: '${{ sequence.check.outputs.result.status == ''passed'' || (sequence.check.outputs.result.status
+    == ''skipped'' && !inputs.require_verification) ? jq([sequence.check.outputs.artifact_refs, {''verification.md'':
+    {''kind'':''value'',''name'':''verification.md'',''format'':''text'',''value'':''Verification: '' + sequence.check.outputs.result.status
+    + ''\n'' + sequence.check.outputs.result.summary} }], ''add | to_entries | map(if (.key|startswith("_c2j/execution/"))
+    then .key = ("verification/" + (.key|ltrimstr("_c2j/execution/"))) else . end | .value.name = .key) | from_entries'')
+    : sequence.errors.outputs.documents }}'

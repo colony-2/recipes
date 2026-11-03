@@ -1,6 +1,5 @@
 id: adaptive-rebase-recovery
 inputs:
-  flow: ${{ inputs.flow }}
   failure: ${{ json_parse(json_stringify(inputs.failure)) }}
 sequence:
 - id: preserve_candidate
@@ -24,10 +23,13 @@ sequence:
     maximum_attempts: 1
   inputs:
     target_base_hash: ${{ inputs.failure.attrs.rebase.target_base_hash }}
+- id: errors
+  include: ./error-documents.yaml
+  inputs:
+    name: rebase/recovery.md
+    summary: '${{ ''The recipe saved local changes and adopted the target. Reconcile the saved changes without rebasing.\nBase:
+      '' + inputs.failure.attrs.rebase.base_hash + ''\nTarget: '' + inputs.failure.attrs.rebase.target_base_hash }}'
+    artifacts: ${{ jq([inputs.failure.attrs.rebase.diagnostics, sequence.preserve_candidate.artifacts], 'add | to_entries
+      | map(.key = ("rebase/" + (.key|ltrimstr("_c2j/rebase/"))) | .value.name = .key) | from_entries') }}
 outputs:
-  flow: '${{ jq([inputs.flow, {''phase'': ''implement'', ''rebase_repairs'': int(inputs.flow.rebase_repairs) + 1,
-    ''event'': ''rebase_conflict'', ''rebase_recovery'': inputs.failure, ''documents'': jq([inputs.flow.documents,
-    jq([inputs.failure.attrs.rebase.diagnostics, {''candidate.diff'':sequence.preserve_candidate.artifacts[''candidate.diff''],
-    ''commits.log'':sequence.preserve_candidate.artifacts[''commits.log'']}], ''add'')], ''add'')}], ''add | del(.verification,
-    .verification_artifacts, .reviews.outcome, .assessment, .commit_message, .reviewed_change_digest, .reviewed_hook_digest,
-    .reuse_merge_approval, .chase_pending)'') }}'
+  documents: ${{ sequence.errors.outputs.documents }}

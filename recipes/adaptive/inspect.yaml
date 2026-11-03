@@ -5,7 +5,6 @@ inputs:
   documents: ${{ inputs.documents }}
   assignment: ${{ inputs.?assignment.orValue('') }}
   guidance: ${{ inputs.?guidance.orValue('') }}
-  evidence: ${{ inputs.?evidence.orValue({}) }}
   evidence_documents: ${{ inputs.?evidence_documents.orValue({}) }}
 vars:
   schema:
@@ -27,7 +26,11 @@ vars:
         minLength: 1
       next:
         type: string
-        enum: [implementation, validation, intervention, complete]
+        enum:
+        - implementation
+        - validation
+        - intervention
+        - complete
       subject:
         type: string
         maxLength: 72
@@ -85,17 +88,15 @@ state:
         request: ${{ inputs.request }}
         assignment: ${{ inputs.assignment }}
         guidance: ${{ inputs.guidance }}
-        evidence: ${{ inputs.evidence }}
         evidence_documents: ${{ inputs.evidence_documents }}
       sequence:
       - id: documents
         include: ./task-documents.yaml
         inputs:
           documents: ${{ inputs.documents }}
-          evidence: ${{ inputs.evidence_documents }}
-          issues: ${{ inputs.issues }}
-          flow: >-
-            ${{ {'verification': inputs.evidence.?verification.orValue({}), 'jobs': inputs.evidence.?dependencies.orValue({})} }}
+          evidence: '${{ jq([inputs.evidence_documents,size(inputs.issues) > 0 ? {''error/response-corrections.md'':
+            {''kind'':''value'',''name'':''error/response-corrections.md'',''format'':''text'',''value'':jq(inputs.issues,''map("-
+            " + .) | join("\n")'')} } : {}], ''add'') }}'
       - id: agent
         include: ./agent-turn.yaml
         inputs:
@@ -162,8 +163,8 @@ state:
           code: BUILD_REVIEW_INVALID
           message: ${{ jq(states.check.outputs.issues, 'join("; ")') }}
 outputs:
-  next: >-
-    ${{ states.evaluate.outputs.turn.result.response.?next.orValue(states.evaluate.outputs.turn.result.response.verdict == 'approve' ? 'complete' : 'implementation') }}
+  next: '${{ states.evaluate.outputs.turn.result.response.?next.orValue(states.evaluate.outputs.turn.result.response.verdict
+    == ''approve'' ? ''complete'' : ''implementation'') }}'
   approved: ${{ states.evaluate.outputs.turn.result.response.verdict == 'approve' }}
   response: ${{ states.evaluate.outputs.turn.result.response }}
   documents: ${{ states.evaluate.outputs.documents }}

@@ -1,0 +1,410 @@
+recipe: ../../build.yaml
+cases:
+- id: implementation-correction-stays-read-only-after-direction
+  type: integration_case
+  runtime:
+    secrets:
+      jev_api_key: synthetic
+      codex_api_key: synthetic
+    cells:
+      root:
+        files:
+          README.md: A bounded application.
+    responses:
+    - node_path: build/workflow/adaptive-build/run/adaptive-develop/iteration_limit/sequence/direction/adaptive-review/request_human_review
+      fields:
+        decision: continue
+        feedback: Correct the missing result fields; preserve the implementation.
+    - node_path: build/workflow/adaptive-build/run/adaptive-develop/accept/sequence/outcome_review/adaptive-review/request_human_review
+      fields:
+        decision: accept
+  inputs:
+    prompt: Explain why no changes are needed.
+  mocks:
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#jev
+      behavior:
+        mode: return
+        outputs:
+          answers:
+            is_heavy:
+              type: noul
+              noul: 0.01
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: Complete bounded work.
+            files:
+            - path: test-statements.md
+              description: test-statements.md
+              title: test-statements.md
+              role: primary
+              order: 0
+            questions: []
+            consultations: []
+            keys: []
+        artifacts:
+          test-statements.md: |-
+            # Expectations
+            - T1 [Critical] [integration] [README.md] [Git] Existing behavior remains available.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: review
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: false
+          response:
+            next: review
+            summary: Complete bounded work.
+            files: []
+            questions: []
+            consultations: []
+            keys: []
+        artifacts: {}
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: review
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: false
+          response:
+            next: review
+            summary: Complete bounded work.
+            files: []
+            questions: []
+            consultations: []
+            keys: []
+        artifacts: {}
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: review
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: false
+          response:
+            next: review
+            summary: Complete bounded work.
+            files: []
+            questions: []
+            consultations: []
+            keys: []
+        artifacts: {}
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: review
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: Complete bounded work.
+            files:
+            - path: implementation.md
+              description: implementation.md
+              title: implementation.md
+              role: primary
+              order: 0
+            - path: test-results.md
+              description: test-results.md
+              title: test-results.md
+              role: primary
+              order: 1
+            questions: []
+            consultations: []
+            keys: []
+        artifacts:
+          implementation.md: |-
+            # Outcome
+            Already satisfied.
+          test-results.md: |-
+            # Results
+            T1 passed; existing behavior inspected.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: review
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            summary: Complete bounded work.
+            files:
+            - path: assessment.md
+              description: assessment.md
+              title: assessment.md
+              role: primary
+              order: 0
+            verdict: approve
+            subject: Improve candidate
+        artifacts:
+          assessment.md: |-
+            # Review
+            Evidence checked.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: review
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            summary: Complete bounded work.
+            files:
+            - path: merge-review.md
+              description: merge-review.md
+              title: merge-review.md
+              role: primary
+              order: 0
+            verdict: approve
+            subject: Improve candidate
+        artifacts:
+          merge-review.md: |-
+            # Review
+            Evidence checked.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: review
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: disposition
+    value: unchanged
+  - type: cel_true
+    expr: size(calls.filter(c,c.node_path.endsWith("/resume_read_only_session") && c.inputs.inputs.prompt.contains("Correct
+      the response"))) == 3
+  - type: cel_true
+    expr: calls.exists(c,c.node_path.endsWith("/resume_read_only_session") && c.inputs.inputs.prompt.contains("Correct
+      the response") && "feedback/human-answers.md" in c.artifacts && "error/response-corrections.md" in c.artifacts)
+  - type: cel_true
+    expr: '"test-statements.md" in outputs.artifact_refs'
+- id: malformed-response-does-not-replace-completed-documents
+  type: integration_case
+  runtime:
+    secrets:
+      jev_api_key: synthetic
+      codex_api_key: synthetic
+    cells:
+      root:
+        files:
+          README.md: A bounded application.
+    responses:
+    - node_path: build/workflow/adaptive-build/run/adaptive-develop/accept/sequence/outcome_review/adaptive-review/request_human_review
+      fields:
+        decision: accept
+  inputs:
+    prompt: Explain why no changes are needed.
+  mocks:
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#jev
+      behavior:
+        mode: return
+        outputs:
+          answers:
+            is_heavy:
+              type: noul
+              noul: 0.01
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: Complete bounded work.
+            files:
+            - path: test-statements.md
+              description: test-statements.md
+              title: test-statements.md
+              role: primary
+              order: 0
+            questions: []
+            consultations: []
+            keys: []
+        artifacts:
+          test-statements.md: |-
+            # Expectations
+            - T1 [Critical] [integration] [README.md] [Git] Existing behavior remains available.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: review
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: false
+          response:
+            next: review
+            summary: Missing required fields
+        artifacts: {}
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: review
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: Complete bounded work.
+            files:
+            - path: implementation.md
+              description: implementation.md
+              title: implementation.md
+              role: primary
+              order: 0
+            - path: test-results.md
+              description: test-results.md
+              title: test-results.md
+              role: primary
+              order: 1
+            questions: []
+            consultations: []
+            keys: []
+        artifacts:
+          implementation.md: |-
+            # Outcome
+            Already satisfied.
+          test-results.md: |-
+            # Results
+            T1 passed; existing behavior inspected.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: review
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            summary: Complete bounded work.
+            files:
+            - path: assessment.md
+              description: assessment.md
+              title: assessment.md
+              role: primary
+              order: 0
+            verdict: approve
+            subject: Improve candidate
+        artifacts:
+          assessment.md: |-
+            # Review
+            Evidence checked.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: review
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            summary: Complete bounded work.
+            files:
+            - path: merge-review.md
+              description: merge-review.md
+              title: merge-review.md
+              role: primary
+              order: 0
+            verdict: approve
+            subject: Improve candidate
+        artifacts:
+          merge-review.md: |-
+            # Review
+            Evidence checked.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: review
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: disposition
+    value: unchanged
+  - type: cel_true
+    expr: '"test-statements.md" in outputs.artifact_refs && "implementation.md" in outputs.artifact_refs'
+  - type: cel_true
+    expr: calls.exists(c,c.node_path.endsWith("/resume_read_only_session") && "error/response-corrections.md" in c.artifacts)
