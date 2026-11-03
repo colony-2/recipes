@@ -105,15 +105,23 @@ state:
         inputs:
           flow: ${{ inputs.flow }}
           documents: ${{ inputs.flow.documents }}
+      - id: children
+        include: ./validation-jobs.yaml
+        inputs:
+          jobs: ${{ sequence.agent.outputs.turn.jobs }}
+          allowed: ${{ inputs.flow.phase == 'implement' && !has(inputs.flow.repair_base_documents) }}
       outputs:
-        flow: ${{ inputs.flow }}
+        flow: ${{ jq([inputs.flow, {'documents':jq([inputs.flow.documents, sequence.children.outputs.documents], 'add'), 'validation_failed':sequence.children.outputs.failed}],
+          'add') }}
         turn: ${{ sequence.agent.outputs.turn }}
       transitions:
       - to: record
         when: true
       catch:
       - when: failure.kind != 'cancellation' && failure.message.contains('artifact binding') && transition.payload.flow.?verification_artifacts.orValue({}).exists(k,
-          failure.message.contains('"' + k + '"'))
+          [k, 'error/' + k, 'error/' + jq(k, 'ltrimstr("_c2j/execution/")'),
+          'verification/' + jq(k, 'ltrimstr("_c2j/execution/")'), 'error/legacy/' + jq(k, 'ltrimstr("_c2j/command/")')].exists(name,
+          failure.message.contains('"' + name + '"')))
         to: dispatch
         payload:
           flow: ${{ jq([transition.payload.flow, {'event':'verification', 'verification':{'status':'failed', 'summary':failure.message},
@@ -126,15 +134,16 @@ state:
       sequence: []
       outputs:
         valid: ${{ size(vars.issues) == 0 }}
-        flow: |-
-          ${{ inputs.turn.result.?output_schema_valid.orValue(false) ? (jq([inputs.previous, {
-           'repair_attempts': 0, 'repair_artifacts': {}, 'session': inputs.turn.result.?session.orValue(inputs.previous.session),
-           'last_phase': inputs.previous.phase,
-           'plan_keys': inputs.turn.result.?response.orValue({}).?next.orValue('') == 'review' ? (inputs.previous.phase in ['design', 'test-plan'] ? inputs.turn.result.response.keys : jq([inputs.previous.plan_keys, inputs.turn.result.response.keys], 'add | unique')) : inputs.previous.plan_keys,
-           'result': inputs.turn.result.?response.orValue({}), 'annotations': inputs.previous.?annotations.orValue([]) + inputs.turn.?annotations.orValue([]),
-           'documents': jq([inputs.previous.?repair_base_documents.orValue(inputs.previous.documents),
-             jq({'files': inputs.turn.result.?response.orValue({}).?files.orValue([]), 'artifacts': inputs.turn.artifacts},
-                '. as $v | $v.files | map(select(.path as $p | $v.artifacts | has($p)) | {key: .path, value: $v.artifacts[.path]}) | from_entries')], 'add')}], 'add | del(.repair_base_documents)')) : inputs.previous }}
+        flow: "${{ inputs.turn.result.?output_schema_valid.orValue(false) ? (jq([inputs.previous, {\n 'repair_attempts': 0,\
+          \ 'repair_artifacts': {}, 'session': inputs.turn.result.?session.orValue(inputs.previous.session),\n 'last_phase':\
+          \ inputs.previous.phase,\n 'plan_keys': inputs.turn.result.?response.orValue({}).?next.orValue('') == 'review' ?\
+          \ (inputs.previous.phase in ['design', 'test-plan'] ? inputs.turn.result.response.keys : jq([inputs.previous.plan_keys,\
+          \ inputs.turn.result.response.keys], 'add | unique')) : inputs.previous.plan_keys,\n 'result': inputs.turn.result.?response.orValue({}),\
+          \ 'annotations': inputs.previous.?annotations.orValue([]) + inputs.turn.?annotations.orValue([]),\n 'documents':\
+          \ jq([inputs.previous.?repair_base_documents.orValue(inputs.previous.documents),\n   jq({'files': inputs.turn.result.?response.orValue({}).?files.orValue([]),\
+          \ 'artifacts': inputs.turn.artifacts},\n      '. as $v | $v.files | map(select(.path as $p | $v.artifacts | has($p))\
+          \ | {key: .path, value: $v.artifacts[.path]}) | from_entries')], 'add')}], 'add | del(.repair_base_documents)'))\
+          \ : inputs.previous }}"
         issues: ${{ vars.issues }}
         turn: ${{ inputs.turn }}
         previous: ${{ inputs.previous }}
@@ -151,18 +160,18 @@ state:
           turn: ${{ outputs.turn }}
           issues: ${{ outputs.issues }}
       - to: stopped
-        when: outputs.flow.result.next == 'outside' && !outputs.flow.threads.exists(k, outputs.flow.threads[k].status
-          == 'running') && !outputs.flow.jobs.exists(k, outputs.flow.jobs[k].status == 'running')
+        when: outputs.flow.result.next == 'outside' && !outputs.flow.threads.exists(k, outputs.flow.threads[k].status == 'running')
+          && !outputs.flow.jobs.exists(k, outputs.flow.jobs[k].status == 'running')
         payload:
           flow: '${{ jq([outputs.flow, {''disposition'': ''outside''}], ''add'') }}'
       - to: coordinate
-        when: outputs.flow.result.next == 'outside' && (outputs.flow.threads.exists(k, outputs.flow.threads[k].status
-          == 'running') || outputs.flow.jobs.exists(k, outputs.flow.jobs[k].status == 'running'))
+        when: outputs.flow.result.next == 'outside' && (outputs.flow.threads.exists(k, outputs.flow.threads[k].status == 'running')
+          || outputs.flow.jobs.exists(k, outputs.flow.jobs[k].status == 'running'))
         payload:
           action: blocked
           requests: []
-          keys: ${{ jq([outputs.flow.threads, outputs.flow.jobs], 'add | to_entries | map(select(.value.status ==
-            "running") | .key)') }}
+          keys: ${{ jq([outputs.flow.threads, outputs.flow.jobs], 'add | to_entries | map(select(.value.status == "running")
+            | .key)') }}
           flow: ${{ jq([outputs.flow, {'pending_outside':true}], 'add') }}
       - to: design_next
         when: outputs.flow.result.next == 'redesign'
@@ -172,6 +181,12 @@ state:
         when: outputs.flow.result.next == 'ask_user'
         payload:
           flow: ${{ outputs.flow }}
+      - to: intervention
+        when: (outputs.flow.result.next == 'blocked' && size(outputs.flow.result.keys) == 0) || outputs.flow.?validation_failed.orValue(false)
+        payload:
+          flow: '${{ jq([outputs.flow, {''intervention_reason'':outputs.flow.validation_failed ? ''An assigned validation
+            child failed. Review jobs/ and resolve the validation failure or missing capability.'' : outputs.flow.result.summary}],
+            ''add'') }}'
       - to: coordinate
         when: outputs.flow.result.next in ['consult', 'submit', 'blocked']
         payload:
@@ -184,37 +199,35 @@ state:
         payload:
           flow: '${{ jq([outputs.flow, {''message'': ''Continue the current phase.''}], ''add'') }}'
       - to: coordinate
-        when: outputs.flow.threads.exists(k, outputs.flow.threads[k].status == 'running') || outputs.flow.jobs.exists(k,
-          outputs.flow.jobs[k].status == 'running')
+        when: outputs.flow.threads.exists(k, outputs.flow.threads[k].status == 'running') || outputs.flow.jobs.exists(k, outputs.flow.jobs[k].status
+          == 'running')
         payload:
           action: ${{ 'blocked' }}
           requests: ${{ [] }}
-          keys: ${{ jq([outputs.flow.threads, outputs.flow.jobs], 'add | to_entries | map(select(.value.status ==
-            "running") | .key)') }}
+          keys: ${{ jq([outputs.flow.threads, outputs.flow.jobs], 'add | to_entries | map(select(.value.status == "running")
+            | .key)') }}
           flow: ${{ outputs.flow }}
       - to: repair
-        when: 'outputs.flow.phase == ''implement'' && (!outputs.flow.plan_keys.all(k, k in outputs.flow.jobs) ||
-          !outputs.flow.jobs.all(k, outputs.flow.jobs[k].status == ''completed'' && (outputs.flow.jobs[k].kind ==
-          ''create'' ? outputs.flow.jobs[k].?ready.orValue(false) : (outputs.flow.jobs[k].result.?merged.orValue(false)
-          || outputs.flow.jobs[k].result.?disposition.orValue('''') in [''delegated'', ''unchanged'']))))'
+        when: 'outputs.flow.phase == ''implement'' && (!outputs.flow.plan_keys.all(k, k in outputs.flow.jobs) || !outputs.flow.jobs.all(k,
+          outputs.flow.jobs[k].status == ''completed'' && (outputs.flow.jobs[k].kind == ''create'' ? outputs.flow.jobs[k].?ready.orValue(false)
+          : (outputs.flow.jobs[k].result.?merged.orValue(false) || outputs.flow.jobs[k].result.?disposition.orValue('''')
+          in [''delegated'', ''unchanged'']))))'
         payload:
           flow: ${{ outputs.previous }}
           turn: ${{ outputs.turn }}
-          issues: ${{ ['Required child work has not succeeded. Reconcile recorded results; do not claim completion
-            or duplicate jobs.'] }}
+          issues: ${{ ['Required child work has not succeeded. Reconcile recorded results; do not claim completion or duplicate
+            jobs.'] }}
       - to: repair
-        when: |-
-          outputs.flow.phase in ['design', 'test-plan'] && !outputs.flow.plan_keys.all(k,
-            k in outputs.flow.threads && outputs.flow.threads[k].request.kind != 'expert'
-            && outputs.flow.threads[k].?result.orValue({}).?outcome.orValue('') == 'agreed')
+        when: "outputs.flow.phase in ['design', 'test-plan'] && !outputs.flow.plan_keys.all(k,\n  k in outputs.flow.threads\
+          \ && outputs.flow.threads[k].request.kind != 'expert'\n  && outputs.flow.threads[k].?result.orValue({}).?outcome.orValue('')\
+          \ == 'agreed')"
         payload:
           flow: ${{ outputs.previous }}
           turn: ${{ outputs.turn }}
-          issues: '${{ ["Design prerequisite keys must identify this build''s agreed non-expert serving requests
-            in the workflow inputs. " + "Parent request identifiers are not local prerequisites. Return keys: []
-            when none are needed. " + (outputs.flow.phase == ''design'' ? "Correct the design review response before
-            advancing to test-plan." : "Return next: redesign to correct the design''s prerequisite list before
-            requesting test-plan review again.")] }}'
+          issues: '${{ ["Design prerequisite keys must identify this build''s agreed non-expert serving requests in the workflow
+            inputs. " + "Parent request identifiers are not local prerequisites. Return keys: [] when none are needed. " +
+            (outputs.flow.phase == ''design'' ? "Correct the design review response before advancing to test-plan." : "Return
+            next: redesign to correct the design''s prerequisite list before requesting test-plan review again.")] }}'
       - to: test_next
         when: outputs.flow.phase == 'design'
         payload:
@@ -228,20 +241,35 @@ state:
         payload:
           flow: ${{ outputs.flow }}
       vars:
-        issues: |-
-          ${{ (states.work.outputs.turn.result.?response.orValue({}).?next.orValue('') == 'ask_user' ? [] : states.work.outputs.turn.?issues.orValue([]))
-           + (states.work.outputs.turn.result.?status.orValue('failed') != 'completed' ? ['Agent did not complete: ' + states.work.outputs.turn.result.?errorMessage.orValue('No completed response.')] : [])
-           + (!states.work.outputs.turn.result.?output_schema_valid.orValue(false) ? ['The operation did not produce a schema-valid response. Correct the response using the supplied schema.'] : [])
-           + (states.work.outputs.turn.result.?session.orValue(null) == null ? ['The response has no resumable session checkpoint.'] : [])
-           + (size(states.work.outputs.turn.jobs.?job_ids.orValue([])) > 0 ? ['The agent submitted jobs directly; stop and review these effects before continuing.'] : [])
-           + (states.work.outputs.turn.result.?status.orValue('failed') == 'completed' && states.work.outputs.turn.result.?output_schema_valid.orValue(false) ?
-              (states.work.outputs.turn.result.response.next != 'ask_user' && states.work.outputs.turn.result.response.files.exists(f, f.path.startsWith('/') || f.path.contains('..') || f.path.contains('\\') || f.path in ['__git_state_thin_pack__']) ? ['Select only safe deliverable artifact names, excluding workflow control files.'] : [])
-            + (states.work.outputs.turn.result.response.next != 'ask_user' && size(states.work.outputs.turn.result.response.files.map(f, f.path)) != size(jq(states.work.outputs.turn.result.response.files, 'map(.path) | unique')) ? ['List each resolved artifact only once.'] : [])
-            + (states.work.outputs.turn.result.response.next == 'review' && !states.work.outputs.turn.result.response.files.exists(f, f.path == {'design': 'design.md', 'test-plan': 'test-statements.md', 'implement': 'implementation.md'}[states.work.outputs.flow.phase]) ? ['Review requires ' + {'design': 'design.md', 'test-plan': 'test-statements.md', 'implement': 'implementation.md'}[states.work.outputs.flow.phase] + ' in the returned files.'] : [])
-            + (states.work.outputs.turn.result.response.next == 'ask_user' && (size(states.work.outputs.turn.result.response.questions) == 0 || states.work.outputs.turn.result.response.questions.exists(q, q.id == 'annotations')) ? ['ask_user requires focused questions; annotations is a reserved question id.'] : [])
-            + (states.work.outputs.turn.result.response.next == 'consult' && size(states.work.outputs.turn.result.response.consultations) == 0 ? ['consult requires at least one consultation request.'] : [])
-            + (states.work.outputs.turn.result.response.next in ['blocked', 'submit'] && size(states.work.outputs.turn.result.response.keys) == 0 ? ['blocked and submit require explicit prerequisite keys.'] : [])
-           : []) + (states.work.outputs.flow.phase == 'implement' && states.work.outputs.turn.result.?response.orValue({}).?next.orValue('') == 'review' && !states.work.outputs.turn.result.response.files.exists(f, f.path == 'test-results.md') ? ['Publish test-results.md mapping statement IDs to results and evidence.'] : []) + (states.work.outputs.flow.phase == 'implement' && states.work.outputs.turn.result.?response.orValue({}).?files.orValue([]).exists(f, f.path == 'test-statements.md') ? ['Formal expectations are fixed before implementation. Return redesign to update their plan with preserved expectations and any required deprecation.'] : []) }}
+        issues: "${{ (states.work.outputs.turn.result.?response.orValue({}).?next.orValue('') == 'ask_user' ? [] : states.work.outputs.turn.?issues.orValue([]))\n\
+          \ + (states.work.outputs.turn.result.?status.orValue('failed') != 'completed' ? ['Agent did not complete: ' + states.work.outputs.turn.result.?errorMessage.orValue('No\
+          \ completed response.')] : [])\n + (!states.work.outputs.turn.result.?output_schema_valid.orValue(false) ? ['The\
+          \ operation did not produce a schema-valid response. Correct the response using the supplied schema.'] : [])\n +\
+          \ (states.work.outputs.turn.result.?session.orValue(null) == null ? ['The response has no resumable session checkpoint.']\
+          \ : [])\n + (size(states.work.outputs.turn.jobs.?job_ids.orValue([])) > 0 && (states.work.outputs.flow.phase !=\
+          \ 'implement' || has(states.work.outputs.flow.repair_base_documents)) ? ['The agent submitted jobs directly; stop\
+          \ and review these effects before continuing.'] : [])\n + (states.work.outputs.turn.result.?status.orValue('failed')\
+          \ == 'completed' && states.work.outputs.turn.result.?output_schema_valid.orValue(false) ?\n    (states.work.outputs.turn.result.response.next\
+          \ != 'ask_user' && states.work.outputs.turn.result.response.files.exists(f, f.path.startsWith('/') || f.path.contains('..')\
+          \ || f.path.contains('\\\\') || f.path in ['__git_state_thin_pack__']) ? ['Select only safe deliverable artifact\
+          \ names, excluding workflow control files.'] : [])\n  + (states.work.outputs.turn.result.response.next != 'ask_user'\
+          \ && size(states.work.outputs.turn.result.response.files.map(f, f.path)) != size(jq(states.work.outputs.turn.result.response.files,\
+          \ 'map(.path) | unique')) ? ['List each resolved artifact only once.'] : [])\n  + (states.work.outputs.turn.result.response.next\
+          \ == 'review' && !states.work.outputs.turn.result.response.files.exists(f, f.path == {'design': 'design.md', 'test-plan':\
+          \ 'test-statements.md', 'implement': 'implementation.md'}[states.work.outputs.flow.phase]) ? ['Review requires '\
+          \ + {'design': 'design.md', 'test-plan': 'test-statements.md', 'implement': 'implementation.md'}[states.work.outputs.flow.phase]\
+          \ + ' in the returned files.'] : [])\n  + (states.work.outputs.turn.result.response.next == 'ask_user' && (size(states.work.outputs.turn.result.response.questions)\
+          \ == 0 || states.work.outputs.turn.result.response.questions.exists(q, q.id == 'annotations')) ? ['ask_user requires\
+          \ focused questions; annotations is a reserved question id.'] : [])\n  + (states.work.outputs.turn.result.response.next\
+          \ == 'consult' && size(states.work.outputs.turn.result.response.consultations) == 0 ? ['consult requires at least\
+          \ one consultation request.'] : [])\n  + (states.work.outputs.turn.result.response.next == 'submit'\
+          \ && size(states.work.outputs.turn.result.response.keys) == 0 ? ['submit requires explicit prerequisite\
+          \ keys.'] : [])\n : []) + (states.work.outputs.flow.phase == 'implement' && states.work.outputs.turn.result.?response.orValue({}).?next.orValue('')\
+          \ == 'review' && !states.work.outputs.turn.result.response.files.exists(f, f.path == 'test-results.md') ? ['Publish\
+          \ test-results.md mapping statement IDs to results and evidence.'] : []) + (states.work.outputs.flow.phase == 'implement'\
+          \ && states.work.outputs.turn.result.?response.orValue({}).?files.orValue([]).exists(f, f.path == 'test-statements.md')\
+          \ ? ['Formal expectations are fixed before implementation. Return redesign to update their plan with preserved expectations\
+          \ and any required deprecation.'] : []) }}"
     design_next:
       inputs:
         flow: ${{ transition.payload.flow }}
@@ -316,8 +344,8 @@ state:
           fields: '${{ inputs.flow.result.questions + [{''id'': ''annotations'', ''type'': ''file_upload'', ''question'':
             ''Optional supporting documents or annotations.'', ''required'': false}] }}'
       outputs:
-        flow: '${{ jq([inputs.flow, {''documents'': sequence.review.outputs.documents, ''feedback'': sequence.review.outputs.response.fields,
-          ''event'': ''human_answer''}], ''add'') }}'
+        flow: '${{ jq([inputs.flow, {''documents'': sequence.review.outputs.documents, ''feedback_documents'': sequence.review.outputs.response.?artifact_refs.orValue({}),
+          ''feedback'': sequence.review.outputs.response.fields, ''event'': ''human_answer''}], ''add'') }}'
       transitions:
       - to: dispatch
         when: true
@@ -335,11 +363,26 @@ state:
           documents: ${{ inputs.flow.documents }}
           evidence: '${{ {''verification'': inputs.flow.verification, ''dependencies'': inputs.flow.jobs} }}'
           evidence_documents: ${{ inputs.flow.verification_artifacts }}
+          guidance: ${{ inputs.flow.hook_settings.?prompt_additions.orValue({}).?outcome_assessment.orValue('') }}
       outputs:
-        flow: '${{ jq([inputs.flow, {''assessment'': sequence.assess.outputs.approved ? ''pass'' : ''revise'', ''documents'':
-          sequence.assess.outputs.documents, ''annotations'': inputs.flow.annotations + sequence.assess.outputs.annotations,
-          ''event'': ''assessment''}], ''add'') }}'
+        flow: '${{ jq([inputs.flow, {''assessment'':sequence.assess.outputs.approved ? ''pass'' : ''revise'', ''assessment_next'':sequence.assess.outputs.next,
+          ''documents'':sequence.assess.outputs.documents, ''annotations'':inputs.flow.annotations + sequence.assess.outputs.annotations,
+          ''event'':''assessment'', ''last_finding'':sequence.assess.outputs.response.summary, ''last_finding_candidate'':inputs.flow.candidate.head}],
+          ''add'') }}'
+        next: ${{ sequence.assess.outputs.next }}
+        previous: ${{ inputs.flow }}
+        finding: ${{ sequence.assess.outputs.response.summary }}
       transitions:
+      - to: intervention
+        when: outputs.next == 'intervention'
+        payload:
+          flow: ${{ jq([outputs.flow, {'intervention_reason':outputs.finding}], 'add') }}
+      - to: intervention
+        when: outputs.flow.assessment != 'pass' && outputs.previous.?last_finding.orValue('') == outputs.finding && outputs.previous.?last_finding_candidate.orValue('')
+          == outputs.previous.candidate.head
+        payload:
+          flow: ${{ jq([outputs.flow, {'intervention_reason':'The same assessment finding recurred without a candidate change.
+            Resolve the missing evidence, capability, or requirement described in feedback/assessment.md.'}], 'add') }}
       - to: accounting
         when: outputs.flow.assessment == 'pass'
         payload:
@@ -350,7 +393,9 @@ state:
           flow: ${{ outputs.flow }}
       catch:
       - when: failure.kind != 'cancellation' && failure.message.contains('artifact binding') && transition.payload.flow.?verification_artifacts.orValue({}).exists(k,
-          failure.message.contains('"' + k + '"'))
+          [k, 'error/' + k, 'error/' + jq(k, 'ltrimstr("_c2j/execution/")'),
+          'verification/' + jq(k, 'ltrimstr("_c2j/execution/")'), 'error/legacy/' + jq(k, 'ltrimstr("_c2j/command/")')].exists(name,
+          failure.message.contains('"' + name + '"')))
         to: dispatch
         payload:
           flow: ${{ jq([transition.payload.flow, {'event':'verification', 'verification':{'status':'failed', 'summary':failure.message},
@@ -453,7 +498,9 @@ state:
             .reuse_merge_approval)') }}
       catch:
       - when: failure.kind != 'cancellation' && failure.message.contains('artifact binding') && transition.payload.flow.?verification_artifacts.orValue({}).exists(k,
-          failure.message.contains('"' + k + '"'))
+          [k, 'error/' + k, 'error/' + jq(k, 'ltrimstr("_c2j/execution/")'),
+          'verification/' + jq(k, 'ltrimstr("_c2j/execution/")'), 'error/legacy/' + jq(k, 'ltrimstr("_c2j/command/")')].exists(name,
+          failure.message.contains('"' + name + '"')))
         to: dispatch
         payload:
           flow: ${{ jq([transition.payload.flow, {'event':'verification', 'verification':{'status':'failed', 'summary':failure.message},
@@ -500,16 +547,16 @@ state:
           role: summary
           request: ${{ inputs.flow.request }}
           documents: ${{ inputs.flow.documents }}
-          evidence: '${{ {''verification'': inputs.flow.verification, ''dependencies'': inputs.flow.jobs, ''candidate'':
-            inputs.flow.candidate} }}'
+          evidence: '${{ {''verification'': inputs.flow.verification, ''dependencies'': inputs.flow.jobs, ''candidate'': inputs.flow.candidate}
+            }}'
           evidence_documents: ${{ inputs.flow.verification_artifacts }}
+          guidance: ${{ inputs.flow.hook_settings.?prompt_additions.orValue({}).?outcome_assessment.orValue('') }}
       outputs:
         approved: ${{ sequence.review.outputs.approved }}
-        flow: '${{ jq([inputs.flow, {''reviewed_hook_digest'': inputs.flow.hook_digest, ''reviewed_change_digest'':
-          inputs.flow.candidate.change_digest, ''commit_message'': jq([sequence.review.outputs.response.subject,
-          sequence.review.outputs.response.summary, inputs.flow.candidate.job_url], ''join([10,10] | implode)''),
-          ''documents'': sequence.review.outputs.documents, ''annotations'': inputs.flow.annotations + sequence.review.outputs.annotations,
-          ''event'': ''merge_summary''}], ''add'') }}'
+        flow: '${{ jq([inputs.flow, {''reviewed_hook_digest'': inputs.flow.hook_digest, ''reviewed_change_digest'': inputs.flow.candidate.change_digest,
+          ''commit_message'': jq([sequence.review.outputs.response.subject, sequence.review.outputs.response.summary, inputs.flow.candidate.job_url],
+          ''join([10,10] | implode)''), ''documents'': sequence.review.outputs.documents, ''annotations'': inputs.flow.annotations
+          + sequence.review.outputs.annotations, ''event'': ''merge_summary''}], ''add'') }}'
       transitions:
       - to: accept
         when: outputs.approved
@@ -527,16 +574,16 @@ state:
         include: ./review.yaml
         inputs:
           annotations: ${{ inputs.flow.?annotations.orValue([]) }}
-          title: '${{ inputs.flow.candidate_changed ? ''Review outcome, verification evidence, and file accounting''
-            : ''Review no-change rationale and verification evidence'' }}'
+          title: '${{ inputs.flow.candidate_changed ? ''Review outcome, verification evidence, and file accounting'' : ''Review
+            no-change rationale and verification evidence'' }}'
           documents: ${{ jq([inputs.flow.documents, inputs.flow.verification_artifacts], 'add') }}
           fields:
           - id: decision
             type: multiple_choice
-            question: '${{ inputs.flow.candidate_changed ? ''Accept the file accounting, reported verification status,
-              and proposed commit message in merge-review.md, and merge this candidate into the target branch?''
-              : ''Accept the rationale in merge-review.md that this request is satisfied without repository changes,
-              and complete this job?'' }}'
+            question: '${{ inputs.flow.candidate_changed ? ''Accept the file accounting, reported verification status, and
+              proposed commit message in merge-review.md, and merge this candidate into the target branch?'' : ''Accept the
+              rationale in merge-review.md that this request is satisfied without repository changes, and complete this job?''
+              }}'
             required: true
             options:
             - value: accept
@@ -549,8 +596,8 @@ state:
               label: Cancel
           - id: feedback
             type: paragraph_text
-            question: ${{ inputs.flow.?review_hint.orValue('Requested changes or guidance (required when requesting
-              changes).') }}
+            question: ${{ inputs.flow.?review_hint.orValue('Requested changes or guidance (required when requesting changes).')
+              }}
             required: false
           - id: annotations
             type: file_upload
@@ -560,22 +607,22 @@ state:
         response: ${{ sequence.outcome_review.outputs.response }}
         changed: ${{ sequence.outcome_review.outputs.changed }}
         flow: '${{ jq([inputs.flow, {''documents'': jq([inputs.flow.documents, sequence.outcome_review.outputs.response.?artifact_refs.orValue({})],
-          ''add''), ''feedback'': sequence.outcome_review.outputs.response.fields, ''reviews'': jq([inputs.flow.reviews,
-          {''outcome'': sequence.outcome_review.outputs.response.?receipt.orValue({})}], ''add''), ''event'': ''human_outcome''}],
-          ''add'') }}'
+          ''add''), ''feedback_documents'': sequence.outcome_review.outputs.response.?artifact_refs.orValue({}), ''feedback'':
+          sequence.outcome_review.outputs.response.fields, ''reviews'': jq([inputs.flow.reviews, {''outcome'': sequence.outcome_review.outputs.response.?receipt.orValue({})}],
+          ''add''), ''event'': ''human_outcome''}], ''add'') }}'
       transitions:
       - to: stopped
         when: outputs.response.fields.decision == 'cancel'
         payload:
           flow: '${{ jq([outputs.flow, {''disposition'': ''cancelled''}], ''add'') }}'
       - to: stopped
-        when: outputs.response.fields.decision == 'accept' && !outputs.changed && !outputs.flow.candidate_changed
-          && outputs.flow.verification.status in ['passed', 'skipped'] && outputs.flow.assessment == 'pass'
+        when: outputs.response.fields.decision == 'accept' && !outputs.changed && !outputs.flow.candidate_changed && outputs.flow.verification.status
+          in ['passed', 'skipped'] && outputs.flow.assessment == 'pass'
         payload:
           flow: '${{ jq([outputs.flow, {''disposition'': ''unchanged''}], ''add'') }}'
       - to: merge
-        when: outputs.response.fields.decision == 'accept' && !outputs.changed && outputs.flow.verification.status
-          in ['passed', 'skipped'] && outputs.flow.assessment == 'pass' && outputs.flow.candidate_changed
+        when: outputs.response.fields.decision == 'accept' && !outputs.changed && outputs.flow.verification.status in ['passed',
+          'skipped'] && outputs.flow.assessment == 'pass' && outputs.flow.candidate_changed
         payload:
           flow: ${{ outputs.flow }}
       - to: design_next
@@ -589,8 +636,8 @@ state:
       - to: accept
         when: true
         payload:
-          flow: '${{ jq([outputs.flow, {''review_hint'': ''Please describe the requested changes or attach annotated
-            documents before requesting revision.''}], ''add'') }}'
+          flow: '${{ jq([outputs.flow, {''review_hint'': ''Please describe the requested changes or attach annotated documents
+            before requesting revision.''}], ''add'') }}'
     merge:
       retry:
         maximum_attempts: 1
@@ -830,31 +877,78 @@ state:
         when: true
         payload:
           flow: ${{ outputs.flow }}
+    intervention:
+      inputs:
+        flow: ${{ transition.payload.flow }}
+      sequence:
+      - id: request_intervention
+        include: ./review.yaml
+        inputs:
+          title: Resolve a specific build blocker
+          documents: ${{ inputs.flow.documents }}
+          annotations: ${{ inputs.flow.annotations }}
+          fields:
+          - id: decision
+            type: multiple_choice
+            question: ${{ inputs.flow.?intervention_reason.orValue('Resolve the reported blocker before retrying.') }}
+            required: true
+            options:
+            - value: continue
+              label: Capability or evidence supplied
+            - value: redesign
+              label: Change requirements or validation plan
+            - value: cancel
+              label: Cancel
+          - id: feedback
+            type: paragraph_text
+            question: Describe the intervention, responsible actor, and what changed.
+            required: true
+          - id: annotations
+            type: file_upload
+            question: Supporting evidence or revised direction
+            required: false
+      outputs:
+        decision: ${{ sequence.request_intervention.outputs.response.fields.decision }}
+        flow: ${{ jq([inputs.flow, {'event':'human_direction', 'validation_failed':false, 'documents':sequence.request_intervention.outputs.documents,
+          'feedback':sequence.request_intervention.outputs.response.fields, 'feedback_documents':sequence.request_intervention.outputs.response.?artifact_refs.orValue({})}],
+          'add | del(.last_finding, .last_finding_candidate)') }}
+      transitions:
+      - to: stopped
+        when: outputs.decision == 'cancel'
+        payload:
+          flow: ${{ jq([outputs.flow, {'disposition':'cancelled'}], 'add') }}
+      - to: design_next
+        when: outputs.decision == 'redesign'
+        payload:
+          flow: ${{ outputs.flow }}
+      - to: dispatch
+        when: true
+        payload:
+          flow: ${{ outputs.flow }}
 outputs:
-  annotations: ${{ state_output('merge', 'flow', state_output('stopped', 'flow', state_output('record', 'flow',
-    {}))).?annotations.orValue([]) }}
+  annotations: ${{ state_output('merge', 'flow', state_output('stopped', 'flow', state_output('record', 'flow', {}))).?annotations.orValue([])
+    }}
   merged: ${{ nonempty(state_output('merge', 'merged_hash', '')) }}
   merged_hash: ${{ state_output('merge', 'merged_hash', '') }}
   target_branch: ${{ state_output('merge', 'target_branch', '') }}
   session: ${{ state_output('merge', 'flow', state_output('stopped', 'flow', state_output('record', 'flow', {}))).session
     }}
-  assistant_summary: ${{ state_output('merge', 'flow', state_output('stopped', 'flow', state_output('record', 'flow',
-    {}))).result.?summary.orValue('') }}
-  disposition: ${{ state_output('merge', 'flow', state_output('stopped', 'flow', state_output('record', 'flow',
-    {}))).?disposition.orValue('incomplete') }}
-  result: ${{ state_output('merge', 'flow', state_output('stopped', 'flow', state_output('record', 'flow', {}))).result
+  assistant_summary: ${{ state_output('merge', 'flow', state_output('stopped', 'flow', state_output('record', 'flow', {}))).result.?summary.orValue('')
     }}
-  artifact_refs: ${{ jq([state_output('merge', 'flow', state_output('stopped', 'flow', state_output('record', 'flow',
-    {}))).documents, state_output('merge', 'flow', state_output('stopped', 'flow', state_output('record', 'flow',
-    {}))).?verification_artifacts.orValue({})], 'add') }}
-  consultations: ${{ state_output('merge', 'flow', state_output('stopped', 'flow', state_output('record', 'flow',
-    {}))).threads }}
-  dependencies: ${{ state_output('merge', 'flow', state_output('stopped', 'flow', state_output('record', 'flow',
-    {}))).jobs }}
+  disposition: ${{ state_output('merge', 'flow', state_output('stopped', 'flow', state_output('record', 'flow', {}))).?disposition.orValue('incomplete')
+    }}
+  result: ${{ state_output('merge', 'flow', state_output('stopped', 'flow', state_output('record', 'flow', {}))).result }}
+  artifact_refs: ${{ jq([state_output('merge', 'flow', state_output('stopped', 'flow', state_output('record', 'flow', {}))).documents,
+    state_output('merge', 'flow', state_output('stopped', 'flow', state_output('record', 'flow', {}))).?verification_artifacts.orValue({})],
+    'add') }}
+  consultations: ${{ state_output('merge', 'flow', state_output('stopped', 'flow', state_output('record', 'flow', {}))).threads
+    }}
+  dependencies: ${{ state_output('merge', 'flow', state_output('stopped', 'flow', state_output('record', 'flow', {}))).jobs
+    }}
   reviews: ${{ state_output('merge', 'flow', state_output('stopped', 'flow', state_output('record', 'flow', {}))).reviews
     }}
-  verification: ${{ state_output('merge', 'flow', state_output('stopped', 'flow', state_output('record', 'flow',
-    {}))).?verification.orValue({}) }}
+  verification: ${{ state_output('merge', 'flow', state_output('stopped', 'flow', state_output('record', 'flow', {}))).?verification.orValue({})
+    }}
   publication: ${{ state_output('merge', 'flow', {}).?publication.orValue({}) }}
-  rebase_repairs: ${{ state_output('merge', 'flow', state_output('stopped', 'flow', state_output('record', 'flow',
-    {}))).?rebase_repairs.orValue(0) }}
+  rebase_repairs: ${{ state_output('merge', 'flow', state_output('stopped', 'flow', state_output('record', 'flow', {}))).?rebase_repairs.orValue(0)
+    }}

@@ -1,0 +1,45 @@
+recipe: verification.yaml
+cases:
+- id: extension-protocol-failure-retains-execution-log
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          .c2/recipes/hooks/build/verify.yaml: |
+            id: extension-check
+            sequence:
+            - id: validate_extension
+              op: ./.c2/recipes/hooks/build/broken
+              inputs: {}
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: Extension completed.
+              artifact_refs: {}
+          .c2/recipes/hooks/build/broken/op.yaml: |
+            name: broken
+            command: [sh, -c, 'echo extension-diagnostic >&2; echo invalid-json']
+            input_schema:
+              type: object
+            output_schema:
+              type: object
+  mocks:
+    ops:
+    - match:
+        op: extension_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: '!outputs.allowed && outputs.result.failure.attrs.extension.version == 2'
+  - type: cel_true
+    expr: '"_c2j/execution/validate_extension.log" in outputs.artifact_refs'
+  - type: cel_true
+    expr: 'outputs.result.failure.attrs.extension.exit_code == 0'

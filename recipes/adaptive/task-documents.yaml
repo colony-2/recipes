@@ -1,0 +1,64 @@
+# Agent-facing files only. The workflow retains its full state and original refs.
+id: adaptive-task-documents
+inputs:
+  flow: ${{ inputs.?flow.orValue({}) }}
+  documents: ${{ inputs.?documents.orValue({}) }}
+  evidence: ${{ inputs.?evidence.orValue({}) }}
+  issues: ${{ inputs.?issues.orValue([]) }}
+sequence: []
+outputs:
+  documents: >-
+    ${{ jq({'flow': inputs.flow, 'documents': inputs.documents, 'issues': inputs.issues}, vars.documents) }}
+  evidence: >-
+    ${{ jq({'flow': inputs.flow, 'evidence': inputs.evidence}, vars.evidence) }}
+vars:
+  documents: |
+    def note($name; $text): {key:$name, value:{kind:"value", name:$name, format:"text", value:$text}};
+    def words: if type == "string" then . elif type == "array" then map(tostring)|join(", ") else tostring end;
+    .flow as $f |
+    # Keep originals for source links, but do not carry transient errors/configuration.
+    (.documents | with_entries(select(.key != "build-settings.json" and .key != "context.json"
+      and (.key|startswith("error/")|not) and (.key|startswith("_c2j/")|not)))) as $docs |
+    [$docs,
+     (if $f.preparation.status == "failed" then (($f.preparation.artifact_refs // {}) | to_entries |
+        map(.key = ("error/prepare/" + (.key|ltrimstr("_c2j/execution/"))) | .value.name = .key) | from_entries) else {} end),
+     (if $f.event == "rebase_conflict" then (.documents | to_entries | map(select(.key|startswith("_c2j/rebase/")) |
+        .key = ("error/rebase/" + (.key|ltrimstr("_c2j/rebase/"))) | .value.name = .key) | from_entries) else {} end),
+     (if $f.event == "rebase_conflict" then ($docs | to_entries | map(select(.key == "candidate.diff" or .key == "commits.log" or (.key|startswith("rebase/"))) |
+        .key = ("error/rebase/" + .key) | .value.name = .key) | from_entries) else {} end),
+     ($docs | to_entries | map(select(.key == "assessment.md" or (.key|startswith("specialists/"))) |
+       .key = ("feedback/" + .key) | .value.name = .key) | from_entries),
+     (($f.feedback_documents // {}) | to_entries | map(.key = ("feedback/human/" + .key) | .value.name = .key) | from_entries),
+     ([($f.feedback // {} | to_entries[] | select(.key != "decision" and .key != "annotations") |
+        "## " + .key + "\n" + (.value|words))] | join("\n\n") |
+       if length > 0 then [note("feedback/human-answers.md"; .)]|from_entries else {} end),
+     (if ($f.verification // {} | length) > 0 then
+        [note("verification.md"; "Verification: " + ($f.verification.status // "unknown") + "\n" + ($f.verification.summary // "No summary supplied."))]|from_entries else {} end),
+     (if ($f.event == "verification" and ($f.verification.status != "passed") and ($f.verification.status != "skipped" or $f.require_verification == true)) then
+        [note("error/verification.md"; "Verification: " + ($f.verification.status // "unknown") + "\n" +
+          ($f.verification.summary // "Verification did not complete.") +
+          (if $f.require_verification == true and $f.verification.status == "skipped" then "\nVerification is required; configure or repair the check." else "" end) +
+          "\nRead the accompanying logs if available. Missing logs do not indicate success.")]|from_entries else {} end),
+     (if $f.preparation.status == "failed" then [note("error/preparation.md"; $f.preparation.summary)]|from_entries else {} end),
+     (if $f.event == "response_invalid" or (.issues|length)>0 then
+        [note("error/response-corrections.md"; ((.issues + ($f.issues // []))|unique|map("- " + .)|join("\n")))]|from_entries else {} end),
+     (if $f.event == "rebase_conflict" then
+        [note("error/rebase/recovery.md"; "The recipe saved the entire local change and adopted the recorded target. Reconcile the saved changes; do not run rebase.\nBase: " +
+          ($f.rebase_recovery.attrs.rebase.base_hash // "unknown") + "\nTarget: " + ($f.rebase_recovery.attrs.rebase.target_base_hash // "unknown"))]|from_entries else {} end),
+     (($f.threads // {}) | to_entries | map(.key as $key | .value as $t |
+        note("consultations/" + $key + "/status.md"; "Key: " + $key + "\nTarget: " + ($t.target.repo // $t.request.cell // "unknown") +
+          "\nRequest: " + ($t.request.request // "") + "\nStatus: " + ($t.status // "unknown") +
+          "\nAgreement: " + ($t.result.outcome // "not agreed") + "\n" + ($t.failure // ""))) | from_entries),
+     (($f.jobs // {}) | to_entries | map(.key as $key | .value as $j |
+        note("jobs/" + $key + "/status.md"; "Key: " + $key + "\nCell: " + ($j.cell // "unknown") +
+          "\nStatus: " + ($j.status // "unknown") + "\nOutcome: " + ($j.result.disposition // "unknown") +
+          "\nMerged: " + (($j.result.merged // false)|tostring) + "\n" + ($j.failure // ""))) | from_entries)
+    ] | add
+  evidence: |
+    .flow as $f | .evidence | to_entries | map(
+      if (.key|startswith("_c2j/execution/")) then .key =
+        ((if $f.verification.status == "passed" or ($f.verification.status == "skipped" and $f.require_verification != true)
+          then "verification/" else "error/" end) + (.key|ltrimstr("_c2j/execution/")))
+      elif (.key|startswith("_c2j/command/")) then .key = ("error/legacy/" + (.key|ltrimstr("_c2j/command/")))
+      elif $f.event == "verification" and $f.verification.status != "passed" and ($f.verification.status != "skipped" or $f.require_verification == true) then .key = ("error/" + .key)
+      else . end | .value.name = .key) | from_entries

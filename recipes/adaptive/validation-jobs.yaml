@@ -1,0 +1,61 @@
+# Consume runtime-owned child output; never ask the agent to repeat child IDs.
+id: adaptive-validation-jobs
+inputs:
+  jobs: ${{ inputs.?jobs.orValue({}) }}
+  allowed: ${{ inputs.allowed }}
+state:
+  initial: pick
+  states:
+    pick:
+      inputs:
+        allowed: ${{ inputs.allowed }}
+        jobs: ${{ inputs.jobs }}
+        index: ${{ transition.payload.?index.orValue(0) }}
+        documents: ${{ transition.payload.?documents.orValue({}) }}
+        failed: ${{ transition.payload.?failed.orValue(false) }}
+      sequence: []
+      outputs:
+        index: ${{ inputs.index }}
+        documents: ${{ inputs.documents }}
+        failed: ${{ inputs.failed }}
+      transitions:
+      - to: await_validation_job
+        when: inputs.allowed && outputs.index < size(inputs.jobs.?job_ids.orValue([]))
+      - to: done
+        when: true
+    await_validation_job:
+      id: await_validation_job
+      op: recipe.await_result_soft
+      inputs:
+        target:
+          job: ${{ inputs.jobs.job_ids[states.pick.outputs.index] }}
+        wait:
+          'on': job
+          condition: complete
+        return_when: terminal
+      transitions:
+      - to: record
+        when: true
+    record:
+      include: ./document-bindings.yaml
+      inputs:
+        prefix: ${{ 'jobs/validation-' + inputs.jobs.job_ids[states.pick.outputs.index] + '/' }}
+        documents: >-
+          ${{ jq([states.await_validation_job.outputs.outputs.?artifact_refs.orValue({}),
+            {'status.md': {'kind':'value', 'name':'status.md', 'format':'text',
+             'value':'Validation job: ' + inputs.jobs.job_ids[states.pick.outputs.index] + '\nStatus: ' + states.await_validation_job.outputs.status + '\nReported outcome: ' + states.await_validation_job.outputs.outputs.?status.orValue('not supplied') + '\n' + states.await_validation_job.outputs.?failure_message.orValue('')} }], 'add') }}
+      transitions:
+      - to: pick
+        when: true
+        payload:
+          index: ${{ states.pick.outputs.index + 1 }}
+          documents: ${{ jq([states.pick.outputs.documents, outputs.documents], 'add') }}
+          failed: >-
+            ${{ states.pick.outputs.failed || states.await_validation_job.outputs.status != 'completed' ||
+              states.await_validation_job.outputs.outputs.?ok.orValue(true) == false ||
+              states.await_validation_job.outputs.outputs.?status.orValue('passed') in ['failed', 'cancelled'] }}
+    done:
+      sequence: []
+outputs:
+  documents: ${{ states.pick.outputs.documents }}
+  failed: ${{ states.pick.outputs.failed }}

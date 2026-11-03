@@ -46,12 +46,14 @@ outputs:
   attempts: "${{ state_exists('automatic') ? inputs.attempts + 1 : 0 }}"
   session: ${{ inputs.turn.result.?session.orValue(inputs.session) }}
   artifacts: ${{ jq([inputs.turn.artifacts, state_output('review', 'response', {}).?artifact_refs.orValue({})], 'add') }}
-  documents: ${{ jq([inputs.documents, inputs.turn.artifacts, state_output('review', 'documents', {})], 'add') }}
+  documents: >-
+    ${{ jq([inputs.documents, inputs.turn.artifacts, state_output('review', 'documents', {}),
+    {'error/response-corrections.md': {'kind':'value', 'name':'error/response-corrections.md', 'format':'text', 'value':jq(inputs.issues, 'map("- " + .) | join("\n")')},
+     'error/previous-response.json': {'kind':'value', 'name':'error/previous-response.json', 'format':'json', 'value':inputs.turn.result.?response.orValue({})} },
+    state_exists('review') ? {'feedback/direction.md': {'kind':'value', 'name':'feedback/direction.md', 'format':'text', 'value':state_output('review', 'response', {}).?fields.orValue({}).?feedback.orValue('')} } : {}], 'add') }}
   prompt: |
     Correct the response and any missing deliverables using the same schema.
     Do not implement, submit jobs, push, or treat correction as agreement.
     Existing documents are in inbox and remain eligible as returned artifacts.
-    Issues: ${{ json_stringify(inputs.issues) }}
-    Previous response: ${{ json_stringify(inputs.turn.result.?response.orValue({})) }}
-    Human direction: ${{ json_stringify(state_output('review', 'response', {}).?fields.orValue({})) }}
+    Read error/ for the corrections and previous response. Read feedback/ when present for human direction.
   base_hash: ${{ inputs.turn.?base_hash.orValue('') }}

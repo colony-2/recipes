@@ -1,0 +1,65 @@
+# Submit directly with agent-inbox-statements.md attached as test-statements.md.
+id: standard-inbox-smoke
+sequence:
+- id: statements
+  op: command_execution
+  const: true
+  artifacts:
+    ./: ${{ context.artifacts }}
+  inputs:
+    env:
+      INBOX: ${{ context.environment.op.inbox }}
+      OUTBOX: ${{ context.environment.op.outbox }}
+    run: |
+      set -eu
+      if [ -f "$INBOX/test-statements.md" ]; then
+        cp "$INBOX/test-statements.md" "$OUTBOX/test-statements.md"
+      else
+        cp test-statements.md "$OUTBOX/test-statements.md"
+      fi
+- id: exercise_failure
+  op: command_execution
+  const: true
+  inputs:
+    run: |
+      printf 'checking portable diagnostics\n'
+      printf 'intentional smoke failure\n' >&2
+      exit 7
+  catch:
+  - when: failure.kind != 'cancellation'
+    continue:
+      outputs:
+        message: ${{ failure.message }}
+        evidence: ${{ failure.attrs.command.diagnostics }}
+- id: files
+  include: ../../recipes/adaptive/task-documents.yaml
+  inputs:
+    documents: ${{ sequence.statements.artifacts }}
+    evidence: ${{ sequence.exercise_failure.outputs.evidence }}
+    flow: >-
+      ${{ {'event':'verification', 'verification':{'status':'failed', 'summary':sequence.exercise_failure.outputs.message} } }}
+- id: check_inbox
+  op: command_execution
+  const: true
+  artifacts:
+    ./: ${{ sequence.files.outputs.documents }}
+    .: ${{ sequence.files.outputs.evidence }}
+  inputs:
+    capture_diagnostics: always
+    env:
+      INBOX: ${{ context.environment.op.inbox }}
+      OUTBOX: ${{ context.environment.op.outbox }}
+    run: |
+      set -eu
+      test -s "$INBOX/test-statements.md"
+      test -s "$INBOX/error/verification.md"
+      test -s "$INBOX/error/exercise_failure.log"
+      grep -q 'Working directory:' "$INBOX/error/exercise_failure.log"
+      grep -q 'intentional smoke failure' "$INBOX/error/exercise_failure.log"
+      grep -q 'checking portable diagnostics' "$INBOX/error/exercise_failure.log"
+      cp "$INBOX/test-statements.md" "$OUTBOX/test-statements.md"
+      cp "$INBOX/error/exercise_failure.log" "$OUTBOX/exercise_failure.log"
+      printf 'Native execution log and error directory bindings passed.\n' > "$OUTBOX/results.md"
+outputs:
+  status: passed
+  artifact_refs: ${{ sequence.check_inbox.artifacts }}

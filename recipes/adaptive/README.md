@@ -72,11 +72,24 @@ or binding-collision failures return to implementation at the next existing task
 Child and specialist documents use consumer-specific aliases when their names
 would otherwise collide; those aliases never change hook outputs.
 
-Caught verification command failures forward c2j's stored stdout/stderr references
-to the implementation turn, with exit code and timeout details in the failure.
-This requires c2j's [command failure diagnostics](../../GUIDE-Command-Failure-Diagnostics.md)
-contract (implemented in c2j `bcb7040`). Failures without stream evidence still
-return to implementation with their original error.
+Agent prompts contain the request and current assignment, not serialized workflow
+state. Standing instructions are inserted only for new sessions. Agents discover
+task permissions, availability, routes, and child restrictions using `c2j self`.
+
+Current verification failures bind native command/extension execution logs under
+`error/`. Human feedback and assessment aliases appear under `feedback/`; original
+documents remain available for source links. Hook settings remain recipe data.
+This requires the version-2 [execution diagnostics](../../GUIDE-Command-Failure-Diagnostics.md)
+contract and self discovery (validated with c2j `f1a153b898c5`). Historical version-1
+streams are supported without inventing ordering. Missing diagnostics produce an
+explicit error note, and cancellation still stops execution.
+
+Implementation tasks may run bounded validation assigned by the test plan.
+Automatic child-job outputs are consumed and their results retained; serving
+prerequisite work still uses the existing coordinator. Read-only reviews and
+negotiations cannot submit jobs. Empty-key capability blockers and explicit
+assessment interventions request focused human direction. Repeated unchanged
+assessment findings also request intervention instead of repeating the same turn.
 
 Tests are in `../../recipe-tests/adaptive/`. Run with c2j supporting structured
 rebase failures and review annotations:

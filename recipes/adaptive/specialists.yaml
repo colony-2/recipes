@@ -11,8 +11,7 @@ state:
         checkpoint: ${{ inputs.checkpoint }}
       sequence: []
       outputs:
-        flow: '${{ jq([inputs.flow, {''specialist_round'': int(inputs.flow.?specialist_round.orValue(0)) + 1}],
-          ''add'') }}'
+        flow: '${{ jq([inputs.flow, {''specialist_round'': int(inputs.flow.?specialist_round.orValue(0)) + 1}], ''add'') }}'
         items: ${{ inputs.flow.?hook_settings.orValue({}).?consultations.orValue([]).filter(c, c.checkpoint == inputs.checkpoint)
           }}
       transitions:
@@ -60,8 +59,10 @@ state:
           role: assessment
           request: ${{ inputs.flow.request }}
           documents: ${{ inputs.flow.documents }}
-          assignment: '${{ vars.item.role + '': '' + vars.item.request }}'
+          assignment: '${{ ''Checkpoint: '' + vars.item.checkpoint + ''. '' + vars.item.role + '': '' + vars.item.request }}'
           evidence: '${{ {''checkpoint'': vars.item.checkpoint, ''required'': vars.item.required} }}'
+          guidance: ${{ inputs.flow.hook_settings.?prompt_additions.orValue({})[?inputs.items[int(inputs.index)].checkpoint].orValue('')
+            }}
       - id: evidence
         include: ./document-bindings.yaml
         inputs:
@@ -69,11 +70,11 @@ state:
           prefix: ${{ 'specialists/' + vars.item.key + '/' }}
           documents: ${{ sequence.expert.outputs.artifact_refs }}
       outputs:
-        flow: '${{ jq([inputs.flow, {''documents'': jq([inputs.flow.documents, sequence.evidence.outputs.documents],
-          ''add''), ''annotations'': inputs.flow.?annotations.orValue([]) + sequence.evidence.outputs.annotations,
-          ''specialist_reviews'': jq([inputs.flow.?specialist_reviews.orValue({}), {vars.thread: {''key'': vars.item.key,
-          ''checkpoint'': vars.item.checkpoint, ''required'': vars.item.required, ''outcome'': ''completed'', ''assessment'':
-          sequence.expert.outputs.response.verdict} }], ''add'')}], ''add'') }}'
+        flow: '${{ jq([inputs.flow, {''documents'': jq([inputs.flow.documents, sequence.evidence.outputs.documents], ''add''),
+          ''annotations'': inputs.flow.?annotations.orValue([]) + sequence.evidence.outputs.annotations, ''specialist_reviews'':
+          jq([inputs.flow.?specialist_reviews.orValue({}), {vars.thread: {''key'': vars.item.key, ''checkpoint'': vars.item.checkpoint,
+          ''required'': vars.item.required, ''outcome'': ''completed'', ''assessment'': sequence.expert.outputs.response.verdict}
+          }], ''add'')}], ''add'') }}'
         unresolved: false
         passed: ${{ !vars.item.required || sequence.expert.outputs.approved }}
         items: ${{ inputs.items }}
@@ -84,8 +85,8 @@ state:
       - to: done
         when: '!outputs.passed'
         payload:
-          flow: '${{ jq([outputs.flow, {''message'': ''A required specialist requested revision. Read the specialist
-            findings and revise the current deliverable; agreement on findings is not approval.''}], ''add | del(.reuse_merge_approval)'')
+          flow: '${{ jq([outputs.flow, {''message'': ''A required specialist requested revision. Read the specialist findings
+            and revise the current deliverable; agreement on findings is not approval.''}], ''add | del(.reuse_merge_approval)'')
             }}'
           passed: false
       - to: pick
