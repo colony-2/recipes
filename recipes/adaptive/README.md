@@ -55,6 +55,12 @@ The coordinator owns submission, waiting, stable keys, and recorded results. Cel
 creation retains the shared root-owner agreement and readiness gates. Creation
 alone never satisfies the original feature request.
 
+Classification retains bounded repository context in `repository-context.json`.
+Jev currently requires inline state, so only complete context whose serialized
+JSON fits within 8 KB is passed inline. Larger context, unreadable documents, or
+malformed/truncated command output require design. This avoids parsing c2j's
+stdout preview as a complete large JSON document.
+
 Workspace selection uses registered cell names. Owner steps read
 `context.workflow.cell`; Git repository locations remain separate metadata.
 The default root cell is `root`. Target resolution enters the named cell's

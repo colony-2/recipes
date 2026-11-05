@@ -1,0 +1,60 @@
+schema_version: 2
+id: classify-fixture
+input_schema:
+  mode:
+    type: string
+    default_value: small
+inputs:
+  mode: ${{ inputs.mode }}
+sequence:
+- id: seed
+  op: command_execution
+  inputs:
+    env:
+      MODE: ${{ inputs.mode }}
+    run: |
+      python3 - <<'PY'
+      import os, pathlib
+      mode = os.environ['MODE']
+      if mode == 'small':
+          pathlib.Path('README.md').write_text('A bounded app.\nQuotes: "yes"; Unicode: λ.\n')
+      elif mode == 'large':
+          pathlib.Path('README.md').write_text('x' * 20000 + ' END')
+      elif mode == 'escaped':
+          pathlib.Path('README.md').write_text('😀' * 1500)
+      elif mode == 'limit':
+          pathlib.Path('README.md').write_text('x' * 70000)
+      elif mode == 'combined':
+          for name in ('PURPOSE.md', 'ARCHITECTURE.md', 'README.md'):
+              pathlib.Path(name).write_text('x' * 4000)
+      elif mode == 'unreadable':
+          pathlib.Path('PURPOSE.md').write_bytes(bytes([255]))
+          pathlib.Path('README.md').write_text('A bounded app.')
+      PY
+- id: classify
+  include: ../../recipes/adaptive/classify.yaml
+  inputs:
+    request: Make a small correction.
+- id: inspect_artifact
+  op: command_execution
+  const: true
+  artifacts:
+    repository-context.json: ${{ sequence.classify.outputs.artifact_refs['repository-context.json'] }}
+  inputs:
+    env:
+      INBOX: ${{ context.environment.op.inbox }}
+      OUTBOX: ${{ context.environment.op.outbox }}
+    run: |
+      python3 - <<'PY'
+      import json, os, pathlib, shutil
+      context = json.loads((pathlib.Path(os.environ['INBOX']) / 'repository-context.json').read_text())
+      shutil.copy('classify-statements.md', pathlib.Path(os.environ['OUTBOX']) / 'classify-statements.md')
+      print(json.dumps({'architecture_size': len(context['repository_architecture']),
+                        'usable': context['usable'],
+                        'end_preserved': context['repository_architecture'].endswith(' END')}))
+      PY
+outputs:
+  context_usable: ${{ sequence.classify.outputs.context_usable }}
+  design_required: ${{ sequence.classify.outputs.design_required }}
+  assessment: ${{ sequence.classify.outputs.assessment }}
+  evidence: ${{ json_parse(sequence.inspect_artifact.outputs.stdout) }}

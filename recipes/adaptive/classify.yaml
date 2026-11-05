@@ -12,16 +12,42 @@ sequence:
     packages:
     - nix:github:NixOS/nixpkgs/e7439b6b14ad3cc35d05608ebca9bce01a25f5f8#python3
   inputs:
-    run: "python3 - <<'PY'\nimport json, pathlib\ncomplete = True\ndef read(name):\n    global complete\n    path\
-      \ = pathlib.Path(name)\n    if not path.exists():\n        return ''\n    try:\n        # Bound classifier\
-      \ context; never confidently route on truncated evidence.\n        with path.open('rb') as stream:\n     \
-      \       data = stream.read(65537)\n        if len(data) > 65536:\n            complete = False\n        return\
-      \ data[:65536].decode('utf-8')\n    except (OSError, UnicodeError):\n        complete = False\n        return\
-      \ ''\npurpose = read('PURPOSE.md')\narchitecture = read('ARCHITECTURE.md')\nreadme = next((read(n) for n in\
-      \ ('README.md', 'README.rst', 'README', 'readme.md')\n               if pathlib.Path(n).is_file()), '')\n\
-      print(json.dumps({'repository_purpose': purpose,\n                  'repository_architecture': architecture\
-      \ + '\\n\\n' + readme,\n                  'usable': complete and bool(purpose.strip() or readme.strip())}))\n\
-      PY\n"
+    run: |
+      python3 - <<'PYCODE'
+      import json, os, pathlib
+      complete = True
+      def read(name):
+          global complete
+          path = pathlib.Path(name)
+          if not path.exists():
+              return ''
+          try:
+              # Bound model context; incomplete evidence cannot justify skipping design.
+              with path.open('rb') as stream:
+                  data = stream.read(65537)
+              if len(data) > 65536:
+                  complete = False
+              return data[:65536].decode('utf-8')
+          except (OSError, UnicodeError):
+              complete = False
+              return ''
+      purpose = read('PURPOSE.md')
+      architecture = read('ARCHITECTURE.md')
+      readme = next((read(n) for n in ('README.md', 'README.rst', 'README', 'readme.md')
+                     if pathlib.Path(n).is_file()), '')
+      context = {'repository_purpose': purpose,
+                 'repository_architecture': architecture + '\n\n' + readme,
+                 'usable': complete and bool(purpose.strip() or readme.strip())}
+      payload = json.dumps(context)
+      (pathlib.Path(os.environ['OUTBOX']) / 'repository-context.json').write_text(payload, encoding='utf-8')
+      # stdout is a diagnostic preview capped around 10 KB, not bulk JSON transport.
+      # Leave headroom and count serialized bytes, including JSON escaping.
+      if len(payload.encode('utf-8')) > 8000:
+          payload = json.dumps({'repository_purpose': '', 'repository_architecture': '', 'usable': False})
+      print(payload)
+      PYCODE
+    env:
+      OUTBOX: ${{ context.environment.op.outbox }}
 - id: classify_request_complexity
   op: nix:github:colony-2/c2ops/published#jev
   const: true
@@ -37,7 +63,7 @@ sequence:
       # Keep the existing Jev answer key; this question chooses design, not a build route.
       is_heavy:
         type: noul
-        instructions: '${{ sequence.prompts.outputs.classify.instructions }}'
+        instructions: ${{ sequence.prompts.outputs.classify.instructions }}
         criteria: ${{ sequence.prompts.outputs.classify.criteria }}
   catch:
   - when: failure.kind != 'cancellation'
@@ -48,7 +74,10 @@ sequence:
         error: ${{ failure.message }}
 outputs:
   assessment: ${{ sequence.classify_request_complexity.outputs }}
-  context_usable: ${{ json_parse(sequence.read_repository_context.outputs.stdout).usable }}
-  design_required: ${{ !(json_parse(sequence.read_repository_context.outputs.stdout).usable && jq(sequence.classify_request_complexity.outputs,
-    'try (.answers.is_heavy | .type == "noul" and (.noul | type == "number" and . >= 0 and . <= 0.10)) catch false')
-    == true) }}
+  context_usable: ${{ !sequence.read_repository_context.outputs.?stdout_truncated.orValue(false) &&
+    jq(sequence.read_repository_context.outputs.stdout, 'try (fromjson.usable == true) catch false') == true }}
+  design_required: ${{ !(!sequence.read_repository_context.outputs.?stdout_truncated.orValue(false) &&
+    jq(sequence.read_repository_context.outputs.stdout, 'try (fromjson.usable == true) catch false') == true &&
+    jq(sequence.classify_request_complexity.outputs, 'try (.answers.is_heavy | .type == "noul" and (.noul | type ==
+    "number" and . >= 0 and . <= 0.10)) catch false') == true) }}
+  artifact_refs: ${{ sequence.read_repository_context.artifacts }}
