@@ -1,0 +1,53 @@
+schema_version: 2
+id: registered-cell-publication
+input_schema:
+  reject_publication:
+    type: string
+    default_value: ''
+inputs:
+  reject_publication: ${{ inputs.reject_publication }}
+sequence:
+- id: target
+  workspace:
+    cell: alpha
+    ref: main
+  sequence: []
+  outputs:
+    repo: ${{ context.git.repo }}
+- id: source
+  op: command_execution
+  const: true
+  inputs:
+    run: git remote get-url origin
+- id: prepare
+  include: ./prepare-create-remotes.yaml
+  inputs:
+    reject_publication: ${{ inputs.reject_publication }}
+- id: publish
+  include: ../../recipes/create/publish.yaml
+  inputs:
+    cells:
+    - name: alpha
+      repo: ${{ sequence.target.outputs.repo }}
+      purpose_path: cells/alpha/PURPOSE.md
+    documents:
+      cells/alpha/PURPOSE.md:
+        kind: value
+        name: PURPOSE.md
+        format: text
+        value: '# Alpha responsibilities approved by the fixture review.'
+    initialize_recipe: ${{ 'git+file://' + jq(sequence.source.outputs.stdout, 'split("\n")[0]') + '//.c2/recipes/initialize.yaml@main' }}
+    review: approved-fixture-review
+- id: inspect_publication
+  op: command_execution
+  const: true
+  inputs:
+    run: |
+      set -eu
+      root_repo=$(git remote get-url origin)
+      git -C "${root_repo%/*}/alpha" show refs/heads/main:PURPOSE.md
+outputs:
+  created: ${{ sequence.publish.outputs.created }}
+  error: ${{ sequence.publish.outputs.error }}
+  initializations: ${{ sequence.publish.outputs.initializations }}
+  published_purpose: ${{ sequence.inspect_publication.outputs.stdout }}

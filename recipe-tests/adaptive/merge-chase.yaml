@@ -38,32 +38,56 @@ sequence:
   const: true
   inputs:
     env:
-      REPO: ${{ context.git.repo }}
       ADVANCES: ${{ string(inputs.advances) }}
       FAIL_AFTER_REBASE: ${{ string(inputs.fail_after_rebase) }}
       CONFLICT: ${{ string(inputs.conflict) }}
       CHANGE_REVIEWED_FILE: ${{ string(inputs.change_reviewed_file) }}
       APPLY_CANDIDATE: ${{ string(inputs.apply_candidate) }}
       CHANGE_HOOK: ${{ string(inputs.change_hook) }}
-    run: "set -eu\n# Fixture repositories have controlled temporary paths. The counter lives\n# outside the candidate\
-      \ and survives worktree changes between native ops.\nprintf \"upstream='%s'\\nlimit=%s\\nfail_after_rebase=%s\\\
-      nconflict=%s\\n\" \"$REPO\" \"$ADVANCES\" \"$FAIL_AFTER_REBASE\" \"$CONFLICT\" > \"$REPO/build.sh\"\nprintf\
-      \ 'change_reviewed_file=%s\\napply_candidate=%s\\n' \"$CHANGE_REVIEWED_FILE\" \"$APPLY_CANDIDATE\" >> \"$REPO/build.sh\"\
-      \nprintf 'change_hook=%s\\n' \"$CHANGE_HOOK\" >> \"$REPO/build.sh\"\ncat >> \"$REPO/build.sh\" <<'CHECK'\n\
-      set -eu\ncounter=\"$upstream/.git/merge-chase-count\"\ncount=0\nif [ -f \"$counter\" ]; then count=$(cat \"\
-      $counter\"); fi\nif [ \"$count\" -lt \"$limit\" ]; then\n  count=$((count + 1))\n  printf '%s\\n' \"$count\"\
-      \ > \"$counter\"\n  printf 'Concurrent upstream change %s\\n' \"$count\" > \"$upstream/upstream.txt\"\n  git\
-      \ -C \"$upstream\" add upstream.txt\n  if [ \"$conflict\" = true ]; then\n    printf 'Conflicting upstream\
-      \ behavior\\n' > \"$upstream/candidate.txt\"\n    git -C \"$upstream\" add candidate.txt\n  fi\n  if [ \"\
-      $change_reviewed_file\" = true ]; then\n    printf 'Additional upstream context\\n' >> \"$upstream/candidate.txt\"\
-      \n    git -C \"$upstream\" add candidate.txt\n  fi\n  if [ \"$apply_candidate\" = true ]; then\n    cp candidate.txt\
-      \ \"$upstream/candidate.txt\"\n    git -C \"$upstream\" add candidate.txt\n  fi\n  if [ \"$change_hook\" =\
-      \ true ]; then\n    printf '\\n# Updated verification policy\\n' >> \"$upstream/.c2/recipes/hooks/build/verify.yaml\"\
-      \n    git -C \"$upstream\" add .c2/recipes/hooks/build/verify.yaml\n  fi\n  git -C \"$upstream\" commit -m\
-      \ \"Concurrent upstream change $count\"\nfi\nif [ \"$fail_after_rebase\" = true ] && [ -f upstream.txt ] &&\
-      \ [ ! -f repair.txt ]; then\n  echo 'Rebased candidate needs implementation repair'\n  exit 1\nfi\ntest \"\
-      $(head -n 1 candidate.txt)\" = corrected\nCHECK\ngit -C \"$REPO\" add build.sh\ngit -C \"$REPO\" commit -m\
-      \ \"Install concurrent-writer verification fixture\"\n"
+    run: |
+      set -eu
+      REPO=$(git remote get-url origin)
+      # Fixture repositories have controlled temporary paths. The counter lives
+      # outside the candidate and survives worktree changes between native ops.
+      printf "upstream='%s'\nlimit=%s\nfail_after_rebase=%s\nconflict=%s\n" "$REPO" "$ADVANCES" "$FAIL_AFTER_REBASE" "$CONFLICT" > "$REPO/build.sh"
+      printf 'change_reviewed_file=%s\napply_candidate=%s\n' "$CHANGE_REVIEWED_FILE" "$APPLY_CANDIDATE" >> "$REPO/build.sh"
+      printf 'change_hook=%s\n' "$CHANGE_HOOK" >> "$REPO/build.sh"
+      cat >> "$REPO/build.sh" <<'CHECK'
+      set -eu
+      counter="$upstream/.git/merge-chase-count"
+      count=0
+      if [ -f "$counter" ]; then count=$(cat "$counter"); fi
+      if [ "$count" -lt "$limit" ]; then
+        count=$((count + 1))
+        printf '%s\n' "$count" > "$counter"
+        printf 'Concurrent upstream change %s\n' "$count" > "$upstream/upstream.txt"
+        git -C "$upstream" add upstream.txt
+        if [ "$conflict" = true ]; then
+          printf 'Conflicting upstream behavior\n' > "$upstream/candidate.txt"
+          git -C "$upstream" add candidate.txt
+        fi
+        if [ "$change_reviewed_file" = true ]; then
+          printf 'Additional upstream context\n' >> "$upstream/candidate.txt"
+          git -C "$upstream" add candidate.txt
+        fi
+        if [ "$apply_candidate" = true ]; then
+          cp candidate.txt "$upstream/candidate.txt"
+          git -C "$upstream" add candidate.txt
+        fi
+        if [ "$change_hook" = true ]; then
+          printf '\n# Updated verification policy\n' >> "$upstream/.c2/recipes/hooks/build/verify.yaml"
+          git -C "$upstream" add .c2/recipes/hooks/build/verify.yaml
+        fi
+        git -C "$upstream" commit -m "Concurrent upstream change $count"
+      fi
+      if [ "$fail_after_rebase" = true ] && [ -f upstream.txt ] && [ ! -f repair.txt ]; then
+        echo 'Rebased candidate needs implementation repair'
+        exit 1
+      fi
+      test "$(head -n 1 candidate.txt)" = corrected
+      CHECK
+      git -C "$REPO" add build.sh
+      git -C "$REPO" commit -m "Install concurrent-writer verification fixture"
 - id: build
   include: ../../build.yaml
   inputs:

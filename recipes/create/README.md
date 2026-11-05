@@ -1,10 +1,19 @@
 # Creating cells
 
-[`create.yaml`](../../create.yaml) must run as a job owned by the configured project
-root. It accepts `prompt`, optional consultation `session` and `documents`, and
+[`create.yaml`](../../create.yaml) must run as a job owned by the cell named
+`root`, and its creation workspace is explicitly `root`. It accepts `prompt`, optional consultation `session` and `documents`, and
 `root_cell`/`root_ref`. Both build paths submit this root-owned child directly for
 explicit creation requests or targets that cannot yet serve a consultation.
 There is no separate eligibility-only consultation before the creation workflow.
+
+Requires c2j `d6553a2` or later for delegated cell registration.
+After approval, [`register-cell.yaml`](register-cell.yaml) runs
+`c2j cell create NAME --repo REPO` in root, with `perms.jobdb.cells.create: true`
+on that command alone. This supplements the Git push and root dependency update.
+The deployment must also authorize the parent to submit initialization jobs to
+the destination cells: creation does not expand the parent's submission scope.
+An approved name and repository locator are separate values; initialization uses
+the name as `workspace.cell` and the locator as a `workspace.repo` assertion.
 
 Creation has three publication boundaries:
 
@@ -16,7 +25,10 @@ Creation has three publication boundaries:
    approval covers repository identities, initial contents, and catalog changes
    together. Feedback or annotations require another review. Clarification,
    rejection, or cancellation never authorizes publication or root edits.
-2. `publish.yaml` resolves an `initial: empty` workspace and submits a separate
+2. `publish.yaml` first registers each approved cell. The command uses the owning
+   job ID and cell name as a stable request ID and retains `registration.json`
+   in its outbox before any initialization. Conflicts fail without a child launch.
+   It then resolves an `initial: empty` workspace and submits a separate
    `initialize.yaml` job inheriting that empty workspace. The child is owned by
    the destination cell, receives the exact approved purpose and approval artifact,
    and publishes `main` through `squashrebasemerge` in its empty-workspace mode.
@@ -50,12 +62,19 @@ identity; a completed child job alone does not mean a cell is ready.
 
 An existing destination branch is never overwritten. Git publication failures
 fail the initialization job and propagate through the root's required
-`recipe.await_result` wait, without starting registration. Catalog squash or
+`recipe.await_result` wait, without starting root dependency integration. The
+already completed registry record remains; creation does not roll it back.
+Catalog squash or
 merge failures also fail the root creation job. These failures retain native
 diagnostics; there is no catch that converts them into normal recipe outputs.
 Creation publication has no advancement chase or enclosing retry. Catalog
 advancement therefore fails until a dedicated recovery flow can reverify and
 review the candidate with a durable recovery bound.
+
+Each successful registration retains its own `registration.json` in job history,
+including when child submission or publication subsequently fails. Retrying the
+same registration within the job reconciles the original result; starting a
+different job with an existing name is a conflict, not automatic adoption.
 
 Completed steps persist `created.json` and `initializations.json` before each
 child wait and after each successful initialization. If a later child fails,
@@ -86,13 +105,13 @@ unchanged by this creation correction.
 
 ## Routing and light work
 
-`kernel/resolve-target.yaml` probes identity/ref availability without a target
-checkout. Local absence, empty repositories, missing refs, and unresolved access
-remain distinct. Remote private-404, authorization, and transport errors are
-unknown, not proof of absence. Root must resolve eligibility and obtain approval
+`../adaptive/resolve-target.yaml` resolves a registered name and ref through a
+native workspace. Unregistered names, empty repositories, missing refs, and
+unresolved access remain unknown, not proof that a repository is absent.
+Root must resolve eligibility and obtain approval
 before initializing; a readable existing branch is never initialized over.
 
-`kernel/route-target.yaml` retains the original request and creation job. Stable
+`../adaptive/route-target.yaml` retains the original request and creation job. Stable
 keys and matching recorded destinations reuse creation outcomes within the parent
 workflow. Distributed deduplication across independent parents is not provided;
 Git publication still refuses an existing destination branch.

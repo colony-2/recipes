@@ -1,0 +1,60 @@
+recipe: fixtures/cell-registration.yaml
+cases:
+- id: root-registration-is-idempotent-and-siblings-denied
+  type: integration_case
+  runtime:
+    cell: root
+    cells:
+      root:
+        file_sources:
+          expectations.md: cell-registration-statements.md
+  mocks:
+    ops:
+    - match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+      repeat: true
+  assertions:
+  - type: cel_true
+    expr: outputs.registrations[0] == outputs.registrations[1]
+  - type: cel_true
+    expr: outputs.registrations[0].name == 'new-cell' && outputs.registrations[0].repo == 'example.test/new-cell'
+  - type: cel_true
+    expr: outputs.denied && calls.all(c, c.cell == 'root')
+- id: conflicting-retry-cannot-repoint-cell
+  type: integration_case
+  inputs:
+    second_repo: example.test/another-repository
+  runtime:
+    cell: root
+    cells:
+      root: {}
+  mocks:
+    ops:
+    - match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+      repeat: true
+  expect_error: command execution failed
+  assertions:
+  - type: cel_true
+    expr: size(calls) == 2
+- id: foreign-owner-cannot-register-in-root
+  type: integration_case
+  runtime:
+    cell: app
+    cells:
+      root: {}
+      app: {}
+  mocks:
+    ops:
+    - match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  expect_error: command execution failed
+  assertions:
+  - type: cel_true
+    expr: size(calls) == 1 && calls[0].cell == 'root' && calls[0].inputs.env.OWNER == 'app'

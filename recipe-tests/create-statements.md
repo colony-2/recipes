@@ -1,5 +1,10 @@
 # Cell creation test statements
 
+In these original statements, root registration means integration into the root
+dependency configuration. The earlier JobDB registry step is specified separately
+in [cell-registration-statements.md](cell-registration-statements.md); it does not
+replace publication or relax the original readiness conditions.
+
 | Priority | Kind / dependencies | Files | Expected outcome |
 | --- | --- | --- | --- |
 | Critical | Integration / c2j, c2ops | `recipes/create/review.yaml` | Root creation resumes the consultant checkpoint and reviews project fit, existing alternatives, technology choices, repository destinations, and initial purposes together. |

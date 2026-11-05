@@ -1,0 +1,90 @@
+# Registration uses a mock only here: the native test harness pre-registers and
+# grants submission to seeded Git fixtures. Actual CLI registration and denial
+# are covered by cell-registration.test.yaml without mocks.
+recipe: fixtures/registered-cell-publication.yaml
+cases:
+- id: registration-conflict-blocks-child-submission
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        file_sources:
+          .c2/recipes/initialize.yaml: ../recipes/create/initialize.yaml
+      alpha: {}
+      beta: {}
+  mocks:
+    ops:
+    - match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+      repeat: true
+  expect_error: command execution failed
+  assertions:
+  - type: cel_true
+    expr: calls.exists(c, c.node_path.endsWith('/register')) && !calls.exists(c, c.op == 'recipes.run')
+  - type: cel_true
+    expr: repositories.root.new_commits == 0
+- id: registration-precedes-native-purpose-publication
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        file_sources:
+          .c2/recipes/initialize.yaml: ../recipes/create/initialize.yaml
+      alpha: {}
+      beta: {}
+  mocks:
+    ops:
+    - match:
+        node_path: registered-cell-publication/publish/publish-cells/publish/sequence/register_cell/register-cell/register
+      behavior:
+        mode: return
+        outputs:
+          success: true
+      artifacts:
+        registration.json: '{"name":"alpha","id":"fixture-registration"}'
+    - match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+      repeat: true
+  assertions:
+  - type: cel_true
+    expr: outputs.error == '' && size(outputs.created) == 1 && outputs.created[0].cell == 'alpha'
+  - type: cel_true
+    expr: outputs.published_purpose.contains('Alpha responsibilities') && repositories.root.new_commits == 0
+  - type: cel_true
+    expr: calls.filter(c, c.node_path.endsWith('/register'))[0].cell == 'root' && calls.filter(c, c.node_path.endsWith('/register'))[0].inputs.env.CELL_NAME == 'alpha'
+- id: publication-failure-after-registration-is-not-success
+  type: integration_case
+  inputs:
+    reject_publication: alpha
+  runtime:
+    cells:
+      root:
+        file_sources:
+          .c2/recipes/initialize.yaml: ../recipes/create/initialize.yaml
+      alpha: {}
+      beta: {}
+  mocks:
+    ops:
+    - match:
+        node_path: registered-cell-publication/publish/publish-cells/publish/sequence/register_cell/register-cell/register
+      behavior:
+        mode: return
+        outputs:
+          success: true
+      artifacts:
+        registration.json: '{"name":"alpha","id":"fixture-registration"}'
+    - match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+      repeat: true
+  expect_error: publication-denied
+  assertions:
+  - type: cel_true
+    expr: repositories.root.new_commits == 0
+  - type: cel_true
+    expr: calls.filter(c, c.node_path.endsWith('/register'))[0].outputs.success && !calls.exists(c, c.node_path.endsWith('/inspect_publication'))

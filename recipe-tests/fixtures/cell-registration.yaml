@@ -1,0 +1,44 @@
+schema_version: 2
+id: cell-registration
+input_schema:
+  second_repo:
+    type: string
+    default_value: example.test/new-cell
+inputs:
+  second_repo: ${{ inputs.second_repo }}
+sequence:
+- id: first
+  include: ../../recipes/create/register-cell.yaml
+  inputs:
+    cell:
+      name: new-cell
+      repo: example.test/new-cell
+- id: retry
+  include: ../../recipes/create/register-cell.yaml
+  inputs:
+    cell:
+      name: new-cell
+      repo: ${{ inputs.second_repo }}
+- id: inspect
+  op: command_execution
+  const: true
+  artifacts:
+    first.json: ${{ sequence.first.artifacts['registration.json'] }}
+    retry.json: ${{ sequence.retry.artifacts['registration.json'] }}
+  inputs:
+    env:
+      INBOX: ${{ context.environment.op.inbox }}
+      OUTBOX: ${{ context.environment.op.outbox }}
+    run: |
+      set -eu
+      cp expectations.md "$OUTBOX/expectations.md"
+      jq -s '.' "$INBOX/first.json" "$INBOX/retry.json"
+- id: denied_sibling
+  op: command_execution
+  const: true
+  inputs:
+    continue_on_error: true
+    run: c2j cell create denied-sibling --repo example.test/denied-sibling --json
+outputs:
+  registrations: ${{ json_parse(sequence.inspect.outputs.stdout) }}
+  denied: ${{ !sequence.denied_sibling.outputs.success }}

@@ -1,0 +1,30 @@
+id: register-cell
+version: 1.0.0
+workspace:
+  cell: root
+  ref: ${{ context.git.ref }}
+inputs:
+  cell: ${{ inputs.cell }}
+sequence:
+- id: register
+  op: command_execution
+  const: true
+  perms:
+    jobdb:
+      cells:
+        create: true
+  inputs:
+    env:
+      OWNER: ${{ context.workflow.cell }}
+      WORKSPACE: ${{ context.workspace.cell }}
+      JOB_ID: ${{ context.workflow.job_id }}
+      CELL_NAME: ${{ inputs.cell.name }}
+      CELL_REPO: ${{ inputs.cell.repo }}
+      OUTBOX: ${{ context.environment.op.outbox }}
+    run: |
+      set -eu
+      test "$OWNER" = root && test "$WORKSPACE" = root || { echo "Cell registration requires a root-owned job" >&2; exit 1; }
+      c2j cell create "$CELL_NAME" --repo "$CELL_REPO" \
+        --request-id "$JOB_ID:create-cell:$CELL_NAME" --json > "$OUTBOX/registration.json"
+outputs:
+  artifact_refs: ${{ sequence.register.artifacts }}

@@ -1,0 +1,49 @@
+recipe: named-cells.yaml
+cases:
+- id: registered-cell-retains-name-and-repository
+  type: integration_case
+  inputs:
+    cell: api
+  runtime:
+    cell: app
+    cells:
+      app: {}
+      api: {}
+  mocks:
+    ops:
+    - match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.owner == 'app' && outputs.target.cell == 'api' && outputs.target.repo != 'api' && outputs.target.state == 'ready'
+  - type: cel_true
+    expr: size(calls) == 1 && calls[0].cell == 'api' && size(outputs.target.revision) == 40
+- id: repository-is-not-a-cell-name
+  type: integration_case
+  inputs:
+    cell: github.com/example/api
+  runtime: {}
+  assertions:
+  - type: cel_true
+    expr: outputs.target.state == 'unknown' && outputs.target.detail.contains('cell must be a name') && size(calls) == 0
+- id: unregistered-cell-is-not-assumed-absent-repository
+  type: integration_case
+  inputs:
+    cell: missing
+  runtime: {}
+  assertions:
+  - type: cel_true
+    expr: outputs.target.cell == 'missing' && outputs.target.repo == '' && outputs.target.state == 'unknown' && size(calls) == 0
+- id: unavailable-ref-is-not-ready
+  type: integration_case
+  inputs:
+    cell: api
+    ref: missing-branch
+  runtime:
+    cells:
+      api: {}
+  assertions:
+  - type: cel_true
+    expr: outputs.target.cell == 'api' && outputs.target.state == 'unknown' && outputs.target.detail != ''

@@ -27,29 +27,15 @@ state:
     prompts:
       include: ./prompts.yaml
       transitions:
-      - to: discover_root_cell
-        when: true
-    discover_root_cell:
-      id: discover_root_cell
-      op: command_execution
-      const: true
-      inputs:
-        run: |
-          if [ -f .c2/config.yaml ] && command -v c2j >/dev/null 2>&1; then
-            c2j self --json
-          else
-            printf '{}'
-          fi
-      transitions:
       - to: start
         when: true
     start:
       inputs:
         documents: ${{ jq([json_parse(json_stringify(context.artifacts)), inputs.documents], 'add | with_entries(select(.key
           != "__git_state_thin_pack__" and .key != "diff_from_parent.diff" and .key != "diff_from_base.diff"))') }}
-        root_cell: '${{ inputs.root_cell != '''' ? inputs.root_cell : json_parse(states.discover_root_cell.outputs.stdout).?root_repo.orValue('''')
+        root_cell: '${{ inputs.root_cell != '''' ? inputs.root_cell : ''root''
           }}'
-        root_ref: '${{ inputs.root_ref != '''' ? inputs.root_ref : json_parse(states.discover_root_cell.outputs.stdout).?root_ref.orValue(''main'')
+        root_ref: '${{ inputs.root_ref != '''' ? inputs.root_ref : ''main''
           }}'
       sequence:
       - id: rebase_policy
@@ -568,19 +554,19 @@ state:
       - id: resolve_upstream_head
         op: command_execution
         const: true
+        workspace:
+          cell: ${{ context.workflow.cell }}
+          ref: ${{ context.git.ref }}
         inputs:
-          env:
-            REPO: ${{ context.git.repo }}
-            BRANCH: ${{ context.git.ref }}
-          run: |
-            set -eu
-            git ls-remote --exit-code -- "$REPO" "refs/heads/${BRANCH#refs/heads/}"
+          # Resolve the current branch through c2j's registered repository and
+          # Git transport, without adopting this fresh workspace into the candidate.
+          run: git rev-parse HEAD
       - id: rebase_candidate
         op: rebase
         retry:
           maximum_attempts: 1
         inputs:
-          target_base_hash: ${{ jq(sequence.resolve_upstream_head.outputs.stdout, 'split("\t")[0]') }}
+          target_base_hash: ${{ jq(sequence.resolve_upstream_head.outputs.stdout, 'split("\n")[0]') }}
       outputs:
         resume_merge: ${{ inputs.resume_merge }}
         merge_chases: ${{ inputs.merge_chases }}
@@ -957,7 +943,7 @@ state:
       - id: publish
         include: ./hook-publish.yaml
         workspace:
-          cell: ${{ context.git.repo }}
+          cell: ${{ context.workflow.cell }}
           ref: ${{ sequence.merge_reviewed_candidate.outputs.merged_hash }}
         inputs:
           request: ${{ inputs.request }}

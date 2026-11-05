@@ -55,6 +55,13 @@ The coordinator owns submission, waiting, stable keys, and recorded results. Cel
 creation retains the shared root-owner agreement and readiness gates. Creation
 alone never satisfies the original feature request.
 
+Workspace selection uses registered cell names. Owner steps read
+`context.workflow.cell`; Git repository locations remain separate metadata.
+The default root cell is `root`. Target resolution enters the named cell's
+workspace through c2j and leaves unavailable targets unknown. See the
+[named-cell migration report](../../guides/IMPLEMENTATION_NAMED_CELLS.md), including
+delegated registration and the separate submission authority required for creation.
+
 Formal Markdown test statements precede implementation. Stable IDs identify
 expectations, filenames, importance, test level, dependencies, and negative cases.
 Implementation cannot replace this baseline; redesign revisits the plan while
@@ -116,7 +123,8 @@ See [the direct-state implementation report](../../guides/IMPLEMENTATION_DIRECT_
 for the ownership of state values and validation results.
 
 Tests are in `../../recipe-tests/adaptive/`. Run with c2j supporting schema v2,
-structured rebase failures, and review annotations (`2537a3c` or later):
+structured rebase failures, review annotations, and named cells (validated against
+`dc36b1b`):
 
 ```sh
 c2j test run --directory recipe-tests/adaptive --parallelism 2
