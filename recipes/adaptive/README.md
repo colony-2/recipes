@@ -126,7 +126,13 @@ Direct child jobs are exceptional, authorized clarification or validation runs;
 project work normally uses the recipe's consultation and execution coordination.
 
 Current verification failures bind native command/extension execution logs under
-`error/`. Human feedback and assessment aliases appear under `feedback/`; original
+`error/`. Within that directory, `summary/` contains recipe explanations, `files/`
+contains returned artifacts with their original relative paths, and `diagnostics/`
+contains native diagnostic sets with their original relative paths. Separate sets
+retain same-named logs from different wrapped causes. Failed goal attempts each
+use `error/attempt-N/` with the same layout. The shared collector reads the native
+failure envelope, including nested causes; an empty top-level artifact map does
+not mean that a failed attempt has no logs. Human feedback and assessment aliases appear under `feedback/`; original
 documents remain available for source links. Hook settings remain recipe data.
 Verification and recovery prepare these bindings where the failure occurs.
 Agents receive the resulting files and a directory-level instruction, without an
@@ -139,11 +145,15 @@ Per-turn guidance keeps scratch/downloaded trees out of outbox and favors an ind
 of individually accessible evidence over archives. See the
 [artifact selection fix](../../guides/FIX_REVIEW_ARTIFACT_SELECTION.md).
 This requires the version-2 [execution diagnostics](../../GUIDE-Command-Failure-Diagnostics.md)
-contract and self discovery. Current gap-closure validation used c2j `0252e9b`.
+contract and self discovery. CI selects the exact npm release in
+[`../../.c2j-version`](../../.c2j-version) and records its source commit.
 Missing diagnostics produce an explicit error note; cancellation stops execution.
 
-Successful check outputs appear under `inbox/verification/`; they cannot replace
-approved documents with the same filename. Each agent receives one merged inbox
+Successful check outputs use the same layout under `inbox/verification/`: the
+generated summary is `summary/verification.md`, and hook files are under `files/`.
+Source paths are never stripped or merged into the summary directory, so hook
+files such as `verification.md`, `check.log`, and `_c2j/execution/check.log` remain
+distinct. They cannot replace approved documents with the same filename. Each agent receives one merged inbox
 binding. If a reviewer returns a copy of supplied evidence, the original execution
 reference wins at that evidence path. See the
 [consultation and evidence audit](../../guides/AUDIT_CONSULTATION_AND_EVIDENCE_REGRESSIONS.md)

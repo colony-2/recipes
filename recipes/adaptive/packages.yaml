@@ -143,7 +143,7 @@ state:
         to: failed
         payload:
           reason: ${{ failure.message }}
-          artifacts: ${{ failure.?attrs.orValue({}).?command.orValue({}).?diagnostics.orValue({}) }}
+          failure: ${{ json_parse(json_stringify(failure)) }}
     done:
       sequence: []
     failed:
@@ -151,18 +151,18 @@ state:
         reason: "${{ transition.payload.?reason.orValue(state_exists('await_goal') && nonempty(states.await_goal.outputs.result.?failure_message.orValue(''))
           ? states.await_goal.outputs.result.failure_message : 'The goal result did not validate the approved configuration.')
           }}"
-        artifacts: "${{ jq([transition.payload.?artifacts.orValue({}),state_exists('await_goal') ? states.await_goal.outputs.errors
-          : {}],'add') }}"
+        failure: ${{ transition.payload.?failure.orValue({}) }}
+        errors: "${{ state_exists('await_goal') ? states.await_goal.outputs.errors : {} }}"
       sequence:
       - id: errors
         include: ./error-documents.yaml
         inputs:
           name: packages/failure.md
           summary: ${{ inputs.reason }}
-          artifacts: ${{ inputs.artifacts }}
+          failure: ${{ inputs.failure }}
       outputs:
         reason: ${{ inputs.reason }}
-        errors: ${{ sequence.errors.outputs.documents }}
+        errors: ${{ jq([inputs.errors, sequence.errors.outputs.documents], 'add') }}
     declined:
       sequence: []
     prompts:

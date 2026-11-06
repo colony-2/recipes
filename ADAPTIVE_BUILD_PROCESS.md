@@ -206,7 +206,12 @@ paths relative to it.
 - `inbox/error/` contains current failure diagnostics, correction notes, or saved
   rebase-recovery evidence. Native execution logs retain the command, relative
   working directory, and timestamped output with stream labels. Additional setup
-  and probe diagnostics remain individually accessible.
+  and probe diagnostics remain individually accessible. Recipe summaries, returned
+  files, and native diagnostic sets occupy separate subdirectories; original file
+  paths are preserved. Failed goal attempts each get their own directory, and logs
+  are collected from their native failure envelope as well as returned artifacts.
+- `inbox/verification/` uses the same layout for successful check evidence. Hook
+  filenames cannot overwrite the generated summary or approved work documents.
 - `inbox/feedback/` contains human direction and reviewer feedback. Original
   documents remain available for annotation source links.
 - Other inbox documents carry designs, formal test statements, results, and

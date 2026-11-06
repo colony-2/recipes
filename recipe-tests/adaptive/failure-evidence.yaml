@@ -1,0 +1,45 @@
+id: failure-evidence
+sequence:
+- id: launch
+  op: recipes.run
+  inputs:
+    recipes:
+    - name: fail
+      cell_name: root
+- id: wait
+  op: recipe.await_result_soft
+  inputs:
+    target:
+      job: ${{ sequence.launch.outputs.job_ids[0] }}
+    wait:
+      on: job
+      condition: complete
+    return_when: terminal
+- id: goal
+  op: recipe.await_result_soft
+  inputs:
+    target:
+      goal: ${{ sequence.launch.outputs.goal_ids[0] }}
+    return_when: current_status
+- id: collect
+  include: ../../recipes/adaptive/goal-attempt-errors.yaml
+  inputs:
+    job: ${{ sequence.launch.outputs.job_ids[0] }}
+- id: read
+  op: command_execution
+  const: true
+  artifacts:
+    ./: ${{ sequence.collect.outputs.documents }}
+  inputs:
+    env:
+      INBOX: ${{ context.environment.op.inbox }}
+      OUTBOX: ${{ context.environment.op.outbox }}
+    run: |-
+      set -eu
+      cp .test/statements.md "$OUTBOX/test-statements.md"
+      find "$INBOX" -type f -exec cat {} \;
+outputs:
+  attempt: ${{ sequence.collect.outputs.result }}
+  errors: ${{ sequence.collect.outputs.documents }}
+  text: ${{ sequence.read.outputs.stdout }}
+  goal: ${{ sequence.goal.outputs }}

@@ -1,0 +1,280 @@
+recipe: consultation-continuation.yaml
+cases:
+- id: completed-transcript-roundtrip-does-not-repeat-turns
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          PURPOSE.md: Client application
+          candidate.txt: original
+      B:
+        files:
+          PURPOSE.md: Serving API
+          candidate.txt: target
+    observe_files:
+    - candidate.txt
+    - experiment.txt
+    secrets:
+      codex_api_key: synthetic
+  mocks:
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: B
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: agreed
+            thinking: 'consultant reply 1: agreed'
+            files:
+            - path: iter1/consultant/feature-spec.md
+              description: Consultation document
+        artifacts:
+          iter1/consultant/feature-spec.md: '# Accepted feature'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                session_id: consultant
+                iteration: 1
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.first.outcome == "agreed" && outputs.second.outcome == "agreed"
+  - type: cel_true
+    expr: outputs.first.state == outputs.second.state
+  - type: cel_true
+    expr: outputs.first.consultant_session == outputs.second.consultant_session
+  - type: cel_true
+    expr: size(calls.filter(c,c.op == "extension_execution")) == 1
+  - type: cel_true
+    expr: '!calls.exists(c,c.op == "recipes.run") && size(reviews) == 0'
+  - type: cel_true
+    expr: calls.exists(c,c.node_path.contains("/second/") &&
+      c.node_path.endsWith("/restore_consultation_transcript"))
+- id: expert-direction-resumes-declined-thread-with-saved-session
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          PURPOSE.md: Client application
+          candidate.txt: original
+      B:
+        files:
+          PURPOSE.md: Serving API
+          candidate.txt: target
+    observe_files:
+    - candidate.txt
+    - experiment.txt
+    secrets:
+      codex_api_key: synthetic
+  mocks:
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: B
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: declined
+            thinking: Default validation would break existing clients.
+            files:
+            - path: iter1/consultant/feature-spec.md
+              description: Consultation document
+        artifacts:
+          iter1/consultant/feature-spec.md: '# Accepted feature'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                session_id: consultant
+                iteration: 1
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: continue
+            thinking: Use opt-in validation.
+            files: []
+        artifacts: {}
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                session_id: requester
+                iteration: 1
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: B
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: agreed
+            thinking: 'consultant reply 1: agreed'
+            files:
+            - path: iter2/consultant/feature-spec.md
+              description: Consultation document
+        artifacts:
+          iter2/consultant/feature-spec.md: '# Agreed opt-in validation'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                session_id: consultant
+                iteration: 2
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.first.outcome == "declined" && outputs.second.outcome == "agreed"
+  - type: cel_true
+    expr: outputs.second.state.round == 2 && outputs.second.state.iteration == 2 &&
+      outputs.second.state.round_iterations == 1
+  - type: cel_true
+    expr: size(calls.filter(c,c.op == "extension_execution")) == 3
+  - type: cel_true
+    expr: calls.filter(c,c.op == "extension_execution")[2].inputs.inputs.session ==
+      outputs.first.consultant_session
+  - type: cel_true
+    expr: outputs.second.state.transcript.exists(t,t.participant == "expert")
+  - type: cel_true
+    expr: size(reviews) == 0
+  inputs:
+    direction: Preserve compatibility; make validation opt in.
+- id: nested-transcript-roundtrip-does-not-repeat-advice
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          PURPOSE.md: Client application
+          candidate.txt: original
+      B:
+        files:
+          PURPOSE.md: Serving API
+          candidate.txt: target
+      jobdb:
+        files:
+          PURPOSE.md: Own pagination
+    observe_files:
+    - candidate.txt
+    - experiment.txt
+    secrets:
+      codex_api_key: synthetic
+  mocks:
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: B
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: continue
+            thinking: Need JobDB contract advice before agreeing.
+            files:
+            - path: iter1/consultant/feature-spec.md
+              description: Consultation document
+            requests:
+            - cell: jobdb
+              request: Clarify the existing pagination contract.
+        artifacts:
+          iter1/consultant/feature-spec.md: '# Accepted feature'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                session_id: consultant
+                iteration: 1
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: jobdb
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: agreed
+            thinking: 'jobdb advice: agreed'
+            files:
+            - path: iter1/consultant/contract.md
+              description: Advice
+        artifacts:
+          iter1/consultant/contract.md: Use cursor pagination.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                session_id: jobdb
+                iteration: 1
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: B
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: agreed
+            thinking: 'consultant reply 1: agreed'
+            files:
+            - path: iter2/consultant/spec.md
+              description: Consultation document
+        artifacts:
+          iter2/consultant/spec.md: Accepted after downstream advice.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                session_id: consultant
+                iteration: 1
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.first.outcome == "agreed" && outputs.second.outcome == "agreed"
+  - type: cel_true
+    expr: outputs.first.state == outputs.second.state
+  - type: cel_true
+    expr: size(calls.filter(c,c.op == "extension_execution")) == 3
+  - type: cel_true
+    expr: '!calls.exists(c,c.op == "recipes.run") && size(reviews) == 0'
+  - type: cel_true
+    expr: outputs.second.artifacts.exists(k,k.startsWith("downstream/"))

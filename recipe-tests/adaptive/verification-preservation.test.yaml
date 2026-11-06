@@ -1,0 +1,105 @@
+recipe: verification.yaml
+cases:
+- id: all-hook-files-survive-agent-binding
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          .c2/recipes/hooks/build/verify.yaml: |
+            id: collision-hook
+            sequence: []
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: Generated verification summary
+              artifact_refs:
+                failure.md:
+                  kind: value
+                  name: failure.md
+                  format: text
+                  value: Original failure
+                _c2j/execution/check.log:
+                  kind: value
+                  name: _c2j/execution/check.log
+                  format: text
+                  value: Runner log
+                check.log:
+                  kind: value
+                  name: check.log
+                  format: text
+                  value: Hook log
+                summary/failure.md:
+                  kind: value
+                  name: summary/failure.md
+                  format: text
+                  value: Summary-like file
+                error/failure.md:
+                  kind: value
+                  name: error/failure.md
+                  format: text
+                  value: Prefixed file
+                verification.md:
+                  kind: value
+                  name: verification.md
+                  format: text
+                  value: Detailed verification
+  mocks:
+    ops:
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.ok && size(outputs.agent_artifacts) == 7
+  - type: cel_true
+    expr: outputs.agent_text.contains("Generated verification summary")
+  - type: cel_true
+    expr: outputs.agent_text.contains("Detailed verification")
+  - type: cel_true
+    expr: outputs.agent_text.contains("Original failure")
+  - type: cel_true
+    expr: outputs.agent_text.contains("Runner log")
+  - type: cel_true
+    expr: outputs.agent_text.contains("Hook log")
+  - type: cel_true
+    expr: outputs.agent_text.contains("Summary-like file")
+  - type: cel_true
+    expr: outputs.agent_text.contains("Prefixed file")
+- id: candidate-change-and-hook-failure-retain-both-explanations
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          candidate.txt: original
+          .c2/recipes/hooks/build/verify.yaml: |
+            id: mutating-failure
+            sequence:
+            - id: mutate
+              op: command_execution
+              inputs:
+                run: printf changed > candidate.txt
+            - id: fail
+              op: command_execution
+              inputs:
+                run: echo mutation-failure-marker >&2; exit 7
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: Unreachable
+              artifact_refs: {}
+  mocks:
+    ops:
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: '!outputs.ok && outputs.result.summary.contains("Read-only hook changed the candidate") && outputs.agent_text.contains("mutation-failure-marker")'
+  - type: cel_true
+    expr: outputs.result.failure.attrs.command.exit_code == 7

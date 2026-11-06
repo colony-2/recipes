@@ -1,0 +1,183 @@
+recipe: verification.yaml
+cases:
+- type: integration_case
+  runtime:
+    secrets:
+      TEST_TOKEN: fixture-secret-only
+    config:
+      _c2j_hook_policy_tenant:
+        version: 1
+        hooks:
+          .c2/recipes/hooks/build/verify.yaml:
+            perms:
+              jobdb:
+                secrets:
+                  resolve:
+                  - TEST_TOKEN
+              limit:
+                jobdb:
+                  secrets:
+                    resolve:
+                    - TEST_TOKEN
+            source_trust:
+              jobdb.secrets.resolve:
+                TEST_TOKEN:
+                  mode: candidate
+    cells:
+      root:
+        files:
+          .c2/recipes/hooks/build/verify.yaml: |
+            id: authorized-hook
+            sequence:
+            - id: nested
+              include: ./secret-check.yaml
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: Synthetic authority verified
+              artifact_refs: {}
+          .c2/recipes/hooks/build/secret-check.yaml: |
+            id: secret-check
+            sequence:
+            - id: resolve
+              op: command_execution
+              const: true
+              inputs:
+                run: 'set -eu
+
+                  value=$(c2j secret get TEST_TOKEN --format raw)
+
+                  test "$(printf %s "$value" | sha256sum)" = "1b437c1c0fdc6cf0136d3a91639a428418d164092abf40b5f19966e1c18235b3  -"
+
+                  printf "authorized-hook-marker\n"'
+            outputs:
+              ok: ${{ sequence.resolve.outputs.success }}
+  mocks:
+    ops:
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.ok && calls.exists(c, c.node_path.endsWith("/resolve") && c.outputs.stdout ==
+      "authorized-hook-marker")
+  - type: cel_true
+    expr: '!outputs.agent_text.contains("fixture-secret-only")'
+  id: granted-hook-authority-through-local-include
+- type: integration_case
+  runtime:
+    secrets:
+      TEST_TOKEN: fixture-secret-only
+    config: {}
+    cells:
+      root:
+        files:
+          .c2/recipes/hooks/build/verify.yaml: |
+            id: authorized-hook
+            sequence:
+            - id: nested
+              include: ./secret-check.yaml
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: Synthetic authority verified
+              artifact_refs: {}
+          .c2/recipes/hooks/build/secret-check.yaml: |
+            id: secret-check
+            sequence:
+            - id: resolve
+              op: command_execution
+              const: true
+              inputs:
+                run: 'set -eu
+
+                  value=$(c2j secret get TEST_TOKEN --format raw)
+
+                  test "$(printf %s "$value" | sha256sum)" = "1b437c1c0fdc6cf0136d3a91639a428418d164092abf40b5f19966e1c18235b3  -"
+
+                  printf "authorized-hook-marker\n"'
+            outputs:
+              ok: ${{ sequence.resolve.outputs.success }}
+  mocks:
+    ops:
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: '!outputs.allowed && outputs.agent_text.contains("secret is not authorized for this scope")'
+  - type: cel_true
+    expr: '!outputs.agent_text.contains("fixture-secret-only")'
+  id: absent-hook-authority-through-local-include
+- type: integration_case
+  runtime:
+    secrets:
+      TEST_TOKEN: fixture-secret-only
+    config:
+      _c2j_hook_policy_tenant:
+        version: 1
+        hooks:
+          .c2/recipes/hooks/build/verify.yaml:
+            perms:
+              jobdb:
+                secrets:
+                  resolve:
+                  - TEST_TOKEN
+              limit:
+                jobdb:
+                  secrets:
+                    resolve:
+                    - TEST_TOKEN
+            source_trust:
+              jobdb.secrets.resolve:
+                TEST_TOKEN:
+                  mode: candidate
+    cells:
+      root:
+        files:
+          .c2/recipes/hooks/build/verify.yaml: |
+            id: authorized-hook
+            sequence:
+            - id: nested
+              include: ./secret-check.yaml
+              perms:
+                limit:
+                  jobdb: {}
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: Synthetic authority verified
+              artifact_refs: {}
+          .c2/recipes/hooks/build/secret-check.yaml: |
+            id: secret-check
+            sequence:
+            - id: resolve
+              op: command_execution
+              const: true
+              inputs:
+                run: 'set -eu
+
+                  value=$(c2j secret get TEST_TOKEN --format raw)
+
+                  test "$(printf %s "$value" | sha256sum)" = "1b437c1c0fdc6cf0136d3a91639a428418d164092abf40b5f19966e1c18235b3  -"
+
+                  printf "authorized-hook-marker\n"'
+            outputs:
+              ok: ${{ sequence.resolve.outputs.success }}
+  mocks:
+    ops:
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: '!outputs.allowed && outputs.agent_text.contains("permissions exceed the enclosing limit")'
+  - type: cel_true
+    expr: '!outputs.agent_text.contains("fixture-secret-only")'
+  id: limited-hook-authority-through-local-include

@@ -2,13 +2,24 @@ id: adaptive-error-documents
 inputs:
   summary: ${{ inputs.summary }}
   artifacts: ${{ inputs.?artifacts.orValue({}) }}
+  failure: ${{ inputs.?failure.orValue({}) }}
   name: ${{ inputs.?name.orValue('failure.md') }}
+  directory: ${{ inputs.?directory.orValue('error') }}
 sequence: []
 outputs:
-  documents: "${{ jq([inputs.artifacts, {inputs.name: {'kind':'value','name':'failure.md','format':'text','value':inputs.summary}
-    }], vars.bindings) }}"
+  documents: ${{ jq(inputs, vars.bindings) }}
 vars:
+  # Each source keeps its complete relative path. Number diagnostic sets to
+  # retain distinct logs with the same name in nested/wrapped failures.
   bindings: |
-    add | to_entries | map(
-      .key = ("error/" + (if (.key|startswith("_c2j/execution/")) then (.key|ltrimstr("_c2j/execution/"))
-        else (.key|ltrimstr("error/")) end)) | .value.name = .key) | from_entries
+    def files($prefix): to_entries | map(
+      select(.key != "__git_state_thin_pack__" and .key != "diff_from_parent.diff" and .key != "diff_from_base.diff")
+      | .key = ($prefix + .key) | .value.name = .key);
+    . as $input |
+    [{key: (.directory + "/summary/" + .name), value: {
+      kind: "value", name: (.directory + "/summary/" + .name), format: "text", value: .summary}}]
+    + (.artifacts | files($input.directory + "/files/"))
+    + ([.failure | .. | objects | (.diagnostics?, .artifacts?) | select(type == "object" and length > 0)]
+       | unique | to_entries | map(
+         . as $set | .value | files($input.directory + "/diagnostics/" + ($set.key|tostring) + "/")) | add // [])
+    | from_entries

@@ -30,7 +30,11 @@ sequence:
       kind: value
       name: candidate-config.yaml
       format: text
-      value: "packages: []\noperator: original\n"
+      value: 'packages: []
+
+        operator: original
+
+        '
   inputs:
     env:
       INBOX: ${{ context.environment.op.inbox }}
@@ -42,11 +46,27 @@ sequence:
     continue:
       outputs:
         rejected: true
+        failure: ${{ json_parse(json_stringify(failure)) }}
+- id: errors
+  include: ../../recipes/adaptive/error-documents.yaml
+  inputs:
+    summary: Adoption result
+    failure: ${{ sequence.attempt.outputs.?failure.orValue({}) }}
 - id: observe
   op: command_execution
   const: true
   inputs:
     run: cat .c2/config.yaml
+- id: reason
+  op: command_execution
+  const: true
+  artifacts:
+    ./: ${{ sequence.errors.outputs.documents }}
+  inputs:
+    env:
+      INBOX: ${{ context.environment.op.inbox }}
+    run: find "$INBOX" -type f -exec cat {} \;
 outputs:
   rejected: ${{ sequence.attempt.outputs.?rejected.orValue(false) }}
   config: ${{ sequence.observe.outputs.stdout }}
+  reason: ${{ sequence.reason.outputs.stdout }}

@@ -1,16 +1,17 @@
 # Native recipe testing
 
-Install the latest published c2j package (CI uses Node.js 24):
+Install the repository's pinned c2j release (CI uses Node.js 24):
 
 ```sh
-npm install --global @colony2/c2j@latest
+npm install --global "@colony2/c2j@$(cat .c2j-version)"
 c2j version
 ```
 
 The package installs the appropriate release binary for your platform. Ensure
 the installed command is first on `PATH`, including for recipes that invoke
-`c2j` themselves. CI installs the latest package at the start of each run and
-records the CLI and npm package versions alongside the test reports.
+`c2j` themselves. CI records the CLI, npm package, c2j source commit, and recipes
+commit alongside its reports. Update `.c2j-version` when selecting a new runtime;
+test that exact release locally before changing the pin.
 Run `recipe-tests/create.test.yaml` and
 `recipe-tests/create-handoff.test.yaml` for its review, publication, and handoff
 coverage; these use disposable repositories and do not create GitHub repositories.
@@ -36,8 +37,12 @@ setup actions provide Nix, the public `colony2` Cachix cache, Node.js, pnpm,
 Python, and uv. Ops provision their declared tools through Nix. No model
 credentials or cache upload credentials are required. The
 `recipe-test-results` artifact retains the selected c2j release, complete log,
-and runner reports for 14 days, including failed runs. A manual workflow run is
-also available for checking a new c2j release without changing this repository.
+and runner reports for 14 days, including failed runs. A manual workflow run uses
+the same pin. Before the full suites, CI requires a successful authored packaged
+agent smoke: nested adaptive advice followed by transcript export/import. Model
+responses are deterministic; package resolution, secrets, workspaces, checkpoints,
+artifact binding, and continuation I/O execute normally. Rewriting selectors or
+removing declared tool requirements is not equivalent to this smoke test.
 
 For example:
 
@@ -118,3 +123,17 @@ op. Assert on `calls[].worktree` for retained candidates or absent foreign edits
 Compare `calls[].inputs.inputs.session` to the preceding model call's
 `outputs.session` when exact checkpoint routing matters. A matching object type
 alone does not prove that the intended checkpoint was used.
+
+Use real failed children for diagnostic contracts. A failed attempt can have an
+empty top-level artifact map while its native failure envelope contains stored
+execution logs. Assert file content and stored identity after materialization,
+not only the existence of one expected filename. Include conflicting filenames
+and wrapped causes. Negative guard tests must satisfy unrelated guards, assert
+the actual rejection, and have a successful control; remove each guard in a
+temporary copy to confirm its corresponding test fails.
+
+Adaptive continuation cases cover export/import and session reuse; they do not
+restart a worker. Native failed-child cases confirm that the attempt's goal stays
+open. Mocked goal status cases cover recipe branching; they do not
+exercise an open goal's replacement/wakeup lifecycle. The missing native fixture
+actions are specified in [the c2j lifecycle request](FEATURE_REQUEST_C2J_TEST_LIFECYCLE_CONTROLS.md).

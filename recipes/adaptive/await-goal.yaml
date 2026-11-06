@@ -12,7 +12,7 @@ state:
           goal: ${{ inputs.goal }}
         wait:
           condition: success
-          "on": goal
+          on: goal
         return_when: terminal
       transitions:
       - to: pick
@@ -24,29 +24,13 @@ state:
       outputs:
         index: ${{ inputs.index }}
       transitions:
-      - to: attempt
-        when: outputs.index < size(states.wait.outputs.?goal_failure.orValue({}).?terminalJobIds.orValue([]))
-    attempt:
-      id: attempt
-      op: recipe.await_result_soft
-      inputs:
-        target:
-          job: ${{ states.wait.outputs.goal_failure.terminalJobIds[states.pick.outputs.index] }}
-        wait:
-          condition: complete
-          "on": job
-        return_when: current_status
-      transitions:
       - to: evidence
-        when: true
+        when: outputs.index < size(states.wait.outputs.?goal_failure.orValue({}).?terminalJobIds.orValue([]))
     evidence:
-      include: ./error-documents.yaml
+      include: ./goal-attempt-errors.yaml
       inputs:
-        name: ${{ 'attempt-' + string(states.pick.outputs.index) + '/failure.md' }}
-        summary: ${{ states.attempt.outputs.?failure_message.orValue('The goal was explicitly failed.') }}
-        artifacts: ${{ jq(states.attempt.outputs.?artifacts.orValue({}), 'with_entries(select(.key !=
-          "__git_state_thin_pack__" and .key != "diff_from_parent.diff" and .key != "diff_from_base.diff")) | to_entries
-          | map(.key = ("attempt-'+string(states.pick.outputs.index)+'/" + .key)) | from_entries') }}
+        job: ${{ states.wait.outputs.goal_failure.terminalJobIds[states.pick.outputs.index] }}
+        directory: ${{ 'error/attempt-' + string(states.pick.outputs.index) }}
       transitions:
       - to: pick
         when: true

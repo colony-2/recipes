@@ -1,0 +1,151 @@
+recipe: failure-evidence.yaml
+cases:
+- type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          .c2/recipes/fail.yaml: |
+            id: failing-child
+            sequence:
+            - id: fail
+              op: command_execution
+              inputs:
+                run: echo unique-child-failure-marker >&2; exit 7
+        file_sources:
+          .test/statements.md: ../../guides/PLAN_RECIPE_TEST_GAP_CLOSURE.md
+  mocks:
+    ops:
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.attempt.status == "failed" && size(outputs.attempt.artifacts) == 0
+  - type: cel_true
+    expr: outputs.text.contains("unique-child-failure-marker")
+  - type: cel_true
+    expr: size(outputs.errors) >= 2
+  - type: cel_true
+    expr: outputs.errors["error/diagnostics/0/_c2j/execution/fail.log"].stored ==
+      outputs.attempt.outputs.attrs.c2j_failure.attrs.command.diagnostics["_c2j/execution/fail.log"].stored
+  - type: cel_true
+    expr: outputs.goal.goal_state == "OPEN" && !outputs.goal.terminal && outputs.goal.goal_id ==
+      outputs.attempt.goal_id
+  id: command-failure-reaches-inbox
+- type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          .c2/recipes/fail.yaml: |
+            id: failing-child
+            sequence:
+            - id: fail
+              op: command_execution
+              inputs:
+                run: echo unique-child-failure-marker >&2; exit 7
+              catch:
+              - when: 'true'
+                fail:
+                  message: Wrapped failure
+        file_sources:
+          .test/statements.md: ../../guides/PLAN_RECIPE_TEST_GAP_CLOSURE.md
+  mocks:
+    ops:
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.attempt.status == "failed" && size(outputs.attempt.artifacts) == 0
+  - type: cel_true
+    expr: outputs.text.contains("unique-child-failure-marker")
+  - type: cel_true
+    expr: size(outputs.errors) >= 2
+  - type: cel_true
+    expr: outputs.errors["error/diagnostics/0/_c2j/execution/fail.log"].stored ==
+      outputs.attempt.outputs.attrs.c2j_failure.cause.attrs.command.diagnostics["_c2j/execution/fail.log"].stored
+  - type: cel_true
+    expr: outputs.goal.goal_state == "OPEN" && !outputs.goal.terminal && outputs.goal.goal_id ==
+      outputs.attempt.goal_id
+  id: wrapped-command-failure-reaches-inbox
+- type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          .c2/recipes/fail.yaml: |
+            id: failing-child
+            sequence:
+            - id: fail
+              op: ./broken
+              inputs: {}
+          broken/op.yaml: |
+            name: broken
+            command: [sh, -c, "echo unique-child-failure-marker >&2; echo invalid-json"]
+            input_schema: {type: object}
+            output_schema: {type: object}
+        file_sources:
+          .test/statements.md: ../../guides/PLAN_RECIPE_TEST_GAP_CLOSURE.md
+  mocks:
+    ops:
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+    - match:
+        op: extension_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.attempt.status == "failed" && size(outputs.attempt.artifacts) == 0
+  - type: cel_true
+    expr: outputs.text.contains("unique-child-failure-marker")
+  - type: cel_true
+    expr: size(outputs.errors) >= 2
+  - type: cel_true
+    expr: outputs.errors["error/diagnostics/0/_c2j/execution/fail.log"].stored ==
+      outputs.attempt.outputs.attrs.c2j_failure.attrs.extension.diagnostics["_c2j/execution/fail.log"].stored
+  - type: cel_true
+    expr: outputs.goal.goal_state == "OPEN" && !outputs.goal.terminal && outputs.goal.goal_id ==
+      outputs.attempt.goal_id
+  id: extension-failure-reaches-inbox
+- type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          .c2/recipes/fail.yaml: |
+            id: failing-child
+            sequence:
+            - id: fail
+              op: ./broken
+              inputs: {}
+        file_sources:
+          .test/statements.md: ../../guides/PLAN_RECIPE_TEST_GAP_CLOSURE.md
+  mocks:
+    ops:
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.attempt.status == "failed"
+  - type: cel_true
+    expr: outputs.text.contains("broken")
+  - type: cel_true
+    expr: size(outputs.errors) == 1
+  - type: cel_true
+    expr: outputs.goal.goal_state == "OPEN" && !outputs.goal.terminal && outputs.goal.goal_id ==
+      outputs.attempt.goal_id
+  id: setup-failure-reaches-inbox

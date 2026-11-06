@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   recipes:
-    name: Recipes / latest c2j release
+    name: Recipes / pinned c2j release
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     defaults:
@@ -31,13 +31,16 @@ jobs:
           node-version: '24'
           package-manager-cache: false
 
-      - name: Install latest c2j release
+      - name: Install pinned c2j release
         run: |
-          npm install --global @colony2/c2j@latest
+          C2J_RELEASE=$(cat .c2j-version)
+          npm install --global "@colony2/c2j@$C2J_RELEASE"
           mkdir -p "$RUNNER_TEMP/recipe-results"
           {
             c2j version
             npm list --global @colony2/c2j
+            npm view "@colony2/c2j@$C2J_RELEASE" gitHead
+            git rev-parse HEAD
           } | tee "$RUNNER_TEMP/recipe-results/c2j-version.txt" >> "$GITHUB_STEP_SUMMARY"
 
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
@@ -63,6 +66,14 @@ jobs:
         with:
           name: colony2
           skipPush: true
+
+      - name: Smoke test authored packaged agent operations
+        run: |
+          nix --version | tee "$RUNNER_TEMP/recipe-results/nix-version.txt" >> "$GITHUB_STEP_SUMMARY"
+          c2j test run --file recipe-tests/adaptive/consultation-continuation.test.yaml \
+            --case nested-transcript-roundtrip-does-not-repeat-advice --case-timeout 5m \
+            --out-dir "$RUNNER_TEMP/recipe-results/authored-smoke" \
+            2>&1 | tee "$RUNNER_TEMP/recipe-results/authored-smoke.log"
 
       - name: Run deterministic recipe suites
         run: |
