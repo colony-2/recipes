@@ -1,0 +1,36 @@
+id: adaptive-operational-failure
+inputs:
+  reason: ${{ inputs.reason }}
+  documents: ${{ inputs.?documents.orValue({}) }}
+sequence:
+- id: prompts
+  include: ./prompts.yaml
+- id: stop_attempt
+  workspace:
+    cell: ${{ context.workflow.cell }}
+    repo: ${{ context.git.repo }}
+    ref: ${{ context.git.ref }}
+    initial: empty
+  op: command_execution
+  artifacts:
+    ./: ${{ inputs.documents }}
+    recovery.md:
+      kind: value
+      name: recovery.md
+      format: text
+      value: ${{ sequence.prompts.outputs.recovery.instructions }}
+  inputs:
+    env:
+      INBOX: ${{ context.environment.op.inbox }}
+      OUTBOX: ${{ context.environment.op.outbox }}
+    run: |
+      cp -R "$INBOX"/. "$OUTBOX"/
+      exit 1
+  retry:
+    maximum_attempts: 1
+  catch:
+  - when: failure.kind != 'cancellation'
+    fail:
+      code: ADAPTIVE_RECOVERY_REQUIRED
+      message: ${{ inputs.reason }}
+      cause: ${{ failure }}

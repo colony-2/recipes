@@ -1,0 +1,78 @@
+id: adaptive-package-tools
+sequence: []
+outputs:
+  program: |
+    import hashlib, json, os, pathlib, subprocess, sys, tempfile
+    inbox, outbox = pathlib.Path(os.environ['INBOX']), pathlib.Path(os.environ['OUTBOX'])
+    config = pathlib.Path('.c2/config.yaml')
+    def digest(data): return hashlib.sha256(data).hexdigest()
+    def original():
+        if pathlib.Path('.c2').is_symlink() or config.is_symlink():
+            raise ValueError('Package config must not be a symlink')
+        return config.read_bytes() if config.exists() else None
+    def write_config(data):
+        original()
+        config.parent.mkdir(exist_ok=True)
+        temp = config.with_name('config.yaml.package-pending')
+        temp.write_bytes(data)
+        temp.replace(config)
+    def read(name): return json.loads((inbox / name).read_text())
+    mode = sys.argv[1]
+    if mode == 'prepare':
+        requested, policy = read('requested.json'), read('policy.json')
+        request_id=digest(json.dumps(sorted(requested,key=lambda x:x['reference']),sort_keys=True,separators=(',',':')).encode())
+        before = original()
+        data = json.loads(subprocess.check_output(['yq','-o=json','.',str(config)])) if before else {}
+        data = data or {}
+        if not isinstance(data, dict): raise ValueError('Cell config must be a mapping')
+        existing = data.get('packages') or []
+        if not isinstance(existing,list) or any(not isinstance(x,str) for x in existing):
+            raise ValueError('Cell packages must be strings')
+        additions=[]
+        for item in requested:
+            ref, check = item['reference'], item['check']
+            if not isinstance(ref,str) or ref.split(':',1)[0] not in ('nix','uv','pnpm') or len(ref.split(':',1))!=2:
+                raise ValueError('Use a portable nix:, uv:, or pnpm: package reference')
+            if not isinstance(check,list) or not check or any(not isinstance(a,str) or not a or '\x00' in a for a in check):
+                raise ValueError('Each package needs a bounded probe as an argv array')
+            if ref in existing: continue
+            if any(x['reference']==ref for x in additions): raise ValueError('Request each package once')
+            additions.append(item)
+        data['packages']=existing+[x['reference'] for x in additions]
+        if before:
+            with tempfile.TemporaryDirectory(prefix='adaptive-package-list-') as tmp:
+                package_list=pathlib.Path(tmp)/'packages.json'
+                package_list.write_text(json.dumps(data['packages']))
+                candidate=subprocess.check_output(['yq','.packages = load(strenv(C2_RECIPE_PACKAGE_LIST))',str(config)],env={**os.environ,'C2_RECIPE_PACKAGE_LIST':str(package_list)})
+        else:
+            candidate=(json.dumps(data,indent=2,ensure_ascii=False)+'\n').encode()
+        (outbox/'candidate-config.yaml').write_bytes(candidate)
+        (outbox/'previous-config.yaml').write_bytes(before if before is not None else b'')
+        (outbox/'base-digest.txt').write_text(digest(before) if before is not None else 'missing')
+        (outbox/'packages.json').write_text(json.dumps(additions))
+        approved=all(policy.get(x['reference'])==x['check'] for x in additions)
+        brief='# Add tools for the current work\n\n'+os.environ.get('REASON','')+'\n\n## Requested tools and validation\n\n'
+        for x in additions: brief+='- '+x['reference']+' — probe argv: `'+json.dumps(x['check'])+'`\n'
+        brief+='\n## Effect of approval\n\nValidate this exact config in an isolated child goal, then adopt it and resume the blocked work. These tools become proposed cell defaults; future work receives them after the normal merge. No memory, Docker, credentials, or other config settings change. Declining returns the request to the agent without installing these packages.\n'
+        brief+='\nExisting packages: '+(', '.join(existing) or 'none')+'.\n'
+        (outbox/'package-review.md').write_text(brief)
+        print(json.dumps({'request_id':request_id,'proposal_id':digest((request_id+digest(candidate)).encode()),'changed':bool(additions),'needs_approval':not approved,'config_digest':digest(candidate),'base_hash':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()}))
+    elif mode == 'install':
+        write_config((inbox/'candidate-config.yaml').read_bytes())
+    elif mode == 'probe':
+        for item in read('packages.json'):
+            # The exact argv is policy-approved or presented to the approver; never shell-interpolate it.
+            print('Probe: '+json.dumps(item['check']),flush=True)
+            subprocess.run(item['check'],check=True,timeout=60)
+        (outbox/'config-digest.txt').write_text(digest(original()))
+        print('All approved package probes passed.')
+    elif mode == 'adopt':
+        before=original()
+        expected=(inbox/'base-digest.txt').read_text()
+        if (digest(before) if before is not None else 'missing')!=expected:
+            raise ValueError('Cell config changed after approval; reevaluate the proposal without overwriting it')
+        candidate=(inbox/'candidate-config.yaml').read_bytes()
+        if digest(candidate)!=os.environ['VALIDATED_DIGEST']:
+            raise ValueError('Successful goal did not validate this config')
+        write_config(candidate)
+    else: raise ValueError('Unknown package operation')

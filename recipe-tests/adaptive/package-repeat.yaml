@@ -1,0 +1,43 @@
+schema_version: 2
+id: package-repeat
+input_schema:
+  second:
+    type: array
+    items:
+      type: object
+    default_value:
+    - &id001
+      reference: uv:ruff==0.11.2
+      check:
+      - ruff
+      - --version
+inputs:
+  second: ${{ inputs.second }}
+sequence:
+- id: first
+  include: ../../recipes/adaptive/packages.yaml
+  inputs:
+    packages:
+    - *id001
+    summary: Run required checks
+    check_recipe: package-check
+- id: second
+  include: ../../recipes/adaptive/packages.yaml
+  inputs:
+    packages: ${{ inputs.second }}
+    summary: Run required checks
+    check_recipe: package-check
+    decisions: ${{ [sequence.first.outputs.decision] }}
+- id: read_errors
+  op: command_execution
+  const: true
+  artifacts:
+    ./: ${{ sequence.first.outputs.errors }}
+  inputs:
+    env:
+      INBOX: ${{ context.environment.op.inbox }}
+    run: if test -f "$INBOX/error/attempt-0/_c2j/preparation.json"; then cat "$INBOX/error/attempt-0/_c2j/preparation.json"; fi
+outputs:
+  first: ${{ sequence.first.outputs }}
+  second: ${{ sequence.second.outputs }}
+  diagnostics: ${{ sequence.read_errors.outputs.stdout }}

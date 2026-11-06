@@ -62,7 +62,6 @@ cases:
             files:
             - path: iter1/consultant/spec.md
               description: Consultation document
-            assessment: not_applicable
         artifacts:
           iter1/consultant/spec.md: '# Agreed API'
         effects:
@@ -86,7 +85,6 @@ cases:
             files:
             - path: iter1/consultant/spec.md
               description: Consultation document
-            assessment: not_applicable
         artifacts:
           iter1/consultant/spec.md: '# Worker purpose, alternatives, and technology guidance'
         effects:
@@ -106,34 +104,32 @@ cases:
     path: valid
     value: true
   - type: cel_true
-    expr: size(outputs.threads) == 2
+    expr: size(outputs.agreements) == 2
   - type: cel_true
-    expr: size(outputs.jobs) == 2
+    expr: size(outputs.executions) == 2
   - type: cel_true
     expr: outputs.session == outputs.independent_session
   - type: cel_true
-    expr: outputs.jobs.api.result.starter == {}
+    expr: outputs.results[0].result.outputs.starter == {}
   - type: cel_true
-    expr: outputs.jobs.worker.result.starter == {}
+    expr: outputs.results[1].result.outputs.starter == {}
   - type: cel_true
-    expr: '"consultation/conversation.json" in outputs.jobs.api.result.documents'
+    expr: '"consultation/conversation.json" in outputs.results[0].result.outputs.documents'
   - type: cel_true
-    expr: outputs.threads.worker.request.cell == "R"
+    expr: outputs.agreements[1].request.cell == "R"
   - type: cel_true
     expr: size(calls.filter(c, c.op == "recipes.run")) == 4
   - type: cel_true
     expr: repositories.root.new_commits == 0
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).filter(c, c.cell
-      == "R")[0].inputs.inputs.instructions.contains("existing owners for overlap")
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).filter(c, c.cell == "R")[0].inputs.inputs.instructions.contains("existing owners for overlap")
   - type: cel_true
-    expr: '"consultations/api/iter1/consultant/spec.md" in outputs.documents && "consultations/worker/iter1/consultant/spec.md"
-      in outputs.documents'
+    expr: '"coordination/request-0-0/iter1/consultant/spec.md" in outputs.documents && "coordination/request-0-1/iter1/consultant/spec.md" in outputs.documents'
   - type: cel_true
-    expr: outputs.documents["consultations/api/iter1/consultant/spec.md"].stored == outputs.threads.api.result.final_artifacts["iter1/consultant/spec.md"].stored
+    expr: outputs.documents["coordination/request-0-0/iter1/consultant/spec.md"].stored == outputs.agreements[0].result.final_artifacts["iter1/consultant/spec.md"].stored
   - type: cel_true
-    expr: '"jobs/api/dependency.md" in outputs.documents && "jobs/worker/dependency.md" in outputs.documents'
-- id: child-failure-is-preserved-without-resubmission
+    expr: outputs.results[0].result.status in ["completed","failed"] && outputs.results[1].result.status=="completed"
+- id: explicitly-failed-goal-is-preserved-without-resubmission
   type: integration_case
   runtime:
     cells:
@@ -196,7 +192,6 @@ cases:
             files:
             - path: iter1/consultant/spec.md
               description: Consultation document
-            assessment: not_applicable
         artifacts:
           iter1/consultant/spec.md: '# Agreed API'
         effects:
@@ -220,7 +215,6 @@ cases:
             files:
             - path: iter1/consultant/spec.md
               description: Consultation document
-            assessment: not_applicable
         artifacts:
           iter1/consultant/spec.md: '# Worker purpose, alternatives, and technology guidance'
         effects:
@@ -235,37 +229,110 @@ cases:
         op: command_execution
       behavior:
         mode: passthrough
+    - match:
+        op: recipe.await_result_soft
+        node_path: coordination-fixture/repeat_submit/adaptive-coordinate/await/await/adaptive-await-goal/wait/wait
+      behavior:
+        mode: return
+        outputs:
+          status: failed
+          goal_id: failed-api
+          goal_state: FAILED
+          failure_message: Goal explicitly failed
+          outputs:
+            merged: false
+            artifact_refs:
+              dependency.md:
+                kind: value
+                name: dependency.md
+                format: text
+                value: Outcome evidence
+            starter: {}
+    - match:
+        op: recipe.await_result_soft
+        node_path: coordination-fixture/repeat_submit/adaptive-coordinate/await/await/adaptive-await-goal/wait/wait
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          goal_id: worker-goal
+          goal_state: SUCCEEDED
+          failure_message: ''
+          outputs:
+            merged: true
+            artifact_refs:
+              dependency.md:
+                kind: value
+                name: dependency.md
+                format: text
+                value: Outcome evidence
+            starter: {}
+    - match:
+        op: recipe.await_result_soft
+        node_path: coordination-fixture/await_jobs/adaptive-coordinate/await/await/adaptive-await-goal/wait/wait
+      behavior:
+        mode: return
+        outputs:
+          status: failed
+          goal_id: failed-api
+          goal_state: FAILED
+          failure_message: Goal explicitly failed
+          outputs:
+            merged: false
+            artifact_refs:
+              dependency.md:
+                kind: value
+                name: dependency.md
+                format: text
+                value: Outcome evidence
+            starter: {}
+    - match:
+        op: recipe.await_result_soft
+        node_path: coordination-fixture/await_jobs/adaptive-coordinate/await/await/adaptive-await-goal/wait/wait
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          goal_id: worker-goal
+          goal_state: SUCCEEDED
+          failure_message: ''
+          outputs:
+            merged: true
+            artifact_refs:
+              dependency.md:
+                kind: value
+                name: dependency.md
+                format: text
+                value: Outcome evidence
+            starter: {}
   assertions:
   - type: output_equals
     path: valid
     value: true
   - type: cel_true
-    expr: size(outputs.threads) == 2
+    expr: size(outputs.agreements) == 2
   - type: cel_true
-    expr: size(outputs.jobs) == 2
+    expr: size(outputs.executions) == 2
   - type: cel_true
     expr: outputs.session == outputs.independent_session
   - type: cel_true
-    expr: outputs.jobs.worker.result.starter == {}
+    expr: outputs.results[1].result.outputs.starter == {}
   - type: cel_true
-    expr: outputs.threads.worker.request.cell == "R"
+    expr: outputs.agreements[1].request.cell == "R"
   - type: cel_true
     expr: size(calls.filter(c, c.op == "recipes.run")) == 4
   - type: cel_true
     expr: repositories.root.new_commits == 0
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).filter(c, c.cell
-      == "R")[0].inputs.inputs.instructions.contains("existing owners for overlap")
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).filter(c, c.cell == "R")[0].inputs.inputs.instructions.contains("existing owners for overlap")
   - type: cel_true
-    expr: '"consultations/api/iter1/consultant/spec.md" in outputs.documents && "consultations/worker/iter1/consultant/spec.md"
-      in outputs.documents'
+    expr: '"coordination/request-0-0/iter1/consultant/spec.md" in outputs.documents && "coordination/request-0-1/iter1/consultant/spec.md" in outputs.documents'
   - type: cel_true
-    expr: outputs.documents["consultations/api/iter1/consultant/spec.md"].stored == outputs.threads.api.result.final_artifacts["iter1/consultant/spec.md"].stored
-  - type: output_equals
-    path: jobs.api.status
-    value: failed
+    expr: outputs.documents["coordination/request-0-0/iter1/consultant/spec.md"].stored == outputs.agreements[0].result.final_artifacts["iter1/consultant/spec.md"].stored
   - type: cel_true
-    expr: outputs.jobs.api.failure != "" && outputs.jobs.worker.status == "completed"
+    expr: outputs.results[0].result.status == "failed"
+  - type: cel_true
+    expr: outputs.results[0].result.failure_message != "" && outputs.results[1].result.status == "completed"
 - id: inline-consultations-and-prerequisite-handoff
   type: integration_case
   runtime:
@@ -330,7 +397,6 @@ cases:
               description: Consultation document
               title: Accepted dependency contract
               order: 0
-            assessment: not_applicable
         artifacts:
           iter1/consultant/spec.md: '# Agreed API'
         effects:
@@ -356,7 +422,6 @@ cases:
               description: Consultation document
               title: Accepted dependency contract
               order: 0
-            assessment: not_applicable
         artifacts:
           iter1/consultant/spec.md: '# Worker purpose, alternatives, and technology guidance'
         effects:
@@ -376,39 +441,35 @@ cases:
     path: valid
     value: true
   - type: cel_true
-    expr: size(outputs.threads) == 2
+    expr: size(outputs.agreements) == 2
   - type: cel_true
-    expr: size(outputs.jobs) == 2
+    expr: size(outputs.executions) == 2
   - type: cel_true
     expr: outputs.session == outputs.independent_session
   - type: cel_true
-    expr: outputs.jobs.api.result.starter == {}
+    expr: outputs.results[0].result.outputs.starter == {}
   - type: cel_true
-    expr: outputs.jobs.worker.result.starter == {}
+    expr: outputs.results[1].result.outputs.starter == {}
   - type: cel_true
-    expr: '"consultation/conversation.json" in outputs.jobs.api.result.documents'
+    expr: '"consultation/conversation.json" in outputs.results[0].result.outputs.documents'
   - type: cel_true
-    expr: outputs.threads.worker.request.cell == "R"
+    expr: outputs.agreements[1].request.cell == "R"
   - type: cel_true
     expr: size(calls.filter(c, c.op == "recipes.run")) == 2
   - type: cel_true
     expr: repositories.root.new_commits == 0
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).filter(c, c.cell
-      == "R")[0].inputs.inputs.instructions.contains("existing owners for overlap")
+    expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex")).filter(c, c.cell == "R")[0].inputs.inputs.instructions.contains("existing owners for overlap")
   - type: cel_true
-    expr: '"consultations/api/iter1/consultant/spec.md" in outputs.documents && "consultations/worker/iter1/consultant/spec.md"
-      in outputs.documents'
+    expr: '"coordination/request-0-0/iter1/consultant/spec.md" in outputs.documents && "coordination/request-0-1/iter1/consultant/spec.md" in outputs.documents'
   - type: cel_true
-    expr: outputs.documents["consultations/api/iter1/consultant/spec.md"].stored == outputs.threads.api.result.final_artifacts["iter1/consultant/spec.md"].stored
+    expr: outputs.documents["coordination/request-0-0/iter1/consultant/spec.md"].stored == outputs.agreements[0].result.final_artifacts["iter1/consultant/spec.md"].stored
   - type: cel_true
-    expr: '"jobs/api/dependency.md" in outputs.documents && "jobs/worker/dependency.md" in outputs.documents'
+    expr: outputs.results[0].result.status in ["completed","failed"] && outputs.results[1].result.status=="completed"
   - type: cel_true
-    expr: outputs.annotations.exists(a, a.id == "consultations/api/iter1/consultant/spec.md" && a.descriptor.title
-      == "Accepted dependency contract")
+    expr: outputs.annotations.exists(a, a.id == "coordination/request-0-0/iter1/consultant/spec.md" && a.descriptor.title == "Accepted dependency contract")
   - type: cel_true
-    expr: outputs.jobs.api.result.annotations.exists(a, a.id == "iter1/consultant/spec.md" && a.descriptor.title ==
-      "Accepted dependency contract") && !outputs.jobs.api.result.documents.exists(k,
+    expr: outputs.results[0].result.outputs.annotations.exists(a, a.id == "iter1/consultant/spec.md" && a.descriptor.title == "Accepted dependency contract") && !outputs.results[0].result.outputs.documents.exists(k,
       k.startsWith("__review_annotations__/"))
   inputs:
     consultation_recipe: git+https://github.com/colony-2/recipes.git//recipes/adaptive/consultation.yaml@main

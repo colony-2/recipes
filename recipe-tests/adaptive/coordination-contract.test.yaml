@@ -1,0 +1,246 @@
+recipe: coordination-contract.yaml
+cases:
+- id: mixed-independent-requests
+  type: integration_case
+  inputs:
+    requests:
+    - action: execute
+      agreement: accepted
+    - action: consult
+      cell: owner
+      request: Clarify separate scope
+    history:
+    - &id002
+      action: consult
+      reference: accepted
+      request:
+        kind: feature
+        cell: owner
+        ref: main
+        request: Build agreed API
+      target:
+        cell: owner
+        ref: main
+      result:
+        outcome: agreed
+        final_artifacts: {}
+        continuation: &id001
+          kind: value
+          name: conversation.json
+          format: json
+          value: {}
+  runtime:
+    cells:
+      root:
+        files:
+          README.md: root
+      owner:
+        files:
+          README.md: owner
+  mocks:
+    ops:
+    - match:
+        op: recipes.run
+      behavior:
+        mode: return
+        outputs:
+          goal_ids:
+          - goal-1
+          job_ids:
+          - attempt-1
+      repeat: true
+      optional: true
+    - match:
+        op: recipe.await_result_soft
+      behavior:
+        mode: return
+        outputs: &id003
+          status: completed
+          goal_id: goal-1
+          outputs:
+            outcome: agreed
+            final_artifacts: {}
+            requester_session: {}
+            continuation: *id001
+      repeat: true
+      optional: true
+    - match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+      repeat: true
+  assertions:
+  - type: cel_true
+    expr: outputs.result.valid && size(outputs.result.records) == 2
+  - type: cel_true
+    expr: outputs.result.records[0].action == "execute" && outputs.result.records[1].action == "consult"
+  - type: cel_true
+    expr: size(reviews) == 0
+- id: repeat-execution-uses-goal
+  type: integration_case
+  inputs:
+    requests:
+    - action: execute
+      agreement: accepted
+    - action: execute
+      agreement: accepted
+    history:
+    - *id002
+  runtime:
+    cells:
+      root:
+        files:
+          README.md: root
+      owner:
+        files:
+          README.md: owner
+  mocks:
+    ops:
+    - match:
+        op: recipes.run
+      behavior:
+        mode: return
+        outputs:
+          goal_ids:
+          - goal-1
+          job_ids:
+          - attempt-1
+      repeat: true
+      optional: true
+    - match:
+        op: recipe.await_result_soft
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          goal_id: goal-1
+          outputs:
+            merged: true
+      repeat: true
+      optional: true
+  assertions:
+  - type: cel_true
+    expr: outputs.result.valid
+  - type: cel_true
+    expr: size(calls.filter(c,c.op == "recipes.run")) == 1
+  - type: cel_true
+    expr: outputs.result.records[1].action == "await" && outputs.result.records[1].goal_id == "goal-1"
+- id: two-requests-one-owner
+  type: integration_case
+  inputs:
+    requests:
+    - action: consult
+      cell: owner
+      request: Pagination
+    - action: consult
+      cell: owner
+      request: Retention
+    history: []
+  runtime:
+    cells:
+      root:
+        files:
+          README.md: root
+      owner:
+        files:
+          README.md: owner
+  mocks:
+    ops:
+    - match:
+        op: recipes.run
+      behavior:
+        mode: return
+        outputs:
+          goal_ids:
+          - goal-1
+          job_ids:
+          - attempt-1
+      repeat: true
+      optional: true
+    - match:
+        op: recipe.await_result_soft
+      behavior:
+        mode: return
+        outputs: *id003
+      repeat: true
+      optional: true
+    - match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+      repeat: true
+  assertions:
+  - type: cel_true
+    expr: outputs.result.records[0].reference != outputs.result.records[1].reference && size(outputs.result.records)==2
+- id: unknown-agreement-rejected
+  type: integration_case
+  inputs:
+    requests:
+    - action: execute
+      agreement: missing
+    history: []
+  runtime:
+    cells:
+      root:
+        files:
+          README.md: root
+      owner:
+        files:
+          README.md: owner
+  mocks:
+    ops: []
+  assertions:
+  - type: cel_true
+    expr: '!outputs.result.valid && !calls.exists(c,c.op == "recipes.run")'
+- id: explicit-creation-is-root-owned
+  type: integration_case
+  inputs:
+    requests:
+    - action: consult
+      kind: create
+      cell: new-owner
+      request: Create the owner for a new responsibility
+    history: []
+  runtime:
+    cells:
+      root:
+        files:
+          README.md: root
+      owner:
+        files:
+          README.md: owner
+  mocks:
+    ops:
+    - match:
+        op: recipes.run
+      behavior:
+        mode: return
+        outputs:
+          goal_ids:
+          - goal-1
+          job_ids:
+          - attempt-1
+      repeat: true
+      optional: true
+    - match:
+        op: recipe.await_result_soft
+      behavior:
+        mode: return
+        outputs:
+          goal_id: goal-1
+          status: completed
+          outputs:
+            disposition: created
+            merged: true
+            created_cells:
+            - cell: new-owner
+              repo: https://example.test/new-owner.git
+              ref: main
+              revision: abcdef
+      repeat: true
+      optional: true
+  assertions:
+  - type: cel_true
+    expr: outputs.result.valid && outputs.result.records[0].ready && outputs.result.records[0].action=="create"
+  - type: cel_true
+    expr: calls.filter(c,c.op=="recipes.run")[0].inputs.recipes[0].cell_name=="root" && size(reviews)==0

@@ -1,0 +1,52 @@
+schema_version: 2
+id: package-adoption-guard
+input_schema:
+  base:
+    type: string
+    required: true
+  validated:
+    type: string
+    required: true
+inputs:
+  base: ${{ inputs.base }}
+  validated: ${{ inputs.validated }}
+sequence:
+- id: tools
+  include: ../../recipes/adaptive/package-tools.yaml
+- id: attempt
+  op: command_execution
+  artifacts:
+    tools.py:
+      kind: value
+      name: tools.py
+      format: text
+      value: ${{ sequence.tools.outputs.program }}
+    base-digest.txt:
+      kind: value
+      name: base-digest.txt
+      format: text
+      value: ${{ inputs.base }}
+    candidate-config.yaml:
+      kind: value
+      name: candidate-config.yaml
+      format: text
+      value: "packages: []\noperator: original\n"
+  inputs:
+    env:
+      INBOX: ${{ context.environment.op.inbox }}
+      OUTBOX: ${{ context.environment.op.outbox }}
+      VALIDATED_DIGEST: ${{ inputs.validated }}
+    run: python3 "$INBOX/tools.py" adopt
+  catch:
+  - when: failure.kind != 'cancellation'
+    continue:
+      outputs:
+        rejected: true
+- id: observe
+  op: command_execution
+  const: true
+  inputs:
+    run: cat .c2/config.yaml
+outputs:
+  rejected: ${{ sequence.attempt.outputs.?rejected.orValue(false) }}
+  config: ${{ sequence.observe.outputs.stdout }}

@@ -13,50 +13,25 @@ state:
       transitions:
       - to: automatic
         when: inputs.attempts < 2 && size(inputs.turn.result.?session.orValue(inputs.session)) > 0 &&
-          size(inputs.turn.jobs.?job_ids.orValue([])) == 0
-      - to: review
+          size(inputs.turn.jobs.?goal_ids.orValue([])) == 0
+      - to: recovery
         when: true
     automatic:
       sequence: []
-    review:
-      include: ./review.yaml
+    recovery:
+      include: ./operational-failure.yaml
       inputs:
-        title: ${{ states.prompts.outputs.repair.title }}
-        documents: ${{ jq([inputs.documents, inputs.turn.artifacts], 'add') }}
-        annotations: ${{ inputs.turn.?annotations.orValue([]) }}
-        fields:
-        - id: decision
-          type: multiple_choice
-          question: ${{ jq(inputs.issues, 'join("; ")') }}
-          required: true
-          options:
-          - value: retry
-            label: ${{ states.prompts.outputs.repair.retry_label }}
-          - value: cancel
-            label: ${{ states.prompts.outputs.repair.cancel_label }}
-        - id: feedback
-          type: paragraph_text
-          question: ${{ states.prompts.outputs.repair.feedback_question }}
-          required: false
-        - id: annotations
-          type: file_upload
-          question: ${{ states.prompts.outputs.repair.annotations_question }}
-          required: false
-      transitions:
-      - to: review
-        when: outputs.response.fields.decision == 'retry' && !outputs.changed
+        reason: "${{ 'Response correction exhausted or has no safe checkpoint: ' + jq(inputs.issues,'join(\"; \")') }}"
+        documents: ${{
+          jq([inputs.documents,inputs.turn.documents,{'error/previous-response.json':{'kind':'value','name':'error/previous-response.json','format':'json','value':inputs.turn.result.?response.orValue({})}
+          }], 'add') }}
 outputs:
-  retry: ${{ state_exists('automatic') || states.review.outputs.response.fields.decision == 'retry' }}
-  attempts: "${{ state_exists('automatic') ? inputs.attempts + 1 : 0 }}"
+  retry: true
+  attempts: ${{ inputs.attempts+1 }}
   session: ${{ inputs.turn.result.?session.orValue(inputs.session) }}
-  artifacts: ${{ jq([inputs.turn.artifacts, state_output('review', 'response', {}).?artifact_refs.orValue({})], 'add') }}
+  artifacts: ${{ inputs.turn.artifacts }}
   documents: >-
-    ${{ jq([inputs.documents, inputs.turn.artifacts, state_output('review', 'documents', {}),
-    {'error/response-corrections.md': {'kind':'value', 'name':'error/response-corrections.md', 'format':'text', 'value':jq(inputs.issues,
-    'map("- " + .) | join("\n")')},
-     'error/previous-response.json': {'kind':'value', 'name':'error/previous-response.json', 'format':'json', 'value':inputs.turn.result.?response.orValue({})}
-    },
-    state_exists('review') ? {'feedback/direction.md': {'kind':'value', 'name':'feedback/direction.md', 'format':'text',
-    'value':state_output('review', 'response', {}).?fields.orValue({}).?feedback.orValue('')} } : {}], 'add') }}
+    ${{ jq([inputs.documents,inputs.turn.documents,{'error/response-corrections.md':{'kind':'value','name':'error/response-corrections.md','format':'text','value':jq(inputs.issues,'join("\n")')},'error/previous-response.json':{'kind':'value','name':'error/previous-response.json','format':'json','value':inputs.turn.result.?response.orValue({})}
+    }],'add') }}
   prompt: ${{ states.prompts.outputs.repair.prompt }}
   base_hash: ${{ inputs.turn.?base_hash.orValue('') }}

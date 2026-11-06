@@ -1,0 +1,121 @@
+recipe: package-repeat.yaml
+cases:
+- type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          .c2/config.yaml: "packages: []\n"
+    responses:
+    - node_path: package-repeat/first/adaptive-packages/approval/approval/adaptive-review/request_human_review
+      fields:
+        decision: decline
+        feedback: Use existing tools.
+  mocks:
+    ops:
+    - match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+      repeat: true
+  id: identical-refusal-is-reused
+  assertions:
+  - type: cel_true
+    expr: size(reviews)==1 && outputs.second.review.fields.feedback == "Use existing tools." && !calls.exists(c,c.op == "recipes.run")
+- type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          .c2/config.yaml: "packages: []\n"
+    responses:
+    - node_path: package-repeat/first/adaptive-packages/approval/approval/adaptive-review/request_human_review
+      fields:
+        decision: decline
+        feedback: Use existing tools.
+    - node_path: package-repeat/second/adaptive-packages/approval/approval/adaptive-review/request_human_review
+      fields:
+        decision: decline
+  mocks:
+    ops:
+    - match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+      repeat: true
+  id: changed-probe-needs-new-decision
+  inputs:
+    second:
+    - reference: uv:ruff==0.11.2
+      check:
+      - ruff
+      - help
+  assertions:
+  - type: cel_true
+    expr: size(reviews)==2
+- type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          .c2/config.yaml: "packages: []\n"
+    responses:
+    - node_path: package-repeat/first/adaptive-packages/approval/approval/adaptive-review/request_human_review
+      fields:
+        decision: approve
+  mocks:
+    ops:
+    - match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+      repeat: true
+    - match:
+        op: recipes.run
+      behavior:
+        mode: return
+        outputs:
+          goal_ids:
+          - tool-goal
+          job_ids:
+          - tool-attempt
+    - match:
+        op: recipe.await_result_soft
+      behavior:
+        mode: return
+        outputs:
+          goal_id: tool-goal
+          status: failed
+          failure_message: Explicitly failed after setup outage
+          goal_failure:
+            terminalJobIds:
+            - tool-attempt
+          outputs: {}
+    - match:
+        op: recipe.await_result_soft
+      behavior:
+        mode: return
+        outputs:
+          status: failed
+          failure_message: Package download unavailable
+          artifacts:
+            _c2j/preparation.json:
+              kind: value
+              name: _c2j/preparation.json
+              format: text
+              value: '{"setup":"download unavailable"}'
+    - match:
+        op: recipe.await_result_soft
+      behavior:
+        mode: return
+        outputs:
+          goal_id: tool-goal
+          status: failed
+          failure_message: Explicit goal failure
+          outputs: {}
+  id: approved-proposal-reuses-goal-and-diagnostics
+  assertions:
+  - type: cel_true
+    expr: size(reviews)==1 && size(calls.filter(c,c.op=="recipes.run"))==1 && outputs.first.goal_id==outputs.second.goal_id
+  - type: cel_true
+    expr: outputs.diagnostics.contains("download unavailable") && !outputs.first.adopted && !outputs.second.adopted

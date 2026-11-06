@@ -1,0 +1,71 @@
+schema_version: 2
+id: adaptive-package-check
+input_schema:
+  config:
+    type: artifact
+    required: true
+  probes:
+    type: artifact
+    required: true
+inputs:
+  config: ${{ inputs.config }}
+  probes: ${{ inputs.probes }}
+sequence:
+- id: tools
+  include: ./package-tools.yaml
+- id: install_approved_config
+  op: command_execution
+  execution_needs: &id001
+    packages:
+    - nix:github:NixOS/nixpkgs/e7439b6b14ad3cc35d05608ebca9bce01a25f5f8#python3
+    - nix:github:NixOS/nixpkgs/e7439b6b14ad3cc35d05608ebca9bce01a25f5f8#yq-go
+  artifacts:
+    package-tools.py:
+      kind: value
+      name: package-tools.py
+      format: text
+      value: ${{ sequence.tools.outputs.program }}
+    candidate-config.yaml: ${{ inputs.config }}
+  inputs:
+    env:
+      INBOX: ${{ context.environment.op.inbox }}
+      OUTBOX: ${{ context.environment.op.outbox }}
+    run: |
+      python3 "$INBOX/package-tools.py" install
+- id: probe_approved_packages
+  op: command_execution
+  execution_needs: *id001
+  artifacts:
+    package-tools.py:
+      kind: value
+      name: package-tools.py
+      format: text
+      value: ${{ sequence.tools.outputs.program }}
+    packages.json: ${{ inputs.probes }}
+  inputs:
+    env:
+      INBOX: ${{ context.environment.op.inbox }}
+      OUTBOX: ${{ context.environment.op.outbox }}
+    run: |
+      python3 "$INBOX/package-tools.py" probe
+- id: read_validated_digest
+  op: command_execution
+  const: true
+  artifacts:
+    digest.txt: ${{ sequence.probe_approved_packages.artifacts['config-digest.txt'] }}
+  inputs:
+    env:
+      INBOX: ${{ context.environment.op.inbox }}
+    run: cat "$INBOX/digest.txt"
+outputs:
+  config_digest: ${{ sequence.read_validated_digest.outputs.stdout }}
+  status: passed
+  artifact_refs: ${{ sequence.probe_approved_packages.artifacts }}
+catch:
+- when: failure.kind != 'cancellation'
+  fail:
+    code: PACKAGE_VALIDATION_RECOVERY_REQUIRED
+    message: ${{ 'Approved package validation failed for goal '+context.workflow.goal_id+'. Repair the package source or
+      executor and restart this recorded scope in the same goal. The parent configuration has not been adopted.
+      '+failure.message }}
+    cause: ${{ failure }}

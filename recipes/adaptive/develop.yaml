@@ -13,8 +13,6 @@ inputs:
   create_recipe: ${{ inputs.create_recipe }}
   prior_rebase_repairs: ${{ inputs.?prior_rebase_repairs.orValue(0) }}
   prior_merge_chases: ${{ inputs.?prior_merge_chases.orValue(0) }}
-  prior_dependencies: ${{ inputs.?prior_dependencies.orValue({}) }}
-  prior_consultations: ${{ inputs.?prior_consultations.orValue({}) }}
   settings_artifact: ${{ inputs.?settings_artifact.orValue(null) }}
   require_verification: ${{ inputs.?require_verification.orValue(false) }}
   design_required: ${{ inputs.design_required }}
@@ -31,12 +29,11 @@ state:
         when: true
     start:
       inputs:
-        documents: ${{ jq([json_parse(json_stringify(context.artifacts)), inputs.documents], 'add | with_entries(select(.key
-          != "__git_state_thin_pack__" and .key != "diff_from_parent.diff" and .key != "diff_from_base.diff"))') }}
-        root_cell: '${{ inputs.root_cell != '''' ? inputs.root_cell : ''root''
-          }}'
-        root_ref: '${{ inputs.root_ref != '''' ? inputs.root_ref : ''main''
-          }}'
+        documents: ${{ jq([json_parse(json_stringify(context.artifacts)), inputs.documents], 'add |
+          with_entries(select(.key != "__git_state_thin_pack__" and .key != "diff_from_parent.diff" and .key !=
+          "diff_from_base.diff"))') }}
+        root_cell: "${{ inputs.root_cell != '' ? inputs.root_cell : 'root' }}"
+        root_ref: "${{ inputs.root_ref != '' ? inputs.root_ref : 'main' }}"
       sequence:
       - id: rebase_policy
         include: ./rebase-policy.yaml
@@ -48,7 +45,7 @@ state:
         rebase_policy: ${{ sequence.rebase_policy.outputs.predicate }}
       transitions:
       - to: reject_invalid_build_request
-        when: '!nonempty(inputs.target_directory) || inputs.target_directory.startsWith(''/'') || inputs.target_directory.matches(''(^|/)[.][.](/|$)'')'
+        when: "!nonempty(inputs.target_directory) || inputs.target_directory.startsWith('/') || inputs.target_directory.matches('(^|/)[.][.](/|$)')"
         payload:
           reason: Target directory must be a nonempty repository-relative path without parent traversal.
       - to: design_context
@@ -65,14 +62,15 @@ state:
       inputs:
         documents: ${{ transition.payload.documents }}
         annotations: ${{ transition.payload.?annotations.orValue(inputs.annotations) }}
-        phase: ${{ transition.payload.?phase.orValue(state_output('dispatch','phase',inputs.design_required ? 'design':'test-plan'))
-          }}
+        phase: ${{ transition.payload.?phase.orValue(state_output('dispatch','phase',inputs.design_required ?
+          'design':'test-plan')) }}
         session: ${{ transition.payload.?session.orValue(state_output('record','session',inputs.session)) }}
         assignment: ${{ transition.payload.?assignment.orValue('') }}
         evidence_documents: ${{ transition.payload.?evidence_documents.orValue({}) }}
         retained_artifacts: ${{ transition.payload.?retained_artifacts.orValue({}) }}
         base_documents: ${{ transition.payload.?base_documents.orValue(transition.payload.documents) }}
         repair_attempts: ${{ transition.payload.?repair_attempts.orValue(0) }}
+        request_prefix: "${{ 'request-' + string(state_exists('work') ? size(states.work.runs) + 1 : 0) }}"
       sequence: []
       outputs:
         phase: ${{ inputs.phase }}
@@ -84,10 +82,12 @@ state:
         retained_artifacts: ${{ inputs.retained_artifacts }}
         base_documents: ${{ inputs.base_documents }}
         repair_attempts: ${{ inputs.repair_attempts }}
+        request_prefix: ${{ inputs.request_prefix }}
       transitions:
       - to: iteration_limit
-        when: '(state_exists(''work'') ? size(states.work.runs) + 1 : 0) >= int(inputs.max_iterations) * (1 + (state_exists(''iteration_limit'')
-          ? size(states.iteration_limit.runs) + 1 : 0))'
+        when: "(state_exists('work') ? size(states.work.runs.filter(r,r.outputs.?assignment.orValue('') != 'repair')) + (states.work.outputs.?assignment.orValue('')
+          != 'repair' ? 1 : 0) : 0) >= int(inputs.max_iterations) * (1 + (state_exists('iteration_limit') ? size(states.iteration_limit.runs)
+          + 1 : 0))"
         payload:
           documents: ${{ outputs.documents }}
           annotations: ${{ outputs.annotations }}
@@ -97,7 +97,8 @@ state:
       inputs:
         request: ${{ inputs.prompt }}
         target_directory: ${{ inputs.target_directory }}
-        guidance: ${{ inputs.prompt_additions[?{'design':'design','test-plan':'test_plan','implement':'implementation'}[states.dispatch.outputs.phase]].orValue('')
+        guidance: ${{
+          inputs.prompt_additions[?{'design':'design','test-plan':'test_plan','implement':'implementation'}[states.dispatch.outputs.phase]].orValue('')
           }}
         phase: ${{ states.dispatch.outputs.phase }}
         session: ${{ states.dispatch.outputs.session }}
@@ -119,31 +120,38 @@ state:
           retained_artifacts: ${{ inputs.retained_artifacts }}
           guidance: ${{ inputs.guidance }}
       - id: children
-        include: ./validation-jobs.yaml
+        include: ./validation-goals.yaml
         inputs:
           jobs: ${{ sequence.agent.outputs.turn.jobs }}
           allowed: ${{ inputs.phase == 'implement' && inputs.assignment != 'repair' }}
+      - id: expectations
+        include: ./expectations.yaml
+        inputs:
+          baseline: ${{ inputs.documents[?'test-statements.md'].orValue(null) }}
+          proposed: "${{ inputs.phase == 'implement' ? sequence.agent.outputs.turn.documents[?'test-statements.md'].orValue(null)
+            : null }}"
       outputs:
         turn: ${{ sequence.agent.outputs.turn }}
         documents: ${{ jq([inputs.documents,sequence.children.outputs.documents], 'add') }}
         children_failed: ${{ sequence.children.outputs.failed }}
+        expectations_changed: ${{ sequence.expectations.outputs.changed }}
+        assignment: ${{ inputs.assignment }}
       transitions:
       - to: record
         when: true
       catch:
-      - when: failure.kind != 'cancellation' && failure.message.contains('artifact binding') && states.dispatch.outputs.evidence_documents.exists(k,
-          failure.message.contains('"' + k + '"'))
+      - when: failure.kind != 'cancellation' && failure.message.contains('artifact binding') &&
+          states.dispatch.outputs.evidence_documents.exists(k, failure.message.contains('"' + k + '"'))
         to: dispatch
         payload:
           documents: ${{ states.dispatch.outputs.documents }}
           annotations: ${{ states.dispatch.outputs.annotations }}
-          evidence_documents: '${{ {''error/artifact-binding.md'': {''kind'':''value'',''name'':''error/artifact-binding.md'',''format'':''text'',''value'':failure.message
-            + ''\nThe evidence could not be read. Repair or rerun the producing check; missing evidence is not success.''}
-            } }}'
+          evidence_documents: "${{ {'error/artifact-binding.md': {'kind':'value','name':'error/artifact-binding.md','format':'text','value':failure.message
+            + '\\nThe evidence could not be read. Repair or rerun the producing check; missing evidence is not success.'}
+            } }}"
     record:
       inputs:
         turn: ${{ states.work.outputs.turn }}
-        plan_keys: ${{ state_output('record','plan_keys',[]) }}
         session: ${{ states.dispatch.outputs.session }}
         assignment: ${{ states.dispatch.outputs.assignment }}
         base_documents: ${{ states.dispatch.outputs.base_documents }}
@@ -154,17 +162,14 @@ state:
       outputs:
         issues: ${{ vars.issues }}
         session: ${{ inputs.turn.result.?session.orValue(inputs.session) }}
-        documents: '${{ inputs.turn.result.?output_schema_valid.orValue(false) ? (jq([inputs.assignment == ''repair''
-          ? inputs.base_documents : inputs.documents, jq({''files'':inputs.turn.result.?response.orValue({}).?files.orValue([]),''artifacts'':inputs.turn.artifacts},
-          ''. as $v | $v.files | map(select(.path as $p | $v.artifacts | has($p)) | {key:.path,value:$v.artifacts[.path]})
-          | from_entries'')], ''add'')) : inputs.documents }}'
+        documents: "${{ inputs.turn.result.?output_schema_valid.orValue(false) ? (jq([inputs.assignment == 'repair' ? inputs.base_documents
+          : inputs.documents, jq({'files':inputs.turn.result.?response.orValue({}).?files.orValue([]),'artifacts':inputs.turn.artifacts},
+          '. as $v | $v.files | map(select(.path as $p | $v.artifacts | has($p)) | {key:.path,value:$v.artifacts[.path]})
+          | from_entries')], 'add')) : inputs.documents }}"
         annotations: ${{ inputs.annotations + inputs.turn.?annotations.orValue([]) }}
-        plan_keys: '${{ inputs.turn.result.?output_schema_valid.orValue(false) && inputs.turn.result.?response.orValue({}).?next.orValue('''')
-          == ''review'' ? (inputs.phase in [''design'',''test-plan''] ? inputs.turn.result.response.keys : jq([inputs.plan_keys,inputs.turn.result.response.keys],
-          ''add | unique'')) : inputs.plan_keys }}'
       vars:
         issues: |-
-          ${{ (states.work.outputs.turn.result.?response.orValue({}).?next.orValue('') == 'ask_user' ? [] : states.work.outputs.turn.?issues.orValue([]))
+          ${{ (size(states.work.outputs.turn.result.?response.orValue({}).?packages.orValue([])) > 0 && states.work.outputs.turn.result.response.next != 'blocked' ? ['Use next: blocked with a package request so the recipe can authorize and validate it before continuing.'] : []) + (states.work.outputs.turn.result.?response.orValue({}).?next.orValue('') == 'ask_user' ? [] : states.work.outputs.turn.?issues.orValue([]))
            + (states.work.outputs.turn.result.?status.orValue('failed') != 'completed' ? ['Agent did not complete: ' + states.work.outputs.turn.result.?errorMessage.orValue('No completed response.')] : [])
            + (!states.work.outputs.turn.result.?output_schema_valid.orValue(false) ? ['The operation did not produce a schema-valid response. Correct the response using the supplied schema.'] : [])
            + (states.work.outputs.turn.result.?session.orValue(null) == null ? ['The response has no resumable session checkpoint.'] : [])
@@ -173,40 +178,19 @@ state:
               (states.work.outputs.turn.result.response.next != 'ask_user' && states.work.outputs.turn.result.response.?files.orValue([]).exists(f, f.path.startsWith('/') || f.path.contains('..') || f.path.contains('\\') || f.path in ['__git_state_thin_pack__']) ? ['Select only safe deliverable artifact names, excluding workflow control files.'] : [])
             + (states.work.outputs.turn.result.response.next != 'ask_user' && size(states.work.outputs.turn.result.response.?files.orValue([]).map(f, f.path)) != size(jq(states.work.outputs.turn.result.response.?files.orValue([]), 'map(.path) | unique')) ? ['List each resolved artifact only once.'] : [])
             + (states.work.outputs.turn.result.response.next == 'review' && !states.work.outputs.turn.result.response.?files.orValue([]).exists(f, f.path == {'design': 'design.md', 'test-plan': 'test-statements.md', 'implement': 'implementation.md'}[states.dispatch.outputs.phase]) ? ['Review requires ' + {'design': 'design.md', 'test-plan': 'test-statements.md', 'implement': 'implementation.md'}[states.dispatch.outputs.phase] + ' in the returned files.'] : [])
-            + (states.work.outputs.turn.result.response.next == 'ask_user' && (size(states.work.outputs.turn.result.response.questions) == 0 || states.work.outputs.turn.result.response.questions.exists(q, q.id == 'annotations')) ? ['ask_user requires focused questions; annotations is a reserved question id.'] : [])
-            + (states.work.outputs.turn.result.response.next == 'consult' && size(states.work.outputs.turn.result.response.consultations) == 0 ? ['consult requires at least one consultation request.'] : [])
-            + (states.work.outputs.turn.result.response.next == 'submit' && size(states.work.outputs.turn.result.response.keys) == 0 ? ['submit requires explicit prerequisite keys.'] : [])
-           : []) + (states.dispatch.outputs.phase == 'implement' && states.work.outputs.turn.result.?response.orValue({}).?next.orValue('') == 'review' && !states.work.outputs.turn.result.response.?files.orValue([]).exists(f, f.path == 'test-results.md') ? ['Publish test-results.md mapping statement IDs to results and evidence.'] : []) + (states.dispatch.outputs.phase == 'implement' && states.work.outputs.turn.result.?response.orValue({}).?files.orValue([]).exists(f, f.path == 'test-statements.md') ? ['Formal expectations are fixed before implementation. Return redesign to update their plan with preserved expectations and any required deprecation.'] : []) }}
+            + (states.work.outputs.turn.result.response.next == 'ask_user' && (!nonempty(states.work.outputs.turn.result.response.?review_title.orValue('')) || size(states.work.outputs.turn.result.response.?questions.orValue([])) == 0 || states.work.outputs.turn.result.response.?questions.orValue([]).exists(q, q.id == 'annotations')) ? ['ask_user requires review_title naming the decision and focused questions; annotations is a reserved question id.'] : [])
+           : []) + (states.work.outputs.turn.result.?response.orValue({}).?next.orValue('') == 'coordinate' && size(states.work.outputs.turn.result.response.?requests.orValue([])) == 0 ? ['Return at least one consultation or execution request.'] : []) + (states.dispatch.outputs.phase == 'implement' && states.work.outputs.turn.result.?response.orValue({}).?next.orValue('') == 'review' && !states.work.outputs.turn.result.response.?files.orValue([]).exists(f, f.path == 'test-results.md') ? ['Publish test-results.md mapping statement IDs to results and evidence.'] : []) + (states.work.outputs.expectations_changed && states.work.outputs.turn.result.response.next != 'redesign' ? ['Formal expectations are fixed before implementation. Return redesign to update their plan with preserved expectations and any required deprecation.'] : []) }}
       transitions:
       - to: reject_invalid_build_request
-        when: size(outputs.issues) > 0 && ((states.work.outputs.turn).result.?status.orValue('failed') != 'completed'
-          || size((states.work.outputs.turn).jobs.?job_ids.orValue([])) > 0)
+        when: size(outputs.issues) > 0 && (states.work.outputs.turn.result.?status.orValue('failed') != 'completed' ||
+          size(states.work.outputs.turn.jobs.?goal_ids.orValue([])) > 0)
         payload:
           reason: ${{ jq(outputs.issues,'join("; ")') }}
       - to: repair
         when: size(outputs.issues) > 0
         payload:
-          turn: ${{ (states.work.outputs.turn) }}
+          turn: ${{ states.work.outputs.turn }}
           issues: ${{ outputs.issues }}
-          documents: ${{ states.dispatch.outputs.documents }}
-          annotations: ${{ states.dispatch.outputs.annotations }}
-      - to: stopped
-        when: states.work.outputs.turn.result.response.next == 'outside' && !((state_output('coordinate','threads',inputs.prior_consultations)).exists(k,(state_output('coordinate','threads',inputs.prior_consultations))[k].status
-          == 'running') || (state_output('coordinate','jobs',inputs.prior_dependencies)).exists(k,(state_output('coordinate','jobs',inputs.prior_dependencies))[k].status
-          == 'running'))
-        payload:
-          disposition: outside
-          documents: ${{ outputs.documents }}
-          annotations: ${{ outputs.annotations }}
-      - to: coordinate
-        when: states.work.outputs.turn.result.response.next == 'outside' && ((state_output('coordinate','threads',inputs.prior_consultations)).exists(k,(state_output('coordinate','threads',inputs.prior_consultations))[k].status
-          == 'running') || (state_output('coordinate','jobs',inputs.prior_dependencies)).exists(k,(state_output('coordinate','jobs',inputs.prior_dependencies))[k].status
-          == 'running'))
-        payload:
-          action: blocked
-          requests: []
-          keys: ${{ jq([(state_output('coordinate','threads',inputs.prior_consultations)),(state_output('coordinate','jobs',inputs.prior_dependencies))],
-            'add | to_entries | map(select(.value.status == "running") | .key)') }}
           documents: ${{ outputs.documents }}
           annotations: ${{ outputs.annotations }}
       - to: design_next
@@ -219,61 +203,55 @@ state:
         payload:
           documents: ${{ outputs.documents }}
           annotations: ${{ outputs.annotations }}
-      - to: intervention
-        when: (states.work.outputs.turn.result.response.next == 'blocked' && size(states.work.outputs.turn.result.response.keys)
-          == 0) || states.work.outputs.children_failed
+      - to: packages
+        when: states.work.outputs.turn.result.response.next == 'blocked' &&
+          size(states.work.outputs.turn.result.response.?packages.orValue([])) > 0
         payload:
-          reason: '${{ states.work.outputs.children_failed ? ''An assigned validation child failed. Review jobs/ and
-            resolve the failure or missing capability.'' : states.work.outputs.turn.result.response.summary }}'
           documents: ${{ outputs.documents }}
           annotations: ${{ outputs.annotations }}
       - to: coordinate
-        when: states.work.outputs.turn.result.response.next in ['consult','submit','blocked']
+        when: states.work.outputs.turn.result.response.next == 'coordinate'
         payload:
-          action: ${{ states.work.outputs.turn.result.response.next }}
-          requests: ${{ states.work.outputs.turn.result.response.consultations }}
-          keys: ${{ states.work.outputs.turn.result.response.keys }}
+          requests: ${{ states.work.outputs.turn.result.response.requests }}
+          documents: ${{ outputs.documents }}
+          annotations: ${{ outputs.annotations }}
+      - to: coordinate
+        when: "states.work.outputs.turn.result.response.next in ['review','outside','blocked'] && size(((state_exists('coordinate')
+          ? jq(states.coordinate.runs.map(r,r.outputs.records) + [states.coordinate.outputs.records], 'add') : []).filter(r,r.action
+          == 'execute' && !(state_exists('coordinate') ? jq(states.coordinate.runs.map(r,r.outputs.records) + [states.coordinate.outputs.records],
+          'add') : []).exists(a,a.action == 'await' && a.goal_id == r.goal_id)).map(r,{'action':'await','goal':r.goal_id})))>0"
+        payload:
+          requests: "${{ ((state_exists('coordinate') ? jq(states.coordinate.runs.map(r,r.outputs.records) + [states.coordinate.outputs.records],
+            'add') : []).filter(r,r.action == 'execute' && !(state_exists('coordinate') ? jq(states.coordinate.runs.map(r,r.outputs.records)
+            + [states.coordinate.outputs.records], 'add') : []).exists(a,a.action == 'await' && a.goal_id == r.goal_id)).map(r,{'action':'await','goal':r.goal_id}))
+            }}"
+          documents: ${{ outputs.documents }}
+          annotations: ${{ outputs.annotations }}
+      - to: operational_failure
+        when: "((state_exists('coordinate') ? jq(states.coordinate.runs.map(r,r.outputs.records) + [states.coordinate.outputs.records],
+          'add') : []).exists(r,r.action == 'create' ? !r.ready : r.action == 'await' && (r.result.status != 'completed' ||
+          !(r.result.?outputs.orValue({}).?merged.orValue(false) || r.result.?outputs.orValue({}).?disposition.orValue('')
+          in ['unchanged','delegated'])))) || states.work.outputs.children_failed"
+        payload:
+          reason: Required goal evidence does not establish completion. Inspect coordination/ and validation evidence;
+            repair the responsible goal or revise the scoped work.
+          documents: ${{ outputs.documents }}
+          annotations: ${{ outputs.annotations }}
+      - to: operational_failure
+        when: states.work.outputs.turn.result.response.next == 'blocked'
+        payload:
+          reason: ${{ states.work.outputs.turn.result.response.summary }}
+          documents: ${{ outputs.documents }}
+          annotations: ${{ outputs.annotations }}
+      - to: stopped
+        when: states.work.outputs.turn.result.response.next == 'outside'
+        payload:
+          disposition: outside
           documents: ${{ outputs.documents }}
           annotations: ${{ outputs.annotations }}
       - to: dispatch
         when: states.work.outputs.turn.result.response.next == 'continue'
         payload:
-          documents: ${{ outputs.documents }}
-          annotations: ${{ outputs.annotations }}
-      - to: coordinate
-        when: (state_output('coordinate','threads',inputs.prior_consultations)).exists(k,(state_output('coordinate','threads',inputs.prior_consultations))[k].status
-          == 'running') || (state_output('coordinate','jobs',inputs.prior_dependencies)).exists(k,(state_output('coordinate','jobs',inputs.prior_dependencies))[k].status
-          == 'running')
-        payload:
-          action: blocked
-          requests: []
-          keys: ${{ jq([(state_output('coordinate','threads',inputs.prior_consultations)),(state_output('coordinate','jobs',inputs.prior_dependencies))],
-            'add | to_entries | map(select(.value.status == "running") | .key)') }}
-          documents: ${{ outputs.documents }}
-          annotations: ${{ outputs.annotations }}
-      - to: repair
-        when: 'states.dispatch.outputs.phase == ''implement'' && (!outputs.plan_keys.all(k,k in (state_output(''coordinate'',''jobs'',inputs.prior_dependencies)))
-          || !(state_output(''coordinate'',''jobs'',inputs.prior_dependencies)).all(k, (state_output(''coordinate'',''jobs'',inputs.prior_dependencies))[k].status
-          == ''completed'' && ((state_output(''coordinate'',''jobs'',inputs.prior_dependencies))[k].kind == ''create''
-          ? (state_output(''coordinate'',''jobs'',inputs.prior_dependencies))[k].?ready.orValue(false) : ((state_output(''coordinate'',''jobs'',inputs.prior_dependencies))[k].result.?merged.orValue(false)
-          || (state_output(''coordinate'',''jobs'',inputs.prior_dependencies))[k].result.?disposition.orValue('''')
-          in [''delegated'',''unchanged'']))))'
-        payload:
-          turn: ${{ (states.work.outputs.turn) }}
-          issues:
-          - Required child work has not succeeded. Reconcile recorded results; do not claim completion or duplicate
-            jobs.
-          documents: ${{ outputs.documents }}
-          annotations: ${{ outputs.annotations }}
-      - to: repair
-        when: states.dispatch.outputs.phase in ['design','test-plan'] && !outputs.plan_keys.all(k,k in (state_output('coordinate','threads',inputs.prior_consultations))
-          && (state_output('coordinate','threads',inputs.prior_consultations))[k].request.kind != 'expert' && (state_output('coordinate','threads',inputs.prior_consultations))[k].?result.orValue({}).?outcome.orValue('')
-          == 'agreed')
-        payload:
-          turn: ${{ (states.work.outputs.turn) }}
-          issues:
-          - 'Prerequisite keys must identify agreed local serving requests. Return keys: [] when none are needed;
-            return redesign to correct the design.'
           documents: ${{ outputs.documents }}
           annotations: ${{ outputs.annotations }}
       - to: test_next
@@ -340,18 +318,17 @@ state:
       inputs:
         documents: ${{ transition.payload.documents }}
         annotations: ${{ transition.payload.annotations }}
-        action: ${{ transition.payload.action }}
         requests: ${{ transition.payload.requests }}
-        keys: ${{ transition.payload.keys }}
         consultation_recipe: ${{ inputs.consultation_recipe }}
         build_recipe: ${{ inputs.build_recipe }}
         create_recipe: ${{ inputs.create_recipe }}
         phase: ${{ states.dispatch.outputs.phase }}
         session: ${{ states.record.outputs.session }}
-        coordinate_threads: ${{ state_output('coordinate','threads',inputs.prior_consultations) }}
-        coordinate_jobs: ${{ state_output('coordinate','jobs',inputs.prior_dependencies) }}
         root_cell: ${{ states.start.outputs.root_cell }}
         root_ref: ${{ states.start.outputs.root_ref }}
+        history: "${{ (state_exists('coordinate') ? jq(states.coordinate.runs.map(r,r.outputs.records) + [states.coordinate.outputs.records],
+          'add') : []) }}"
+        prefix: ${{ states.dispatch.outputs.request_prefix }}
       sequence:
       - id: coordinate
         include: ./coordinate.yaml
@@ -360,31 +337,39 @@ state:
           session: ${{ inputs.session }}
           documents: ${{ inputs.documents }}
           annotations: ${{ inputs.annotations }}
-          threads: ${{ inputs.coordinate_threads }}
-          jobs: ${{ inputs.coordinate_jobs }}
           root_cell: ${{ inputs.root_cell }}
           root_ref: ${{ inputs.root_ref }}
           consultation_recipe: ${{ inputs.consultation_recipe }}
           build_recipe: ${{ inputs.build_recipe }}
           create_recipe: ${{ inputs.create_recipe }}
-          action: ${{ inputs.action }}
           requests: ${{ inputs.requests }}
-          keys: ${{ inputs.keys }}
+          history: ${{ inputs.history }}
+          prefix: ${{ inputs.prefix }}
       outputs:
         valid: ${{ sequence.coordinate.outputs.valid }}
         session: ${{ sequence.coordinate.outputs.session }}
         documents: ${{ sequence.coordinate.outputs.documents }}
         annotations: ${{ sequence.coordinate.outputs.annotations }}
-        threads: ${{ sequence.coordinate.outputs.threads }}
-        jobs: ${{ sequence.coordinate.outputs.jobs }}
+        records: ${{ sequence.coordinate.outputs.records }}
       transitions:
       - to: repair
         when: '!outputs.valid'
         payload:
-          turn: ${{ jq([states.work.outputs.turn,{'result':jq([states.work.outputs.turn.result,{'session':outputs.session}],
+          turn: ${{
+            jq([states.work.outputs.turn,{'result':jq([states.work.outputs.turn.result,{'session':outputs.session}],
             'add')}], 'add') }}
           issues:
-          - Use agreed serving requests before submission, stable keys, and recorded child outcomes.
+          - Request serving agreement before execution and use the recorded agreement reference. Inspect the current
+            goal outcome before proposing additional work.
+          documents: ${{ outputs.documents }}
+          annotations: ${{ outputs.annotations }}
+      - to: operational_failure
+        when: "((state_exists('coordinate') ? jq(states.coordinate.runs.map(r,r.outputs.records) + [states.coordinate.outputs.records],
+          'add') : []).exists(r,r.action == 'create' ? !r.ready : r.action == 'await' && (r.result.status != 'completed' ||
+          !(r.result.?outputs.orValue({}).?merged.orValue(false) || r.result.?outputs.orValue({}).?disposition.orValue('')
+          in ['unchanged','delegated']))))"
+        payload:
+          reason: A required goal did not establish its accepted outcome.
           documents: ${{ outputs.documents }}
           annotations: ${{ outputs.annotations }}
       - to: stopped
@@ -404,6 +389,9 @@ state:
         documents: ${{ transition.payload.documents }}
         annotations: ${{ transition.payload.annotations }}
         turn: ${{ states.work.outputs.turn }}
+        review_title: ${{ states.work.outputs.turn.result.response.review_title }}
+        review_summary: ${{ states.work.outputs.turn.result.response.summary }}
+        current_documents: ${{ states.work.outputs.turn.documents }}
       sequence:
       - id: prompts
         include: ./prompts.yaml
@@ -411,18 +399,22 @@ state:
         include: ./review.yaml
         inputs:
           annotations: ${{ inputs.annotations }}
-          title: ${{ sequence.prompts.outputs.human.questions.title }}
+          title: ${{ inputs.review_title }}
           documents: ${{ inputs.documents }}
           fields: ${{ inputs.turn.result.response.questions +
             [{'id':'annotations','type':'file_upload','question':sequence.prompts.outputs.human.questions.annotations_question,'required':false}]
             }}
+          overview: review.md
+          summary: ${{ inputs.review_summary }}
+          brief: ${{ inputs.current_documents[?'review.md'].orValue(null) }}
       - id: feedback
         include: ./feedback-documents.yaml
         inputs:
           fields: ${{ sequence.review.outputs.response.fields }}
           documents: ${{ sequence.review.outputs.response.?artifact_refs.orValue({}) }}
       outputs:
-        documents: ${{ jq([inputs.documents,sequence.review.outputs.response.?artifact_refs.orValue({}),sequence.feedback.outputs.documents],
+        documents: ${{
+          jq([inputs.documents,sequence.review.outputs.response.?artifact_refs.orValue({}),sequence.feedback.outputs.documents],
           'add') }}
         annotations: ${{ inputs.annotations }}
       transitions:
@@ -460,18 +452,19 @@ state:
         previous_summary: ${{ inputs.previous_summary }}
         previous_candidate: ${{ inputs.previous_candidate }}
       transitions:
-      - to: intervention
-        when: outputs.next == 'intervention'
+      - to: dispatch
+        when: outputs.next == 'intervention' && !(outputs.previous_summary == outputs.response.summary &&
+          outputs.previous_candidate == outputs.candidate.head)
         payload:
-          reason: ${{ outputs.response.summary }}
+          assignment: feedback
           documents: ${{ outputs.documents }}
           annotations: ${{ outputs.annotations }}
-      - to: intervention
-        when: '!outputs.approved && outputs.previous_summary == outputs.response.summary && outputs.previous_candidate
-          == outputs.candidate.head'
+      - to: operational_failure
+        when: '!outputs.approved && outputs.previous_summary == outputs.response.summary && outputs.previous_candidate ==
+          outputs.candidate.head'
         payload:
-          reason: The same assessment finding recurred without a candidate change. Resolve the missing evidence, capability,
-            or requirement described in feedback/.
+          reason: The same assessment finding recurred without a candidate change. Resolve the missing evidence,
+            capability, or requirement described in feedback/.
           documents: ${{ outputs.documents }}
           annotations: ${{ outputs.annotations }}
       - to: accounting
@@ -482,19 +475,19 @@ state:
       - to: dispatch
         when: true
         payload:
-          assignment: '${{ outputs.next == ''validation'' ? ''validation'' : '''' }}'
+          assignment: "${{ outputs.next == 'validation' ? 'validation' : '' }}"
           documents: ${{ outputs.documents }}
           annotations: ${{ outputs.annotations }}
       catch:
-      - when: failure.kind != 'cancellation' && failure.message.contains('artifact binding') && states.verify.outputs.agent_artifacts.exists(k,
-          failure.message.contains('"' + k + '"'))
+      - when: failure.kind != 'cancellation' && failure.message.contains('artifact binding') &&
+          states.verify.outputs.agent_artifacts.exists(k, failure.message.contains('"' + k + '"'))
         to: dispatch
         payload:
           documents: ${{ transition.payload.documents }}
           annotations: ${{ transition.payload.annotations }}
-          evidence_documents: '${{ {''error/artifact-binding.md'': {''kind'':''value'',''name'':''error/artifact-binding.md'',''format'':''text'',''value'':failure.message
-            + ''\nThe evidence could not be read. Repair or rerun the producing check; missing evidence is not success.''}
-            } }}'
+          evidence_documents: "${{ {'error/artifact-binding.md': {'kind':'value','name':'error/artifact-binding.md','format':'text','value':failure.message
+            + '\\nThe evidence could not be read. Repair or rerun the producing check; missing evidence is not success.'}
+            } }}"
     accounting:
       inputs:
         documents: ${{ transition.payload.documents }}
@@ -520,7 +513,8 @@ state:
         response: ${{ sequence.review.outputs.response }}
         candidate: ${{ inputs.candidate }}
         hook_digest: ${{ inputs.hook_digest }}
-        commit_message: ${{ jq([sequence.review.outputs.response.subject,sequence.review.outputs.response.summary,inputs.candidate.job_url],
+        commit_message: ${{
+          jq([sequence.review.outputs.response.subject,sequence.review.outputs.response.summary,inputs.candidate.job_url],
           'join([10,10] | implode)') }}
       transitions:
       - to: accept
@@ -534,22 +528,22 @@ state:
           documents: ${{ outputs.documents }}
           annotations: ${{ outputs.annotations }}
       catch:
-      - when: failure.kind != 'cancellation' && failure.message.contains('artifact binding') && states.verify.outputs.agent_artifacts.exists(k,
-          failure.message.contains('"' + k + '"'))
+      - when: failure.kind != 'cancellation' && failure.message.contains('artifact binding') &&
+          states.verify.outputs.agent_artifacts.exists(k, failure.message.contains('"' + k + '"'))
         to: dispatch
         payload:
           documents: ${{ transition.payload.documents }}
           annotations: ${{ transition.payload.annotations }}
-          evidence_documents: '${{ {''error/artifact-binding.md'': {''kind'':''value'',''name'':''error/artifact-binding.md'',''format'':''text'',''value'':failure.message
-            + ''\nThe evidence could not be read. Repair or rerun the producing check; missing evidence is not success.''}
-            } }}'
+          evidence_documents: "${{ {'error/artifact-binding.md': {'kind':'value','name':'error/artifact-binding.md','format':'text','value':failure.message
+            + '\\nThe evidence could not be read. Repair or rerun the producing check; missing evidence is not success.'}
+            } }}"
     rebase:
       inputs:
         documents: ${{ transition.payload.documents }}
         annotations: ${{ transition.payload.annotations }}
         resume_merge: ${{ transition.from == 'merge' }}
-        merge_chases: '${{ state_output(''rebase'',''merge_chases'',inputs.prior_merge_chases) + (transition.from
-          == ''merge'' ? 1 : 0) }}'
+        merge_chases: "${{ state_output('rebase','merge_chases',inputs.prior_merge_chases) + (transition.from == 'merge' ?
+          1 : 0) }}"
       sequence:
       - id: resolve_upstream_head
         op: command_execution
@@ -558,8 +552,6 @@ state:
           cell: ${{ context.workflow.cell }}
           ref: ${{ context.git.ref }}
         inputs:
-          # Resolve the current branch through c2j's registered repository and
-          # Git transport, without adopting this fresh workspace into the candidate.
           run: git rev-parse HEAD
       - id: rebase_candidate
         op: rebase
@@ -582,8 +574,8 @@ state:
         maximum_attempts: 1
       catch:
       - id: repair_restored_rebase_conflict
-        when: 'inputs.prior_rebase_repairs + (state_exists(''rebase_repair'') ? size(states.rebase_repair.runs) +
-          1 : 0) < 2 && jq(json_parse(json_stringify(failure)),states.start.outputs.rebase_policy)'
+        when: "inputs.prior_rebase_repairs + (state_exists('rebase_repair') ? size(states.rebase_repair.runs) + 1 : 0) < 2
+          && jq(json_parse(json_stringify(failure)),states.start.outputs.rebase_policy)"
         to: rebase_repair
         payload:
           documents: ${{ transition.payload.documents }}
@@ -640,8 +632,8 @@ state:
         result: ${{ sequence.prepare.outputs.result }}
         candidate: ${{ sequence.candidate.outputs.candidate }}
         hook_digest: ${{ sequence.identity.outputs.digest }}
-        documents: ${{ jq([inputs.documents,sequence.prepare.outputs.artifact_refs,sequence.candidate.outputs.documents],
-          'add') }}
+        documents: ${{
+          jq([inputs.documents,sequence.prepare.outputs.artifact_refs,sequence.candidate.outputs.documents], 'add') }}
         error_documents: ${{ sequence.errors.outputs.documents }}
         annotations: ${{ inputs.annotations }}
       transitions:
@@ -699,8 +691,8 @@ state:
         annotations: ${{ transition.payload.annotations }}
         request: ${{ inputs.prompt }}
         consultations: ${{ inputs.consultations }}
-        guidance: ${{ inputs.prompt_additions[?(states.dispatch.outputs.phase == 'test-plan' ? 'plan_assessment':'outcome_assessment')].orValue('')
-          }}
+        guidance: ${{ inputs.prompt_additions[?(states.dispatch.outputs.phase == 'test-plan' ?
+          'plan_assessment':'outcome_assessment')].orValue('') }}
         phase: ${{ states.dispatch.outputs.phase }}
       sequence:
       - id: specialists
@@ -723,7 +715,7 @@ state:
           documents: ${{ outputs.documents }}
           annotations: ${{ outputs.annotations }}
       - to: design_next
-        when: '!outputs.passed && states.dispatch.outputs.phase == ''test-plan'''
+        when: "!outputs.passed && states.dispatch.outputs.phase == 'test-plan'"
         payload:
           documents: ${{ outputs.documents }}
           annotations: ${{ outputs.annotations }}
@@ -797,15 +789,16 @@ state:
       outputs:
         candidate: ${{ sequence.candidate.outputs.candidate }}
         documents: ${{ jq([inputs.documents,sequence.candidate.outputs.documents], 'add') }}
-        reusable: ${{ (size(sequence.candidate.outputs.candidate.files) == 0 || sequence.candidate.outputs.candidate.change_digest
-          == inputs.reviewed_candidate.change_digest) && inputs.hook_digest == inputs.reviewed_hook_digest }}
+        reusable: ${{ (size(sequence.candidate.outputs.candidate.files) == 0 ||
+          sequence.candidate.outputs.candidate.change_digest == inputs.reviewed_candidate.change_digest) &&
+          inputs.hook_digest == inputs.reviewed_hook_digest }}
         annotations: ${{ inputs.annotations }}
       transitions:
       - to: stopped
         when: outputs.reusable && size(outputs.candidate.files) == 0
         payload:
-          disposition: ${{ size(state_output('coordinate','jobs',inputs.prior_dependencies)) > 0 ? 'delegated':'unchanged'
-            }}
+          disposition: "${{ (state_exists('coordinate') ? jq(states.coordinate.runs.map(r,r.outputs.records) + [states.coordinate.outputs.records],
+            'add') : []).exists(r,r.action == 'execute') ? 'delegated':'unchanged' }}"
           documents: ${{ outputs.documents }}
           annotations: ${{ outputs.annotations }}
       - to: merge
@@ -819,15 +812,15 @@ state:
           documents: ${{ outputs.documents }}
           annotations: ${{ outputs.annotations }}
       catch:
-      - when: failure.kind != 'cancellation' && failure.message.contains('artifact binding') && states.verify.outputs.agent_artifacts.exists(k,
-          failure.message.contains('"' + k + '"'))
+      - when: failure.kind != 'cancellation' && failure.message.contains('artifact binding') &&
+          states.verify.outputs.agent_artifacts.exists(k, failure.message.contains('"' + k + '"'))
         to: dispatch
         payload:
           documents: ${{ transition.payload.documents }}
           annotations: ${{ transition.payload.annotations }}
-          evidence_documents: '${{ {''error/artifact-binding.md'': {''kind'':''value'',''name'':''error/artifact-binding.md'',''format'':''text'',''value'':failure.message
-            + ''\nThe evidence could not be read. Repair or rerun the producing check; missing evidence is not success.''}
-            } }}'
+          evidence_documents: "${{ {'error/artifact-binding.md': {'kind':'value','name':'error/artifact-binding.md','format':'text','value':failure.message
+            + '\\nThe evidence could not be read. Repair or rerun the producing check; missing evidence is not success.'}
+            } }}"
     accept:
       inputs:
         documents: ${{ transition.payload.documents }}
@@ -835,6 +828,7 @@ state:
         review_hint: ${{ transition.payload.?review_hint.orValue(states.prompts.outputs.human.requested_changes) }}
         candidate: ${{ states.prepare.outputs.candidate }}
         artifact_refs: ${{ states.verify.outputs.artifact_refs }}
+        subject: ${{ states.accounting.outputs.response.subject }}
       sequence:
       - id: prompts
         include: ./prompts.yaml
@@ -842,9 +836,8 @@ state:
         include: ./review.yaml
         inputs:
           annotations: ${{ inputs.annotations }}
-          title: '${{ size(inputs.candidate.files) > 0 ? sequence.prompts.outputs.human.accept.title_changed : sequence.prompts.outputs.human.accept.title_unchanged
-            }}'
-          documents: ${{ jq([inputs.documents, inputs.artifact_refs], 'add') }}
+          title: "${{ 'Review: ' + inputs.subject }}"
+          documents: ${{ jq([inputs.documents,inputs.artifact_refs],'add') }}
           fields:
           - id: decision
             type: multiple_choice
@@ -857,8 +850,6 @@ state:
                 sequence.prompts.outputs.human.accept.accept_label_unchanged }}'
             - value: revise
               label: ${{ sequence.prompts.outputs.human.accept.revise_label }}
-            - value: redesign
-              label: ${{ sequence.prompts.outputs.human.accept.redesign_label }}
             - value: cancel
               label: ${{ sequence.prompts.outputs.human.accept.cancel_label }}
           - id: feedback
@@ -869,13 +860,18 @@ state:
             type: file_upload
             question: ${{ sequence.prompts.outputs.human.accept.annotations_question }}
             required: false
+          overview: merge-review.md
+          brief: ${{ inputs.documents['merge-review.md'] }}
+          required_documents: ${{ ['test-statements.md','test-results.md','assessment.md','implementation.md'] +
+            inputs.artifact_refs.map(k,k) }}
       - id: feedback
         include: ./feedback-documents.yaml
         inputs:
           fields: ${{ sequence.outcome_review.outputs.response.fields }}
           documents: ${{ sequence.outcome_review.outputs.response.?artifact_refs.orValue({}) }}
       outputs:
-        documents: ${{ jq([inputs.documents,sequence.outcome_review.outputs.response.?artifact_refs.orValue({}),sequence.feedback.outputs.documents],
+        documents: ${{
+          jq([inputs.documents,sequence.outcome_review.outputs.response.?artifact_refs.orValue({}),sequence.feedback.outputs.documents],
           'add') }}
         annotations: ${{ inputs.annotations }}
         response: ${{ sequence.outcome_review.outputs.response }}
@@ -888,20 +884,17 @@ state:
           documents: ${{ outputs.documents }}
           annotations: ${{ outputs.annotations }}
       - to: stopped
-        when: outputs.response.fields.decision == 'accept' && !outputs.changed && size(states.prepare.outputs.candidate.files)
-          == 0 && states.verify.outputs.allowed && states.assessment.outputs.approved
+        when: outputs.response.fields.decision == 'accept' && !outputs.changed &&
+          size(states.prepare.outputs.candidate.files) == 0 && states.verify.outputs.allowed &&
+          states.assessment.outputs.approved
         payload:
           disposition: unchanged
           documents: ${{ outputs.documents }}
           annotations: ${{ outputs.annotations }}
       - to: merge
-        when: outputs.response.fields.decision == 'accept' && !outputs.changed && size(states.prepare.outputs.candidate.files)
-          > 0 && states.verify.outputs.allowed && states.assessment.outputs.approved
-        payload:
-          documents: ${{ outputs.documents }}
-          annotations: ${{ outputs.annotations }}
-      - to: design_next
-        when: outputs.response.fields.decision == 'redesign' && outputs.changed
+        when: outputs.response.fields.decision == 'accept' && !outputs.changed &&
+          size(states.prepare.outputs.candidate.files) > 0 && states.verify.outputs.allowed &&
+          states.assessment.outputs.approved
         payload:
           documents: ${{ outputs.documents }}
           annotations: ${{ outputs.annotations }}
@@ -910,6 +903,7 @@ state:
         payload:
           documents: ${{ outputs.documents }}
           annotations: ${{ outputs.annotations }}
+          assignment: feedback
       - to: accept
         when: true
         payload:
@@ -957,7 +951,8 @@ state:
         - when: failure.kind != 'cancellation'
           continue:
             outputs:
-              result: ${{ {'status':'failed','ok':false,'summary':failure.message,'failure':json_parse(json_stringify(failure))}
+              result: ${{
+                {'status':'failed','ok':false,'summary':failure.message,'failure':json_parse(json_stringify(failure))}
                 }}
               artifact_refs: {}
       outputs:
@@ -970,14 +965,14 @@ state:
       - to: reject_invalid_build_request
         when: outputs.publication.status == 'failed'
         payload:
-          reason: '${{ ''Merge succeeded but publication failed: '' + outputs.publication.summary }}'
+          reason: "${{ 'Merge succeeded but publication failed: ' + outputs.publication.summary }}"
       retry:
         maximum_attempts: 1
       catch:
       - id: chase_advanced_upstream
-        when: failure.kind == 'task_error' && failure.code == 'MERGE_UPSTREAM_ADVANCED' && failure.node.op == 'merge'
-          && failure.node.id == 'merge_reviewed_candidate' && state_output('rebase','merge_chases',inputs.prior_merge_chases)
-          < 3
+        when: failure.kind == 'task_error' && failure.code == 'MERGE_UPSTREAM_ADVANCED' && failure.node.op == 'merge' &&
+          failure.node.id == 'merge_reviewed_candidate' &&
+          state_output('rebase','merge_chases',inputs.prior_merge_chases) < 3
         to: rebase
         payload:
           documents: ${{ transition.payload.documents }}
@@ -1020,8 +1015,8 @@ state:
           summary: ${{ jq(inputs.issues,'map("- " + .) | join("\n")') }}
       outputs:
         session: ${{ inputs.turn.result.?session.orValue(inputs.session) }}
-        documents: ${{ jq([inputs.documents,inputs.turn.artifacts], 'add') }}
-        base_documents: '${{ inputs.assignment == ''repair'' ? inputs.base_documents : inputs.documents }}'
+        documents: ${{ jq([inputs.documents,inputs.turn.documents], 'add') }}
+        base_documents: "${{ inputs.assignment == 'repair' ? inputs.base_documents : inputs.documents }}"
         error_documents: ${{ sequence.errors.outputs.documents }}
         retained_artifacts: ${{ inputs.turn.artifacts }}
         attempts: ${{ inputs.repair_attempts + 1 }}
@@ -1049,150 +1044,68 @@ state:
           documents: ${{ outputs.documents }}
           annotations: ${{ outputs.annotations }}
     iteration_limit:
+      include: ./operational-failure.yaml
       inputs:
-        documents: ${{ transition.payload.documents }}
-        annotations: ${{ transition.payload.annotations }}
-        assignment: ${{ transition.payload.?assignment.orValue(states.dispatch.outputs.assignment) }}
-        session: ${{ transition.payload.?session.orValue(states.dispatch.outputs.session) }}
-        base_documents: ${{ transition.payload.?base_documents.orValue(states.dispatch.outputs.base_documents) }}
-        evidence_documents: ${{ transition.payload.?evidence_documents.orValue(states.dispatch.outputs.evidence_documents)
-          }}
-        retained_artifacts: ${{ transition.payload.?retained_artifacts.orValue(states.dispatch.outputs.retained_artifacts)
-          }}
-      sequence:
-      - id: prompts
-        include: ./prompts.yaml
-      - id: direction
-        include: ./review.yaml
-        inputs:
-          title: ${{ sequence.prompts.outputs.human.iteration_limit.title }}
-          documents: ${{ inputs.documents }}
-          annotations: ${{ inputs.annotations }}
-          fields:
-          - id: decision
-            type: multiple_choice
-            question: ${{ sequence.prompts.outputs.human.iteration_limit.decision_question }}
-            required: true
-            options:
-            - value: continue
-              label: ${{ sequence.prompts.outputs.human.iteration_limit.continue_label }}
-            - value: cancel
-              label: ${{ sequence.prompts.outputs.human.iteration_limit.cancel_label }}
-          - id: feedback
-            type: paragraph_text
-            question: ${{ sequence.prompts.outputs.human.iteration_limit.feedback_question }}
-            required: false
-      - id: feedback
-        include: ./feedback-documents.yaml
-        inputs:
-          fields: ${{ sequence.direction.outputs.response.fields }}
-          documents: ${{ sequence.direction.outputs.response.?artifact_refs.orValue({}) }}
-      outputs:
-        documents: ${{ jq([inputs.documents,sequence.direction.outputs.response.?artifact_refs.orValue({}),sequence.feedback.outputs.documents],
-          'add') }}
-        annotations: ${{ inputs.annotations }}
-        response: ${{ sequence.direction.outputs.response }}
-        assignment: ${{ inputs.assignment }}
-        session: ${{ inputs.session }}
-        base_documents: ${{ inputs.base_documents }}
-        evidence_documents: ${{ inputs.evidence_documents }}
-        retained_artifacts: ${{ inputs.retained_artifacts }}
-      transitions:
-      - to: stopped
-        when: outputs.response.fields.decision == 'cancel'
-        payload:
-          disposition: cancelled
-          documents: ${{ outputs.documents }}
-          annotations: ${{ outputs.annotations }}
-      - to: dispatch
-        when: true
-        payload:
-          documents: ${{ outputs.documents }}
-          annotations: ${{ outputs.annotations }}
-          assignment: ${{ outputs.assignment }}
-          session: ${{ outputs.session }}
-          base_documents: ${{ outputs.base_documents }}
-          evidence_documents: ${{ outputs.evidence_documents }}
-          retained_artifacts: ${{ outputs.retained_artifacts }}
+        reason: Automatic work/correction allowance exhausted. Diagnose the repeated operation and resume a recorded
+          scope within this goal. No product decision was requested.
+        documents: ${{ jq([transition.payload.documents,transition.payload.?evidence_documents.orValue({})],'add') }}
     intervention:
+      include: ./operational-failure.yaml
+      inputs:
+        reason: ${{ transition.payload.reason }}
+        documents: ${{ transition.payload.documents }}
+    packages:
       inputs:
         documents: ${{ transition.payload.documents }}
         annotations: ${{ transition.payload.annotations }}
-        reason: ${{ transition.payload.?reason.orValue(states.prompts.outputs.human.blocker) }}
+        packages: ${{ states.work.outputs.turn.result.response.packages }}
+        summary: ${{ states.work.outputs.turn.result.response.summary }}
+        decisions: "${{ state_exists('packages') ? states.packages.runs.map(r,r.outputs.decision) + [states.packages.outputs.decision]
+          : [] }}"
       sequence:
-      - id: prompts
-        include: ./prompts.yaml
-      - id: request_intervention
-        include: ./review.yaml
+      - id: request
+        include: ./packages.yaml
         inputs:
-          title: ${{ sequence.prompts.outputs.human.intervention.title }}
-          documents: ${{ inputs.documents }}
-          annotations: ${{ inputs.annotations }}
-          fields:
-          - id: decision
-            type: multiple_choice
-            question: ${{ inputs.reason }}
-            required: true
-            options:
-            - value: continue
-              label: ${{ sequence.prompts.outputs.human.intervention.continue_label }}
-            - value: redesign
-              label: ${{ sequence.prompts.outputs.human.intervention.redesign_label }}
-            - value: cancel
-              label: ${{ sequence.prompts.outputs.human.intervention.cancel_label }}
-          - id: feedback
-            type: paragraph_text
-            question: ${{ sequence.prompts.outputs.human.intervention.feedback_question }}
-            required: true
-          - id: annotations
-            type: file_upload
-            question: ${{ sequence.prompts.outputs.human.intervention.annotations_question }}
-            required: false
-      - id: feedback
-        include: ./feedback-documents.yaml
-        inputs:
-          fields: ${{ sequence.request_intervention.outputs.response.fields }}
-          documents: ${{ sequence.request_intervention.outputs.response.?artifact_refs.orValue({}) }}
+          packages: ${{ inputs.packages }}
+          summary: ${{ inputs.summary }}
+          decisions: ${{ inputs.decisions }}
       outputs:
-        documents: ${{ jq([inputs.documents,sequence.request_intervention.outputs.response.?artifact_refs.orValue({}),sequence.feedback.outputs.documents],
-          'add') }}
+        documents: "${{ jq([inputs.documents, sequence.request.outputs.?errors.orValue({}), {'feedback/packages.md':{'kind':'value','name':'feedback/packages.md','format':'text','value':sequence.request.outputs.feedback
+          + '\\nGoal: ' + sequence.request.outputs.goal_id + '\\n' + sequence.request.outputs.review.?fields.orValue({}).?feedback.orValue('')}
+          }], 'add') }}"
         annotations: ${{ inputs.annotations }}
-        response: ${{ sequence.request_intervention.outputs.response }}
+        decision: ${{ sequence.request.outputs.decision }}
+        errors: ${{ sequence.request.outputs.errors }}
       transitions:
-      - to: stopped
-        when: outputs.response.fields.decision == 'cancel'
-        payload:
-          disposition: cancelled
-          documents: ${{ outputs.documents }}
-          annotations: ${{ outputs.annotations }}
-      - to: design_next
-        when: outputs.response.fields.decision == 'redesign'
-        payload:
-          documents: ${{ outputs.documents }}
-          annotations: ${{ outputs.annotations }}
       - to: dispatch
         when: true
         payload:
           documents: ${{ outputs.documents }}
           annotations: ${{ outputs.annotations }}
+          evidence_documents: ${{ outputs.errors }}
+    operational_failure:
+      include: ./operational-failure.yaml
+      inputs:
+        reason: ${{ transition.payload.reason }}
+        documents: ${{ transition.payload.?documents.orValue({}) }}
 outputs:
-  annotations: ${{ state_output('merge','annotations',state_output('stopped','annotations',state_output('record','annotations',inputs.annotations)))
+  annotations: ${{
+    state_output('merge','annotations',state_output('stopped','annotations',state_output('record','annotations',inputs.annotations)))
     }}
   merged: ${{ nonempty(state_output('merge','merged_hash','')) }}
   merged_hash: ${{ state_output('merge','merged_hash','') }}
   target_branch: ${{ state_output('merge','target_branch','') }}
   session: ${{ state_output('record','session',inputs.session) }}
   assistant_summary: ${{ state_output('work','turn.result.response.summary','') }}
-  disposition: '${{ state_exists(''merge'') ? ''implemented'' : state_output(''stopped'',''disposition'',''incomplete'')
-    }}'
+  disposition: "${{ state_exists('merge') ? 'implemented' : state_output('stopped','disposition','incomplete') }}"
   result: ${{ state_output('work','turn.result.response',{}) }}
-  artifact_refs: ${{ jq([state_output('merge','documents',state_output('stopped','documents',state_output('record','documents',states.start.outputs.documents))),state_output('verify','artifact_refs',{})],
+  artifact_refs: ${{
+    jq([state_output('merge','documents',state_output('stopped','documents',state_output('record','documents',states.start.outputs.documents))),state_output('verify','artifact_refs',{})],
     'add') }}
-  consultations: ${{ state_output('coordinate','threads',inputs.prior_consultations) }}
-  dependencies: ${{ state_output('coordinate','jobs',inputs.prior_dependencies) }}
-  reviews: '${{ state_exists(''accept'') ? {''outcome'':states.accept.outputs.response.?receipt.orValue({})} : {}
-    }}'
+  reviews: "${{ state_exists('accept') ? {'outcome':states.accept.outputs.response.?receipt.orValue({})} : {} }}"
   verification: ${{ state_output('verify','result',{}) }}
   publication: ${{ state_output('merge','publication',{}) }}
-  rebase_repairs: '${{ inputs.prior_rebase_repairs + (state_exists(''rebase_repair'') ? size(states.rebase_repair.runs)
-    + 1 : 0) }}'
+  rebase_repairs: "${{ inputs.prior_rebase_repairs + (state_exists('rebase_repair') ? size(states.rebase_repair.runs) + 1
+    : 0) }}"
+  coordination: "${{ (state_exists('coordinate') ? jq(states.coordinate.runs.map(r,r.outputs.records) + [states.coordinate.outputs.records],
+    'add') : []) }}"

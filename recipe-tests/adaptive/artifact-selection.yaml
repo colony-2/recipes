@@ -1,0 +1,81 @@
+schema_version: 2
+id: artifact-selection-fixture
+input_schema:
+  path:
+    type: string
+    default_value: report.md
+inputs:
+  path: ${{ inputs.path }}
+sequence:
+- id: produce
+  op: command_execution
+  const: true
+  inputs:
+    env:
+      OUTBOX: ${{ context.environment.op.outbox }}
+    run: |
+      python3 - <<'PY'
+      import os, pathlib, shutil
+      out = pathlib.Path(os.environ['OUTBOX'])
+      (out / 'report.md').write_text('Selected report')
+      (out / 'detail.md').write_text('Selected detail')
+      for i in range(1300):
+          path = out / 'validation' / ('downloaded-source-' + str(i)) / 'incidental-file.txt'
+          path.parent.mkdir(parents=True)
+          path.write_text('Retained on the producer')
+      for name in ('first/ambiguous.md', 'second/ambiguous.md'):
+          path = out / name
+          path.parent.mkdir(parents=True)
+          path.write_text('Needs explicit selection')
+      shutil.copy('artifact-selection-statements.md', out / 'artifact-selection-statements.md')
+      PY
+- id: select
+  include: ../../recipes/adaptive/artifact-result.yaml
+  inputs:
+    artifacts: ${{ sequence.produce.artifacts }}
+    result:
+      response:
+        files:
+        - path: ${{ inputs.path }}
+        - path: detail.md
+- id: repair
+  include: ../../recipes/adaptive/artifact-result.yaml
+  inputs:
+    artifacts: ${{ sequence.select.outputs.documents }}
+    result:
+      response:
+        files:
+        - path: detail.md
+- id: review
+  include: ../../recipes/adaptive/response-repair.yaml
+  inputs:
+    documents: {}
+    attempts: 2
+    issues: [Correct the response.]
+    turn:
+      result: ${{ sequence.repair.outputs.result }}
+      artifacts: ${{ sequence.produce.artifacts }}
+      documents: ${{ sequence.repair.outputs.documents }}
+      annotations: ${{ sequence.repair.outputs.annotations }}
+  catch:
+  - when: true
+    continue:
+      outputs:
+        code: ${{ failure.code }}
+- id: read_original
+  op: command_execution
+  const: true
+  artifacts:
+    incidental.txt: ${{ sequence.produce.artifacts['validation/downloaded-source-1299/incidental-file.txt'] }}
+    detail.md: ${{ sequence.repair.outputs.documents['detail.md'] }}
+  inputs:
+    env:
+      INBOX: ${{ context.environment.op.inbox }}
+    run: cat "$INBOX/incidental.txt" "$INBOX/detail.md"
+outputs:
+  selected: ${{ sequence.select.outputs.documents }}
+  issues: ${{ sequence.select.outputs.issues }}
+  repaired: ${{ sequence.repair.outputs.documents }}
+  same_identity: ${{ jq([sequence.repair.outputs.documents['detail.md'], sequence.produce.artifacts['detail.md']], '.[0].stored == .[1].stored') }}
+  contents: ${{ sequence.read_original.outputs.stdout }}
+  recovery_code: ${{ sequence.review.outputs.code }}

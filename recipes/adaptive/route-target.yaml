@@ -1,16 +1,10 @@
 id: adaptive-route-target
-version: 1.0.0
 inputs:
   request: ${{ inputs.request }}
   root_cell: ${{ inputs.root_cell }}
   root_ref: ${{ inputs.root_ref }}
   create_recipe: ${{ inputs.create_recipe }}
   documents: ${{ inputs.documents }}
-  jobs: ${{ inputs.jobs }}
-  threads: ${{ inputs.threads }}
-vars:
-  creation_key: '${{ inputs.request.kind == ''create'' ? inputs.request.key : inputs.request.key + ''--creation''
-    }}'
 state:
   initial: choose
   states:
@@ -24,10 +18,10 @@ state:
     proposal:
       sequence: []
       outputs:
-        target: '${{ {''cell'': inputs.request.cell, ''repo'': '''', ''ref'': ''main'', ''state'': ''proposed'', ''detail'': ''Explicit
-          request for root evaluation.''} }}'
+        target: ${{ {'cell':inputs.request.cell,'repo':'','ref':'main','state':'proposed','detail':'Explicit request for
+          root evaluation.'} }}
       transitions:
-      - to: creation
+      - to: create_guard
         when: true
       inputs:
         request: ${{ inputs.request }}
@@ -37,92 +31,38 @@ state:
         cell: ${{ inputs.request.cell }}
         ref: ${{ inputs.request.ref }}
       transitions:
-      - to: existing
-        when: outputs.target.state == 'ready'
-      - to: creation
-        when: true
-    existing:
-      sequence: []
-    creation:
-      sequence: []
-      outputs:
-        target: ${{ inputs.target }}
-        reuse: ${{ inputs.jobs.filter(k, inputs.jobs[k].?kind.orValue('') == 'create' && (k == vars.creation_key ||
-          (nonempty(inputs.target.cell) && inputs.jobs[k].?target.orValue({}).?cell.orValue('') == inputs.target.cell)))
-          }}
-      transitions:
       - to: invalid
-        when: inputs.root_cell == '' || inputs.root_ref == '' || inputs.?create_recipe.orValue('') == ''
-      - to: reuse
-        when: size(outputs.reuse) > 0
-      - to: invalid
-        when: vars.creation_key in inputs.jobs || (inputs.request.kind != 'create' && vars.creation_key in inputs.threads)
-      - to: launch
-        when: true
-      inputs:
-        target: ${{ state_output('probe', 'target', state_output('proposal', 'target', {})) }}
-        jobs: ${{ inputs.jobs }}
-    launch:
+        when: outputs.target.state != 'ready'
+    create:
       include: ./create-request.yaml
       inputs:
         request: ${{ inputs.request }}
-        target: ${{ states.creation.outputs.target }}
+        target: ${{ state_output('probe','target',state_output('proposal','target',{})) }}
         root_cell: ${{ inputs.root_cell }}
         root_ref: ${{ inputs.root_ref }}
         create_recipe: ${{ inputs.create_recipe }}
         documents: ${{ inputs.documents }}
-        jobs: ${{ inputs.jobs }}
-        threads: ${{ inputs.threads }}
-      transitions:
-      - to: result
-        when: true
-        payload:
-          job: ${{ outputs.job }}
-          documents: ${{ outputs.documents }}
-    reuse:
+    create_guard:
       sequence: []
       transitions:
-      - to: result
+      - to: invalid
+        when: '!nonempty(inputs.root_cell) || !nonempty(inputs.create_recipe)'
+      - to: create
         when: true
-        payload:
-          job: ${{ inputs.jobs[states.creation.outputs.reuse[0]] }}
-          documents: ${{ inputs.jobs[states.creation.outputs.reuse[0]].result.?artifact_refs.orValue({}) }}
-    result:
-      inputs:
-        job: ${{ transition.payload.job }}
-        documents: ${{ inputs.documents }}
-        request: ${{ inputs.request }}
-        target: ${{ states.creation.outputs.target }}
-        valid_result: ${{ jq(transition.payload.job.result, 'try (.disposition == "created" and .merged == true and
-          (.created_cells | type == "array" and length > 0 and all(.[]; type == "object" and (.repo | type == "string"
-          and length > 0) and (.revision | type == "string" and length > 0) and (.ref == "main" or .ref == "refs/heads/main"))))
-          catch false') == true }}
-      sequence: []
-      outputs:
-        job: ${{ inputs.job }}
-        documents: ${{ inputs.documents }}
-        ready: ${{ inputs.valid_result && inputs.job.status == 'completed' && (inputs.request.cell == '' || inputs.job.result.created_cells.exists(c,
-          c.?cell.orValue('') == inputs.request.cell))
-          }}
-        target: |-
-          ${{ inputs.valid_result && inputs.request.kind != 'create' && inputs.job.result.?created_cells.orValue([]).exists(c,
-              c.?cell.orValue('') == inputs.request.cell)
-            ? jq(inputs.job.result.created_cells.filter(c, c.?cell.orValue('') == inputs.request.cell)[0], '. + {ref: "main", state: "ready"}')
-            : inputs.target }}
     invalid:
       sequence: []
 outputs:
+  target: "${{ (state_exists('create') ? states.create.outputs.result.?outputs.orValue({}).?created_cells.orValue([]) : []).exists(c,c.?cell.orValue('')
+    == inputs.request.cell) ? jq((state_exists('create') ? states.create.outputs.result.?outputs.orValue({}).?created_cells.orValue([])
+    : []).filter(c,c.?cell.orValue('') == inputs.request.cell)[0], '. + {ref:\"main\",state:\"ready\"}') : state_output('probe','target',state_output('proposal','target',{}))
+    }}"
+  creation: "${{ state_exists('create') ? states.create.outputs : null }}"
+  documents: ${{ jq([inputs.documents,state_output('create','documents',{})], 'add') }}
+  ready: "${{ !state_exists('invalid') && !state_exists('create') || (states.create.outputs.result.status == 'completed' &&
+    states.create.outputs.result.outputs.?merged.orValue(false) && states.create.outputs.result.outputs.?disposition.orValue('')
+    == 'created' && size((state_exists('create') ? states.create.outputs.result.?outputs.orValue({}).?created_cells.orValue([])
+    : []))>0 && (state_exists('create') ? states.create.outputs.result.?outputs.orValue({}).?created_cells.orValue([]) : []).all(c,nonempty(c.repo)
+    && nonempty(c.revision) && c.ref in ['main','refs/heads/main']) && (inputs.request.cell == '' || (state_exists('create')
+    ? states.create.outputs.result.?outputs.orValue({}).?created_cells.orValue([]) : []).exists(c,c.?cell.orValue('') == inputs.request.cell)))
+    }}"
   valid: ${{ !state_exists('invalid') }}
-  handled: ${{ !state_exists('existing') && (inputs.request.kind == 'create' || !state_output('result', 'ready', false))
-    }}
-  target: ${{ state_output('result', 'target', state_output('probe', 'target', state_output('proposal', 'target',
-    {}))) }}
-  jobs: '${{ !state_exists(''result'') ? inputs.jobs : jq([inputs.jobs, {vars.creation_key: jq([states.result.outputs.job,
-    {''ready'':states.result.outputs.ready, ''feature_key'':inputs.request.kind == ''feature'' ? inputs.request.key
-    : ''''}], ''add'')}], ''add'') }}'
-  threads: '${{ !state_exists(''result'') ? inputs.threads : jq([inputs.threads, (inputs.request.kind == ''create''
-    || !states.result.outputs.ready) ? {inputs.request.key: {''request'':inputs.request,''status'':''completed'',''result'':{''outcome'':states.result.outputs.ready
-    ? ''agreed'':''needs_review'',''summary'':''Root creation result; inspect child artifacts. Original feature work
-    remains required.''} } } : {}], ''add'') }}'
-  documents: '${{ !state_exists(''result'') ? inputs.documents : jq([inputs.documents, states.result.outputs.documents],
-    ''add'') }}'

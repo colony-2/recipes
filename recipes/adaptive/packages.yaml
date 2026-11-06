@@ -1,0 +1,208 @@
+id: adaptive-packages
+inputs:
+  packages: ${{ inputs.packages }}
+  summary: ${{ inputs.summary }}
+  check_recipe: ${{
+    inputs.?check_recipe.orValue('git+https://github.com/colony-2/recipes.git//recipes/adaptive/package-check.yaml@main')
+    }}
+  decisions: ${{ inputs.?decisions.orValue([]) }}
+state:
+  initial: prompts
+  states:
+    prepare:
+      inputs:
+        packages: ${{ inputs.packages }}
+        summary: ${{ inputs.summary }}
+      sequence:
+      - id: tools
+        include: ./package-tools.yaml
+      - id: policy
+        include: ./package-policy.yaml
+      - id: prepare_package_proposal
+        op: command_execution
+        execution_needs: &id001
+          packages:
+          - nix:github:NixOS/nixpkgs/e7439b6b14ad3cc35d05608ebca9bce01a25f5f8#python3
+          - nix:github:NixOS/nixpkgs/e7439b6b14ad3cc35d05608ebca9bce01a25f5f8#yq-go
+        artifacts:
+          package-tools.py:
+            kind: value
+            name: package-tools.py
+            format: text
+            value: ${{ sequence.tools.outputs.program }}
+          requested.json:
+            kind: value
+            name: requested.json
+            format: json
+            value: ${{ inputs.packages }}
+          policy.json:
+            kind: value
+            name: policy.json
+            format: json
+            value: ${{ sequence.policy.outputs.approved }}
+        inputs:
+          env:
+            INBOX: ${{ context.environment.op.inbox }}
+            OUTBOX: ${{ context.environment.op.outbox }}
+            REASON: ${{ inputs.summary }}
+          run: |
+            python3 "$INBOX/package-tools.py" prepare
+      outputs:
+        proposal: ${{ json_parse(sequence.prepare_package_proposal.outputs.stdout) }}
+        documents: ${{ sequence.prepare_package_proposal.artifacts }}
+      transitions:
+      - to: done
+        when: '!outputs.proposal.changed'
+      - to: decide
+        when: true
+    approval:
+      include: ./review.yaml
+      inputs:
+        title: ${{ 'Approve ' + inputs.packages[0].check[0] + ' tooling for this cell' }}
+        overview: package-review.md
+        documents: |-
+          ${{ {'package-review.md':states.prepare.outputs.documents['package-review.md']} }}
+        fields:
+        - id: decision
+          type: multiple_choice
+          question: ${{ states.prompts.outputs.human.packages.question }}
+          required: true
+          options:
+          - value: approve
+            label: ${{ states.prompts.outputs.human.packages.approve }}
+          - value: decline
+            label: ${{ states.prompts.outputs.human.packages.decline }}
+        - id: feedback
+          type: paragraph_text
+          question: ${{ states.prompts.outputs.human.packages.feedback }}
+          required: false
+        brief: ${{ states.prepare.outputs.documents['package-review.md'] }}
+      transitions:
+      - to: launch
+        when: outputs.response.fields.decision == 'approve'
+      - to: declined
+        when: true
+    launch:
+      id: launch
+      op: recipes.run
+      inputs:
+        recipes:
+        - cell_name: ${{ context.workflow.cell }}
+          name: ${{ inputs.check_recipe }}
+          git:
+            base_repo: ${{ context.git.repo }}
+            base_ref: ${{ context.git.ref }}
+            base_hash: ${{ states.prepare.outputs.proposal.base_hash }}
+          inputs:
+            config: ${{ states.prepare.outputs.documents['candidate-config.yaml'] }}
+            probes: ${{ states.prepare.outputs.documents['packages.json'] }}
+      transitions:
+      - to: await_goal
+        when: true
+    await_goal:
+      include: ./await-goal.yaml
+      inputs:
+        goal: '${{ states.decide.outputs.prior != null && nonempty(states.decide.outputs.prior.goal_id) ? states.decide.outputs.prior.goal_id
+          : states.launch.outputs.goal_ids[0] }}'
+      transitions:
+      - to: adopt
+        when: outputs.result.status == 'completed' && outputs.result.outputs.?config_digest.orValue('') ==
+          states.prepare.outputs.proposal.config_digest
+      - to: failed
+        when: true
+    adopt:
+      inputs:
+        documents: ${{ states.prepare.outputs.documents }}
+        digest: ${{ states.await_goal.outputs.result.outputs.config_digest }}
+      sequence:
+      - id: tools
+        include: ./package-tools.yaml
+      - id: adopt_validated_packages
+        op: command_execution
+        execution_needs: *id001
+        artifacts:
+          package-tools.py:
+            kind: value
+            name: package-tools.py
+            format: text
+            value: ${{ sequence.tools.outputs.program }}
+          candidate-config.yaml: ${{ inputs.documents['candidate-config.yaml'] }}
+          base-digest.txt: ${{ inputs.documents['base-digest.txt'] }}
+        inputs:
+          env:
+            INBOX: ${{ context.environment.op.inbox }}
+            OUTBOX: ${{ context.environment.op.outbox }}
+            VALIDATED_DIGEST: ${{ inputs.digest }}
+          run: |
+            python3 "$INBOX/package-tools.py" adopt
+      transitions:
+      - to: done
+        when: true
+      catch:
+      - when: failure.kind != 'cancellation'
+        to: failed
+        payload:
+          reason: ${{ failure.message }}
+          artifacts: ${{ failure.?attrs.orValue({}).?command.orValue({}).?diagnostics.orValue({}) }}
+    done:
+      sequence: []
+    failed:
+      inputs:
+        reason: "${{ transition.payload.?reason.orValue(state_exists('await_goal') && nonempty(states.await_goal.outputs.result.?failure_message.orValue(''))
+          ? states.await_goal.outputs.result.failure_message : 'The goal result did not validate the approved configuration.')
+          }}"
+        artifacts: "${{ jq([transition.payload.?artifacts.orValue({}),state_exists('await_goal') ? states.await_goal.outputs.errors
+          : {}],'add') }}"
+      sequence:
+      - id: errors
+        include: ./error-documents.yaml
+        inputs:
+          name: packages/failure.md
+          summary: ${{ inputs.reason }}
+          artifacts: ${{ inputs.artifacts }}
+      outputs:
+        reason: ${{ inputs.reason }}
+        errors: ${{ sequence.errors.outputs.documents }}
+    declined:
+      sequence: []
+    prompts:
+      include: ./prompts.yaml
+      transitions:
+      - to: prepare
+        when: true
+    decide:
+      sequence: []
+      inputs:
+        prior: ${{ inputs.decisions.filter(d,(d.decision == 'decline' && d.request_id ==
+          states.prepare.outputs.proposal.request_id) || (d.decision in ['approve','policy'] && d.proposal_id ==
+          states.prepare.outputs.proposal.proposal_id)) }}
+      outputs:
+        prior: '${{ size(inputs.prior)>0 ? inputs.prior[size(inputs.prior)-1] : null }}'
+      transitions:
+      - to: declined
+        when: outputs.prior != null && outputs.prior.decision == 'decline'
+      - to: await_goal
+        when: outputs.prior != null && nonempty(outputs.prior.goal_id)
+      - to: launch
+        when: outputs.prior != null || !states.prepare.outputs.proposal.needs_approval
+      - to: approval
+        when: true
+outputs:
+  adopted: ${{ state_exists("done") }}
+  goal_id: "${{ state_exists('await_goal') ? states.await_goal.outputs.result.goal_id : '' }}"
+  documents: ${{ states.prepare.outputs.documents }}
+  feedback: "${{ !states.prepare.outputs.proposal.changed ? 'The requested packages are already declared; no config change
+    or new probe was performed. Inspect PATH and setup diagnostics, then rerun the blocked check. Do not repeat the same package
+    request.' : state_exists('declined') ? 'The package request was declined. Use the supplied feedback and permitted alternatives;
+    do not ask the same approval again.' : state_exists('failed') ? 'Package validation or adoption did not succeed. Review
+    the goal and diagnostics; do not claim the tool is available.' : 'Package requirements are available. Rerun the blocked
+    checks and report their actual results.' }}"
+  review: "${{ state_exists('approval') ? states.approval.outputs.response : state_exists('decide') && states.decide.outputs.prior
+    != null ? states.decide.outputs.prior.review : {} }}"
+  errors: |-
+    ${{ state_output('failed','errors',{}) }}
+  decision: |-
+    ${{ {'request_id':states.prepare.outputs.proposal.request_id,'proposal_id':states.prepare.outputs.proposal.proposal_id,
+    'decision':state_exists('declined') ? 'decline' : state_exists('approval') ? states.approval.outputs.response.fields.decision : state_exists('decide') && states.decide.outputs.prior != null ? states.decide.outputs.prior.decision : 'policy',
+    'goal_id':state_exists('await_goal') ? states.await_goal.outputs.result.goal_id : '',
+    'review':state_exists('approval') ? states.approval.outputs.response : state_exists('decide') && states.decide.outputs.prior != null ? states.decide.outputs.prior.review : {} } }}

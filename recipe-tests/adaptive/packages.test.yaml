@@ -1,0 +1,154 @@
+recipe: packages.yaml
+cases:
+- id: approved-package-is-validated-before-adoption
+  type: integration_case
+  inputs:
+    packages:
+    - reference: uv:ruff==0.11.2
+      check:
+      - ruff
+      - --version
+  runtime:
+    cells:
+      root:
+        files:
+          .c2/config.yaml: "# Keep this operator note\nsome_existing_setting: retained\npackages: []\n"
+        file_sources:
+          .c2/recipes/package-check.yaml: ../../recipes/adaptive/package-check.yaml
+          .c2/recipes/package-tools.yaml: ../../recipes/adaptive/package-tools.yaml
+    responses:
+    - node_path: packages-fixture/packages/adaptive-packages/approval/approval/adaptive-review/request_human_review
+      fields:
+        decision: approve
+    observe_files:
+    - .c2/config.yaml
+  assertions:
+  - type: cel_true
+    expr: outputs.adopted && outputs.goal_id != ""
+  - type: cel_true
+    expr: size(reviews) == 1
+  - type: cel_true
+    expr: calls.exists(c,c.op == "recipe.await_result_soft" && c.inputs.wait.on == "goal")
+  - type: cel_true
+    expr: outputs.config.contains("uv:ruff==0.11.2") && outputs.config.contains("retained")
+  - type: cel_true
+    expr: outputs.config.contains("# Keep this operator note")
+  mocks:
+    ops:
+    - match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+      repeat: true
+- id: declined-package-is-not-installed
+  type: integration_case
+  inputs:
+    packages:
+    - reference: uv:ruff==0.11.2
+      check:
+      - ruff
+      - --version
+  runtime:
+    cells:
+      root:
+        files:
+          .c2/config.yaml: "# Keep this operator note\nsome_existing_setting: retained\npackages: []\n"
+        file_sources:
+          .c2/recipes/package-check.yaml: ../../recipes/adaptive/package-check.yaml
+          .c2/recipes/package-tools.yaml: ../../recipes/adaptive/package-tools.yaml
+    responses:
+    - node_path: packages-fixture/packages/adaptive-packages/approval/approval/adaptive-review/request_human_review
+      fields:
+        decision: decline
+    observe_files:
+    - .c2/config.yaml
+  assertions:
+  - type: cel_true
+    expr: '!outputs.adopted && !calls.exists(c,c.op == "recipes.run") && outputs.config.contains("packages: []")'
+  mocks:
+    ops:
+    - match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+      repeat: true
+- id: failed-package-goal-does-not-adopt
+  type: integration_case
+  inputs:
+    packages:
+    - reference: uv:ruff==0.11.2
+      check:
+      - ruff
+      - --version
+  runtime:
+    cells:
+      root:
+        files:
+          .c2/config.yaml: "# Keep this operator note\nsome_existing_setting: retained\npackages: []\n"
+        file_sources:
+          .c2/recipes/package-check.yaml: ../../recipes/adaptive/package-check.yaml
+          .c2/recipes/package-tools.yaml: ../../recipes/adaptive/package-tools.yaml
+    responses:
+    - node_path: packages-fixture/packages/adaptive-packages/approval/approval/adaptive-review/request_human_review
+      fields:
+        decision: approve
+    observe_files:
+    - .c2/config.yaml
+  assertions:
+  - type: cel_true
+    expr: '!outputs.adopted && outputs.config.contains("packages: []") && !calls.exists(c,c.node_path.endsWith("adopt_validated_packages"))'
+  mocks:
+    ops:
+    - match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+      repeat: true
+    - match:
+        op: recipes.run
+      behavior:
+        mode: return
+        outputs:
+          job_ids:
+          - attempt
+          goal_ids:
+          - package-goal
+    - match:
+        op: recipe.await_result_soft
+      behavior:
+        mode: return
+        outputs:
+          status: failed
+          goal_id: package-goal
+          failure_message: Executor could not prepare the approved package
+          outputs: {}
+- id: already-declared-package-is-not-reapproved
+  type: integration_case
+  inputs:
+    packages:
+    - reference: uv:ruff==0.11.2
+      check:
+      - ruff
+      - --version
+  runtime:
+    cells:
+      root:
+        files:
+          .c2/config.yaml: "packages: [uv:ruff==0.11.2]\n"
+        file_sources:
+          .c2/recipes/package-check.yaml: ../../recipes/adaptive/package-check.yaml
+          .c2/recipes/package-tools.yaml: ../../recipes/adaptive/package-tools.yaml
+    responses: []
+    observe_files:
+    - .c2/config.yaml
+  assertions:
+  - type: cel_true
+    expr: size(reviews) == 0 && !calls.exists(c,c.op == "recipes.run") && outputs.feedback.contains("no config change or
+      new probe")
+  mocks:
+    ops:
+    - match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+      repeat: true

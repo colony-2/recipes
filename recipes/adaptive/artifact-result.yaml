@@ -35,10 +35,19 @@ sequence:
 outputs:
   annotations: ${{ sequence.collect_annotations.outputs.annotations }}
   result: '${{ jq({''result'': inputs.result, ''matches'': sequence.match.outputs.matches}, vars.apply_matches) }}'
+  # Keep identities available for correcting a missing/mistyped declaration.
+  # The inventory is not an inbox binding or a review document list.
   artifacts: ${{ sequence.inventory.outputs.artifacts }}
+  documents: >-
+    ${{ jq({'artifacts': sequence.inventory.outputs.artifacts, 'matches': sequence.match.outputs.matches},
+      vars.selected_artifacts) }}
   matches: ${{ jq(sequence.match.outputs.matches, '. // []') }}
   issues: ${{ jq(sequence.match.outputs.matches, vars.issue_query) }}
 vars:
+  selected_artifacts: |
+    . as $v |
+    [.matches[] | select(.match.status == "matched") | .match.path] | unique |
+    map({key: ., value: $v.artifacts[.]}) | from_entries
   inventory_filter: |-
     with_entries(select(.key as $k |
       (["__git_state_thin_pack__", "diff_from_parent.diff", "diff_from_base.diff",

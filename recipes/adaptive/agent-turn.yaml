@@ -94,6 +94,10 @@ state:
       transitions:
       - to: normalize
         when: true
+      perms:
+        jobdb:
+          jobs:
+            submit: false
     resume_read_only_session:
       id: resume_read_only_session
       op: nix:github:colony-2/c2ops/published#codex
@@ -117,15 +121,19 @@ state:
       transitions:
       - to: normalize
         when: true
+      perms:
+        jobdb:
+          jobs:
+            submit: false
     normalize:
       include: ./artifact-result.yaml
       inputs:
         result: '${{ (inputs.read_only ? (size(inputs.session) > 0 ? states.resume_read_only_session : states.start_read_only_session)
           : (size(inputs.session) > 0 ? states.resume_implementation_session : states.start_implementation_session)).outputs
           }}'
-        artifacts: '${{ jq([inputs.retained_artifacts, (inputs.read_only ? (size(inputs.session) > 0 ? states.resume_read_only_session
+        artifacts: "${{ jq([inputs.retained_artifacts, (inputs.read_only ? (size(inputs.session) > 0 ? states.resume_read_only_session
           : states.start_read_only_session) : (size(inputs.session) > 0 ? states.resume_implementation_session : states.start_implementation_session)).artifacts],
-          ''add'') }}'
+          'add') }}"
         fields: ${{ inputs.artifact_fields }}
         bound_inputs: ${{ jq([inputs.documents, inputs.evidence_documents], 'add') }}
 outputs:
@@ -133,6 +141,7 @@ outputs:
   annotations: ${{ states.normalize.outputs.annotations }}
   result: ${{ states.normalize.outputs.result }}
   artifacts: ${{ states.normalize.outputs.artifacts }}
+  documents: ${{ states.normalize.outputs.documents }}
   jobs: '${{ (inputs.read_only ? (size(inputs.session) > 0 ? states.resume_read_only_session : states.start_read_only_session)
     : (size(inputs.session) > 0 ? states.resume_implementation_session : states.start_implementation_session)).?jobs.orValue({})
     }}'
@@ -144,3 +153,11 @@ outputs:
     : (size(inputs.session) > 0 ? states.resume_implementation_session : states.start_implementation_session)).outputs.?response.orValue({})
     }}'
   checkpoint: ${{ states.normalize.outputs.result.?session.orValue(inputs.session) }}
+catch:
+- when: failure.kind != 'cancellation'
+  fail:
+    code: AGENT_EXECUTION_RECOVERY_REQUIRED
+    message: ${{ 'Agent execution could not start or complete for goal ' + context.workflow.goal_id + '. Repair the
+      executor using the original preparation/execution diagnostics, then restart its recorded scope in the same goal.
+      Prior work and package authorization remain recorded. ' + failure.message }}
+    cause: ${{ failure }}

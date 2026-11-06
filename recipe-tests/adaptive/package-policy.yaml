@@ -1,0 +1,46 @@
+schema_version: 2
+id: package-policy-fixture
+input_schema:
+  policy:
+    type: object
+    default_value: {}
+inputs:
+  policy: ${{ inputs.policy }}
+sequence:
+- id: tools
+  include: ../../recipes/adaptive/package-tools.yaml
+- id: prepare
+  op: command_execution
+  artifacts:
+    tools.py:
+      kind: value
+      name: tools.py
+      format: text
+      value: ${{ sequence.tools.outputs.program }}
+    requested.json:
+      kind: value
+      name: requested.json
+      format: json
+      value:
+      - reference: uv:ruff==0.11.2
+        check:
+        - ruff
+        - --version
+    policy.json:
+      kind: value
+      name: policy.json
+      format: json
+      value: ${{ inputs.policy }}
+  inputs:
+    env:
+      INBOX: ${{ context.environment.op.inbox }}
+      OUTBOX: ${{ context.environment.op.outbox }}
+    run: "python3 \"$INBOX/tools.py\" prepare\n"
+- id: observe
+  op: command_execution
+  const: true
+  inputs:
+    run: cat .c2/config.yaml
+outputs:
+  needs_approval: ${{ json_parse(sequence.prepare.outputs.stdout).needs_approval }}
+  config: ${{ sequence.observe.outputs.stdout }}
