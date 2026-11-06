@@ -1,0 +1,94 @@
+recipe: package-recovery.yaml
+cases:
+- id: invalid-probe-is-corrected-with-one-approval
+  type: integration_case
+  inputs:
+    first:
+    - reference: uv:ruff==0.11.2
+      check:
+      - ruff
+      - --recipes-test-missing-flag
+  runtime:
+    cells:
+      root:
+        files:
+          .c2/config.yaml: |
+            # Preserve this note
+            packages: []
+          .c2/recipes/hooks/build/package-policy.yaml: |
+            id: policy
+            sequence: []
+            outputs:
+              approved:
+                uv:ruff==0.11.2: [ruff, --version]
+        file_sources:
+          .c2/recipes/package-check.yaml: ../../recipes/adaptive/package-check.yaml
+          .c2/recipes/package-tools.yaml: ../../recipes/adaptive/package-tools.yaml
+    responses:
+    - node_path: package-recovery/first/adaptive-packages/approval/approval/adaptive-review/request_human_review
+      fields:
+        decision: approve
+  mocks:
+    ops:
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: '!outputs.first.adopted && outputs.corrected.adopted && outputs.first.job_id != outputs.corrected.job_id'
+  - type: cel_true
+    expr: 'outputs.initial_config.contains("packages: []") && !outputs.initial_config.contains("ruff")'
+  - type: cel_true
+    expr: outputs.evidence.contains("uv:ruff==0.11.2") && outputs.evidence.contains("Preserve this note")
+  - type: cel_true
+    expr: outputs.evidence.contains("--recipes-test-missing-flag")
+  - type: cel_true
+    expr: size(reviews)==1 && size(calls.filter(c,c.op == "recipes.run")) == 2
+- id: invalid-package-setup-leaves-parent-management-usable
+  type: integration_case
+  inputs:
+    first:
+    - reference: nix:github:NixOS/nixpkgs/e7439b6b14ad3cc35d05608ebca9bce01a25f5f8#recipes-nonexistent-tool
+      check:
+      - unavailable-tool
+      - --version
+  runtime:
+    cells:
+      root:
+        files:
+          .c2/config.yaml: |
+            # Preserve this note
+            packages: []
+          .c2/recipes/hooks/build/package-policy.yaml: |
+            id: policy
+            sequence: []
+            outputs:
+              approved:
+                uv:ruff==0.11.2: [ruff, --version]
+        file_sources:
+          .c2/recipes/package-check.yaml: ../../recipes/adaptive/package-check.yaml
+          .c2/recipes/package-tools.yaml: ../../recipes/adaptive/package-tools.yaml
+    responses:
+    - node_path: package-recovery/first/adaptive-packages/approval/approval/adaptive-review/request_human_review
+      fields:
+        decision: approve
+  mocks:
+    ops:
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: '!outputs.first.adopted && outputs.corrected.adopted && outputs.first.job_id != outputs.corrected.job_id'
+  - type: cel_true
+    expr: 'outputs.initial_config.contains("packages: []") && !outputs.initial_config.contains("ruff")'
+  - type: cel_true
+    expr: outputs.evidence.contains("uv:ruff==0.11.2") && outputs.evidence.contains("Preserve this note")
+  - type: cel_true
+    expr: outputs.evidence.contains("recipes-nonexistent-tool")
+  - type: cel_true
+    expr: size(reviews)==1 && size(calls.filter(c,c.op == "recipes.run")) == 2

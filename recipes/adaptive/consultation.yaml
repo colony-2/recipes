@@ -109,8 +109,7 @@ state:
         topic: ${{ inputs.thread }}
         thread: ${{ context.workflow.job_id + '/' + inputs.thread }}
         depth: ${{ inputs.depth }}
-        requester_ref: "${{ context.git.hash != '' ? context.git.hash : context.git.resolved_hash != '' ? context.git.resolved_hash
-          : context.git.ref }}"
+        requester_ref: "${{ context.git.ref }}"
       transitions:
       - to: invalid
         when: '!outputs.valid'
@@ -143,6 +142,10 @@ state:
       inputs:
         conversation: ${{ states.current.outputs.conversation }}
       sequence:
+      - id: schemas
+        include: ../response-schemas.yaml
+        inputs:
+          participant: ${{ inputs.conversation.next }}
       - id: prompts
         include: ./prompts.yaml
         inputs:
@@ -162,83 +165,30 @@ state:
             {{ sequence.prompts.outputs.consultation.instructions }}
 
             {{ sequence.prompts.outputs.consultation.setup }}
+          schema: ${{ sequence.schemas.outputs.consultation }}
         vars:
           prefix: ${{ 'iter' + string(int(inputs.conversation.iteration) + 1) + '/' + inputs.conversation.next + '/' }}
           session: |-
             ${{ inputs.conversation.next == 'consultant'
                 ? inputs.conversation.consultant_session : inputs.conversation.requester_session }}
-          schema:
-            type: object
-            additionalProperties: false
-            required:
-            - outcome
-            - thinking
-            - files
-            properties:
-              outcome:
-                type: string
-                enum: |-
-                  ${{ inputs.conversation.next == 'consultant'
-                      ? ['continue', 'agreed', 'declined', 'redirected', 'needs_review']
-                      : ['continue', 'needs_review', 'cancelled'] }}
-              thinking:
-                type: string
-                minLength: 1
-                description: Concise response and shareable explanation, including questions and remaining
-                  disagreements.
-              files:
-                type: array
-                items:
-                  type: object
-                  additionalProperties: false
-                  required:
-                  - path
-                  - description
-                  properties:
-                    path:
-                      type: string
-                      minLength: 1
-                    description:
-                      type: string
-                      minLength: 1
-                    title: {}
-                    role: {}
-                    order: {}
-                    source_paths: {}
-              requests:
-                type: array
-                items:
-                  type: object
-                  additionalProperties: false
-                  required:
-                  - cell
-                  - request
-                  properties:
-                    cell:
-                      type: string
-                      minLength: 1
-                    request:
-                      type: string
-                      minLength: 1
-                    ref:
-                      type: string
-                    role:
-                      type: string
-              review_title:
-                type: string
+          schema: ${{ inputs.schema }}
           started: "${{ int(inputs.conversation.?seen.orValue({'requester': 0, 'consultant': 0})[inputs.conversation.next])
             > 0 }}"
         state:
           initial:
           - to: foreign
-            when: inputs.conversation.next == 'consultant' && inputs.conversation.consultant.cell != ''
+            when: inputs.conversation.next == 'consultant' && nonempty(inputs.conversation.consultant.cell) &&
+              inputs.conversation.consultant.cell != context.workspace.cell
+          - to: foreign_requester
+            when: inputs.conversation.next == 'requester' && inputs.conversation.requester_cell !=
+              context.workspace.cell
           - to: local
             when: true
           states:
             foreign:
               workspace:
                 cell: ${{ inputs.conversation.consultant.cell }}
-                ref: ${{ state_output('repair', 'base_hash', inputs.conversation.consultant.ref) }}
+                ref: ${{ inputs.conversation.consultant.ref }}
               include: ./agent-turn.yaml
               inputs:
                 prompt: "${{ state_exists('repair') ? states.repair.outputs.prompt : inputs.prompt }}"
@@ -262,12 +212,10 @@ state:
               transitions:
               - to: collect
                 when: true
-              workspace:
-                cell: ${{ inputs.conversation.requester_cell }}
-                ref: ${{ inputs.conversation.?requester_ref.orValue(context.git.ref) }}
             collect:
               inputs:
-                turn: "${{ state_exists('foreign') ? states.foreign.outputs : states.local.outputs }}"
+                turn: "${{ state_exists('foreign') ? states.foreign.outputs : state_exists('foreign_requester') ? states.foreign_requester.outputs
+                  : states.local.outputs }}"
                 prefix: ${{ vars.prefix }}
                 allowed: ${{ vars.schema.properties.outcome.enum }}
               sequence: []
@@ -278,7 +226,7 @@ state:
                       && inputs.turn.result.?session.orValue(null) != null
                       && inputs.turn.result.?output_schema_valid.orValue(false)
                       && size(inputs.turn.jobs.?job_ids.orValue([])) == 0
-                      && (size(inputs.turn.result.response.?requests.orValue([])) == 0 || inputs.turn.result.response.outcome in ['continue','needs_review']) && inputs.turn.result.response.outcome in inputs.allowed
+                      && (size(inputs.turn.result.response.?requests.orValue([])) == 0 || inputs.turn.result.response.outcome in ['continue','needs_review'] || (inputs.turn.result.response.?requests.orValue([]).all(r,r.action == 'execute') && inputs.turn.result.response.outcome in ['answered','agreed'])) && inputs.turn.result.response.outcome in inputs.allowed
                       && (inputs.turn.result.response.outcome != 'needs_review' || nonempty(inputs.turn.result.response.?review_title.orValue('')))
                                         && inputs.turn.result.response.files.all(f,
                            f.path.startsWith(inputs.prefix)
@@ -309,17 +257,48 @@ state:
               - to: abandoned
                 when: '!outputs.retry'
               - to: foreign
-                when: inputs.conversation.next == 'consultant' && inputs.conversation.consultant.cell != ''
+                when: inputs.conversation.next == 'consultant' && nonempty(inputs.conversation.consultant.cell) &&
+                  inputs.conversation.consultant.cell != context.workspace.cell
+              - to: foreign_requester
+                when: inputs.conversation.next == 'requester' && inputs.conversation.requester_cell !=
+                  context.workspace.cell
               - to: local
                 when: true
             abandoned:
               sequence: []
+            foreign_requester:
+              include: ./agent-turn.yaml
+              inputs:
+                prompt: "${{ state_exists('repair') ? states.repair.outputs.prompt : inputs.prompt }}"
+                instructions: ${{ inputs.instructions }}
+                schema: ${{ vars.schema }}
+                session: ${{ state_output('repair', 'session', vars.session) }}
+                documents: ${{ state_output('repair', 'documents', inputs.conversation.documents) }}
+                retained_artifacts: ${{ state_output('repair', 'artifacts', {}) }}
+              transitions:
+              - to: collect
+                when: true
+              workspace:
+                cell: ${{ inputs.conversation.requester_cell }}
+                ref: ${{ inputs.conversation.?requester_ref.orValue(context.git.ref) }}
         outputs:
           valid: ${{ states.collect.outputs.valid }}
           turn: "${{ jq([states.collect.outputs.turn, state_exists('repair') ? {'repair_documents': states.repair.outputs.documents}
             : {}, state_exists('abandoned') ? {'repair_cancelled': true, 'artifacts': states.repair.outputs.artifacts} : {}],
             'add') }}"
         id: exchange
+        catch:
+        - when: failure.kind != 'cancellation'
+          continue:
+            outputs:
+              valid: false
+              turn:
+                result:
+                  status: failed
+                  errorMessage: ${{ failure.message }}
+                documents: {}
+                artifacts: {}
+                jobs: {}
       outputs:
         valid: ${{ sequence.exchange.outputs.valid }}
         turn: ${{ sequence.exchange.outputs.turn }}
@@ -344,12 +323,13 @@ state:
             ${{ jq({'files': inputs.turn.result.response.files, 'artifacts': inputs.turn.artifacts},
                    '. as $v | $v.files | map({key: .path, value: $v.artifacts[.path]}) | from_entries') }}
           outcome: |-
-            ${{ size(inputs.turn.result.response.?requests.orValue([])) > 0 ? (inputs.depth < 4 ? 'continue' : 'recovery') : inputs.turn.result.response.outcome == 'continue' && inputs.previous.next == 'consultant' && int(inputs.previous.round_iterations) + 1 >= int(inputs.previous.max_iterations) ? 'recovery' : inputs.turn.result.response.outcome }}
+            ${{ inputs.turn.result.response.?requests.orValue([]).exists(r,r.action == 'execute') ? (inputs.turn.result.response.outcome == 'agreed' && inputs.previous.next == 'consultant' ? 'agreed' : 'work_requested') : inputs.turn.result.response.?requests.orValue([]).exists(r,r.action == 'consult') ? (inputs.depth < 4 ? 'continue' : 'recovery') : inputs.turn.result.response.outcome == 'continue' && inputs.previous.next == 'consultant' && int(inputs.previous.round_iterations)+1 >= int(inputs.previous.max_iterations) ? 'recovery' : inputs.turn.result.response.outcome }}
       outputs:
         conversation: |-
           ${{ jq([inputs.previous,
                 {'exchange_number':int(inputs.previous.?exchange_number.orValue(0))+1,'review_title':inputs.turn.result.response.?review_title.orValue(''), 'review_documents':sequence.resolve.outputs.files,'outcome': sequence.resolve.outputs.outcome,
                  'message': inputs.turn.result.response.thinking,
+           'execution_requests': inputs.previous.?execution_requests.orValue([]) + inputs.turn.result.response.?requests.orValue([]).filter(r,r.action == 'execute'),
                            'assessment': inputs.previous.next == 'consultant' ? inputs.turn.result.response.?assessment.orValue('') : '',
                  'seen': jq([inputs.previous.?seen.orValue({'requester': 0, 'consultant': 0}),
                              {inputs.previous.next: int(inputs.previous.round)}], 'add'),
@@ -357,7 +337,7 @@ state:
                  'next': inputs.previous.next == 'consultant' ? 'requester' : 'consultant',
                  'iteration': int(inputs.previous.iteration) + (inputs.previous.next == 'consultant' ? 1 : 0),
                  'round_iterations': int(inputs.previous.round_iterations) + (inputs.previous.next == 'consultant' ? 1 : 0),
-                 'requester_ref': inputs.previous.next == 'requester' ? inputs.turn.base_hash : inputs.previous.requester_ref,
+                 'requester_ref': inputs.previous.requester_ref,
                            'requester_session': inputs.previous.next == 'requester'
                     ? inputs.turn.result.session : inputs.previous.requester_session,
                  'consultant_session': inputs.previous.next == 'consultant'
@@ -376,12 +356,13 @@ state:
                     'annotations': inputs.turn.?annotations.orValue([]), 'artifacts': sequence.resolve.outputs.files}]}], 'add') }}
       transitions:
       - to: advice
-        when: size(states.turn.outputs.turn.result.response.?requests.orValue([])) > 0 &&
+        when: states.turn.outputs.turn.result.response.?requests.orValue([]).exists(r,r.action == 'consult') &&
+          !states.turn.outputs.turn.result.response.?requests.orValue([]).exists(r,r.action == 'execute') &&
           states.current.outputs.conversation.depth < 4
         payload:
           frame: ${{
-            {'conversation':outputs.conversation,'participant':states.current.outputs.conversation.next,'requests':states.turn.outputs.turn.result.response.requests,'index':0}
-            }}
+            {'conversation':outputs.conversation,'participant':states.current.outputs.conversation.next,'requests':states.turn.outputs.turn.result.response.requests.filter(r,r.action
+            == 'consult'),'index':0} }}
           parents: ${{ states.current.outputs.parents }}
       - to: current
         when: true
@@ -402,11 +383,14 @@ state:
            'consultant_session': inputs.previous.next == 'consultant' ? inputs.turn.?checkpoint.orValue(inputs.previous.consultant_session) : inputs.previous.consultant_session,
            'documents': jq([inputs.previous.documents, inputs.turn.documents, inputs.turn.?repair_documents.orValue({})], 'add'),
            'pending_response': inputs.turn.result.?response.orValue({}),
+           'message': inputs.turn.result.?errorMessage.orValue('Consultation turn did not complete; no agreement accepted. Correct the request or environment.'),
            'error': inputs.turn.?repair_cancelled.orValue(false) ? 'Result correction cancelled by the reviewer; no agreement accepted.' : inputs.turn.result.?errorMessage.orValue('Consultation turn did not complete; no agreement accepted.')
            }], 'add') }}
       transitions:
-      - to: recovery_failed
+      - to: publish
         when: true
+        payload:
+          conversation: ${{ outputs.conversation }}
     invalid:
       inputs:
         previous: |-
@@ -452,7 +436,7 @@ state:
         when: size(state_output('current','parents',[])) > 0
         payload:
           result: ${{
-            {'outcome':outputs.conversation.outcome,'summary':outputs.conversation.message,'final_artifacts':outputs.conversation.final_artifacts,'transcript':outputs.transcript}
+            {'outcome':outputs.conversation.outcome,'summary':outputs.conversation.message,'final_artifacts':outputs.conversation.final_artifacts,'transcript':outputs.transcript,'agreements':outputs.conversation.?agreements.orValue([]),'execution_requests':outputs.conversation.?execution_requests.orValue([]),'annotations':outputs.conversation.?annotations.orValue([])}
             }}
           frame: ${{ states.current.outputs.parents[size(states.current.outputs.parents)-1] }}
           parents: ${{ jq(states.current.outputs.parents, '.[0:-1]') }}
@@ -519,16 +503,18 @@ state:
           conversation: ${{ outputs.conversation }}
           parents: ${{ states.current.outputs.parents }}
     recovery:
-      include: ./operational-failure.yaml
+      sequence: []
+      outputs:
+        conversation: ${{ jq([inputs.conversation,{'outcome':'failed','message':'The consultation exhausted its advisory
+          round. Return the unresolved question or implementation need to the
+          coordinator.','final_artifacts':inputs.conversation.documents}],'add') }}
+      transitions:
+      - to: publish
+        when: true
+        payload:
+          conversation: ${{ outputs.conversation }}
       inputs:
-        reason: Consultation reached its bounded execution limit. Inspect the retained conversation and resume the
-          responsible goal; a bound is not a product decision.
-        documents: ${{ states.current.outputs.conversation.documents }}
-    recovery_failed:
-      include: ./operational-failure.yaml
-      inputs:
-        reason: ${{ states.failed.outputs.conversation.error }}
-        documents: ${{ states.failed.outputs.conversation.documents }}
+        conversation: ${{ states.current.outputs.conversation }}
     advice:
       inputs:
         frame: ${{ transition.payload.frame }}
@@ -592,16 +578,23 @@ state:
                 {'outcome.md': {'kind':'value', 'name':'outcome.md', 'format':'text',
                   'value':'Outcome: ' + inputs.result.outcome + '\n' + inputs.result.summary} }], 'add') }}
       outputs:
-        conversation: ${{ jq([inputs.frame.conversation,
-          {'outcome':'continue','next':inputs.frame.participant,'message':'Read the downstream consultation results in
-          inbox and continue the original agreement. These are advice, not proof of implemented
-          work.','documents':jq([inputs.frame.conversation.documents,sequence.documents.outputs.documents],'add')}],'add')
-          }}
+        conversation: |-
+          ${{ jq([inputs.frame.conversation,
+            {'outcome': size(inputs.result.?execution_requests.orValue([])) > 0 ? 'work_requested' : 'continue',
+             'next':inputs.frame.participant,
+             'message': size(inputs.result.?execution_requests.orValue([])) > 0 ? 'Implementation requested by the serving consultation. Return this work to the coordinator.' : 'Read downstream/ for the advice or accepted scope. Finish the original question when answered; no dispatch or acknowledgement exchange is needed.',
+             'documents':jq([inputs.frame.conversation.documents,sequence.documents.outputs.documents],'add'),
+             'final_artifacts':size(inputs.result.?execution_requests.orValue([])) > 0 ? sequence.documents.outputs.documents : inputs.frame.conversation.final_artifacts,
+             'execution_requests':inputs.frame.conversation.?execution_requests.orValue([]) + inputs.result.?execution_requests.orValue([]),
+             'agreements':inputs.frame.conversation.?agreements.orValue([]) + inputs.result.?agreements.orValue([]) +
+               (inputs.result.outcome == 'agreed' ? [{'request':jq([{'kind':'feature','ref':'main'},inputs.frame.requests[inputs.frame.index]],'add'),
+                 'target':{'cell':inputs.frame.requests[inputs.frame.index].cell,'ref':inputs.frame.requests[inputs.frame.index].?ref.orValue('main')},
+                 'result':{'outcome':'agreed','final_artifacts':inputs.result.final_artifacts,'continuation':inputs.result.transcript,'annotations':inputs.result.?annotations.orValue([])} }] : [])}], 'add') }}
         frame: ${{ inputs.frame }}
         parents: ${{ inputs.parents }}
       transitions:
       - to: advice
-        when: outputs.frame.index + 1 < size(outputs.frame.requests)
+        when: outputs.conversation.outcome == 'continue' && outputs.frame.index + 1 < size(outputs.frame.requests)
         payload:
           frame: ${{ jq([outputs.frame,{'index':outputs.frame.index+1,'conversation':outputs.conversation}],'add') }}
           parents: ${{ outputs.parents }}
@@ -626,3 +619,5 @@ outputs:
   review: "${{ state_exists('request_consultation_direction') ? jq([state_output('report', 'review', {}), {'documents':states.request_consultation_direction.outputs.documents}],
     'add') : state_output('report', 'review', {}) }}"
   report_error: ${{ state_output('report', 'error', '') }}
+  agreements: ${{ states.publish.outputs.conversation.?agreements.orValue([]) }}
+  execution_requests: ${{ states.publish.outputs.conversation.?execution_requests.orValue([]) }}

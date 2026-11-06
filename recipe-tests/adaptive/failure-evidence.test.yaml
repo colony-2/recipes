@@ -32,8 +32,7 @@ cases:
     expr: outputs.errors["error/diagnostics/0/_c2j/execution/fail.log"].stored ==
       outputs.attempt.outputs.attrs.c2j_failure.attrs.command.diagnostics["_c2j/execution/fail.log"].stored
   - type: cel_true
-    expr: outputs.goal.goal_state == "OPEN" && !outputs.goal.terminal && outputs.goal.goal_id ==
-      outputs.attempt.goal_id
+    expr: outputs.goal.goal_state == "OPEN" && !outputs.goal.terminal && outputs.goal.goal_id == outputs.attempt.goal_id
   id: command-failure-reaches-inbox
 - type: integration_case
   runtime:
@@ -71,8 +70,7 @@ cases:
     expr: outputs.errors["error/diagnostics/0/_c2j/execution/fail.log"].stored ==
       outputs.attempt.outputs.attrs.c2j_failure.cause.attrs.command.diagnostics["_c2j/execution/fail.log"].stored
   - type: cel_true
-    expr: outputs.goal.goal_state == "OPEN" && !outputs.goal.terminal && outputs.goal.goal_id ==
-      outputs.attempt.goal_id
+    expr: outputs.goal.goal_state == "OPEN" && !outputs.goal.terminal && outputs.goal.goal_id == outputs.attempt.goal_id
   id: wrapped-command-failure-reaches-inbox
 - type: integration_case
   runtime:
@@ -115,8 +113,7 @@ cases:
     expr: outputs.errors["error/diagnostics/0/_c2j/execution/fail.log"].stored ==
       outputs.attempt.outputs.attrs.c2j_failure.attrs.extension.diagnostics["_c2j/execution/fail.log"].stored
   - type: cel_true
-    expr: outputs.goal.goal_state == "OPEN" && !outputs.goal.terminal && outputs.goal.goal_id ==
-      outputs.attempt.goal_id
+    expr: outputs.goal.goal_state == "OPEN" && !outputs.goal.terminal && outputs.goal.goal_id == outputs.attempt.goal_id
   id: extension-failure-reaches-inbox
 - type: integration_case
   runtime:
@@ -146,6 +143,37 @@ cases:
   - type: cel_true
     expr: size(outputs.errors) == 1
   - type: cel_true
-    expr: outputs.goal.goal_state == "OPEN" && !outputs.goal.terminal && outputs.goal.goal_id ==
-      outputs.attempt.goal_id
+    expr: outputs.goal.goal_state == "OPEN" && !outputs.goal.terminal && outputs.goal.goal_id == outputs.attempt.goal_id
   id: setup-failure-reaches-inbox
+- type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          .c2/recipes/fail.yaml: |
+            id: cancelled-child
+            sequence:
+            - id: cancel
+              op: command_execution
+              inputs: {run: exit 7}
+              catch:
+              - when: true
+                fail:
+                  kind: cancellation
+                  code: cancelled
+                  message: Explicit owner cancellation.
+        file_sources:
+          .test/statements.md: ../../guides/PLAN_RECIPE_TEST_GAP_CLOSURE.md
+  mocks:
+    ops:
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.attempt.terminal && outputs.attempt.outputs.attrs.c2j_failure.kind == "cancellation"
+  - type: cel_true
+    expr: outputs.text.contains("Explicit owner cancellation") && size(calls.filter(c,c.op == "recipes.run")) == 1
+  id: cancelled-child-is-delivered-distinctly

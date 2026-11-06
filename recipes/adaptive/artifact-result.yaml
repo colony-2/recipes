@@ -13,7 +13,7 @@ sequence:
     references: '${{ jq({''response'': inputs.result.?response.orValue({}), ''fields'': inputs.fields}, vars.reference_query)
       }}'
   inputs:
-    artifacts: ${{ inputs.artifacts }}
+    artifacts: ${{ jq([inputs.bound_inputs,inputs.artifacts], 'add') }}
     result: ${{ inputs.result }}
     fields: ${{ inputs.fields }}
 - id: match
@@ -43,6 +43,9 @@ outputs:
       vars.selected_artifacts) }}
   matches: ${{ jq(sequence.match.outputs.matches, '. // []') }}
   issues: ${{ jq(sequence.match.outputs.matches, vars.issue_query) }}
+  repair_documents: ${{
+    jq({'artifacts':sequence.inventory.outputs.artifacts,'matches':sequence.match.outputs.matches},vars.repair_artifacts)
+    }}
 vars:
   selected_artifacts: |
     . as $v |
@@ -66,3 +69,10 @@ vars:
     (. // []) | map(select(.match.status != "matched")) |
     map("Artifact reference \"" + .reference + "\": " + .match.status +
         (if (.match.candidates | length) > 0 then "; candidates: " + (.match.candidates | tojson) else "" end))
+  repair_artifacts: |
+    . as $v |
+    [.matches[] | if .match.status == "matched" then .match.path
+     else (.match.candidates[]?),
+          (select(.reference | endswith("/")) | .reference as $prefix |
+           $v.artifacts | keys[] | select(startswith($prefix))) end] | unique |
+    map(select(. as $p | $v.artifacts | has($p)) | {key:.,value:$v.artifacts[.]}) | from_entries

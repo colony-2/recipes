@@ -1,0 +1,300 @@
+recipe: parent-recovery.yaml
+cases:
+- id: failed-child-is-replaced-by-fresh-job
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          README.md: Parent repository
+          .c2/recipes/delivery.yaml: |
+            id: delivery
+            inputs:
+              corrected: ${{ inputs.prompt.contains('Use the corrected probe.') }}
+            sequence:
+            - id: prepare_work
+              op: command_execution
+              inputs:
+                env:
+                  CORRECTED: ${{ string(inputs.corrected) }}
+                run: |
+                  set -eu
+                  test ! -f parent-only.txt
+                  test ! -f unfinished-child.txt
+                  if [ "$CORRECTED" = false ]; then echo unpublished-child-work > unfinished-child.txt; fi
+            - id: probe
+              op: command_execution
+              inputs:
+                env:
+                  CORRECTED: ${{ string(inputs.corrected) }}
+                run: |
+                  if [ "$CORRECTED" = false ]; then echo original-probe-failure >&2; exit 9; fi
+                  echo corrected-probe-passed > child-success.txt
+            outputs:
+              disposition: unchanged
+              merged: false
+            schema_version: 2
+            input_schema:
+              prompt:
+                type: string
+                required: true
+              session:
+                type: checkpoint
+                object_type: c2ops.codex.session/v1
+                required: false
+              documents:
+                type: artifact_map
+                default_value: {}
+              root_cell:
+                type: string
+                default_value: ''
+              root_ref:
+                type: string
+                default_value: main
+              annotations:
+                type: array
+                default_value: []
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                      required: true
+                    ref:
+                      type: artifact
+                      required: true
+                    descriptor:
+                      type: object
+                    sources:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          id:
+                            type: string
+                          ref:
+                            type: artifact
+      owner:
+        files:
+          README.md: Serving repository
+  mocks:
+    ops:
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.failed.records[0].result.status == "failed" && outputs.failed.records[0].result.terminal
+  - type: cel_true
+    expr: outputs.completed.records[0].result.status == "completed" &&
+      outputs.completed.records[0].result.outputs.disposition == "unchanged"
+  - type: cel_true
+    expr: outputs.first.records[0].job_id != outputs.replacement.records[0].job_id &&
+      outputs.replacement.records[0].replaces == outputs.first.records[0].job_id
+  - type: cel_true
+    expr: outputs.repeat.records[0].job_id == outputs.replacement.records[0].job_id && size(calls.filter(c,c.op ==
+      "recipes.run")) == 2
+  - type: cel_true
+    expr: size(reviews) == 0 && calls.exists(c,c.node_path.endsWith("/check_parent"))
+  - type: cel_true
+    expr: outputs.failed.documents.exists(k,k.startsWith("error/children/") && k.endsWith("probe.log"))
+- id: native-cancelled-child-is-not-replaced
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          README.md: Parent repository
+          .c2/recipes/delivery.yaml: |
+            id: delivery
+            inputs:
+              corrected: ${{ inputs.prompt.contains('Use the corrected probe.') }}
+            sequence:
+            - id: prepare_work
+              op: command_execution
+              inputs:
+                env:
+                  CORRECTED: ${{ string(inputs.corrected) }}
+                run: |
+                  set -eu
+                  test ! -f parent-only.txt
+                  test ! -f unfinished-child.txt
+                  if [ "$CORRECTED" = false ]; then echo unpublished-child-work > unfinished-child.txt; fi
+            - id: probe
+              op: command_execution
+              inputs:
+                env:
+                  CORRECTED: ${{ string(inputs.corrected) }}
+                run: |
+                  if [ "$CORRECTED" = false ]; then echo original-probe-failure >&2; exit 9; fi
+                  echo corrected-probe-passed > child-success.txt
+              catch:
+              - when: 'true'
+                fail:
+                  kind: cancellation
+                  code: cancelled
+                  message: Explicit child cancellation.
+            outputs:
+              disposition: unchanged
+              merged: false
+            schema_version: 2
+            input_schema:
+              prompt:
+                type: string
+                required: true
+              session:
+                type: checkpoint
+                object_type: c2ops.codex.session/v1
+                required: false
+              documents:
+                type: artifact_map
+                default_value: {}
+              root_cell:
+                type: string
+                default_value: ''
+              root_ref:
+                type: string
+                default_value: main
+              annotations:
+                type: array
+                default_value: []
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                      required: true
+                    ref:
+                      type: artifact
+                      required: true
+                    descriptor:
+                      type: object
+                    sources:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          id:
+                            type: string
+                          ref:
+                            type: artifact
+      owner:
+        files:
+          README.md: Serving repository
+  mocks:
+    ops:
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.failed.records[0].result.outputs.attrs.c2j_failure.kind == "cancellation"
+  - type: cel_true
+    expr: outputs.replacement.records[0].action == "await" && outputs.replacement.records[0].job_id ==
+      outputs.first.records[0].job_id && size(calls.filter(c,c.op == "recipes.run")) == 1
+- id: same-cell-replacement-starts-without-parent-candidate
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          README.md: Parent repository
+          .c2/recipes/delivery.yaml: |
+            id: delivery
+            inputs:
+              corrected: ${{ inputs.prompt.contains('Use the corrected probe.') }}
+            sequence:
+            - id: prepare_work
+              op: command_execution
+              inputs:
+                env:
+                  CORRECTED: ${{ string(inputs.corrected) }}
+                run: |
+                  set -eu
+                  test ! -f parent-only.txt
+                  test ! -f unfinished-child.txt
+                  if [ "$CORRECTED" = false ]; then echo unpublished-child-work > unfinished-child.txt; fi
+            - id: probe
+              op: command_execution
+              inputs:
+                env:
+                  CORRECTED: ${{ string(inputs.corrected) }}
+                run: |
+                  if [ "$CORRECTED" = false ]; then echo original-probe-failure >&2; exit 9; fi
+                  echo corrected-probe-passed > child-success.txt
+            outputs:
+              disposition: unchanged
+              merged: false
+            schema_version: 2
+            input_schema:
+              prompt:
+                type: string
+                required: true
+              session:
+                type: checkpoint
+                object_type: c2ops.codex.session/v1
+                required: false
+              documents:
+                type: artifact_map
+                default_value: {}
+              root_cell:
+                type: string
+                default_value: ''
+              root_ref:
+                type: string
+                default_value: main
+              annotations:
+                type: array
+                default_value: []
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                      required: true
+                    ref:
+                      type: artifact
+                      required: true
+                    descriptor:
+                      type: object
+                    sources:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          id:
+                            type: string
+                          ref:
+                            type: artifact
+      owner:
+        files:
+          README.md: Serving repository
+  mocks:
+    ops:
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.failed.records[0].result.status == "failed" && outputs.failed.records[0].result.terminal
+  - type: cel_true
+    expr: outputs.completed.records[0].result.status == "completed" &&
+      outputs.completed.records[0].result.outputs.disposition == "unchanged"
+  - type: cel_true
+    expr: outputs.first.records[0].job_id != outputs.replacement.records[0].job_id &&
+      outputs.replacement.records[0].replaces == outputs.first.records[0].job_id
+  - type: cel_true
+    expr: outputs.repeat.records[0].job_id == outputs.replacement.records[0].job_id && size(calls.filter(c,c.op ==
+      "recipes.run")) == 2
+  - type: cel_true
+    expr: size(reviews) == 0 && calls.exists(c,c.node_path.endsWith("/check_parent"))
+  - type: cel_true
+    expr: outputs.failed.documents.exists(k,k.startsWith("error/children/") && k.endsWith("probe.log"))
+  inputs:
+    target_cell: root

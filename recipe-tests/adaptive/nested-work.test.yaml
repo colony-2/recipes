@@ -1,0 +1,216 @@
+recipe: nested-work.yaml
+cases:
+- id: nested-agreement-becomes-executable-without-dispatch-advice
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          README.md: Parent
+        file_sources:
+          .c2/recipes/dependency.yaml: ../fixtures/build-dependency.yaml
+      B:
+        files:
+          README.md: Advisor
+      C:
+        files:
+          README.md: Actual API owner
+    secrets:
+      codex_api_key: synthetic
+  mocks:
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: B
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: continue
+            thinking: Answer and accepted scope.
+            files:
+            - path: iter1/consultant/B.md
+              description: Accepted scope
+            requests:
+            - action: consult
+              cell: C
+              request: Agree the API repair.
+        artifacts:
+          iter1/consultant/B.md: '# Scope and required checks'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                session_id: B
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: C
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: agreed
+            thinking: Answer and accepted scope.
+            files:
+            - path: iter1/consultant/C.md
+              description: Accepted scope
+        artifacts:
+          iter1/consultant/C.md: '# Scope and required checks'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                session_id: C
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: B
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: continue
+            thinking: Answer and accepted scope.
+            files:
+            - path: iter2/consultant/B.md
+              description: Accepted scope
+            requests:
+            - action: execute
+              cell: C
+              request: Implement the agreed API repair.
+        artifacts:
+          iter2/consultant/B.md: Delegate the accepted repair.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                session_id: B
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: size(outputs.consult.records)==2 && outputs.consult.records[0].result.outcome == "work_requested" &&
+      outputs.consult.records[1].target.cell == "C"
+  - type: cel_true
+    expr: outputs.result.records[0].result.status == "completed" && outputs.execute.records[0].cell == "C"
+  - type: cel_true
+    expr: size(calls.filter(c,c.op=="recipes.run"))==1 && size(calls.filter(c,c.op=="extension_execution"))==3 &&
+      size(reviews)==0
+- id: agreed-consultation-can-return-execution-needs
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          README.md: Parent
+        file_sources:
+          .c2/recipes/dependency.yaml: ../fixtures/build-dependency.yaml
+      B:
+        files:
+          README.md: Advisor
+      C:
+        files:
+          README.md: Actual API owner
+    secrets:
+      codex_api_key: synthetic
+  mocks:
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: B
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: continue
+            thinking: Answer and accepted scope.
+            files:
+            - path: iter1/consultant/B.md
+              description: Accepted scope
+            requests:
+            - action: consult
+              cell: C
+              request: Agree the API repair.
+        artifacts:
+          iter1/consultant/B.md: '# Scope and required checks'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                session_id: B
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: C
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: agreed
+            thinking: Answer and accepted scope.
+            files:
+            - path: iter1/consultant/C.md
+              description: Accepted scope
+        artifacts:
+          iter1/consultant/C.md: '# Scope and required checks'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                session_id: C
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: B
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: agreed
+            thinking: Answer and accepted scope.
+            files:
+            - path: iter2/consultant/B.md
+              description: Accepted scope
+            requests:
+            - action: execute
+              cell: C
+              request: Implement the agreed API repair.
+        artifacts:
+          iter2/consultant/B.md: Delegate the accepted repair.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                session_id: B
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: size(outputs.consult.records)==2 && outputs.consult.records[0].result.outcome == "agreed" &&
+      outputs.consult.records[1].target.cell == "C"
+  - type: cel_true
+    expr: outputs.result.records[0].result.status == "completed" && outputs.execute.records[0].cell == "C"
+  - type: cel_true
+    expr: size(calls.filter(c,c.op=="recipes.run"))==1 && size(calls.filter(c,c.op=="extension_execution"))==3 &&
+      size(reviews)==0

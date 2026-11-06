@@ -5,7 +5,7 @@ Current flow selected by [build.yaml](build.yaml), implemented in
 boxes group work and diamonds show decisions. Agents determine how to do the work;
 the recipe controls phase transitions, prerequisite coordination, validation gates,
 review, and publication. Authorized implementation agents can also submit bounded
-validation attempts; the recipe monitors their goals and collects successful results automatically.
+validation jobs; the recipe returns their results and failures to the parent automatically.
 
 ## Main workflow
 
@@ -24,8 +24,10 @@ flowchart TD
     PlanOK -->|Yes| Work[Implement, run bounded validation, and coordinate agreed child work]
     Work -->|Scope needs redesign| Context
     Work -->|Explicit product question| Direction{Specific human decision}
-    Work -->|Unexplained blocker or exhausted bound| Operational[Attempt stops; authorized recovery within its goal]
-    Work -->|Missing development tools| Packages[Authorize packages; validate child goal; adopt config]
+    Work -->|Child failure or unexplained blocker| Recover[Parent diagnoses; repairs locally or requests a fresh child]
+    Recover --> Work
+    Recover -->|Three unchanged repairs or explicit cap| Operational[Preserve work and report the concrete unmet need]
+    Work -->|Missing development tools| Packages[Authorize packages; validate separate child job; adopt config]
     Packages --> Work
     Direction -->|Answer or request changes| Work
     Direction -->|Cancel| Cancelled
@@ -45,7 +47,7 @@ flowchart TD
     Assess --> Assessed{Assessment outcome?}
     Assessed -->|Repair or missing validation| Work
     Assessed -->|Actionable capability finding| Work
-    Assessed -->|Repeated unchanged finding| Operational
+    Assessed -->|Repeated unchanged finding| Recover
     Assessed -->|Approved| Summary[Prepare one decision brief with outcomes, evidence, limitations, and supporting links]
     Summary --> SummaryOK{Evidence and accounting sufficient?}
     SummaryOK -->|No| Work
@@ -69,15 +71,18 @@ flowchart TD
 ```
 
 - **Review:** normally one human outcome review; design has no routine approval gate.
-  Specific agent questions can request earlier direction. Iteration limits stop
-  the attempt for goal recovery without asking a product reviewer.
+  Specific unresolved decisions can request earlier direction with a current brief.
   Revision needs feedback or uploaded edits; acceptance with edits returns to work.
-- **Intervention:** package requests use authorization and validation before resuming.
-  Actionable capability findings return to the working agent first. Explicit product
-  questions can request human direction; unexplained technical blockers and exhausted
-  bounds produce operational failures. Codex decides implementation versus design.
-  Failed job attempts leave goal waits pending for authorized recovery; explicit goal
-  failure or a semantically failed validation result remains blocking.
+- **Recovery:** ordinary debugging belongs to the working agent. Failed children,
+  invalid target refs, preparation errors, and unexplained blockers return to the
+  parent with their available diagnostics. A corrected execution request submits a
+  fresh job under the same agreement, starting from the normal target ref. It carries
+  original inputs and corrected instructions, without the failed child's unpublished
+  changes or session. Cancellation stays distinct and never triggers an automatic retry.
+  Three unsuccessful correction turns with the same reason and unchanged candidate
+  produce an actionable operational handoff. The default has no fixed implementation
+  turn cap; runtime budgets still apply. An explicit `max_iterations` counts substantive
+  implementation turns, excluding planning, coordination, and response correction.
 - **Formal evidence:** test statements have stable IDs, expectations, filenames,
   importance, test level, and dependencies. Implementation reports results against
   that baseline; changing the plan requires redesign and preserves existing expectations.
@@ -106,53 +111,63 @@ flowchart TD
     Resolve --> Agreement
     Agreement -->|Yes| Phase{Implementation phase?}
     Phase -->|No| Record[Record agreement; continue planning]
-    Phase -->|Yes| Known{Execution goal already recorded?}
-    Known -->|Yes| Reuse[Refresh and wait for the recorded goal]
+    Phase -->|Yes| Known{Execution job already recorded?}
+    Known -->|Yes| Reuse[Inspect the recorded job]
     Known -->|No| Launch[Recipe starts child build or root-owned creation job]
     Launch --> Independent[Continue independent local work]
     Independent --> Wait[Recipe waits when blocked and before completion]
     Reuse --> Wait
-    Wait --> Success{Required goal succeeded?}
-    Success -->|No| Repair[Reconcile failure; completion remains blocked]
+    Wait --> Success{Required assignment completed?}
+    Success -->|No| Repair[Parent diagnoses and requests corrected fresh execution]
+    Repair --> Launch
     Success -->|Yes| Resume[Resume parent with durable outcome and evidence]
 ```
 
 **Serving agreement is mandatory before prerequisite submission.** The recipe assigns
 agreement references; agents use them only when requesting execution. Native state
 outputs retain agreement and submission records, without carried status maps. Mixed
-independent requests are allowed. Reusing execution waits for its recorded goal.
-Consultations can request downstream owner advice and resume without human scheduling. Creation retains root-owned approval and readiness
+independent requests are allowed. Re-entry follows the recorded job. A successful
+replacement satisfies its assignment; unrelated required children remain tracked.
+Factual answers end consultations. Requests for downstream advice stay inline;
+implementation needs and accepted nested agreements return to the coordinator.
+Returning from foreign advice restores the requester’s managed candidate, including
+unpublished changes. It does not fetch that candidate SHA from upstream. Creation retains root-owned approval and readiness
 requirements; creating a cell does not implement the original feature request.
 Creation must be requested explicitly. Inaccessible workspaces return for investigation
 and do not silently become root-cell creation requests.
 
 ### Agent-submitted validation
 
-The test plan identifies the actor, authority, bounded invocation, and required
-evidence for validation. During implementation, an agent may submit the assigned
-c2j validation jobs when permitted by its task and current token. It checks
-`c2j self` for permissions, availability, routes, and inherited child restrictions,
-and `c2j submit --help` for submission details. `c2j cells` provides related-cell
-discovery. Missing capabilities require intervention rather than weaker verification.
+The test plan identifies the bounded invocation and evidence needed to establish the
+requested outcome. During implementation, agents use `c2j self` to discover the task's
+connection, routes, and available actions, and `c2j submit --help` for submission
+syntax. Missing optional metadata is not an additional acceptance requirement.
 
-c2j automatically records jobs submitted as children of the task. The recipe
-reads those outputs, deduplicates goal IDs, waits for goal success, and attaches
-the successful attempt’s artifacts and status under `inbox/goals/validation-<goal-id>/`.
-Native goal IDs are required; there is no job-ID fallback. The agent does not
-maintain a second list of IDs. A failed attempt
-is repairable while its goal remains open; an explicitly failed goal or semantic
-validation failure blocks completion.
+c2j automatically records child submissions. The recipe consumes their native job
+IDs, inspects every tracked job, and returns available terminal results before
+waiting. Results appear under `inbox/results/<job>/`, with exported files under
+`artifacts/`; original failures appear under `inbox/error/children/<job>/`.
+A failed execution is returned even if its goal remains OPEN. Pending siblings
+remain tracked. If all children are pending, the current runtime can wait only on
+one; prompt wakeup on any child completion needs the runtime addition described in
+[recovery runtime requirements](guides/REQUIREMENTS_C2J_PARENT_RECOVERY.md).
 
-This permission applies to bounded validation during implementation. Planning,
-read-only review, consultation, and response correction cannot submit jobs.
-Project prerequisite builds and cell creation still use serving consultation and
-the coordinator's recorded agreements. Working agents receive explicit package
-request instructions. Exact policy lives in `package-policy.yaml`. Prior refusals
-and approvals come from native package-state outputs; changed probes need a fresh
-decision. Authorization precedes isolated validation and adoption. Failed goals
-provide actual attempt diagnostics; setup failures before agent launch remain
-operational recovery within the goal. See the
-[gap-closure assessment](guides/ASSESSMENT_ADAPTIVE_GAP_CLOSURE.md).
+Planning, consultation, read-only review, and response correction cannot submit
+jobs. Project prerequisites use the coordinator's accepted agreements. Small direct
+validation jobs use the same failure delivery, after which the parent can validate
+locally or submit another corrected experiment. No intermediate child files or
+sessions are retrieved; exported final results and the original failure envelope
+are the available evidence.
+
+Persistent worker tools use `packages: [{reference: ..., check: [...]}]`, for example
+`check: [go, version]` or `check: [ruff, --version]`. The cell's
+`.c2/recipes/hooks/build/package-policy.yaml` can approve exact reference/probe pairs;
+other requests get a focused approval. Validation stages the proposed configuration
+in a separate child. The parent adopts it only after a successful matching probe and
+only if its own configuration has not changed. Bad package setup leaves management
+usable. A corrected probe is a fresh validation job and can use an explicit policy
+approval. Memory/Docker requests currently return their precise unmet need; dynamic
+execution-requirement adoption still needs c2j and provisioner support.
 
 ## Native rebase recovery and upstream advancement
 
@@ -208,7 +223,7 @@ paths relative to it.
   working directory, and timestamped output with stream labels. Additional setup
   and probe diagnostics remain individually accessible. Recipe summaries, returned
   files, and native diagnostic sets occupy separate subdirectories; original file
-  paths are preserved. Failed goal attempts each get their own directory, and logs
+  paths are preserved. Child jobs each get their own directory, and logs
   are collected from their native failure envelope as well as returned artifacts.
 - `inbox/verification/` uses the same layout for successful check evidence. Hook
   filenames cannot overwrite the generated summary or approved work documents.
@@ -234,7 +249,10 @@ unversioned and already pass native values directly. See the
 [shared prompt notes](guides/IMPLEMENTATION_SHARED_PROMPTS.md).
 
 The adaptive entry and its local helpers do not include kernel recipes. Serving
-agreement asks humans only for explicit decisions; exhausted correction stops
-the attempt for recovery. Every review uses a current brief plus its cited and
+agreement asks humans only for explicit decisions; failures return to the parent
+for correction before an exhausted recovery becomes a concrete handoff. Every review uses a current brief plus its cited and
 required evidence, excluding stale briefs and unrelated history. External child
 build and root-creation jobs remain explicit integration boundaries.
+
+See the [implementation assessment](guides/ASSESSMENT_AGENT_AUTONOMY_AND_PARENT_RECOVERY.md)
+for verified paths, runtime limitations, and differences from the approved plan.

@@ -126,9 +126,9 @@ state:
     normalize:
       include: ./artifact-result.yaml
       inputs:
-        result: '${{ (inputs.read_only ? (size(inputs.session) > 0 ? states.resume_read_only_session : states.start_read_only_session)
-          : (size(inputs.session) > 0 ? states.resume_implementation_session : states.start_implementation_session)).outputs
-          }}'
+        result: '${{ jq((inputs.read_only ? (size(inputs.session) > 0 ? states.resume_read_only_session : states.start_read_only_session)
+          : (size(inputs.session) > 0 ? states.resume_implementation_session : states.start_implementation_session)).outputs,
+          ''.response |= walk(if type == "object" then with_entries(select(.value != null)) else . end)'') }}'
         artifacts: "${{ jq([inputs.retained_artifacts, (inputs.read_only ? (size(inputs.session) > 0 ? states.resume_read_only_session
           : states.start_read_only_session) : (size(inputs.session) > 0 ? states.resume_implementation_session : states.start_implementation_session)).artifacts],
           'add') }}"
@@ -151,11 +151,11 @@ outputs:
     : (size(inputs.session) > 0 ? states.resume_implementation_session : states.start_implementation_session)).outputs.?response.orValue({})
     }}'
   checkpoint: ${{ states.normalize.outputs.result.?session.orValue(inputs.session) }}
+  repair_documents: ${{ states.normalize.outputs.repair_documents }}
 catch:
 - when: failure.kind != 'cancellation'
   fail:
     code: AGENT_EXECUTION_RECOVERY_REQUIRED
-    message: ${{ 'Agent execution could not start or complete for goal ' + context.workflow.goal_id + '. Inspect the
-      original preparation/execution diagnostics, correct the responsible recipe or execution setup, then restart its recorded scope in the same goal.
-      Prior work and package authorization remain recorded. ' + failure.message }}
+    message: ${{ 'Agent execution could not start or complete in job ' + context.workflow.job_id + '. The parent can use
+      the original diagnostic to correct the request or environment and submit a fresh job. ' + failure.message }}
     cause: ${{ failure }}

@@ -1,0 +1,46 @@
+schema_version: 2
+id: response-schema-contract
+input_schema:
+  family:
+    type: string
+    required: true
+  participant:
+    type: string
+    default_value: consultant
+  response:
+    type: object
+    required: true
+inputs:
+  family: ${{ inputs.family }}
+  participant: ${{ inputs.participant }}
+  response: ${{ inputs.response }}
+sequence:
+- id: schemas
+  include: ../../recipes/response-schemas.yaml
+  inputs:
+    participant: ${{ inputs.participant }}
+- id: validate
+  op: command_execution
+  artifacts:
+    response.json:
+      kind: value
+      name: response.json
+      format: json
+      value: ${{ inputs.response }}
+    schema.json:
+      kind: value
+      name: schema.json
+      format: json
+      value: ${{ sequence.schemas.outputs[inputs.family] }}
+  inputs:
+    env:
+      INBOX: ${{ context.environment.op.inbox }}
+    run: jsonschema --instance "$INBOX/response.json" "$INBOX/schema.json"
+    continue_on_error: true
+  execution_needs:
+    packages:
+    - nix:github:NixOS/nixpkgs/e7439b6b14ad3cc35d05608ebca9bce01a25f5f8#python3Packages.jsonschema
+outputs:
+  ok: ${{ sequence.validate.outputs.success }}
+  exit_code: ${{ sequence.validate.outputs.exit_code }}
+  stderr: ${{ sequence.validate.outputs.stderr }}

@@ -1,0 +1,101 @@
+recipe: consultation-candidate.yaml
+cases:
+- id: requester-reads-unpublished-managed-candidate
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          candidate.txt: upstream
+      B:
+        files:
+          candidate.txt: owner-upstream
+    observe_files:
+    - candidate.txt
+    - experiment.txt
+    secrets:
+      codex_api_key: synthetic
+  mocks:
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: B
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: continue
+            thinking: Answer and accepted scope.
+            files:
+            - path: iter1/consultant/B.md
+              description: Accepted scope
+        artifacts:
+          iter1/consultant/B.md: '# Scope and required checks'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                session_id: B
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: continue
+            thinking: Answer and accepted scope.
+            files:
+            - path: iter2/requester/reply.md
+              description: Scope accepted
+        artifacts:
+          iter2/requester/reply.md: Agreed
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                session_id: root
+          worktree:
+            experiment.txt: discard
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: B
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: agreed
+            thinking: Answer and accepted scope.
+            files:
+            - path: iter2/consultant/B.md
+              description: Accepted scope
+        artifacts:
+          iter2/consultant/B.md: Final scope
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                session_id: B
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: result.outcome
+    value: agreed
+  - type: cel_true
+    expr: calls.exists(c,c.op == "extension_execution" && c.cell == "root" &&
+      c.worktree["candidate.txt"].contains("unpublished-requester-change"))
+  - type: cel_true
+    expr: size(reviews)==0 && !calls.exists(c,c.op == "recipes.run")

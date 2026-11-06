@@ -56,12 +56,12 @@ cases:
         mode: return
         outputs: &id003
           status: completed
-          goal_id: goal-1
           outputs:
             outcome: agreed
             final_artifacts: {}
             requester_session: {}
             continuation: *id001
+          job_id: attempt-1
       repeat: true
       optional: true
     - match:
@@ -76,7 +76,7 @@ cases:
     expr: outputs.result.records[0].action == "execute" && outputs.result.records[1].action == "consult"
   - type: cel_true
     expr: size(reviews) == 0
-- id: repeat-execution-uses-goal
+- id: repeat-execution-follows-recorded-job
   type: integration_case
   inputs:
     requests:
@@ -113,9 +113,9 @@ cases:
         mode: return
         outputs:
           status: completed
-          goal_id: goal-1
           outputs:
             merged: true
+          job_id: attempt-1
       repeat: true
       optional: true
   assertions:
@@ -124,7 +124,7 @@ cases:
   - type: cel_true
     expr: size(calls.filter(c,c.op == "recipes.run")) == 1
   - type: cel_true
-    expr: outputs.result.records[1].action == "await" && outputs.result.records[1].goal_id == "goal-1"
+    expr: outputs.result.records[1].action == "await" && outputs.result.records[1].job_id == "attempt-1"
 - id: two-requests-one-owner
   type: integration_case
   inputs:
@@ -227,7 +227,6 @@ cases:
       behavior:
         mode: return
         outputs:
-          goal_id: goal-1
           status: completed
           outputs:
             disposition: created
@@ -237,6 +236,7 @@ cases:
               repo: https://example.test/new-owner.git
               ref: main
               revision: abcdef
+          job_id: attempt-1
       repeat: true
       optional: true
   assertions:
@@ -244,3 +244,139 @@ cases:
     expr: outputs.result.valid && outputs.result.records[0].ready && outputs.result.records[0].action=="create"
   - type: cel_true
     expr: calls.filter(c,c.op=="recipes.run")[0].inputs.recipes[0].cell_name=="root" && size(reviews)==0
+- id: cancelled-child-is-not-resubmitted
+  type: integration_case
+  inputs:
+    requests:
+    - action: execute
+      agreement: accepted
+      request: Try the same assignment again.
+    history:
+    - action: consult
+      reference: accepted
+      request:
+        kind: feature
+        cell: owner
+        ref: main
+        request: Build agreed API
+      target:
+        cell: owner
+        ref: main
+      result:
+        outcome: agreed
+        final_artifacts: {}
+        continuation:
+          kind: value
+          name: conversation.json
+          format: json
+          value: {}
+    - action: execute
+      agreement: accepted
+      job_id: attempt-1
+      cell: owner
+  runtime:
+    cells:
+      root:
+        files:
+          README.md: root
+      owner:
+        files:
+          README.md: owner
+  mocks:
+    ops:
+    - match:
+        op: recipe.await_result_soft
+      behavior:
+        mode: return
+        outputs:
+          job_id: attempt-1
+          status: cancelled
+          terminal: true
+          failure_kind: cancellation
+          failure_message: Cancelled by the owner.
+      repeat: true
+      optional: true
+  assertions:
+  - type: cel_true
+    expr: outputs.result.valid && outputs.result.records[0].result.status == "cancelled" && !calls.exists(c,c.op ==
+      "recipes.run")
+- id: invalid-target-ref-preserves-resolution-error
+  type: integration_case
+  inputs:
+    requests:
+    - action: consult
+      cell: owner
+      ref: branch-that-does-not-exist
+      request: Clarify the API.
+    history: []
+  runtime:
+    cells:
+      root:
+        files:
+          README.md: root
+      owner:
+        files:
+          README.md: owner
+  mocks:
+    ops: []
+  assertions:
+  - type: cel_true
+    expr: '!outputs.result.valid && outputs.result.issues[0].contains("branch-that-does-not-exist")'
+  - type: cel_true
+    expr: '!calls.exists(c,c.op == "recipes.run") && size(reviews)==0'
+- id: completed-child-cancelled-outcome-is-not-resubmitted
+  type: integration_case
+  inputs:
+    requests:
+    - action: execute
+      agreement: accepted
+      request: Try the same assignment again.
+    history:
+    - action: consult
+      reference: accepted
+      request:
+        kind: feature
+        cell: owner
+        ref: main
+        request: Build agreed API
+      target:
+        cell: owner
+        ref: main
+      result:
+        outcome: agreed
+        final_artifacts: {}
+        continuation:
+          kind: value
+          name: conversation.json
+          format: json
+          value: {}
+    - action: execute
+      agreement: accepted
+      job_id: attempt-1
+      cell: owner
+  runtime:
+    cells:
+      root:
+        files:
+          README.md: root
+      owner:
+        files:
+          README.md: owner
+  mocks:
+    ops:
+    - match:
+        op: recipe.await_result_soft
+      behavior:
+        mode: return
+        outputs:
+          job_id: attempt-1
+          status: completed
+          terminal: true
+          outputs:
+            disposition: cancelled
+      repeat: true
+      optional: true
+  assertions:
+  - type: cel_true
+    expr: outputs.result.valid && outputs.result.records[0].result.outputs.disposition == "cancelled" &&
+      !calls.exists(c,c.op == "recipes.run")

@@ -188,3 +188,22 @@ Use the fastest tool that answers the question you have:
 See [producer descriptors and deployment activation](REVIEW_ARTIFACT_ANNOTATIONS.md)
 for optional review presentation. Production remains legacy until the actual
 supporting c2j release and deployment compatibility are verified.
+
+## Adaptive recovery regression tests
+
+When changing child orchestration, run `recipe-tests/adaptive/parent-recovery.test.yaml`
+and `required-jobs.test.yaml`: these create a real failing child, submit a fresh
+corrected execution, and verify normal starting state and parent continuity.
+`consultation-candidate.test.yaml` tests unpublished requester restoration;
+`response-files.test.yaml` reads original repair evidence; `package-recovery.test.yaml`
+executes bad/corrected probes and invalid package setup.
+
+Response schemas live in `recipes/response-schemas.yaml`, an empty include.
+Optional provider fields are required nullable values; `agent-turn.yaml` normalizes
+nulls before routing. `response-schema.test.yaml` checks actual schemas and invalid
+values. The explicit `response-schema-native.live.yaml` suite checks native provider
+acceptance with repair/fallback disabled and requires configured authentication.
+A mock returning `output_schema_valid: true` is not evidence of schema acceptance.
+
+See the [implementation assessment](ASSESSMENT_AGENT_AUTONOMY_AND_PARENT_RECOVERY.md)
+for runtime limitations, including any-child wakeup and dynamic environment needs.

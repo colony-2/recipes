@@ -1,0 +1,79 @@
+id: adaptive-child-results
+inputs:
+  jobs: ${{ inputs.?jobs.orValue({}) }}
+  allowed: ${{ inputs.allowed }}
+  pending: ${{ inputs.?pending.orValue([]) }}
+  targets: ${{ jq(inputs.jobs.?job_ids.orValue([]) + inputs.?pending.orValue([]), 'unique') }}
+state:
+  initial: scan
+  states:
+    scan:
+      sequence: []
+      inputs:
+        index: ${{ transition.payload.?index.orValue(0) }}
+      outputs:
+        index: ${{ inputs.index }}
+      transitions:
+      - to: inspect
+        when: inputs.allowed && outputs.index < size(inputs.targets)
+      - to: choose
+        when: true
+    inspect:
+      include: ./await-child.yaml
+      inputs:
+        job: ${{ inputs.targets[states.scan.outputs.index] }}
+        return_when: current_status
+      transitions:
+      - to: scan
+        when: true
+        payload:
+          index: ${{ states.scan.outputs.index + 1 }}
+    choose:
+      sequence: []
+      inputs:
+        allowed: ${{ inputs.allowed }}
+        targets: ${{ inputs.targets }}
+        inspected: "${{ state_exists('inspect') ? states.inspect.runs.map(r,r.outputs) + [states.inspect.outputs] : [] }}"
+      outputs:
+        ready: ${{ inputs.inspected.filter(r,r.result.status in ['completed','failed','cancelled','timed_out']) }}
+        pending: "${{ inputs.allowed ? inputs.inspected.filter(r,!(r.result.status in
+          ['completed','failed','cancelled','timed_out'])).map(r,r.result.job_id) : inputs.targets }}"
+      transitions:
+      - to: wait
+        when: inputs.allowed && size(outputs.ready) == 0 && size(outputs.pending) > 0
+      - to: collect
+        when: true
+    wait:
+      include: ./await-child.yaml
+      inputs:
+        job: ${{ states.choose.outputs.pending[0] }}
+      transitions:
+      - to: collect
+        when: true
+    collect:
+      sequence: []
+      inputs:
+        ready: "${{ state_exists('wait') ? [states.wait.outputs] : states.choose.outputs.ready }}"
+      outputs:
+        results: ${{ jq(inputs.ready, '[.[] | .result]') }}
+        documents: ${{ jq(inputs.ready, vars.documents) }}
+outputs:
+  results: ${{ states.collect.outputs.results }}
+  documents: ${{ states.collect.outputs.documents }}
+  failed: ${{ states.collect.outputs.results.exists(r,r.status != 'completed' ||
+    r.?outputs.orValue({}).?ok.orValue(true) == false || r.?outputs.orValue({}).?status.orValue('passed') in
+    ['failed','cancelled']) }}
+  pending: ${{ jq({'pending':states.choose.outputs.pending,'results':states.collect.outputs.results}, '. as $v |
+    [(.pending // [])[] | . as $id | select($v.results | any(.job_id == $id) | not)]') }}
+vars:
+  documents: |
+    map(. as $child | .result as $r |
+      (($r.outputs.artifact_refs // {}) + ($r.outputs.final_artifacts // {}) |
+        with_entries(.key = ("results/" + $r.job_id + "/artifacts/" + .key) | .value.name = .key)) +
+      {("results/" + $r.job_id + "/status.md"): {kind:"value",name:"status.md",format:"text",value:
+        ("Child job: " + $r.job_id + "\nStatus: " + $r.status + "\n" + (($r.failure_message // "")[:2000]) +
+         ([$r.outputs.disposition // $r.outputs.status // (if $r.outputs.ok == false then "failed" else "" end), $r.outputs.assistant_summary // $r.outputs.summary // ""] |
+          if .[0] != "" or .[1] != "" then "\nAssignment outcome: " + (.[0] | tostring) + "\n" + (.[1] | tostring | .[:2000]) else "" end) +
+         (if $r.outputs == null then "\nNo final recipe outputs were produced." else "" end))}} +
+      ($child.errors | with_entries(.key = ("error/children/" + $r.job_id + "/" + (.key | ltrimstr("error/"))) | .value.name = .key))) |
+      (add // {}) | with_entries(.value.name = .key)

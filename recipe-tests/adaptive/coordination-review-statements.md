@@ -1,10 +1,12 @@
+Superseded lifecycle expectations are updated by [the recovery statements](recovery-statements.md).
+
 # Coordination, reviews, and package request expectations
 
 Defined before implementation; preserve existing expectations.
 
 | ID | Priority | Level / dependencies | Statement | Files |
 | --- | --- | --- | --- | --- |
-| CR-01 | Critical | Integration / c2j goals | Prerequisites and validation wait for goal success and consume the successful replacement attempt's evidence. | coordinate.yaml, validation-goals.yaml |
+| CR-01 | Critical | Integration / c2j child jobs | Prerequisites and validation return exact job results; corrected replacement jobs can satisfy the assignment. | coordinate.yaml, child-results.yaml |
 | CR-02 | Critical | Integration / c2j | Repeating an existing execution request waits without duplicate submission or another unchanged work turn. | coordinate.yaml, develop.yaml |
 | CR-03 | High | Integration / mocked Codex | Agents request consultation and execution without inventing or repeating prerequisite keys; advisory agreements impose no implementation obligation. | agent.yaml, develop.yaml |
 | CR-04 | High | Integration / mocked Codex | Consultation can request downstream advice and resume with its result without human scheduling. | consultation.yaml |
@@ -14,8 +16,8 @@ Defined before implementation; preserve existing expectations.
 | CR-08 | Critical | Integration / c2j artifacts | Returning unchanged test expectations succeeds; changed expectations require redesign rather than silent acceptance. | develop.yaml |
 | CR-09 | Critical | Integration / package manager | Requested packages install only after policy authorization or explicit approval; failed validation leaves the parent's config unchanged. | packages.yaml, package-check.yaml |
 | CR-10 | Critical | Integration / package manager | Successful package validation adopts the exact approved config and resumes blocked work; concurrent config changes prevent overwrite. | packages.yaml |
-| CR-11 | High | Integration / mocked Codex | Agents receive the package-request syntax and goal-oriented monitoring instructions, including limits on direct child execution. | prompts.yaml |
-| CR-12 | Critical | Integration / c2j | Failed attempts do not fail an open goal; explicitly failed goals remain blocking and never masquerade as success. | coordinate.yaml, validation-goals.yaml |
+| CR-11 | High | Integration / mocked Codex | Agents receive the package-request syntax and exact-job monitoring instructions, including limits on direct child execution. | prompts.yaml |
+| CR-12 | Critical | Integration / c2j | Failed jobs reach the parent despite open goals; cancelled jobs never masquerade as success. | coordinate.yaml, child-results.yaml |
 | CR-13 | Critical | Integration / c2j, mocked Codex | Top-level, nested, and repository-custom consultations return advice within one job, preserving each participant's workspace and session. | coordinate.yaml, consultation.yaml |
 | CR-14 | Critical | Integration / c2j, mocked Codex | Nested siblings and deeper advice resume the correct suspended conversation; bounded failures never become agreements. | consultation.yaml |
 | CR-15 | High | Integration / c2j | Custom consultation recipes run inline in participant workspaces; invalid sources fail visibly instead of silently selecting another recipe. | coordinate.yaml |

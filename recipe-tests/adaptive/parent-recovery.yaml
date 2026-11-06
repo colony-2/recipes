@@ -1,0 +1,127 @@
+id: native-parent-recovery
+sequence:
+- id: parent_work
+  op: command_execution
+  inputs:
+    run: echo retained-parent-work > parent-only.txt
+- id: first
+  include: ../../recipes/adaptive/coordinate.yaml
+  inputs:
+    phase: implement
+    root_cell: root
+    root_ref: main
+    consultation_recipe: unused
+    build_recipe: delivery
+    create_recipe: unused
+    session: {}
+    documents: {}
+    prefix: first
+    requests:
+    - action: execute
+      agreement: accepted
+    history:
+    - &id001
+      action: consult
+      reference: accepted
+      request:
+        kind: feature
+        cell: ${{ inputs.target_cell }}
+        ref: main
+        request: Verify the delivery probe.
+      target:
+        cell: ${{ inputs.target_cell }}
+        ref: main
+      result:
+        outcome: agreed
+        final_artifacts: {}
+        continuation:
+          kind: value
+          name: conversation.json
+          format: json
+          value: {}
+- id: failed
+  include: ../../recipes/adaptive/coordinate.yaml
+  inputs:
+    phase: implement
+    root_cell: root
+    root_ref: main
+    consultation_recipe: unused
+    build_recipe: delivery
+    create_recipe: unused
+    session: {}
+    documents: {}
+    prefix: failed
+    requests:
+    - action: await
+      job: ${{ sequence.first.outputs.records[0].job_id }}
+    history: ${{ sequence.first.outputs.records }}
+- id: replacement
+  include: ../../recipes/adaptive/coordinate.yaml
+  inputs:
+    phase: implement
+    root_cell: root
+    root_ref: main
+    consultation_recipe: unused
+    build_recipe: delivery
+    create_recipe: unused
+    session: {}
+    documents: {}
+    prefix: replacement
+    requests:
+    - action: execute
+      agreement: accepted
+      request: Use the corrected probe. Start again from the normal checkout.
+    history: ${{ [vars.agreement] + sequence.first.outputs.records + sequence.failed.outputs.records }}
+- id: completed
+  include: ../../recipes/adaptive/coordinate.yaml
+  inputs:
+    phase: implement
+    root_cell: root
+    root_ref: main
+    consultation_recipe: unused
+    build_recipe: delivery
+    create_recipe: unused
+    session: {}
+    documents: {}
+    prefix: completed
+    requests:
+    - action: await
+      job: ${{ sequence.replacement.outputs.records[0].job_id }}
+    history: ${{ sequence.replacement.outputs.records }}
+- id: repeat
+  include: ../../recipes/adaptive/coordinate.yaml
+  inputs:
+    phase: implement
+    root_cell: root
+    root_ref: main
+    consultation_recipe: unused
+    build_recipe: delivery
+    create_recipe: unused
+    session: {}
+    documents: {}
+    prefix: repeat
+    requests:
+    - action: execute
+      agreement: accepted
+      request: Use the corrected probe. Start again from the normal checkout.
+    history: ${{ [vars.agreement] + sequence.first.outputs.records + sequence.failed.outputs.records +
+      sequence.replacement.outputs.records + sequence.completed.outputs.records }}
+- id: check_parent
+  op: command_execution
+  inputs:
+    run: "test -f parent-only.txt\ntest ! -f unfinished-child.txt\ntest ! -f child-success.txt\n"
+vars:
+  agreement: *id001
+outputs:
+  first: ${{ sequence.first.outputs }}
+  failed: ${{ sequence.failed.outputs }}
+  replacement: ${{ sequence.replacement.outputs }}
+  completed: ${{ sequence.completed.outputs }}
+  repeat: ${{ sequence.repeat.outputs }}
+inputs:
+  target_cell: ${{ inputs.?target_cell.orValue('owner') }}
+schema_version: 2
+input_schema:
+  target_cell:
+    type: string
+    default_value: owner

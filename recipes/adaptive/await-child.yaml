@@ -1,0 +1,23 @@
+id: adaptive-await-child
+inputs:
+  job: ${{ inputs.job }}
+  return_when: ${{ inputs.?return_when.orValue('terminal') }}
+sequence:
+- id: wait
+  op: recipe.await_result_soft
+  inputs:
+    target:
+      job: ${{ inputs.job }}
+    wait:
+      on: job
+      condition: complete
+    return_when: ${{ inputs.return_when }}
+- id: errors
+  include: ./error-documents.yaml
+  inputs:
+    summary: ${{ sequence.wait.outputs.?failure_message.orValue('The child did not complete its assignment. No final result was exported.') }}
+    artifacts: ${{ sequence.wait.outputs.?artifacts.orValue({}) }}
+    failure: ${{ sequence.wait.outputs.?outputs.orValue({}) }}
+outputs:
+  result: ${{ sequence.wait.outputs }}
+  errors: "${{ sequence.wait.outputs.status in ['completed','running','waiting','unknown'] ? {} : sequence.errors.outputs.documents }}"

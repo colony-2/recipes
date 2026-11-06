@@ -7,6 +7,11 @@ Copy the hooks you need into `.c2/recipes/hooks/build/` in the consuming reposit
 The shared build invokes them with `cell://`; these example files are not discovered
 by filename alone. Replace example commands with your repository's commands.
 
+- `package-policy.yaml` approves exact worker-tool reference/probe pairs. Other requests
+  receive a specific approval. Policy is read from the normal cell ref; unreviewed
+  candidate edits cannot approve their own probes. Changing a probe is covered only if the policy permits
+  that exact new pair. Approved candidates are validated in a separate child before
+  adoption. `go version` and `ruff --version` deliberately have different arguments.
 - `configure.yaml` adds phase guidance, named values, and required security assessments.
 - `before_design.yaml` runs research before each design round. Emit findings in the
   outbox and export their references in `artifact_refs` to supply them to the designer.

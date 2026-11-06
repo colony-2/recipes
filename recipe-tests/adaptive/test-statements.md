@@ -14,7 +14,7 @@ before implementation; dependencies are recorded per statement.
 | A07 | Critical | integration | c2j, Git, Nix | Upstream advancement triggers bounded native rebases; equivalent changes reuse approval after fresh verification. | recipes/adaptive/develop.yaml |
 | A08 | Critical | integration | c2j, Git, Nix | Changed candidates or verification policy invalidate reused approval; ordinary merge errors never trigger an upstream retry. | recipes/adaptive/develop.yaml |
 | A09 | Critical | integration | c2j, Git, Nix | Publication failure after merge never reports successful completion or repeats the completed merge. | recipes/adaptive/develop.yaml |
-| A10 | Critical | integration | c2j, Git, Nix | Serving agreement precedes child submission; repeated execution references never duplicate goals; failed prerequisites block completion. | recipes/adaptive/coordinate.yaml |
+| A10 | Critical | integration | c2j, Git, Nix | Serving agreement precedes child submission; repeated execution references follow recorded jobs; failed prerequisites block completion. | recipes/adaptive/coordinate.yaml |
 | A11 | High | integration | c2j, Git, Nix | Required specialists must pass; advisory findings remain visible without blocking the workflow. | recipes/adaptive/specialists.yaml |
 | A12 | High | integration | c2j, Git | Review uses defined documents and identity-bound annotations, prioritizing the overview, test expectations, results, and blocking findings. | recipes/adaptive/review.yaml |
 | A13 | High | integration | c2j, Git, Nix | Invalid responses receive bounded corrections; agent errors and unauthorized job creation do not silently pass. | recipes/adaptive/develop.yaml |

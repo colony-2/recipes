@@ -1,0 +1,32 @@
+id: response-files
+sequence:
+- id: agent
+  include: ../../recipes/adaptive/agent.yaml
+  inputs:
+    request: Explain validation.
+    target_directory: .
+    phase: implement
+- id: repair
+  include: ../../recipes/adaptive/response-repair.yaml
+  inputs:
+    turn: ${{ sequence.agent.outputs.turn }}
+    issues: ${{ sequence.agent.outputs.turn.issues }}
+    documents: {}
+- id: consume
+  op: command_execution
+  const: true
+  artifacts:
+    ./: ${{ sequence.repair.outputs.documents }}
+  inputs:
+    env:
+      INBOX: ${{ context.environment.op.inbox }}
+    run: |
+      set -eu
+      test -f "$INBOX/evidence/verify.log"
+      test -f "$INBOX/evidence/test-results.md"
+      test ! -e "$INBOX/downloads/unrelated.txt"
+      cat "$INBOX/evidence/verify.log" "$INBOX/evidence/test-results.md" "$INBOX/error/previous-response.json"
+outputs:
+  text: ${{ sequence.consume.outputs.stdout }}
+  original: ${{ sequence.agent.outputs.turn.artifacts }}
+  bound: ${{ sequence.repair.outputs.documents }}

@@ -21,12 +21,18 @@ state:
       - to: invalid
         when: (!nonempty(inputs.create_recipe) || !nonempty(inputs.root_cell)) &&
           inputs.requests.exists(r,r.?kind.orValue('') == 'create' || (r.action == 'execute' &&
-          inputs.history.exists(h,h.action == 'consult' && h.reference == r.agreement && h.request.kind == 'create')))
+          inputs.history.exists(h,h.action == 'consult' && h.reference == r.?agreement.orValue('') && h.request.kind ==
+          'create')))
       - to: invalid
         when: "size(inputs.requests) == 0 || inputs.requests.exists(r, r.action == 'consult' ? !nonempty(r.?request.orValue(''))
           || (!nonempty(r.?cell.orValue('')) && r.?kind.orValue('feature') == 'feature') : r.action == 'execute' ? inputs.phase
-          != 'implement' || !inputs.history.exists(h,h.action == 'consult' && h.reference == r.agreement && h.result.outcome
-          == 'agreed' && h.request.kind != 'expert') : r.action != 'await' || !nonempty(r.?goal.orValue('')))"
+          != 'implement' || !inputs.history.exists(h,h.action == 'consult' && h.reference == r.?agreement.orValue('') && h.result.outcome
+          == 'agreed' && h.request.kind != 'expert') : r.action != 'await' || !nonempty(r.?job.orValue('')))"
+      - to: invalid
+        when: inputs.requests.exists(r,r.action == 'await' && !inputs.history.exists(h,h.action == 'execute' &&
+          h.?job_id.orValue('') == r.?job.orValue('')))
+      - to: await_requested
+        when: inputs.requests.all(r,r.action == 'await')
       - to: pick
         when: true
     pick:
@@ -58,13 +64,35 @@ state:
       transitions:
       - to: invalid
         when: '!outputs.valid'
+        payload:
+          reason: ${{ outputs.target.?detail.orValue('Unable to resolve the requested cell or ref.') }}
       - to: creation_result
         when: "!outputs.ready || states.pick.outputs.request.?kind.orValue('feature') == 'create'"
+      - to: consult_fresh
+        when: inputs.consultation_recipe ==
+          'git+https://github.com/colony-2/recipes.git//recipes/adaptive/consultation.yaml@main' &&
+          size(state_output('record','session',inputs.session)) == 0
       - to: consult_inline
         when: inputs.consultation_recipe ==
           'git+https://github.com/colony-2/recipes.git//recipes/adaptive/consultation.yaml@main'
       - to: launch_consultation
         when: true
+    consult_fresh:
+      include: ./consultation.yaml
+      inputs:
+        thread: ${{ states.pick.outputs.reference }}
+        request: ${{ states.pick.outputs.request.request }}
+        consultant_cell: ${{ states.route.outputs.target.cell }}
+        consultant_ref: ${{ states.route.outputs.target.ref }}
+        consultant_role: "${{ states.pick.outputs.request.?role.orValue('Owning cell: agree scope and acceptance outcomes')
+          }}"
+        documents: ${{ states.route.outputs.documents }}
+        annotations: ${{ state_output('record','annotations',inputs.annotations) }}
+      transitions:
+      - to: consulted
+        when: true
+        payload:
+          result: ${{ outputs }}
     consult_inline:
       include: ./consultation.yaml
       inputs:
@@ -93,23 +121,21 @@ state:
             base_ref: ${{ context.git.ref }}
             base_hash: ${{ context.git.resolved_hash }}
           name: ${{ inputs.consultation_recipe }}
-          inputs:
-            thread: ${{ states.pick.outputs.reference }}
-            request: ${{ states.pick.outputs.request.request }}
-            consultant_cell: ${{ states.route.outputs.target.cell }}
-            consultant_ref: ${{ states.route.outputs.target.ref }}
-            consultant_role: "${{ states.pick.outputs.request.?role.orValue('Owning cell: agree scope and acceptance outcomes')
-              }}"
-            requester_session: ${{ state_output('record','session',inputs.session) }}
-            documents: ${{ states.route.outputs.documents }}
-            annotations: ${{ state_output('record','annotations',inputs.annotations) }}
+          inputs: "${{ jq([{'thread': states.pick.outputs.reference, 'request': states.pick.outputs.request.request, 'consultant_cell':
+            states.route.outputs.target.cell, 'consultant_ref': states.route.outputs.target.ref, 'consultant_role': states.pick.outputs.request.?role.orValue('Owning
+            cell: agree scope and acceptance outcomes'), 'documents': states.route.outputs.documents, 'annotations': state_output('record','annotations',inputs.annotations)},
+            size(state_output('record','session',inputs.session)) > 0 ? {'requester_session': state_output('record','session',inputs.session)}
+            : {}], 'add') }}"
+        wait:
+          on: job
+          condition: complete
       transitions:
       - to: await_consultation
         when: true
     await_consultation:
-      include: ./await-goal.yaml
+      include: ./await-child.yaml
       inputs:
-        goal: ${{ states.launch_consultation.outputs.goal_ids[0] }}
+        job: ${{ states.launch_consultation.outputs.job_ids[0] }}
       transitions:
       - to: consulted
         when: outputs.result.status == 'completed'
@@ -117,6 +143,8 @@ state:
           result: ${{ outputs.result.outputs }}
       - to: invalid
         when: true
+        payload:
+          reason: ${{ outputs.result.?failure_message.orValue('The consultation job did not return a usable result.') }}
     consulted:
       sequence: []
       inputs:
@@ -149,7 +177,7 @@ state:
         agreement: ${{ inputs.agreement }}
         existing: ${{ inputs.existing }}
       transitions:
-      - to: await
+      - to: inspect_execution
         when: size(outputs.existing) > 0
       - to: submit
         when: true
@@ -168,11 +196,17 @@ state:
         root_ref: ${{ inputs.root_ref }}
         build_recipe: ${{ inputs.build_recipe }}
         create_recipe: ${{ inputs.create_recipe }}
+        correction: ${{ states.pick.outputs.request.?request.orValue('') }}
+        previous: "${{ size(states.execution.outputs.existing) > 0 ? states.execution.outputs.existing[size(states.execution.outputs.existing)-1].job_id
+          : '' }}"
       sequence:
       - id: prompts
         include: ./prompts.yaml
         inputs:
           request: ${{ inputs.agreement.request.request }}
+          guidance: "${{ inputs.previous != '' ? 'A previous job failed or did not finish this assignment. Start again from
+            this checkout; its unpublished work and session are not carried over. Correction: ' + inputs.correction : inputs.correction
+            }}"
       - id: starter
         include: ./document-bindings.yaml
         inputs:
@@ -194,25 +228,29 @@ state:
               annotations: ${{ inputs.agreement.result.?annotations.orValue([]) }}
               root_cell: ${{ inputs.root_cell }}
               root_ref: ${{ inputs.root_ref }}
+          wait:
+            on: job
+            condition: complete
       outputs:
-        goal_id: ${{ sequence.launch_prerequisite_build.outputs.goal_ids[0] }}
+        job_id: ${{ sequence.launch_prerequisite_build.outputs.job_ids[0] }}
+        replaces: ${{ inputs.previous }}
       transitions:
       - to: record
         when: true
         payload:
           record: ${{
-            {'action':'execute','agreement':states.pick.outputs.request.agreement,'goal_id':outputs.goal_id,'cell':states.execution.outputs.agreement.target.cell}
+            {'action':'execute','agreement':states.pick.outputs.request.agreement,'job_id':outputs.job_id,'replaces':outputs.replaces,'cell':states.execution.outputs.agreement.target.cell}
             }}
     await:
-      include: ./await-goal.yaml
+      include: ./await-child.yaml
       inputs:
-        goal: "${{ states.pick.outputs.request.action == 'await' ? states.pick.outputs.request.goal : states.execution.outputs.existing[0].goal_id
+        job: "${{ states.pick.outputs.request.action == 'await' ? states.pick.outputs.request.job : states.execution.outputs.existing[size(states.execution.outputs.existing)-1].job_id
           }}"
       transitions:
       - to: record
         when: true
         payload:
-          record: ${{ {'action':'await','goal_id':outputs.result.goal_id,'result':outputs.result} }}
+          record: ${{ {'action':'await','job_id':outputs.result.job_id,'result':outputs.result} }}
           documents: ${{
             jq([outputs.result.?outputs.orValue({}).?final_artifacts.orValue(outputs.result.?outputs.orValue({}).?artifact_refs.orValue({})),outputs.errors],'add')
             }}
@@ -229,15 +267,24 @@ state:
       - id: bind
         include: ./document-bindings.yaml
         inputs:
-          documents: ${{ jq({'documents':inputs.documents,'record':inputs.record}, vars.status_documents) }}
-          prefix: ${{ 'coordination/' + inputs.record.?reference.orValue(inputs.record.?goal_id.orValue('creation')) +
-            '/' }}
+          documents: ${{ jq(inputs.documents,'with_entries(select(.key | startswith("error/") | not))') }}
+          prefix: ${{ 'coordination/' + inputs.record.?reference.orValue(inputs.record.?job_id.orValue('creation')) +
+            '/artifacts/' }}
           annotations: ${{ inputs.annotations }}
+      - id: status
+        include: ./document-bindings.yaml
+        inputs:
+          documents: ${{ jq({'record':inputs.record}, vars.status_documents) }}
+          prefix: ${{ 'coordination/' + inputs.record.?reference.orValue(inputs.record.?job_id.orValue('creation')) +
+            '/' }}
       outputs:
         record: ${{ inputs.record }}
         session: ${{ inputs.session }}
         annotations: ${{ inputs.previous_annotations + sequence.bind.outputs.annotations }}
-        documents: ${{ jq([inputs.previous_documents,sequence.bind.outputs.documents], 'add') }}
+        documents: ${{
+          jq([inputs.previous_documents,sequence.bind.outputs.documents,sequence.status.outputs.documents,jq({'documents':inputs.documents,'job':inputs.record.?job_id.orValue(inputs.record.?reference.orValue('creation'))},
+          ' . as $v | .documents | with_entries(select(.key | startswith("error/")) | .key = ("error/children/" + $v.job
+          + "/" + (.key|ltrimstr("error/"))) | .value.name = .key)')], 'add') }}
       transitions:
       - to: pick
         when: states.pick.outputs.index + 1 < size(inputs.requests)
@@ -245,19 +292,58 @@ state:
           index: ${{ states.pick.outputs.index + 1 }}
     invalid:
       sequence: []
+      inputs:
+        reason: ${{ transition.payload.?reason.orValue('Return a valid consultation request or execute an accepted
+          agreement. Execution requests require the implementation phase; use the agreement reference in
+          coordination/.') }}
+      outputs:
+        reason: ${{ inputs.reason }}
+    inspect_execution:
+      include: ./await-child.yaml
+      inputs:
+        job: ${{ states.execution.outputs.existing[size(states.execution.outputs.existing)-1].job_id }}
+        return_when: current_status
+      transitions:
+      - to: submit
+        when: outputs.result.?outputs.orValue({}).?disposition.orValue('') != 'cancelled' &&
+          outputs.result.?outputs.orValue({}).?status.orValue('') != 'cancelled' &&
+          outputs.result.?failure_kind.orValue('') != 'cancellation' &&
+          outputs.result.?outputs.orValue({}).?attrs.orValue({}).?c2j_failure.orValue({}).?kind.orValue('') !=
+          'cancellation' && (nonempty(states.pick.outputs.request.?request.orValue('')) && (outputs.result.status in
+          ['failed','timed_out'] || (outputs.result.status == 'completed' &&
+          !(outputs.result.?outputs.orValue({}).?merged.orValue(false) ||
+          outputs.result.?outputs.orValue({}).?disposition.orValue('') in ['unchanged','delegated']))))
+      - to: await
+        when: true
+    await_requested:
+      include: ./child-results.yaml
+      inputs:
+        jobs: ${{ {'job_ids':inputs.requests.map(r,r.job)} }}
+        allowed: true
 outputs:
   valid: ${{ !state_exists('invalid') }}
-  records: "${{ (state_exists('record') ? states.record.runs.map(r,r.outputs.record) + [states.record.outputs.record] : [])
+  records: "${{ state_exists('await_requested') ? states.await_requested.outputs.results.map(r,{'action':'await','job_id':r.job_id,'result':r})
+    : jq((state_exists('record') ? states.record.runs.map(r,r.outputs.record) + [states.record.outputs.record] : []), vars.records)
     }}"
   session: ${{ state_output('record','session',inputs.session) }}
-  documents: ${{ state_output('record','documents',inputs.documents) }}
+  documents: "${{ state_exists('await_requested') ? jq([inputs.documents,states.await_requested.outputs.documents],'add')
+    : state_output('record','documents',inputs.documents) }}"
   annotations: ${{ state_output('record','annotations',inputs.annotations) }}
+  issues: "${{ state_exists('invalid') ? [states.invalid.outputs.reason] : [] }}"
 vars:
   status_documents: |
     . as $v | .record as $r |
-    $v.documents + {"status.md": {kind:"value", name:"status.md", format:"text", value:
+    {"status.md": {kind:"value", name:"status.md", format:"text", value:
       (if $r.action == "consult" then
-         "Agreement reference: " + $r.reference + "\nOwner: " + $r.target.cell + "\nOutcome: " + $r.result.outcome
-       elif $r.action == "execute" then "Execution goal: " + $r.goal_id
-       elif $r.action == "await" then "Goal: " + $r.goal_id + "\nStatus: " + $r.result.status
+         "Agreement reference: " + $r.reference + "\nOwner: " + $r.target.cell + "\nOutcome: " + $r.result.outcome + "\n" + ($r.result.summary // "") +
+             (($r.result.agreements // []) | to_entries | map("\nAccepted scope: " + $r.reference + "/advice-" + (.key|tostring) + " — " + .value.target.cell + ": " + .value.request.request) | join("")) +
+             (($r.result.execution_requests // []) | map("\nImplementation requested in " + .cell + ": " + .request) | join(""))
+       elif $r.action == "execute" then "Child job: " + $r.job_id + (if ($r.replaces // "") != "" then "\nReplaces: " + $r.replaces else "" end)
+       elif $r.action == "await" then "Child job: " + $r.job_id + "\nStatus: " + $r.result.status + "\n" + (($r.result.failure_message // "")[:2000]) +
+         ([$r.result.outputs.disposition // $r.result.outputs.status // (if $r.result.outputs.ok == false then "failed" else "" end), $r.result.outputs.assistant_summary // $r.result.outputs.summary // ""] |
+          if .[0] != "" or .[1] != "" then "\nAssignment outcome: " + (.[0] | tostring) + "\n" + (.[1] | tostring | .[:2000]) else "" end)
        else "Creation completed: " + ($r.ready | tostring) end)}}
+  records: |
+    map(. as $record | [$record] +
+      (($record.result.agreements // []) | to_entries | map(.value +
+        {action:"consult",reference:($record.reference + "/advice-" + (.key|tostring))}))) | add // []

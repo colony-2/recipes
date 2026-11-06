@@ -1,6 +1,6 @@
 recipe: ../../build.yaml
 cases:
-- id: required-goal-completes-before-review
+- id: required-job-completes-before-review
   type: integration_case
   runtime:
     cell: gitvend
@@ -265,17 +265,17 @@ cases:
       behavior:
         mode: return
         outputs:
-          goal_id: build-goal
           status: completed
           failure_message: ''
           outputs:
             merged: true
             disposition: merged
+          job_id: build-attempt
   assertions:
   - type: cel_true
-    expr: outputs.coordination.exists(r,r.action=="await" && r.goal_id=="build-goal" && r.result.status=="completed") &&
-      size(reviews)==1
-- id: required-failed-goal-blocks-review
+    expr: outputs.coordination.exists(r,r.action=="await" && r.job_id=="build-attempt" && r.result.status=="completed")
+      && size(reviews)==1
+- id: parent-recovers-failed-child-before-outcome-review
   type: integration_case
   runtime:
     cell: gitvend
@@ -286,13 +286,85 @@ cases:
       gitvend:
         files:
           README.md: A bounded application.
+          .c2/recipes/delivery.yaml: |
+            id: delivery
+            inputs:
+              corrected: ${{ inputs.prompt.contains('Use the corrected probe.') }}
+            sequence:
+            - id: prepare_work
+              op: command_execution
+              inputs:
+                env:
+                  CORRECTED: ${{ string(inputs.corrected) }}
+                run: |
+                  set -eu
+                  test ! -f parent-only.txt
+                  test ! -f unfinished-child.txt
+                  if [ "$CORRECTED" = false ]; then echo unpublished-child-work > unfinished-child.txt; fi
+            - id: probe
+              op: command_execution
+              inputs:
+                env:
+                  CORRECTED: ${{ string(inputs.corrected) }}
+                run: |
+                  if [ "$CORRECTED" = false ]; then echo original-probe-failure >&2; exit 9; fi
+                  echo corrected-probe-passed > child-success.txt
+            outputs:
+              disposition: unchanged
+              merged: false
+            schema_version: 2
+            input_schema:
+              prompt:
+                type: string
+                required: true
+              session:
+                type: checkpoint
+                object_type: c2ops.codex.session/v1
+                required: false
+              documents:
+                type: artifact_map
+                default_value: {}
+              root_cell:
+                type: string
+                default_value: ''
+              root_ref:
+                type: string
+                default_value: main
+              annotations:
+                type: array
+                default_value: []
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                      required: true
+                    ref:
+                      type: artifact
+                      required: true
+                    descriptor:
+                      type: object
+                    sources:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          id:
+                            type: string
+                          ref:
+                            type: artifact
       owner:
         files:
           README.md: API owner
-    responses: []
+    responses:
+    - node_path:
+        build/workflow/adaptive-build/run/adaptive-develop/accept/sequence/outcome_review/adaptive-review/request_human_review
+      fields:
+        decision: accept
   inputs:
     prompt: Explain why no changes are needed.
     title: Preserve 100% of behavior — title
+    build_recipe: delivery
   mocks:
     ops:
     - match:
@@ -433,32 +505,163 @@ cases:
               type: c2ops.codex.session/v1
               metadata:
                 turn: review
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: gitvend
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: coordinate
+            summary: The previous child failed. Correct the probe and start a fresh execution.
+            requests:
+            - action: execute
+              agreement: request-1-0
+              request: Use the corrected probe. Start again from the normal checkout.
+            files: []
+        effects:
+          artifact_files:
+            title-statements.md: title-statements.md
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: review
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: gitvend
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: Complete bounded work.
+            files:
+            - path: implementation.md
+              description: implementation.md
+              title: implementation.md
+              role: primary
+              order: 0
+            - path: test-results.md
+              description: test-results.md
+              title: test-results.md
+              role: primary
+              order: 1
+            questions: []
+        artifacts:
+          implementation.md: "# Outcome\nAlready satisfied."
+          test-results.md: "# Results\nT1 passed; existing behavior inspected."
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: review
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: gitvend
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: Complete bounded work.
+            files:
+            - path: implementation.md
+              description: implementation.md
+              title: implementation.md
+              role: primary
+              order: 0
+            - path: test-results.md
+              description: test-results.md
+              title: test-results.md
+              role: primary
+              order: 1
+            questions: []
+        artifacts:
+          implementation.md: "# Outcome\nAlready satisfied."
+          test-results.md: "# Results\nT1 passed; existing behavior inspected."
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: review
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: gitvend
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            summary: Complete bounded work.
+            files:
+            - path: assessment.md
+              description: assessment.md
+              title: assessment.md
+              role: primary
+              order: 0
+            verdict: approve
+            subject: Improve candidate
+        artifacts:
+          assessment.md: "# Review\nEvidence checked."
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: review
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: gitvend
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            summary: Complete bounded work.
+            files:
+            - path: merge-review.md
+              description: merge-review.md
+              title: merge-review.md
+              role: primary
+              order: 0
+            verdict: approve
+            subject: Improve candidate
+        artifacts:
+          merge-review.md: "# Review\nEvidence checked."
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: review
     - repeat: true
       match:
         op: command_execution
       behavior:
         mode: passthrough
-    - match:
-        op: recipes.run
-      behavior:
-        mode: return
-        outputs:
-          goal_ids:
-          - build-goal
-          job_ids:
-          - build-attempt
-    - match:
-        op: recipe.await_result_soft
-      behavior:
-        mode: return
-        outputs:
-          goal_id: build-goal
-          status: failed
-          failure_message: Goal explicitly failed
-          outputs:
-            merged: false
-            disposition: failed
   assertions:
   - type: cel_true
-    expr: size(reviews)==0 && !calls.exists(c,c.op=="merge")
-  expect_error: required goal
+    expr: size(reviews)==1 && outputs.disposition == "unchanged"
+  - type: cel_true
+    expr: size(calls.filter(c,c.op == "recipes.run")) == 2
+  - type: cel_true
+    expr: outputs.coordination.exists(r,r.action == "await" && r.result.status == "failed") &&
+      outputs.coordination.exists(r,r.action == "await" && r.result.status == "completed")
+  - type: cel_true
+    expr: outputs.coordination.exists(r,r.action == "execute" && r.replaces != "")
+  - type: cel_true
+    expr: calls.exists(c,c.op == "extension_execution" && has(c.inputs.inputs.prompt) && c.inputs.inputs.prompt.contains("Diagnose the
+      cause and continue"))
+  - type: cel_true
+    expr: '!calls.exists(c,c.node_path.endsWith("/stop_attempt"))'

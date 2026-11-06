@@ -1,0 +1,74 @@
+recipe: job-monitoring.yaml
+cases:
+- id: deferred-monitoring-retains-pending-children
+  type: integration_case
+  inputs:
+    allowed: false
+  runtime: {}
+  mocks:
+    ops: []
+  assertions:
+  - type: cel_true
+    expr: outputs.result.pending == ["earlier", "later"] && size(outputs.result.results) == 0 && size(calls) == 0
+- id: ready-failure-is-delivered-before-waiting-for-earlier-sibling
+  type: integration_case
+  runtime: {}
+  mocks:
+    ops:
+    - match:
+        op: recipe.await_result_soft
+      behavior:
+        mode: return
+        outputs:
+          job_id: earlier
+          status: running
+          terminal: false
+          goal_state: OPEN
+          failure_message: ''
+    - match:
+        op: recipe.await_result_soft
+      behavior:
+        mode: return
+        outputs:
+          job_id: later
+          status: failed
+          terminal: true
+          goal_state: OPEN
+          failure_message: known-probe-error
+  assertions:
+  - type: cel_true
+    expr: outputs.result.failed && outputs.result.pending == ["earlier"] && outputs.result.results[0].job_id == "later"
+  - type: cel_true
+    expr: size(calls)==2 && calls.all(c,c.inputs.wait.on == "job" && c.inputs.return_when == "current_status")
+  - type: cel_true
+    expr: outputs.result.documents["results/later/status.md"].value.contains("known-probe-error")
+- id: successful-children-need-no-goal-success
+  type: integration_case
+  runtime: {}
+  mocks:
+    ops:
+    - match:
+        op: recipe.await_result_soft
+      behavior:
+        mode: return
+        outputs:
+          job_id: earlier
+          status: completed
+          terminal: true
+          goal_state: OPEN
+          failure_message: ''
+    - match:
+        op: recipe.await_result_soft
+      behavior:
+        mode: return
+        outputs:
+          job_id: later
+          status: completed
+          terminal: true
+          goal_state: OPEN
+          failure_message: ''
+  assertions:
+  - type: cel_true
+    expr: '!outputs.result.failed && size(outputs.result.results)==2 && size(outputs.result.pending)==0'
+  - type: cel_true
+    expr: calls.all(c,c.inputs.wait.on == "job" && c.inputs.wait.condition == "complete")

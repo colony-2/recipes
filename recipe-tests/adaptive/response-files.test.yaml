@@ -1,0 +1,45 @@
+recipe: response-files.yaml
+cases:
+- id: directory-correction-receives-original-subtree-and-decision
+  type: integration_case
+  runtime:
+    secrets:
+      codex_api_key: synthetic
+  mocks:
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: Checks recorded.
+            files:
+            - path: evidence/
+              description: Verification evidence
+        artifacts:
+          evidence/verify.log: "command: ./verify\noriginal-verification-error"
+          evidence/test-results.md: "# Test results\nOriginal outcomes"
+          downloads/unrelated.txt: Do not carry this
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                session_id: repair
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.text.contains("original-verification-error") && outputs.text.contains("Original outcomes") &&
+      outputs.text.contains("review")
+  - type: cel_true
+    expr: outputs.bound["evidence/verify.log"].stored == outputs.original["evidence/verify.log"].stored
+  - type: cel_true
+    expr: size(reviews)==0

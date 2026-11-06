@@ -96,14 +96,17 @@ state:
           inputs:
             config: ${{ states.prepare.outputs.documents['candidate-config.yaml'] }}
             probes: ${{ states.prepare.outputs.documents['packages.json'] }}
+        wait:
+          on: job
+          condition: complete
       transitions:
-      - to: await_goal
+      - to: await_child
         when: true
-    await_goal:
-      include: ./await-goal.yaml
+    await_child:
+      include: ./await-child.yaml
       inputs:
-        goal: '${{ states.decide.outputs.prior != null && nonempty(states.decide.outputs.prior.goal_id) ? states.decide.outputs.prior.goal_id
-          : states.launch.outputs.goal_ids[0] }}'
+        job: '${{ states.decide.outputs.prior != null && nonempty(states.decide.outputs.prior.job_id) ? states.decide.outputs.prior.job_id
+          : states.launch.outputs.job_ids[0] }}'
       transitions:
       - to: adopt
         when: outputs.result.status == 'completed' && outputs.result.outputs.?config_digest.orValue('') ==
@@ -113,7 +116,7 @@ state:
     adopt:
       inputs:
         documents: ${{ states.prepare.outputs.documents }}
-        digest: ${{ states.await_goal.outputs.result.outputs.config_digest }}
+        digest: ${{ states.await_child.outputs.result.outputs.config_digest }}
       sequence:
       - id: tools
         include: ./package-tools.yaml
@@ -148,11 +151,12 @@ state:
       sequence: []
     failed:
       inputs:
-        reason: "${{ transition.payload.?reason.orValue(state_exists('await_goal') && nonempty(states.await_goal.outputs.result.?failure_message.orValue(''))
-          ? states.await_goal.outputs.result.failure_message : 'The goal result did not validate the approved configuration.')
+        reason: "${{ transition.payload.?reason.orValue(state_exists('await_child') && nonempty(states.await_child.outputs.result.?failure_message.orValue(''))
+          ? states.await_child.outputs.result.failure_message : 'The child result did not validate the approved configuration.')
           }}"
         failure: ${{ transition.payload.?failure.orValue({}) }}
-        errors: "${{ state_exists('await_goal') ? states.await_goal.outputs.errors : {} }}"
+        errors: "${{ transition.payload.?errors.orValue(state_exists('await_child') ? states.await_child.outputs.errors :
+          {}) }}"
       sequence:
       - id: errors
         include: ./error-documents.yaml
@@ -181,22 +185,37 @@ state:
       transitions:
       - to: declined
         when: outputs.prior != null && outputs.prior.decision == 'decline'
-      - to: await_goal
-        when: outputs.prior != null && nonempty(outputs.prior.goal_id)
+      - to: inspect_prior
+        when: outputs.prior != null && nonempty(outputs.prior.job_id)
       - to: launch
         when: outputs.prior != null || !states.prepare.outputs.proposal.needs_approval
       - to: approval
         when: true
+    inspect_prior:
+      include: ./await-child.yaml
+      inputs:
+        job: ${{ states.decide.outputs.prior.job_id }}
+        return_when: current_status
+      transitions:
+      - to: failed
+        when: outputs.result.status in ['failed','cancelled','timed_out']
+        payload:
+          reason: ${{ outputs.result.?failure_message.orValue('The earlier validation job failed. Correct the proposal
+            or probe before requesting validation again.') }}
+          errors: ${{ outputs.errors }}
+      - to: await_child
+        when: true
 outputs:
   adopted: ${{ state_exists("done") }}
-  goal_id: "${{ state_exists('await_goal') ? states.await_goal.outputs.result.goal_id : '' }}"
+  job_id: "${{ state_exists('await_child') ? states.await_child.outputs.result.job_id : state_exists('inspect_prior') ? states.inspect_prior.outputs.result.job_id
+    : '' }}"
   documents: ${{ states.prepare.outputs.documents }}
   feedback: "${{ !states.prepare.outputs.proposal.changed ? 'The requested packages are already declared; no config change
     or new probe was performed. Inspect PATH and setup diagnostics, then rerun the blocked check. Do not repeat the same package
-    request.' : state_exists('declined') ? 'The package request was declined. Use the supplied feedback and permitted alternatives;
+    request.' : state_exists('declined') ? 'The package request was declined. Use the supplied feedback and alternatives;
     do not ask the same approval again.' : state_exists('failed') ? 'Package validation or adoption did not succeed. Review
-    the goal and diagnostics; do not claim the tool is available.' : 'Package requirements are available. Rerun the blocked
-    checks and report their actual results.' }}"
+    the child result and diagnostics; do not claim the tool is available.' : 'Package requirements are available. Rerun the
+    blocked checks and report their actual results.' }}"
   review: "${{ state_exists('approval') ? states.approval.outputs.response : state_exists('decide') && states.decide.outputs.prior
     != null ? states.decide.outputs.prior.review : {} }}"
   errors: |-
@@ -204,5 +223,5 @@ outputs:
   decision: |-
     ${{ {'request_id':states.prepare.outputs.proposal.request_id,'proposal_id':states.prepare.outputs.proposal.proposal_id,
     'decision':state_exists('declined') ? 'decline' : state_exists('approval') ? states.approval.outputs.response.fields.decision : state_exists('decide') && states.decide.outputs.prior != null ? states.decide.outputs.prior.decision : 'policy',
-    'goal_id':state_exists('await_goal') ? states.await_goal.outputs.result.goal_id : '',
+    'job_id':state_exists('await_child') ? states.await_child.outputs.result.job_id : state_exists('inspect_prior') ? states.inspect_prior.outputs.result.job_id : '',
     'review':state_exists('approval') ? states.approval.outputs.response : state_exists('decide') && states.decide.outputs.prior != null ? states.decide.outputs.prior.review : {} } }}

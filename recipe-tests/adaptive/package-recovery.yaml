@@ -1,0 +1,46 @@
+schema_version: 2
+id: package-recovery
+input_schema:
+  first:
+    type: array
+    items:
+      type: object
+    required: true
+inputs:
+  first: ${{ inputs.first }}
+sequence:
+- id: first
+  include: ../../recipes/adaptive/packages.yaml
+  inputs:
+    packages: ${{ inputs.first }}
+    summary: Validate the requested tooling.
+    check_recipe: package-check
+- id: unchanged
+  op: command_execution
+  inputs:
+    run: cat .c2/config.yaml
+- id: corrected
+  include: ../../recipes/adaptive/packages.yaml
+  inputs:
+    packages:
+    - reference: uv:ruff==0.11.2
+      check: [ruff, --version]
+    summary: Correct the failed package request and validate it again.
+    check_recipe: package-check
+    decisions: ${{ [sequence.first.outputs.decision] }}
+- id: evidence
+  op: command_execution
+  const: true
+  artifacts:
+    ./: ${{ sequence.first.outputs.errors }}
+  inputs:
+    env:
+      INBOX: ${{ context.environment.op.inbox }}
+    run: |
+      cat .c2/config.yaml
+      find "$INBOX" -type f -exec cat {} \;
+outputs:
+  first: ${{ sequence.first.outputs }}
+  corrected: ${{ sequence.corrected.outputs }}
+  initial_config: ${{ sequence.unchanged.outputs.stdout }}
+  evidence: ${{ sequence.evidence.outputs.stdout }}

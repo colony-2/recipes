@@ -183,7 +183,8 @@ available outputs/artifacts. Unlike `recipe.await_result`, child failure is
 returned as structured data instead of automatically failing the parent node.
 
 Inputs:
-- `job_id`: string
+- `target`: `{job: <job-id>}` for exact execution results
+- `wait`: `{on: job, condition: complete}`
 - `return_when`: optional `terminal` or `current_status`
 
 `timeout` and `poll_interval` are rejected by this op. Terminal waits use JobDB
@@ -206,7 +207,10 @@ Example:
 - id: wait_soft
   op: recipe.await_result_soft
   inputs:
-    job_id: "${{ sequence.start.outputs.job_ids[0] }}"
+    target:
+      job: "${{ sequence.start.outputs.job_ids[0] }}"
+    wait: {on: job, condition: complete}
+    return_when: terminal
 ```
 
 Use this op when the parent recipe owns the lifecycle decision for failed,
