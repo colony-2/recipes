@@ -1,3 +1,7 @@
+# Seeded cells are already registered by c2j test. Mock only that command here;
+# cell-registration.test.yaml covers native registration and rejection.
+# Publication cases also need generated repository identities in mock proposals:
+# see ../guides/FEATURE_REQUEST_C2J_RUNTIME_FIXTURE_REFERENCES.md. Keep them enabled.
 recipe: fixtures/create-handoff.yaml
 cases:
 - id: creation-resumes-consultant-and-publishes-independent-history
@@ -10,14 +14,26 @@ cases:
           keep.txt: original
         file_sources:
           .c2/recipes/initialize.yaml: ../recipes/create/initialize.yaml
+          recipes/kernel/render/op.yaml: ../recipes/kernel/render/op.yaml
       alpha: {}
       beta: {}
     responses:
-    - node_path: create-handoff/create/root/root/review/review/creation-review/review/sequence/review/kernel-review/request_human_review
+    - node_path:
+        create-handoff/create/root/root/review/review/creation-review/review/sequence/review/kernel-review/request_human_review
       fields:
         decision: approve
   mocks:
     ops:
+    - match:
+        node_path:
+          create-handoff/create/root/root/publish/publish/publish-cells/publish/sequence/register_cell/register-cell/register
+      repeat: true
+      behavior:
+        mode: return
+        outputs:
+          success: true
+        artifacts:
+          registration.json: '{"id":"pre-registered-fixture"}'
     - match:
         node_path: create-handoff/starter
       behavior:
@@ -116,20 +132,30 @@ cases:
         op: command_execution
       behavior:
         mode: passthrough
+    - match:
+        selector: ./recipes/kernel/render
+      repeat: true
+      behavior:
+        mode: passthrough
   assertions:
   - type: cel_true
     expr: outputs.result.disposition == "created"
   - type: cel_true
-    expr: size(calls.filter(c, c.op == "squashrebasemerge")) == 2 && size(calls.filter(c, c.op == "merge")) == 1 && size(calls.filter(c, c.op == "squash")) == 1 && !calls.exists(c, c.op == "rebase")
+    expr: size(calls.filter(c, c.op == "squashrebasemerge")) == 2 && size(calls.filter(c, c.op == "merge")) ==
+      1 && size(calls.filter(c, c.op == "squash")) == 1 && !calls.exists(c, c.op == "rebase")
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution")[0].inputs.inputs.session == calls.filter(c, c.node_path
-      == "create-handoff/starter")[0].outputs.session
+    expr: calls.filter(c, c.op == "extension_execution" &&
+      c.inputs.selector.endsWith("#codex"))[0].inputs.inputs.session == calls.filter(c, c.node_path ==
+      "create-handoff/starter")[0].outputs.session
   - type: cel_true
-    expr: '!("instructions" in calls.filter(c, c.op == "extension_execution")[0].inputs.inputs)'
+    expr: '!("instructions" in calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex"))[0].inputs.inputs)'
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution")[0].artifacts["consultation/conversation.json"].contains("root
+    expr: calls.filter(c, c.op == "extension_execution" &&
+      c.inputs.selector.endsWith("#codex"))[0].artifacts["consultation/conversation.json"].contains("root
       eligibility")
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution")[0].inputs.inputs.prompt.contains("cell creation decision")
+    expr: calls.filter(c, c.op == "extension_execution" &&
+      c.inputs.selector.endsWith("#codex"))[0].inputs.inputs.prompt.contains("cell creation decision")
   - type: cel_true
-    expr: '!calls.filter(c, c.op == "extension_execution")[0].inputs.inputs.prompt.contains("This cell encompasses")'
+    expr: '!calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex"))[0].inputs.inputs.prompt.contains("This
+      cell encompasses")'

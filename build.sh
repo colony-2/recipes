@@ -36,8 +36,8 @@ awk '
 printf 'PASS: readable purpose document and populated responsibility/interface/boundary sections\n'
 
 for evidence in AGENTS.md README.md build.yaml \
-  recipes/kernel/consultation.yaml recipes/develop/develop.yaml \
-  recipe-tests/consultation-kernel.test.yaml; do
+  recipes/adaptive/consultation.yaml recipes/adaptive/build.yaml \
+  recipe-tests/adaptive/consultation.test.yaml; do
   [[ -f "$evidence" ]] || fail "missing evidence file: $evidence"
 done
 printf 'PASS: six supporting instruction, workflow, and test files exist\n'

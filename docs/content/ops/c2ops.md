@@ -29,33 +29,9 @@ Rule gate example:
 
 {{< example "examples/recipes/rule-gate.yaml" >}}
 
-Codex skill pattern:
-
-```yaml
-- id: implement
-  op: nix:github:colony-2/c2ops/published#skill-run
-  inputs:
-    skill: c2-superpowers-task-implementer
-    skills:
-      - "{{ inputs.skill_bundle_ref }}"
-    prompt: |
-      Complete TASK-1 and write result JSON to the artifact outbox.
-    status_contract:
-      path: superpowers/task/latest-status.json
-    output:
-      from: artifact
-      path: superpowers/task/result.json
-      format: json
-      schema:
-        type: object
-        required: [task_id, status, summary]
-        properties:
-          task_id:
-            type: string
-          status:
-            type: string
-          summary:
-            type: string
-```
+For complete agent execution and review examples, inspect the maintained
+`recipes/adaptive/agent-turn.yaml` and `recipes/adaptive/inspect.yaml` sources.
+The `skill-run` package remains available for projects that supply their own skill
+bundle; this repository no longer ships the superpowers workflow family.
 
 Mock selector-backed ops in `c2j test` by node path when possible. If matching the lowered extension operation, use `extension_execution`.

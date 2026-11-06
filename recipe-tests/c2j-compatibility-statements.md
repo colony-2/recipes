@@ -1,5 +1,12 @@
 # c2j compatibility test statements
 
+> Scope after legacy removal: references below to heavy/light, old consultation,
+> ticket/job and superpowers files describe retired expectations. Their deletion
+> is authorized by [the removal plan](../guides/LEGACY_WORKFLOW_REMOVAL.json).
+> Shared creation/artifact/review expectations remain. Current adaptive expectations
+> live in `adaptive/`; see [retained cleanup coverage](retirement-statements.md).
+
+
 Defined before the permission migration. Build lifecycle fixtures publish
 `build-kernel-statements.md` as an artifact; this file covers the additional
 entrypoints and compatibility probes.

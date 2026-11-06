@@ -1,3 +1,7 @@
+# Seeded cells are already registered by c2j test. Mock only that command here;
+# cell-registration.test.yaml covers native registration and rejection.
+# Publication cases also need generated repository identities in mock proposals:
+# see ../guides/FEATURE_REQUEST_C2J_RUNTIME_FIXTURE_REFERENCES.md. Keep them enabled.
 # Real child jobs and Git pushes; only model decisions and targeted routing errors are mocked.
 recipe: fixtures/create-main.yaml
 cases:
@@ -14,14 +18,26 @@ cases:
           keep.txt: original
         file_sources:
           .c2/recipes/initialize.yaml: ../recipes/create/initialize.yaml
+          recipes/kernel/render/op.yaml: ../recipes/kernel/render/op.yaml
       alpha: {}
       beta: {}
     responses:
-    - node_path: create-main/run/create/root/review/review/creation-review/review/sequence/review/kernel-review/request_human_review
+    - node_path:
+        create-main/run/create/root/review/review/creation-review/review/sequence/review/kernel-review/request_human_review
       fields:
         decision: approve
   mocks:
     ops:
+    - match:
+        node_path:
+          create-main/run/create/root/publish/publish/publish-cells/publish/sequence/register_cell/register-cell/register
+      repeat: true
+      behavior:
+        mode: return
+        outputs:
+          success: true
+        artifacts:
+          registration.json: '{"id":"pre-registered-fixture"}'
     - &proposal
       match:
         selector: nix:github:colony-2/c2ops/published#codex
@@ -78,6 +94,11 @@ cases:
         op: command_execution
       behavior:
         mode: passthrough
+    - match:
+        selector: ./recipes/kernel/render
+      repeat: true
+      behavior:
+        mode: passthrough
   assertions:
   - type: cel_true
     expr: repositories.root.new_commits == 0
@@ -90,8 +111,9 @@ cases:
   - type: cel_true
     expr: repositories.alpha.new_commits == 0 && repositories.beta.new_commits == 0
   - type: cel_true
-    expr: calls.exists(c, c.node_path.endsWith("record_pending/creation-publication-record/record") && c.outputs.success
-      && c.artifacts["initializations.json"].contains("job_id") && c.artifacts["initializations.json"].contains("pending"))
+    expr: calls.exists(c, c.node_path.endsWith("record_pending/creation-publication-record/record") &&
+      c.outputs.success && c.artifacts["initializations.json"].contains("job_id") &&
+      c.artifacts["initializations.json"].contains("pending"))
   expect_error: publication-denied
 - id: later-push-rejection-retains-published-cell
   type: integration_case
@@ -101,8 +123,23 @@ cases:
   runtime: *creation_runtime
   mocks:
     ops:
+    - match:
+        node_path:
+          create-main/run/create/root/publish/publish/publish-cells/publish/sequence/register_cell/register-cell/register
+      repeat: true
+      behavior:
+        mode: return
+        outputs:
+          success: true
+        artifacts:
+          registration.json: '{"id":"pre-registered-fixture"}'
     - *proposal
     - *commands
+    - match:
+        selector: ./recipes/kernel/render
+      repeat: true
+      behavior:
+        mode: passthrough
   assertions:
   - type: cel_true
     expr: repositories.root.new_commits == 0
@@ -113,12 +150,13 @@ cases:
   - type: cel_true
     expr: size(calls.filter(c, c.op == "recipes.run")) == 2
   - type: cel_true
-    expr: calls.exists(c, c.op == "squashrebasemerge" && c.cell == "alpha" && "outputs" in c && size(c.outputs.merged_hash)
-      == 40) && repositories.beta.new_commits == 0
+    expr: calls.exists(c, c.op == "squashrebasemerge" && c.cell == "alpha" && "outputs" in c &&
+      size(c.outputs.merged_hash) == 40) && repositories.beta.new_commits == 0
   - type: cel_true
-    expr: calls.exists(c, c.node_path.endsWith("record_pending/creation-publication-record/record") && c.outputs.success
-      && c.artifacts["created.json"].contains('"cell":"alpha"') && c.artifacts["created.json"].contains("revision")
-      && c.artifacts["initializations.json"].contains('"name":"beta"'))
+    expr: calls.exists(c, c.node_path.endsWith("record_pending/creation-publication-record/record") &&
+      c.outputs.success && c.artifacts["created.json"].contains('"cell":"alpha"') &&
+      c.artifacts["created.json"].contains("revision") &&
+      c.artifacts["initializations.json"].contains('"name":"beta"'))
   expect_error: publication-denied
 - id: catalog-push-rejection-fails-creation
   type: integration_case
@@ -128,6 +166,16 @@ cases:
   runtime: *creation_runtime
   mocks:
     ops:
+    - match:
+        node_path:
+          create-main/run/create/root/publish/publish/publish-cells/publish/sequence/register_cell/register-cell/register
+      repeat: true
+      behavior:
+        mode: return
+        outputs:
+          success: true
+        artifacts:
+          registration.json: '{"id":"pre-registered-fixture"}'
     - *proposal
     - &registration
       match:
@@ -161,18 +209,24 @@ cases:
                 - repo: beta
                   ref: main
     - *commands
+    - match:
+        selector: ./recipes/kernel/render
+      repeat: true
+      behavior:
+        mode: passthrough
   assertions:
   - type: cel_true
     expr: repositories.root.new_commits == 0
   - type: cel_true
     expr: '!calls.exists(c, (c.op == "rebase" || (c.op == "squashrebasemerge" && c.cell == "root")))'
   - type: cel_true
-    expr: calls.exists(c, c.op == "squashrebasemerge" && c.cell == "alpha" && "outputs" in c && size(c.outputs.merged_hash)
-      == 40) && calls.exists(c, c.op == "squashrebasemerge" && c.cell == "beta" && "outputs" in c && size(c.outputs.merged_hash)
-      == 40)
+    expr: calls.exists(c, c.op == "squashrebasemerge" && c.cell == "alpha" && "outputs" in c &&
+      size(c.outputs.merged_hash) == 40) && calls.exists(c, c.op == "squashrebasemerge" && c.cell == "beta" &&
+      "outputs" in c && size(c.outputs.merged_hash) == 40)
   - type: cel_true
-    expr: calls.exists(c, c.node_path.endsWith("record_completed/creation-publication-record/record") && c.outputs.success
-      && c.artifacts["created.json"].contains('"cell":"alpha"') && c.artifacts["created.json"].contains('"cell":"beta"'))
+    expr: calls.exists(c, c.node_path.endsWith("record_completed/creation-publication-record/record") &&
+      c.outputs.success && c.artifacts["created.json"].contains('"cell":"alpha"') &&
+      c.artifacts["created.json"].contains('"cell":"beta"'))
   expect_error: publication-denied
 - id: initial-403-preserves-original-failure
   type: integration_case
@@ -183,6 +237,16 @@ cases:
   mocks:
     ops:
     - match:
+        node_path:
+          create-main/run/create/root/publish/publish/publish-cells/publish/sequence/register_cell/register-cell/register
+      repeat: true
+      behavior:
+        mode: return
+        outputs:
+          success: true
+        artifacts:
+          registration.json: '{"id":"pre-registered-fixture"}'
+    - match:
         op: squashrebasemerge
         cell: alpha
       behavior:
@@ -191,6 +255,11 @@ cases:
           message: 'HTTP 403: no discoverable writable refs'
     - *proposal
     - *commands
+    - match:
+        selector: ./recipes/kernel/render
+      repeat: true
+      behavior:
+        mode: passthrough
   assertions:
   - type: cel_true
     expr: outputs.failed && outputs.failure.kind == "task_error" && !has(outputs.failure.code)
@@ -211,6 +280,16 @@ cases:
   mocks:
     ops:
     - match:
+        node_path:
+          create-main/run/create/root/publish/publish/publish-cells/publish/sequence/register_cell/register-cell/register
+      repeat: true
+      behavior:
+        mode: return
+        outputs:
+          success: true
+        artifacts:
+          registration.json: '{"id":"pre-registered-fixture"}'
+    - match:
         op: merge
         cell: root
       behavior:
@@ -220,6 +299,11 @@ cases:
     - *proposal
     - *registration
     - *commands
+    - match:
+        selector: ./recipes/kernel/render
+      repeat: true
+      behavior:
+        mode: passthrough
   assertions:
   - type: cel_true
     expr: outputs.failed && outputs.failure.kind == "task_error" && !has(outputs.failure.code)
@@ -240,6 +324,16 @@ cases:
   mocks:
     ops:
     - match:
+        node_path:
+          create-main/run/create/root/publish/publish/publish-cells/publish/sequence/register_cell/register-cell/register
+      repeat: true
+      behavior:
+        mode: return
+        outputs:
+          success: true
+        artifacts:
+          registration.json: '{"id":"pre-registered-fixture"}'
+    - match:
         op: squashrebasemerge
         cell: alpha
       behavior:
@@ -248,6 +342,11 @@ cases:
           message: Could not prepare approved publication
     - *proposal
     - *commands
+    - match:
+        selector: ./recipes/kernel/render
+      repeat: true
+      behavior:
+        mode: passthrough
   assertions:
   - type: cel_true
     expr: outputs.failed && outputs.failure.kind == "task_error" && !has(outputs.failure.code)
@@ -270,6 +369,16 @@ cases:
   mocks:
     ops:
     - match:
+        node_path:
+          create-main/run/create/root/publish/publish/publish-cells/publish/sequence/register_cell/register-cell/register
+      repeat: true
+      behavior:
+        mode: return
+        outputs:
+          success: true
+        artifacts:
+          registration.json: '{"id":"pre-registered-fixture"}'
+    - match:
         op: squash
         cell: root
       behavior:
@@ -279,6 +388,11 @@ cases:
     - *proposal
     - *registration
     - *commands
+    - match:
+        selector: ./recipes/kernel/render
+      repeat: true
+      behavior:
+        mode: passthrough
   assertions:
   - type: cel_true
     expr: outputs.failed && outputs.failure.kind == "task_error" && !has(outputs.failure.code)
@@ -301,16 +415,32 @@ cases:
   runtime: *creation_runtime
   mocks:
     ops:
+    - match:
+        node_path:
+          create-main/run/create/root/publish/publish/publish-cells/publish/sequence/register_cell/register-cell/register
+      repeat: true
+      behavior:
+        mode: return
+        outputs:
+          success: true
+        artifacts:
+          registration.json: '{"id":"pre-registered-fixture"}'
     - *proposal
     - *registration
     - *commands
+    - match:
+        selector: ./recipes/kernel/render
+      repeat: true
+      behavior:
+        mode: passthrough
   assertions:
   - type: cel_true
     expr: outputs.failed && outputs.failure.code == "MERGE_UPSTREAM_ADVANCED"
   - type: cel_true
     expr: outputs.failure.node.op == "merge" && outputs.failure.node.id == "merge_cell_catalog"
   - type: cel_true
-    expr: outputs.failure.attrs.phase == "push" && outputs.failure.attrs.push_error.contains("fixture-catalog-advanced")
+    expr: outputs.failure.attrs.phase == "push" &&
+      outputs.failure.attrs.push_error.contains("fixture-catalog-advanced")
   - type: cel_true
     expr: '!calls.exists(c, (c.op == "rebase" || (c.op == "squashrebasemerge" && c.cell == "root"))) && size(calls.filter(c,
       c.op == "merge" && c.cell == "root")) == 1'
@@ -319,6 +449,6 @@ cases:
   - type: cel_true
     expr: repositories.root.new_commits == 1 && !(".c2/config.yaml" in repositories.root.files)
   - type: cel_true
-    expr: calls.exists(c, c.op == "squashrebasemerge" && c.cell == "alpha" && "outputs" in c && size(c.outputs.merged_hash)
-      == 40) && calls.exists(c, c.op == "squashrebasemerge" && c.cell == "beta" && "outputs" in c && size(c.outputs.merged_hash)
-      == 40)
+    expr: calls.exists(c, c.op == "squashrebasemerge" && c.cell == "alpha" && "outputs" in c &&
+      size(c.outputs.merged_hash) == 40) && calls.exists(c, c.op == "squashrebasemerge" && c.cell == "beta" &&
+      "outputs" in c && size(c.outputs.merged_hash) == 40)

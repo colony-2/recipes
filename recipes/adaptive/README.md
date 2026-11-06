@@ -2,8 +2,8 @@
 
 The root `build.yaml` selects this implementation. Execution, artifact, Git, and
 serving-consultation helpers are owned here; there are no kernel recipe includes.
-Existing build recipes remain available. One adaptive loop replaces light/heavy
-routing.
+One adaptive loop handles build work. The retired light/heavy workflows have been
+removed; creation's retained kernel helpers remain separate.
 
 The public build accepts an optional `title` alongside the required `prompt`.
 When supplied, the title precedes the request in classification and agent context
@@ -189,8 +189,8 @@ c2j test run --directory recipe-tests/adaptive --parallelism 2
 
 The new suites exercise the actual root entry with mocked agent decisions and
 human responses, and native Git, rebase, merge, hook, and child-job operations.
-Legacy route-specific suites use `recipe-tests/fixtures/legacy-build.yaml` to retain
-coverage of the still-available previous implementation.
+Shared creation and review suites remain in `recipe-tests/`. Suites exclusive to
+the retired light/heavy workflows have been removed.
 
 ## Child results, recovery, and packages
 

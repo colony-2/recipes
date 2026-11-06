@@ -1,54 +1,39 @@
 # Native recipe test ownership
 
-The current build and consultation kernel are covered by native integration cases
-in `recipe-tests`. The old build/evolve, mandate-bootstrap, phase-wrapper, and
-ad hoc consultation fixtures were replaced alongside their implementations.
-Their historical assertions remain in Git history; removed interfaces are not
-kept executable solely to satisfy old fixtures.
+Adaptive is the build implementation. Tests for retired heavy/light, old ticket/job,
+and superpowers workflows have been removed with their sources. Their contracts
+remain in Git history, not executable compatibility entrypoints.
+
+All paths below are relative to `recipe-tests/`.
 
 | Behavior | Current suites |
 | --- | --- |
-| Build lifecycle, optional purpose, initial instructions, checkpoint continuation, independent assessment, focused questions, annotated reviews, verification repair, cancellation, merge | `build-kernel.test.yaml` |
-| Build entry from a serving checkpoint and namespaced transcript, followed by assessment, reviews, and merge | `build-handoff.test.yaml` |
-| Concurrent consultation jobs, later caller progress, target checkpoint handoff, root eligibility, duplicate submission, child failure, artifact collisions | `build-coordination.test.yaml` |
-| Approval and agreement gates, stable keys, missing root/provisioning configuration, retained failures | `build-coordination-gates.test.yaml` |
-| Verification success, failure, external timeout, missing hook, retained logs | `verification.test.yaml` |
-| Artifact matching, exact preference, ambiguity, linked references, invalid paths and empty inventories | `artifact-result.test.yaml` |
-| Bounded correction, human direction, cancellation, preserved sessions and documents | `result-repair.test.yaml` |
-| Reviewed creation, first publication, registration evidence repair without repeated publication | `create.test.yaml`, `create-handoff.test.yaml` |
-| Consultant-owned agreement, bounded exchanges, document validation, expert escalation and adverse outcomes | `consultation-kernel.test.yaml` |
-| Candidate isolation, immutable checkpoints, caller and serving-cell continuation | `consultation-kernel-handoff.test.yaml` |
-| Human-directed continuation, repeated review, attachments, failed-turn retry, invalid resumption | `consultation-kernel-{resume,review,retry,invalid-resume}.test.yaml` |
+| Build lifecycle and outcomes | `adaptive/flow.test.yaml`, `adaptive/standalone.test.yaml` |
+| Consultation, nesting and requester candidate | `adaptive/consultation.test.yaml`, `adaptive/consultation-continuation.test.yaml`, `adaptive/consultation-candidate.test.yaml` |
+| Coordination agreements, submissions and failure recovery | `adaptive/build-coordination.test.yaml`, `adaptive/coordination-contract.test.yaml`, `adaptive/parent-recovery.test.yaml`, `adaptive/required-jobs.test.yaml` |
+| Current review and meaningful questions | `adaptive/current-review.test.yaml`, `adaptive/review.test.yaml` |
+| Error evidence, artifact selection and response correction | `adaptive/failure-evidence.test.yaml`, `adaptive/artifact-selection.test.yaml`, `adaptive/response-files.test.yaml` |
+| Package approval, probes and recovery | `adaptive/package-recovery.test.yaml`, `adaptive/package-policy.test.yaml` |
+| Creation review and catalog integration | `create.test.yaml`, `create-handoff.test.yaml` |
+| Native registration and publication boundaries | `cell-registration.test.yaml`, `registered-cell-publication.test.yaml`, `creation-publication.test.yaml` |
+| Creation response repair and artifact matching | `result-repair.test.yaml`, `artifact-result.test.yaml` |
+| Retained creation brief, presentation and optional synthesis | `review-*.test.yaml` |
 
-Codex responses are fixtures. Native runtime execution handles Git workspaces,
-immutable objects, artifact materialization, included recipes, asynchronous jobs,
-human reviews, and merge. Build coordination uses a small stand-in dependency
-recipe to verify the exact checkpoint and document handoff; provisioning a real
-new repository is outside these cases.
+Models are mocked in deterministic suites. Native runtime execution handles Git
+workspaces, checkpoints, artifacts, included recipes, child jobs, human reviews,
+and merge. Model/schema acceptance has separate explicit live coverage; mocked
+`output_schema_valid: true` does not establish provider acceptance.
 
-[Build statements](../recipe-tests/build-kernel-statements.md) and
-[consultation statements](../recipe-tests/consultation-kernel-statements.md) specify
-expected outcomes. The build lifecycle publishes the build statements as an artifact.
-The remaining repository examples retain their own scenario or fixture suites.
-
-Runtime persistence, cancellation of leased workers, crash recovery, pack handling,
-and low-level replay faults belong to c2j tests. Session serialization and schema
-enforcement internals belong to c2ops. Recipe tests check routing and observable
-contracts without implementing substitute infrastructure or a second schema validator.
+Runtime persistence, leased-worker cancellation, crash recovery, pack handling,
+low-level replay and reusable fixture infrastructure belong to c2j. Session
+serialization and provider behavior belong to c2ops. Recipe tests check routing
+and observable contracts without substituting an execution engine.
 
 ```sh
-c2j test run --directory recipe-tests --case-timeout 3m --out-dir .c2/test-results
+c2j test run --directory . --case-timeout 3m --out-dir .c2/test-results
 ```
 
-Validated with c2j main `94484c909de14a2fe2b2a62dfbd82d31595b5b75` on
-2026-10-21: all 107 native integration cases in `recipe-tests/*.test.yaml` passed
-(39 consultation, 22 build lifecycle, 12 coordination/handoff, 18 creation,
-7 artifact matching, 5 result repair, and 4 verification). The directory run also
-passed the existing scenario suites; live suites were excluded. Coverage includes
-root discovery through `.c2/config.yaml`, local child recipes under `.c2/recipes/`,
-creation catalog updates under `.c2/`, approximate reference resolution, bounded
-human-directed repair, and preservation of checkpoints and published work.
-
-Clarification follow-up on the same c2j revision: all 43 build and creation cases
-passed, including four new regressions for questions without artifacts and unresolved
-optional references. Those additions bring native coverage to 111 cases.
+Use the release in `.c2j-version`. See [the cleanup assessment](ASSESSMENT_LEGACY_WORKFLOW_REMOVAL.md)
+for current results and [retirement expectations](../recipe-tests/retirement-statements.md)
+for what this removal must preserve. Earlier 107/111-case migration results describe
+an obsolete workflow revision and are available in Git history.

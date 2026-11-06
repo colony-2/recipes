@@ -1,12 +1,15 @@
 # Review artifact annotations
 
 Recipes attach presentation to review documents without changing their identities,
-answers or approval rules. The default production policy remains **legacy**.
+answers or approval rules. Adaptive uses native schema-v2 arrays and publishes
+review annotations directly. The policy below applies only to the retained
+creation helpers in `recipes/kernel/`, whose default remains **legacy**.
 
 ## Producer descriptors
 
-Development, light and consultation `files` keep required `path` and `description`.
-Optional fields are deliberately permissive at the model schema boundary:
+Creation `files` keep required `path` and `description`. The shared provider
+schema requires nullable metadata fields; invalid field types fail that schema.
+The collector independently omits unusable presentation values:
 
 ```json
 {"path":"decision.md","description":"Proposed behavior and acceptance evidence.","title":"Design decision brief","role":"primary","order":0,"source_paths":["design.md","tests.md"]}
@@ -29,18 +32,13 @@ annotations do not imply importance, a title or an invented description.
 originating job/invocation, original descriptor, immutable ref, delivery ID,
 attachment lineage, and resolved source associations. `agent-turn` exports it;
 phase records and consultation transcripts retain it; child results export it.
-The public build/create/consultation APIs accept optional `annotations_json`
-(default `[]`), since c2j recipe input schemas do not support general arrays.
-Normal cross-job transport instead adds a collision-safe internal value artifact
-to the existing documents argument, tagged `_c2_recipe_sidecar: review_annotations/v1`.
-This avoids unknown input fields on strict custom child recipes. Shared entrypoints
-import its list explicitly; internal composites and child results use typed lists.
-Review assembly excludes only tagged controls, not arbitrary similarly named originals.
-Custom wrappers may preserve this value artifact when forwarding documents, or
-explicitly import/export the typed list. They need no new mandatory input.
+The public build/create/consultation APIs use native `annotations` arrays under
+schema v2. Internal composites and child results pass typed lists. There is no
+annotation JSON input or cross-job transport sidecar requirement. The retained
+creation collector still filters internal tagged artifacts from review evidence.
 This is a recipe contract, not a c2j ArtifactRef change.
 
-Namespaces export an `attachment_map` and transform sidecar lineage only for
+Namespaces export an `attachment_map` and transform annotation lineage only for
 attachments in that namespace. Bound inputs outside it retain their original
 lineage. Final assembly accepts only exact IDs with matching immutable refs and
 current lineage; equal refs elsewhere never redirect associations. Original keys
@@ -69,7 +67,7 @@ entries, retaining brief metadata/overview last. Unverifiable or oversized minim
 presentation omits both fields. Brief/provenance record coverage before freeze;
 original documents and material content are never pruned to fit presentation.
 
-Final assembly treats sidecars as ownership evidence, not chronological votes.
+Final assembly treats annotation records as ownership evidence, not chronological votes.
 Competing producer origins, divergent lineage chains, or conflicting records at
 the same occurrence and lineage omit producer metadata with an incomplete-coverage
 notice. A longer lineage supersedes a shorter one only within the same producer
@@ -83,7 +81,7 @@ Operators package `recipes/kernel/review-presentation.yaml` with the single poli
 interface `review_document_annotations: legacy|annotated_v1`. This is deployment
 configuration, resolved before content generation, not a hook variable, ticket
 input, producer output or human answer. The same packaged policy applies at every
-shared review gateway, including consultation escalation, repair and creation.
+shared review gateway, including repair and creation.
 Pin the recipe revision consistently for workers and child recipe selectors;
 custom deployment variants must preserve this operator interface and policy.
 

@@ -1,5 +1,12 @@
 # Decision brief acceptance statements
 
+> Scope after legacy removal: references below to heavy/light, old consultation,
+> ticket/job and superpowers files describe retired expectations. Their deletion
+> is authorized by [the removal plan](../guides/LEGACY_WORKFLOW_REMOVAL.json).
+> Shared creation/artifact/review expectations remain. Current adaptive expectations
+> live in `adaptive/`; see [retained cleanup coverage](retirement-statements.md).
+
+
 Defined before implementation against `inbox/design.md` and the final accepted production contract. This work fits recipes ownership. External prerequisite keys: **[]**. No implementation or test execution is claimed.
 
 ## Compatibility and execution conventions

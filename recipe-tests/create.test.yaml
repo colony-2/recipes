@@ -1,3 +1,7 @@
+# Seeded cells are already registered by c2j test. Mock only that command here;
+# cell-registration.test.yaml covers native registration and rejection.
+# Publication cases also need generated repository identities in mock proposals:
+# see ../guides/FEATURE_REQUEST_C2J_RUNTIME_FIXTURE_REFERENCES.md. Keep them enabled.
 recipe: fixtures/create-main.yaml
 cases:
 - id: create-approved-set
@@ -12,14 +16,26 @@ cases:
           keep.txt: original
         file_sources:
           .c2/recipes/initialize.yaml: ../recipes/create/initialize.yaml
+          recipes/kernel/render/op.yaml: ../recipes/kernel/render/op.yaml
       alpha: {}
       beta: {}
     responses:
-    - node_path: create-main/run/create/root/review/review/creation-review/review/sequence/review/kernel-review/request_human_review
+    - node_path:
+        create-main/run/create/root/review/review/creation-review/review/sequence/review/kernel-review/request_human_review
       fields:
         decision: approve
   mocks:
     ops:
+    - match:
+        node_path:
+          create-main/run/create/root/publish/publish/publish-cells/publish/sequence/register_cell/register-cell/register
+      repeat: true
+      behavior:
+        mode: return
+        outputs:
+          success: true
+        artifacts:
+          registration.json: '{"id":"pre-registered-fixture"}'
     - match:
         selector: nix:github:colony-2/c2ops/published#codex
       behavior:
@@ -104,6 +120,11 @@ cases:
         op: command_execution
       behavior:
         mode: passthrough
+    - match:
+        selector: ./recipes/kernel/render
+      repeat: true
+      behavior:
+        mode: passthrough
   assertions:
   - type: cel_true
     expr: outputs.disposition == "created" && size(outputs.created_cells) == 2
@@ -114,18 +135,22 @@ cases:
   - type: cel_true
     expr: repositories.root.files[".c2/config.yaml"].contains("alpha")
   - type: cel_true
-    expr: size(calls.filter(c, c.op == "squashrebasemerge")) == 2 && size(calls.filter(c, c.op == "merge")) == 1 && size(calls.filter(c, c.op == "squash")) == 1 && !calls.exists(c, c.op == "rebase")
+    expr: size(calls.filter(c, c.op == "squashrebasemerge")) == 2 && size(calls.filter(c, c.op == "merge")) == 1 &&
+      size(calls.filter(c, c.op == "squash")) == 1 && !calls.exists(c, c.op == "rebase")
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution")[1].artifacts["created.json"].contains("revision")
+    expr: calls.filter(c, c.op == "extension_execution" &&
+      c.inputs.selector.endsWith("#codex"))[1].artifacts["created.json"].contains("revision")
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution")[1].inputs.inputs.session == calls.filter(c, c.op == "extension_execution")[0].outputs.session
+    expr: calls.filter(c, c.op == "extension_execution" &&
+      c.inputs.selector.endsWith("#codex"))[1].inputs.inputs.session == calls.filter(c, c.op == "extension_execution"
+      && c.inputs.selector.endsWith("#codex"))[0].outputs.session
   - type: cel_true
     expr: outputs.created_cells.all(c, c.ref == "refs/heads/main")
   - type: cel_true
-    expr: '!("ref" in calls.filter(c, c.op == "extension_execution")[0].inputs.inputs.output.schema.properties.cells.items.properties)'
+    expr: '!("ref" in calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex"))[0].inputs.inputs.output.schema.properties.cells.items.properties)'
   - type: cel_true
     expr: calls.filter(c, c.op == "squashrebasemerge").filter(c, c.cell in ["alpha", "beta"]).all(c, c.job_id !=
-      calls.filter(c, c.op == "extension_execution")[0].job_id)
+      calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex"))[0].job_id)
 - id: declined
   type: integration_case
   inputs:
@@ -138,6 +163,7 @@ cases:
           keep.txt: original
         file_sources:
           .c2/recipes/initialize.yaml: ../recipes/create/initialize.yaml
+          recipes/kernel/render/op.yaml: ../recipes/kernel/render/op.yaml
       alpha: {}
       beta: {}
     responses: []
@@ -190,6 +216,7 @@ cases:
           keep.txt: original
         file_sources:
           .c2/recipes/initialize.yaml: ../recipes/create/initialize.yaml
+          recipes/kernel/render/op.yaml: ../recipes/kernel/render/op.yaml
       alpha: {}
       beta: {}
     responses: []
@@ -242,10 +269,12 @@ cases:
           keep.txt: original
         file_sources:
           .c2/recipes/initialize.yaml: ../recipes/create/initialize.yaml
+          recipes/kernel/render/op.yaml: ../recipes/kernel/render/op.yaml
       alpha: {}
       beta: {}
     responses:
-    - node_path: create-main/run/create/root/review/review/creation-review/review/sequence/review/kernel-review/request_human_review
+    - node_path:
+        create-main/run/create/root/review/review/creation-review/review/sequence/review/kernel-review/request_human_review
       fields:
         decision: cancel
   mocks:
@@ -294,6 +323,11 @@ cases:
     - repeat: true
       match:
         op: command_execution
+      behavior:
+        mode: passthrough
+    - match:
+        selector: ./recipes/kernel/render
+      repeat: true
       behavior:
         mode: passthrough
   assertions:
@@ -313,10 +347,12 @@ cases:
           keep.txt: original
         file_sources:
           .c2/recipes/initialize.yaml: ../recipes/create/initialize.yaml
+          recipes/kernel/render/op.yaml: ../recipes/kernel/render/op.yaml
       alpha: {}
       beta: {}
     responses:
-    - node_path: create-main/run/create/root/review/review/creation-review/repair/sequence/repair/result-repair/review/review/kernel-review/request_human_review
+    - node_path:
+        create-main/run/create/root/review/review/creation-review/repair/sequence/repair/result-repair/review/review/kernel-review/request_human_review
       fields:
         decision: cancel
         feedback: ''
@@ -366,6 +402,11 @@ cases:
         op: command_execution
       behavior:
         mode: passthrough
+    - match:
+        selector: ./recipes/kernel/render
+      repeat: true
+      behavior:
+        mode: passthrough
   assertions:
   - type: cel_true
     expr: outputs.disposition == "cancelled" && !outputs.merged
@@ -381,10 +422,12 @@ cases:
           keep.txt: original
         file_sources:
           .c2/recipes/initialize.yaml: ../recipes/create/initialize.yaml
+          recipes/kernel/render/op.yaml: ../recipes/kernel/render/op.yaml
       alpha: {}
       beta: {}
     responses:
-    - node_path: create-main/run/create/root/review/review/creation-review/repair/sequence/repair/result-repair/review/review/kernel-review/request_human_review
+    - node_path:
+        create-main/run/create/root/review/review/creation-review/repair/sequence/repair/result-repair/review/review/kernel-review/request_human_review
       fields:
         decision: cancel
         feedback: ''
@@ -438,6 +481,11 @@ cases:
     - repeat: true
       match:
         op: command_execution
+      behavior:
+        mode: passthrough
+    - match:
+        selector: ./recipes/kernel/render
+      repeat: true
       behavior:
         mode: passthrough
   assertions:
@@ -457,14 +505,26 @@ cases:
           keep.txt: original
         file_sources:
           .c2/recipes/initialize.yaml: ../recipes/create/initialize.yaml
+          recipes/kernel/render/op.yaml: ../recipes/kernel/render/op.yaml
       alpha: {}
       beta: {}
     responses:
-    - node_path: create-main/run/create/root/review/review/creation-review/review/sequence/review/kernel-review/request_human_review
+    - node_path:
+        create-main/run/create/root/review/review/creation-review/review/sequence/review/kernel-review/request_human_review
       fields:
         decision: approve
   mocks:
     ops:
+    - match:
+        node_path:
+          create-main/run/create/root/publish/publish/publish-cells/publish/sequence/register_cell/register-cell/register
+      repeat: true
+      behavior:
+        mode: return
+        outputs:
+          success: true
+        artifacts:
+          registration.json: '{"id":"pre-registered-fixture"}'
     - match:
         selector: nix:github:colony-2/c2ops/published#codex
       behavior:
@@ -509,6 +569,11 @@ cases:
     - repeat: true
       match:
         op: command_execution
+      behavior:
+        mode: passthrough
+    - match:
+        selector: ./recipes/kernel/render
+      repeat: true
       behavior:
         mode: passthrough
   assertions:
@@ -529,14 +594,17 @@ cases:
           keep.txt: original
         file_sources:
           .c2/recipes/initialize.yaml: ../recipes/create/initialize.yaml
+          recipes/kernel/render/op.yaml: ../recipes/kernel/render/op.yaml
       alpha: {}
       beta: {}
     responses:
-    - node_path: create-main/run/create/root/review/review/creation-review/review/sequence/review/kernel-review/request_human_review
+    - node_path:
+        create-main/run/create/root/review/review/creation-review/review/sequence/review/kernel-review/request_human_review
       fields:
         decision: revise
         feedback: Choose a simpler technology.
-    - node_path: create-main/run/create/root/review/review/creation-review/review/sequence/review/kernel-review/request_human_review
+    - node_path:
+        create-main/run/create/root/review/review/creation-review/review/sequence/review/kernel-review/request_human_review
       fields:
         decision: cancel
   mocks:
@@ -628,15 +696,23 @@ cases:
         op: command_execution
       behavior:
         mode: passthrough
+    - match:
+        selector: ./recipes/kernel/render
+      repeat: true
+      behavior:
+        mode: passthrough
   assertions:
   - type: cel_true
     expr: size(reviews) == 2 && !calls.exists(c, c.op in ["squash", "merge", "squashrebasemerge"])
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution")[1].inputs.inputs.session == calls.filter(c, c.op == "extension_execution")[0].outputs.session
+    expr: calls.filter(c, c.op == "extension_execution" &&
+      c.inputs.selector.endsWith("#codex"))[1].inputs.inputs.session == calls.filter(c, c.op == "extension_execution"
+      && c.inputs.selector.endsWith("#codex"))[0].outputs.session
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution")[1].artifacts["feedback.json"].contains("simpler technology")
+    expr: calls.filter(c, c.op == "extension_execution" &&
+      c.inputs.selector.endsWith("#codex"))[1].artifacts["feedback.json"].contains("simpler technology")
   - type: cel_true
-    expr: '!("instructions" in calls.filter(c, c.op == "extension_execution")[1].inputs.inputs)'
+    expr: '!("instructions" in calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex"))[1].inputs.inputs)'
 - id: annotations-require-revision
   type: integration_case
   inputs:
@@ -649,15 +725,18 @@ cases:
           keep.txt: original
         file_sources:
           .c2/recipes/initialize.yaml: ../recipes/create/initialize.yaml
+          recipes/kernel/render/op.yaml: ../recipes/kernel/render/op.yaml
       alpha: {}
       beta: {}
     responses:
-    - node_path: create-main/run/create/root/review/review/creation-review/review/sequence/review/kernel-review/request_human_review
+    - node_path:
+        create-main/run/create/root/review/review/creation-review/review/sequence/review/kernel-review/request_human_review
       fields:
         decision: approve
       attachments:
         annotations: fixtures/consultation-expert-direction.md
-    - node_path: create-main/run/create/root/review/review/creation-review/review/sequence/review/kernel-review/request_human_review
+    - node_path:
+        create-main/run/create/root/review/review/creation-review/review/sequence/review/kernel-review/request_human_review
       fields:
         decision: cancel
   mocks:
@@ -747,6 +826,11 @@ cases:
     - repeat: true
       match:
         op: command_execution
+      behavior:
+        mode: passthrough
+    - match:
+        selector: ./recipes/kernel/render
+      repeat: true
       behavior:
         mode: passthrough
   assertions:
@@ -764,14 +848,26 @@ cases:
           keep.txt: original
         file_sources:
           .c2/recipes/initialize.yaml: ../recipes/create/initialize.yaml
+          recipes/kernel/render/op.yaml: ../recipes/kernel/render/op.yaml
       alpha: {}
       beta: {}
     responses:
-    - node_path: create-main/run/create/root/review/review/creation-review/review/sequence/review/kernel-review/request_human_review
+    - node_path:
+        create-main/run/create/root/review/review/creation-review/review/sequence/review/kernel-review/request_human_review
       fields:
         decision: approve
   mocks:
     ops:
+    - match:
+        node_path:
+          create-main/run/create/root/publish/publish/publish-cells/publish/sequence/register_cell/register-cell/register
+      repeat: true
+      behavior:
+        mode: return
+        outputs:
+          success: true
+        artifacts:
+          registration.json: '{"id":"pre-registered-fixture"}'
     - match:
         selector: nix:github:colony-2/c2ops/published#codex
       behavior:
@@ -856,11 +952,17 @@ cases:
         op: command_execution
       behavior:
         mode: passthrough
+    - match:
+        selector: ./recipes/kernel/render
+      repeat: true
+      behavior:
+        mode: passthrough
   assertions:
   - type: cel_true
     expr: repositories.root.new_commits == 0
   - type: cel_true
-    expr: size(calls.filter(c, c.op == "squashrebasemerge")) == 2 && !calls.exists(c, c.op in ["rebase", "squash", "merge"])
+    expr: size(calls.filter(c, c.op == "squashrebasemerge")) == 2 && !calls.exists(c, c.op in ["rebase", "squash",
+      "merge"])
   - type: cel_true
     expr: outputs.disposition == "registration_failed" && !outputs.merged
 - id: later-publication-fails
@@ -877,14 +979,26 @@ cases:
           keep.txt: original
         file_sources:
           .c2/recipes/initialize.yaml: ../recipes/create/initialize.yaml
+          recipes/kernel/render/op.yaml: ../recipes/kernel/render/op.yaml
       alpha: {}
       beta: {}
     responses:
-    - node_path: create-main/run/create/root/review/review/creation-review/review/sequence/review/kernel-review/request_human_review
+    - node_path:
+        create-main/run/create/root/review/review/creation-review/review/sequence/review/kernel-review/request_human_review
       fields:
         decision: approve
   mocks:
     ops:
+    - match:
+        node_path:
+          create-main/run/create/root/publish/publish/publish-cells/publish/sequence/register_cell/register-cell/register
+      repeat: true
+      behavior:
+        mode: return
+        outputs:
+          success: true
+        artifacts:
+          registration.json: '{"id":"pre-registered-fixture"}'
     - match:
         selector: nix:github:colony-2/c2ops/published#codex
       behavior:
@@ -939,13 +1053,20 @@ cases:
         op: command_execution
       behavior:
         mode: passthrough
+    - match:
+        selector: ./recipes/kernel/render
+      repeat: true
+      behavior:
+        mode: passthrough
   assertions:
   - type: cel_true
     expr: repositories.root.new_commits == 0
   - type: cel_true
-    expr: size(calls.filter(c, c.op == "extension_execution")) == 1
+    expr: size(calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex"))) == 1
   - type: cel_true
-    expr: calls.exists(c, c.node_path.endsWith("record_pending/creation-publication-record/record") && c.outputs.success && c.artifacts["created.json"].contains('"cell":"alpha"') && c.artifacts["created.json"].contains('"revision":'))
+    expr: calls.exists(c, c.node_path.endsWith("record_pending/creation-publication-record/record") &&
+      c.outputs.success && c.artifacts["created.json"].contains('"cell":"alpha"') &&
+      c.artifacts["created.json"].contains('"revision":'))
   - type: cel_true
     expr: '!calls.exists(c, c.node_path.contains("/apply_catalog/") || (c.op == "merge" && c.cell == "root"))'
 
@@ -961,6 +1082,7 @@ cases:
           keep.txt: original
         file_sources:
           .c2/recipes/initialize.yaml: ../recipes/create/initialize.yaml
+          recipes/kernel/render/op.yaml: ../recipes/kernel/render/op.yaml
       alpha: {}
       beta: {}
     responses: []
@@ -995,13 +1117,16 @@ cases:
           keep.txt: original
         file_sources:
           .c2/recipes/initialize.yaml: ../recipes/create/initialize.yaml
+          recipes/kernel/render/op.yaml: ../recipes/kernel/render/op.yaml
       alpha: {}
       beta: {}
     responses:
-    - node_path: create-main/run/create/root/review/review/creation-review/questions/sequence/review/kernel-review/request_human_review
+    - node_path:
+        create-main/run/create/root/review/review/creation-review/questions/sequence/review/kernel-review/request_human_review
       fields:
         technology: Existing Go toolchain
-    - node_path: create-main/run/create/root/review/review/creation-review/review/sequence/review/kernel-review/request_human_review
+    - node_path:
+        create-main/run/create/root/review/review/creation-review/review/sequence/review/kernel-review/request_human_review
       fields:
         decision: cancel
   mocks:
@@ -1090,11 +1215,17 @@ cases:
         op: command_execution
       behavior:
         mode: passthrough
+    - match:
+        selector: ./recipes/kernel/render
+      repeat: true
+      behavior:
+        mode: passthrough
   assertions:
   - type: cel_true
     expr: size(reviews) == 2 && !outputs.merged
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution")[1].artifacts["feedback.json"].contains("Go toolchain")
+    expr: calls.filter(c, c.op == "extension_execution" &&
+      c.inputs.selector.endsWith("#codex"))[1].artifacts["feedback.json"].contains("Go toolchain")
 - id: revision-without-direction
   type: integration_case
   inputs:
@@ -1107,13 +1238,16 @@ cases:
           keep.txt: original
         file_sources:
           .c2/recipes/initialize.yaml: ../recipes/create/initialize.yaml
+          recipes/kernel/render/op.yaml: ../recipes/kernel/render/op.yaml
       alpha: {}
       beta: {}
     responses:
-    - node_path: create-main/run/create/root/review/review/creation-review/review/sequence/review/kernel-review/request_human_review
+    - node_path:
+        create-main/run/create/root/review/review/creation-review/review/sequence/review/kernel-review/request_human_review
       fields:
         decision: revise
-    - node_path: create-main/run/create/root/review/review/creation-review/review/sequence/review/kernel-review/request_human_review
+    - node_path:
+        create-main/run/create/root/review/review/creation-review/review/sequence/review/kernel-review/request_human_review
       fields:
         decision: cancel
   mocks:
@@ -1164,11 +1298,16 @@ cases:
         op: command_execution
       behavior:
         mode: passthrough
+    - match:
+        selector: ./recipes/kernel/render
+      repeat: true
+      behavior:
+        mode: passthrough
   assertions:
   - type: cel_true
     expr: size(reviews) == 2 && !outputs.merged
   - type: cel_true
-    expr: size(calls.filter(c, c.op == "extension_execution")) == 1
+    expr: size(calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex"))) == 1
 - id: empty-purpose
   type: integration_case
   inputs:
@@ -1181,14 +1320,26 @@ cases:
           keep.txt: original
         file_sources:
           .c2/recipes/initialize.yaml: ../recipes/create/initialize.yaml
+          recipes/kernel/render/op.yaml: ../recipes/kernel/render/op.yaml
       alpha: {}
       beta: {}
     responses:
-    - node_path: create-main/run/create/root/review/review/creation-review/review/sequence/review/kernel-review/request_human_review
+    - node_path:
+        create-main/run/create/root/review/review/creation-review/review/sequence/review/kernel-review/request_human_review
       fields:
         decision: approve
   mocks:
     ops:
+    - match:
+        node_path:
+          create-main/run/create/root/publish/publish/publish-cells/publish/sequence/register_cell/register-cell/register
+      repeat: true
+      behavior:
+        mode: return
+        outputs:
+          success: true
+        artifacts:
+          registration.json: '{"id":"pre-registered-fixture"}'
     - match:
         selector: nix:github:colony-2/c2ops/published#codex
       behavior:
@@ -1233,6 +1384,11 @@ cases:
         op: command_execution
       behavior:
         mode: passthrough
+    - match:
+        selector: ./recipes/kernel/render
+      repeat: true
+      behavior:
+        mode: passthrough
   assertions:
   - type: cel_true
     expr: outputs.disposition == "publication_failed" && !outputs.merged
@@ -1254,14 +1410,26 @@ cases:
           keep.txt: original
         file_sources:
           .c2/recipes/initialize.yaml: ../recipes/create/initialize.yaml
+          recipes/kernel/render/op.yaml: ../recipes/kernel/render/op.yaml
       alpha: {}
       beta: {}
     responses:
-    - node_path: create-main/run/create/root/review/review/creation-review/review/sequence/review/kernel-review/request_human_review
+    - node_path:
+        create-main/run/create/root/review/review/creation-review/review/sequence/review/kernel-review/request_human_review
       fields:
         decision: approve
   mocks:
     ops:
+    - match:
+        node_path:
+          create-main/run/create/root/publish/publish/publish-cells/publish/sequence/register_cell/register-cell/register
+      repeat: true
+      behavior:
+        mode: return
+        outputs:
+          success: true
+        artifacts:
+          registration.json: '{"id":"pre-registered-fixture"}'
     - match:
         selector: nix:github:colony-2/c2ops/published#codex
       behavior:
@@ -1346,6 +1514,11 @@ cases:
         op: command_execution
       behavior:
         mode: passthrough
+    - match:
+        selector: ./recipes/kernel/render
+      repeat: true
+      behavior:
+        mode: passthrough
   assertions:
   - type: cel_true
     expr: outputs.disposition == "created" && size(outputs.created_cells) == 2
@@ -1356,15 +1529,19 @@ cases:
   - type: cel_true
     expr: repositories.root.files[".c2/config.yaml"].contains("alpha")
   - type: cel_true
-    expr: size(calls.filter(c, c.op == "squashrebasemerge")) == 2 && size(calls.filter(c, c.op == "merge")) == 1 && size(calls.filter(c, c.op == "squash")) == 1 && !calls.exists(c, c.op == "rebase")
+    expr: size(calls.filter(c, c.op == "squashrebasemerge")) == 2 && size(calls.filter(c, c.op == "merge")) == 1 &&
+      size(calls.filter(c, c.op == "squash")) == 1 && !calls.exists(c, c.op == "rebase")
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution")[1].artifacts["created.json"].contains("revision")
+    expr: calls.filter(c, c.op == "extension_execution" &&
+      c.inputs.selector.endsWith("#codex"))[1].artifacts["created.json"].contains("revision")
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution")[1].inputs.inputs.session == calls.filter(c, c.op == "extension_execution")[0].outputs.session
+    expr: calls.filter(c, c.op == "extension_execution" &&
+      c.inputs.selector.endsWith("#codex"))[1].inputs.inputs.session == calls.filter(c, c.op == "extension_execution"
+      && c.inputs.selector.endsWith("#codex"))[0].outputs.session
   - type: cel_true
     expr: outputs.created_cells.all(c, c.ref == "refs/heads/main")
   - type: cel_true
-    expr: '!("ref" in calls.filter(c, c.op == "extension_execution")[0].inputs.inputs.output.schema.properties.cells.items.properties)'
+    expr: '!("ref" in calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex"))[0].inputs.inputs.output.schema.properties.cells.items.properties)'
 - id: registration-evidence-repair-does-not-republish
   type: integration_case
   inputs:
@@ -1377,14 +1554,26 @@ cases:
           keep.txt: original
         file_sources:
           .c2/recipes/initialize.yaml: ../recipes/create/initialize.yaml
+          recipes/kernel/render/op.yaml: ../recipes/kernel/render/op.yaml
       alpha: {}
       beta: {}
     responses:
-    - node_path: create-main/run/create/root/review/review/creation-review/review/sequence/review/kernel-review/request_human_review
+    - node_path:
+        create-main/run/create/root/review/review/creation-review/review/sequence/review/kernel-review/request_human_review
       fields:
         decision: approve
   mocks:
     ops:
+    - match:
+        node_path:
+          create-main/run/create/root/publish/publish/publish-cells/publish/sequence/register_cell/register-cell/register
+      repeat: true
+      behavior:
+        mode: return
+        outputs:
+          success: true
+        artifacts:
+          registration.json: '{"id":"pre-registered-fixture"}'
     - match:
         selector: nix:github:colony-2/c2ops/published#codex
       behavior:
@@ -1488,15 +1677,23 @@ cases:
         op: command_execution
       behavior:
         mode: passthrough
+    - match:
+        selector: ./recipes/kernel/render
+      repeat: true
+      behavior:
+        mode: passthrough
   assertions:
   - type: cel_true
     expr: outputs.disposition == "created" && outputs.merged
   - type: cel_true
-    expr: size(calls.filter(c, c.op == "squashrebasemerge")) == 2 && size(calls.filter(c, c.op == "merge")) == 1 && size(calls.filter(c, c.op == "squash")) == 1 && !calls.exists(c, c.op == "rebase")
+    expr: size(calls.filter(c, c.op == "squashrebasemerge")) == 2 && size(calls.filter(c, c.op == "merge")) == 1 &&
+      size(calls.filter(c, c.op == "squash")) == 1 && !calls.exists(c, c.op == "rebase")
   - type: cel_true
-    expr: size(calls.filter(c, c.op == "extension_execution")) == 3
+    expr: size(calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex"))) == 3
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution")[2].inputs.inputs.session == calls.filter(c, c.op == "extension_execution")[1].outputs.session
+    expr: calls.filter(c, c.op == "extension_execution" &&
+      c.inputs.selector.endsWith("#codex"))[2].inputs.inputs.session == calls.filter(c, c.op == "extension_execution"
+      && c.inputs.selector.endsWith("#codex"))[1].outputs.session
   - type: cel_true
     expr: '!("unapproved-repair.txt" in repositories.root.files)'
 - id: clarification-without-artifacts
@@ -1511,13 +1708,16 @@ cases:
           keep.txt: original
         file_sources:
           .c2/recipes/initialize.yaml: ../recipes/create/initialize.yaml
+          recipes/kernel/render/op.yaml: ../recipes/kernel/render/op.yaml
       alpha: {}
       beta: {}
     responses:
-    - node_path: create-main/run/create/root/review/review/creation-review/questions/sequence/review/kernel-review/request_human_review
+    - node_path:
+        create-main/run/create/root/review/review/creation-review/questions/sequence/review/kernel-review/request_human_review
       fields:
         technology: Existing Go toolchain
-    - node_path: create-main/run/create/root/review/review/creation-review/review/sequence/review/kernel-review/request_human_review
+    - node_path:
+        create-main/run/create/root/review/review/creation-review/review/sequence/review/kernel-review/request_human_review
       fields:
         decision: cancel
   mocks:
@@ -1593,17 +1793,26 @@ cases:
         op: command_execution
       behavior:
         mode: passthrough
+    - match:
+        selector: ./recipes/kernel/render
+      repeat: true
+      behavior:
+        mode: passthrough
   assertions:
   - type: cel_true
     expr: size(reviews) == 2 && !outputs.merged
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution")[1].artifacts["feedback.json"].contains("Go toolchain")
+    expr: calls.filter(c, c.op == "extension_execution" &&
+      c.inputs.selector.endsWith("#codex"))[1].artifacts["feedback.json"].contains("Go toolchain")
   - type: cel_true
-    expr: '!has(reviews[0].form.documents) || size(reviews[0].form.documents) == 0'
+    expr: reviews[0].form.documents.exists(k, k.endsWith("/brief.md")) && reviews[0].form.documents.all(k,
+      k.startsWith("review-briefs/"))
   - type: cel_true
     expr: '!calls.exists(c, c.node_path.contains("/repair/"))'
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution")[1].inputs.inputs.session == calls.filter(c, c.op == "extension_execution")[0].outputs.session
+    expr: calls.filter(c, c.op == "extension_execution" &&
+      c.inputs.selector.endsWith("#codex"))[1].inputs.inputs.session == calls.filter(c, c.op == "extension_execution"
+      && c.inputs.selector.endsWith("#codex"))[0].outputs.session
   - type: cel_true
     expr: calls.filter(c, c.op == "input")[0].node_path.contains("/questions/")
   - type: cel_true
@@ -1620,13 +1829,16 @@ cases:
           keep.txt: original
         file_sources:
           .c2/recipes/initialize.yaml: ../recipes/create/initialize.yaml
+          recipes/kernel/render/op.yaml: ../recipes/kernel/render/op.yaml
       alpha: {}
       beta: {}
     responses:
-    - node_path: create-main/run/create/root/review/review/creation-review/questions/sequence/review/kernel-review/request_human_review
+    - node_path:
+        create-main/run/create/root/review/review/creation-review/questions/sequence/review/kernel-review/request_human_review
       fields:
         technology: Existing Go toolchain
-    - node_path: create-main/run/create/root/review/review/creation-review/review/sequence/review/kernel-review/request_human_review
+    - node_path:
+        create-main/run/create/root/review/review/creation-review/review/sequence/review/kernel-review/request_human_review
       fields:
         decision: cancel
   mocks:
@@ -1711,17 +1923,26 @@ cases:
         op: command_execution
       behavior:
         mode: passthrough
+    - match:
+        selector: ./recipes/kernel/render
+      repeat: true
+      behavior:
+        mode: passthrough
   assertions:
   - type: cel_true
     expr: size(reviews) == 2 && !outputs.merged
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution")[1].artifacts["feedback.json"].contains("Go toolchain")
+    expr: calls.filter(c, c.op == "extension_execution" &&
+      c.inputs.selector.endsWith("#codex"))[1].artifacts["feedback.json"].contains("Go toolchain")
   - type: cel_true
-    expr: '!has(reviews[0].form.documents) || size(reviews[0].form.documents) == 0'
+    expr: reviews[0].form.documents.exists(k, k.endsWith("/brief.md")) && reviews[0].form.documents.all(k,
+      k.startsWith("review-briefs/"))
   - type: cel_true
     expr: '!calls.exists(c, c.node_path.contains("/repair/"))'
   - type: cel_true
-    expr: calls.filter(c, c.op == "extension_execution")[1].inputs.inputs.session == calls.filter(c, c.op == "extension_execution")[0].outputs.session
+    expr: calls.filter(c, c.op == "extension_execution" &&
+      c.inputs.selector.endsWith("#codex"))[1].inputs.inputs.session == calls.filter(c, c.op == "extension_execution"
+      && c.inputs.selector.endsWith("#codex"))[0].outputs.session
   - type: cel_true
     expr: calls.filter(c, c.op == "input")[0].node_path.contains("/questions/")
   - type: cel_true
@@ -1738,17 +1959,30 @@ cases:
           keep.txt: original
         file_sources:
           .c2/recipes/initialize.yaml: ../recipes/create/initialize.yaml
+          recipes/kernel/render/op.yaml: ../recipes/kernel/render/op.yaml
       alpha: {}
       beta: {}
     responses:
-    - node_path: create-main/run/create/root/review/review/creation-review/review/sequence/review/kernel-review/request_human_review
+    - node_path:
+        create-main/run/create/root/review/review/creation-review/review/sequence/review/kernel-review/request_human_review
       fields:
         decision: approve
-    - node_path: create-main/run/create/root/catalog_recovery/catalog_recovery/stage-recovery/review/review/kernel-review/request_human_review
+    - node_path:
+        create-main/run/create/root/catalog_recovery/catalog_recovery/stage-recovery/review/review/kernel-review/request_human_review
       fields:
         decision: cancel
   mocks:
     ops:
+    - match:
+        node_path:
+          create-main/run/create/root/publish/publish/publish-cells/publish/sequence/register_cell/register-cell/register
+      repeat: true
+      behavior:
+        mode: return
+        outputs:
+          success: true
+        artifacts:
+          registration.json: '{"id":"pre-registered-fixture"}'
     - match:
         selector: nix:github:colony-2/c2ops/published#codex
       behavior:
@@ -1799,6 +2033,11 @@ cases:
         op: command_execution
       behavior:
         mode: passthrough
+    - match:
+        selector: ./recipes/kernel/render
+      repeat: true
+      behavior:
+        mode: passthrough
   assertions:
   - type: output_equals
     path: disposition
@@ -1806,7 +2045,8 @@ cases:
   - type: cel_true
     expr: size(outputs.created_cells) == 2 && !outputs.merged
   - type: cel_true
-    expr: size(calls.filter(c, c.op == "squashrebasemerge")) == 2 && !calls.exists(c, c.op in ["rebase", "squash", "merge"]) && size(reviews) == 2
+    expr: size(calls.filter(c, c.op == "squashrebasemerge")) == 2 && !calls.exists(c, c.op in ["rebase", "squash",
+      "merge"]) && size(reviews) == 2
   - type: cel_true
     expr: '!(".c2/config.yaml" in repositories.root.changed_files)'
 - id: omitted-catalog-cell-cannot-establish-registration
@@ -1821,17 +2061,30 @@ cases:
           keep.txt: original
         file_sources:
           .c2/recipes/initialize.yaml: ../recipes/create/initialize.yaml
+          recipes/kernel/render/op.yaml: ../recipes/kernel/render/op.yaml
       alpha: {}
       beta: {}
     responses:
-    - node_path: create-main/run/create/root/review/review/creation-review/review/sequence/review/kernel-review/request_human_review
+    - node_path:
+        create-main/run/create/root/review/review/creation-review/review/sequence/review/kernel-review/request_human_review
       fields:
         decision: approve
-    - node_path: create-main/run/create/root/catalog_recovery/catalog_recovery/stage-recovery/review/review/kernel-review/request_human_review
+    - node_path:
+        create-main/run/create/root/catalog_recovery/catalog_recovery/stage-recovery/review/review/kernel-review/request_human_review
       fields:
         decision: cancel
   mocks:
     ops:
+    - match:
+        node_path:
+          create-main/run/create/root/publish/publish/publish-cells/publish/sequence/register_cell/register-cell/register
+      repeat: true
+      behavior:
+        mode: return
+        outputs:
+          success: true
+        artifacts:
+          registration.json: '{"id":"pre-registered-fixture"}'
     - match:
         selector: nix:github:colony-2/c2ops/published#codex
       behavior:
@@ -1884,6 +2137,11 @@ cases:
         op: command_execution
       behavior:
         mode: passthrough
+    - match:
+        selector: ./recipes/kernel/render
+      repeat: true
+      behavior:
+        mode: passthrough
   assertions:
   - type: output_equals
     path: disposition
@@ -1891,6 +2149,7 @@ cases:
   - type: cel_true
     expr: size(outputs.created_cells) == 2 && !outputs.merged
   - type: cel_true
-    expr: size(calls.filter(c, c.op == "squashrebasemerge")) == 2 && !calls.exists(c, c.op in ["rebase", "squash", "merge"]) && size(reviews) == 2
+    expr: size(calls.filter(c, c.op == "squashrebasemerge")) == 2 && !calls.exists(c, c.op in ["rebase", "squash",
+      "merge"]) && size(reviews) == 2
   - type: cel_true
     expr: '!(".c2/config.yaml" in repositories.root.changed_files)'

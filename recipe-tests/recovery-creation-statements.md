@@ -1,5 +1,12 @@
 # Recovery and reviewed creation test statements
 
+> Scope after legacy removal: references below to heavy/light, old consultation,
+> ticket/job and superpowers files describe retired expectations. Their deletion
+> is authorized by [the removal plan](../guides/LEGACY_WORKFLOW_REMOVAL.json).
+> Shared creation/artifact/review expectations remain. Current adaptive expectations
+> live in `adaptive/`; see [retained cleanup coverage](retirement-statements.md).
+
+
 | Priority | Kind / dependencies | Files | Expected outcome |
 | --- | --- | --- | --- |
 | Critical | Integration / c2j, Git | `recipes/develop/merge-review.yaml` | Incomplete accounting is corrected against the same candidate and reviewer session before acceptance or implementation revision. |

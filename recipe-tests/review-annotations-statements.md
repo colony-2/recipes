@@ -1,5 +1,12 @@
 # Producer annotation acceptance statements
 
+> Scope after legacy removal: references below to heavy/light, old consultation,
+> ticket/job and superpowers files describe retired expectations. Their deletion
+> is authorized by [the removal plan](../guides/LEGACY_WORKFLOW_REMOVAL.json).
+> Shared creation/artifact/review expectations remain. Current adaptive expectations
+> live in `adaptive/`; see [retained cleanup coverage](retirement-statements.md).
+
+
 Defined before implementation against `inbox/design.md` and the final accepted integration contract. This work fits recipes ownership. External prerequisite keys: **[]**. Context records no child outcomes or external approvals. Build settings supply no overrides or advisory specialist findings.
 
 ## Preservation and execution
@@ -19,7 +26,7 @@ Each table outcome is a test statement of at most 30 words; annotations occupy s
 | ID | Priority | Level / dependencies | Filenames | Expected outcome |
 | --- | --- | --- | --- | --- |
 | A01 | Critical | Integration / N | `recipes/develop/agent.yaml`, `recipes/light/agent.yaml`, `recipes/kernel/consultation.yaml` | Development, light and consultation producers accept valid optional descriptors while retaining required paths, descriptions and original artifact references. |
-| A02 | Critical | Integration / N | `recipes/kernel/agent-turn.yaml`, `recipes/develop/agent.yaml` | Missing, empty, partial and wrong-type optional annotations preserve valid deliverables without whole-turn repair; independently valid fields survive. |
+| A02 | Critical | Integration / N | `recipes/kernel/agent-turn.yaml`, `recipes/develop/agent.yaml` | Valid nullable metadata preserves deliverables; invalid types fail the actual provider schema before review. Valid descriptors survive artifact namespacing. |
 | A03 | Critical | Integration / N | `recipes/kernel/agent-turn.yaml`, `recipes/kernel/artifact-result.yaml` | Missing required descriptions, unsafe or unresolved required paths, and invalid decisions retain existing rejection and repair behavior. |
 | A04 | High | Integration / N | `recipes/develop/agent.yaml`, `recipes/light/agent.yaml`, `recipes/kernel/consultation.yaml` | Producer instructions request meaningful document purposes and decision relevance, without granting agents overview selection or workflow authority. |
 | A05 | Critical | Integration / N | `recipes/kernel/artifact-result.yaml` | Source associations resolve only against declared outputs or bound inputs using unambiguous inventory matching, retaining immutable references and origin namespaces. |

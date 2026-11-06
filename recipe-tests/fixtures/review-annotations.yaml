@@ -1,43 +1,19 @@
 id: annotation-handoff
-input_schema:
-  variant:
-    type: string
-    default_value: heavy
-inputs:
-  variant: ${{ inputs.variant }}
 sequence:
+- id: schemas
+  include: ../../recipes/response-schemas.yaml
 - id: produce
+  include: ../../recipes/kernel/agent-turn.yaml
   inputs:
-    variant: ${{ inputs.variant }}
-  state:
-    initial:
-    - to: light
-      when: inputs.variant == 'light'
-    - to: heavy
-      when: true
-    states:
-      heavy:
-        include: ../../recipes/develop/agent.yaml
-        inputs:
-          flow:
-            phase: implement
-            last_phase: implement
-            message: Publish an annotated acceptance document.
-            target_directory: .
-            session: {}
-          documents:
-            input.md: {kind: value, format: text, value: Original bound evidence.}
-      light:
-        include: ../../recipes/light/agent.yaml
-        inputs:
-          flow:
-            message: Publish an annotated acceptance document.
-            target_directory: .
-            session: {}
-          documents:
-            input.md: {kind: value, format: text, value: Original bound evidence.}
-  outputs:
-    turn: ${{ state_output('heavy', 'turn', state_output('light', 'turn', {})) }}
+    read_only: true
+    prompt: Publish the annotated creation review evidence.
+    schema: ${{ sequence.schemas.outputs.creation }}
+    session: {}
+    documents:
+      input.md:
+        kind: value
+        format: text
+        value: Original bound evidence.
 - id: validate_response_schema
   op: command_execution
   const: true
@@ -49,11 +25,11 @@ sequence:
     schema.json:
       kind: value
       format: json
-      value: ${{ sequence.produce.outputs.turn.response_schema }}
+      value: ${{ sequence.schemas.outputs.creation }}
     response.json:
       kind: value
       format: json
-      value: ${{ sequence.produce.outputs.turn.result.response }}
+      value: ${{ sequence.produce.outputs.original_response }}
   inputs:
     env:
       INBOX: ${{ context.environment.op.inbox }}
@@ -65,9 +41,9 @@ sequence:
       import copy, json, os
       from pathlib import Path
       response = json.loads((Path(os.environ['INBOX']) / 'response.json').read_text())
-      for field in ['path', 'description', 'decision']:
+      for field in ['path', 'description', 'outcome']:
           invalid = copy.deepcopy(response)
-          if field == 'decision': invalid['next'] = 'invented-decision'
+          if field == 'outcome': invalid['outcome'] = 'invented-decision'
           else: del invalid['files'][0][field]
           (Path(os.environ['OUTBOX']) / ('invalid-' + field + '.json')).write_text(json.dumps(invalid))
       CHECK
@@ -81,8 +57,8 @@ sequence:
   include: ../../recipes/kernel/artifact-namespace.yaml
   inputs:
     prefix: child/
-    documents: ${{ sequence.produce.outputs.turn.artifacts }}
-    annotations: ${{ sequence.produce.outputs.turn.annotations }}
+    documents: ${{ sequence.produce.outputs.artifacts }}
+    annotations: ${{ sequence.produce.outputs.annotations }}
 - id: parent_namespace
   include: ../../recipes/kernel/artifact-namespace.yaml
   inputs:
@@ -94,7 +70,8 @@ sequence:
   inputs:
     title: Review annotation integration
     documents: >-
-      ${{ jq([sequence.parent_namespace.outputs.documents, {'input.md': {'kind': 'value', 'format': 'text', 'value': 'Original bound evidence.'} }], 'add') }}
+      ${{ jq([sequence.parent_namespace.outputs.documents, {'input.md': {'kind': 'value', 'format': 'text', 'value': 'Original
+      bound evidence.'} }], 'add') }}
     annotations: ${{ sequence.parent_namespace.outputs.annotations }}
     checkpoint:
       phase: implement
@@ -109,7 +86,7 @@ sequence:
       - value: revise
         label: Revise
 outputs:
-  turn: ${{ sequence.produce.outputs.turn }}
+  turn: ${{ sequence.produce.outputs }}
   annotations: ${{ sequence.parent_namespace.outputs.annotations }}
   presentation: ${{ sequence.review.outputs.presentation }}
   response: ${{ sequence.review.outputs.response }}

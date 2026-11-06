@@ -2,7 +2,7 @@
 
 [`create.yaml`](../../create.yaml) must run as a job owned by the cell named
 `root`, and its creation workspace is explicitly `root`. It accepts `prompt`, optional consultation `session` and `documents`, and
-`root_cell`/`root_ref`. Both build paths submit this root-owned child directly for
+`root_cell`/`root_ref`. Adaptive submits this root-owned child for
 explicit creation requests or targets that cannot yet serve a consultation.
 There is no separate eligibility-only consultation before the creation workflow.
 

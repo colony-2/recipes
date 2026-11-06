@@ -186,8 +186,9 @@ Use the fastest tool that answers the question you have:
 ## Review artifact annotations
 
 See [producer descriptors and deployment activation](REVIEW_ARTIFACT_ANNOTATIONS.md)
-for optional review presentation. Production remains legacy until the actual
-supporting c2j release and deployment compatibility are verified.
+for optional review presentation. Adaptive publishes review annotations directly. The retained creation review helper
+has a separate packaged policy; its historical activation notes do not disable
+adaptive presentation.
 
 ## Adaptive recovery regression tests
 
