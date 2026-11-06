@@ -863,6 +863,9 @@ cases:
         files:
           PURPOSE.md: Serving API
           candidate.txt: target
+      jobdb:
+        files:
+          PURPOSE.md: Own pagination
     observe_files:
     - candidate.txt
     - experiment.txt
@@ -903,6 +906,29 @@ cases:
                 iteration: 1
     - match:
         selector: nix:github:colony-2/c2ops/published#codex
+        cell: jobdb
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: agreed
+            thinking: 'jobdb advice: agreed'
+            files:
+            - path: iter1/consultant/contract.md
+              description: Advice
+        artifacts:
+          iter1/consultant/contract.md: Use cursor pagination.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                session_id: jobdb
+                iteration: 1
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
         cell: B
       behavior:
         mode: return
@@ -929,32 +955,18 @@ cases:
         op: command_execution
       behavior:
         mode: passthrough
-    - match:
-        op: recipes.run_and_wait
-      behavior:
-        mode: return
-        outputs:
-          outputs:
-          - result:
-              goal: contract-goal
-              job: successful-replacement
-            outputs:
-              outcome: agreed
-              summary: Existing pagination contract is sufficient.
-              final_artifacts:
-                contract.md:
-                  kind: value
-                  name: contract.md
-                  format: text
-                  value: Use cursor pagination.
   assertions:
   - type: output_equals
     path: outcome
     value: agreed
   - type: cel_true
-    expr: size(reviews) == 0 && calls.exists(c,c.op == "recipes.run_and_wait" && c.inputs.wait.on == "goal")
+    expr: size(reviews) == 0 && !calls.exists(c,c.op.startsWith("recipes.") || c.op.startsWith("recipe."))
   - type: cel_true
-    expr: calls.filter(c,c.op == "extension_execution" && c.inputs.selector.endsWith("#codex"))[1].artifacts.exists(k,k == "downstream/0/contract.md")
+    expr: calls.filter(c,c.op == "extension_execution" && c.cell ==
+      "B")[1].artifacts["downstream/1/0/iter1/consultant/contract.md"] == "Use cursor pagination."
+  - type: cel_true
+    expr: calls.filter(c,c.op == "extension_execution" && c.cell == "B")[1].inputs.inputs.session == calls.filter(c,c.op
+      == "extension_execution" && c.cell == "B")[0].outputs.session
 - id: missing-decision-title-is-corrected-before-review
   type: integration_case
   runtime:
@@ -1058,3 +1070,309 @@ cases:
   - type: cel_true
     expr: size(reviews)==0
   expect_error: Response correction exhausted
+- id: nested-siblings-resume-their-own-workspaces
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          PURPOSE.md: Client application
+          candidate.txt: original
+      B:
+        files:
+          PURPOSE.md: Serving API
+          candidate.txt: target
+      jobdb:
+        files:
+          PURPOSE.md: Own pagination
+      C:
+        files:
+          PURPOSE.md: Deeper advice
+      D:
+        files:
+          PURPOSE.md: Sibling advice
+    observe_files:
+    - candidate.txt
+    - experiment.txt
+    secrets:
+      codex_api_key: synthetic
+  inputs:
+    thread: validation-api
+    request: Provide a compatible validation API.
+    consultant_cell: B
+    consultant_role: Own the serving API; assess scope and compatibility.
+  mocks:
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: B
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: continue
+            thinking: 'B advice: continue'
+            files:
+            - path: iter1/consultant/question.md
+              description: Advice
+            requests:
+            - cell: jobdb
+              request: Clarify pagination
+            - cell: D
+              request: Clarify retention
+        artifacts:
+          iter1/consultant/question.md: Two questions
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                session_id: B
+                iteration: 1
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: jobdb
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: continue
+            thinking: 'jobdb advice: continue'
+            files:
+            - path: iter1/consultant/question.md
+              description: Advice
+            requests:
+            - cell: C
+              request: Clarify ordering
+        artifacts:
+          iter1/consultant/question.md: Need C
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                session_id: jobdb
+                iteration: 1
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: C
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: continue
+            thinking: 'C advice: continue'
+            files:
+            - path: iter1/consultant/question.md
+              description: Advice
+        artifacts:
+          iter1/consultant/question.md: Which direction?
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                session_id: C
+                iteration: 1
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: jobdb
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: continue
+            thinking: 'jobdb advice: continue'
+            files:
+            - path: iter2/requester/reply.md
+              description: Advice
+        artifacts:
+          iter2/requester/reply.md: Ascending.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                session_id: jobdb
+                iteration: 1
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: C
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: agreed
+            thinking: 'C advice: agreed'
+            files:
+            - path: iter2/consultant/contract.md
+              description: Advice
+        artifacts:
+          iter2/consultant/contract.md: Ascending cursor.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                session_id: C
+                iteration: 2
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: jobdb
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: agreed
+            thinking: 'jobdb advice: agreed'
+            files:
+            - path: iter2/consultant/contract.md
+              description: Advice
+        artifacts:
+          iter2/consultant/contract.md: Pagination agreed.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                session_id: jobdb
+                iteration: 2
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: D
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: declined
+            thinking: 'D advice: declined'
+            files:
+            - path: iter1/consultant/reply.md
+              description: Advice
+        artifacts:
+          iter1/consultant/reply.md: Retention is outside D.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                session_id: D
+                iteration: 1
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: B
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: agreed
+            thinking: 'B advice: agreed'
+            files:
+            - path: iter2/consultant/spec.md
+              description: Advice
+        artifacts:
+          iter2/consultant/spec.md: Accepted pagination; retention handled locally.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                session_id: B
+                iteration: 2
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: outcome
+    value: agreed
+  - type: cel_true
+    expr: '!calls.exists(c,c.op.startsWith("recipes.") || c.op.startsWith("recipe.")) && size(reviews) == 0'
+  - type: cel_true
+    expr: calls.filter(c,c.op == "extension_execution" && c.cell ==
+      "B")[1].artifacts["downstream/1/1/outcome.md"].contains("declined")
+  - type: cel_true
+    expr: calls.filter(c,c.op == "extension_execution" && c.cell ==
+      "jobdb")[1].inputs.inputs.instructions.contains("requester")
+  - type: cel_true
+    expr: calls.filter(c,c.op == "extension_execution" && c.cell ==
+      "B")[1].artifacts["downstream/1/0/iter2/consultant/contract.md"] == "Pagination agreed."
+- id: nested-advice-depth-bound-fails-without-submission
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          PURPOSE.md: Client application
+          candidate.txt: original
+      B:
+        files:
+          PURPOSE.md: Serving API
+          candidate.txt: target
+      jobdb:
+        files:
+          PURPOSE.md: Own pagination
+    observe_files:
+    - candidate.txt
+    - experiment.txt
+    secrets:
+      codex_api_key: synthetic
+    expect_error: bounded execution limit
+  inputs:
+    thread: validation-api
+    request: Provide a compatible validation API.
+    consultant_cell: B
+    consultant_role: Own the serving API; assess scope and compatibility.
+    depth: 4
+  mocks:
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: B
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: continue
+            thinking: Need JobDB contract advice before agreeing.
+            files:
+            - path: iter1/consultant/feature-spec.md
+              description: Consultation document
+            requests:
+            - cell: jobdb
+              request: Clarify the existing pagination contract.
+        artifacts:
+          iter1/consultant/feature-spec.md: '# Accepted feature'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                session_id: consultant
+                iteration: 1
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions: []

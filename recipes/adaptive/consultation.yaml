@@ -109,62 +109,27 @@ state:
         topic: ${{ inputs.thread }}
         thread: ${{ context.workflow.job_id + '/' + inputs.thread }}
         depth: ${{ inputs.depth }}
-      sequence: []
-      outputs:
-        valid: |-
-          ${{ inputs.max_iterations >= 1 && inputs.max_iterations == int(inputs.max_iterations)
-              && inputs.documents.all(k, k == inputs.documents[k].name
-                   && !(k in ['conversation.json', '__git_state_thin_pack__',
-                              'diff_from_parent.diff', 'diff_from_base.diff']))
-              && (size(inputs.continuation) == 0
-                  ? nonempty(inputs.topic) && nonempty(inputs.request) && nonempty(inputs.consultant.?role.orValue(''))
-                  : inputs.continuation.requester_cell == inputs.cell
-                    && (inputs.direction == ''
-                        || inputs.continuation.outcome in ['needs_review', 'declined', 'redirected'])) }}
-        conversation: |-
-          ${{ size(inputs.continuation) == 0
-              ? {'exchange_number':0,'depth': inputs.depth, 'thread': inputs.thread,
-                 'request': inputs.request,
-                 'consultant': jq([{'cell': '', 'ref': 'main'}, inputs.consultant], 'add'),
-                 'requester_cell': inputs.cell,
-                 'requester_start_session': inputs.requester_session,
-                 'requester_session': inputs.requester_session, 'consultant_session': {},
-                 'iteration': 0, 'round_iterations': 0, 'round': 1,
-                 'max_iterations': int(inputs.max_iterations),
-                 'next': 'consultant', 'outcome': 'continue',
-                 'message': inputs.request, 'direction': '',
-                 'seen': {'requester': 0, 'consultant': 0},
-                 'annotations': inputs.annotations, 'documents': inputs.documents, 'final_artifacts': {},
-                 'transcript': [{'participant': 'requester', 'iteration': 1,
-                   'thinking': inputs.request, 'files': inputs.documents}]}
-              : inputs.direction == ''
-                ? (inputs.continuation.outcome == 'failed' && inputs.continuation.?retryable.orValue(false)
-                    ? jq([inputs.continuation, {'outcome': 'continue', 'error': ''}], 'add')
-                    : inputs.continuation)
-              : jq([inputs.continuation,
-                    {'requester_session': size(inputs.requester_session) > 0
-                        ? inputs.requester_session : inputs.continuation.requester_session,
-                     'direction': inputs.direction,
-                     'round': int(inputs.continuation.round) + 1,
-                     'round_iterations': 0, 'max_iterations': int(inputs.max_iterations),
-                     'next': 'requester', 'outcome': 'continue',
-                     'annotations': inputs.continuation.?annotations.orValue([]) + inputs.annotations, 'documents': jq([inputs.continuation.documents, inputs.documents], 'add'),
-                     'transcript': inputs.continuation.transcript + [
-                       {'participant': 'expert', 'thinking': inputs.direction, 'files': inputs.documents}]}], 'add') }}
+        requester_ref: "${{ context.git.hash != '' ? context.git.hash : context.git.resolved_hash != '' ? context.git.resolved_hash
+          : context.git.ref }}"
       transitions:
       - to: invalid
         when: '!outputs.valid'
       - to: current
         when: true
+        payload:
+          conversation: ${{ outputs.conversation }}
+          parents: []
+      include: ./consultation-start.yaml
     current:
+      # Carry the active conversation explicitly. Saved parents are only the
+      # conversations suspended for nested advice; all turns stay in this job.
       inputs:
-        negotiated: ${{ state_output('record', 'conversation', states.start.outputs.conversation) }}
-        reviewed: ${{ state_output('expert_record', 'conversation', states.start.outputs.conversation) }}
-        nested: ${{ state_output('downstream','conversation',{}) }}
+        conversation: ${{ transition.payload.conversation }}
+        parents: ${{ transition.payload.parents }}
       sequence: []
       outputs:
-        conversation: |-
-          ${{ size(inputs.nested) > 0 && int(inputs.nested.?exchange_number.orValue(0)) >= int(inputs.negotiated.?exchange_number.orValue(0)) && int(inputs.nested.round) >= int(inputs.reviewed.round) ? inputs.nested : int(inputs.reviewed.round) > int(inputs.negotiated.round) ? inputs.reviewed : inputs.negotiated }}
+        conversation: ${{ inputs.conversation }}
+        parents: ${{ inputs.parents }}
       transitions:
       - to: recovery
         when: outputs.conversation.outcome == 'recovery'
@@ -172,6 +137,8 @@ state:
         when: outputs.conversation.outcome == 'continue'
       - to: publish
         when: true
+        payload:
+          conversation: ${{ outputs.conversation }}
     turn:
       inputs:
         conversation: ${{ states.current.outputs.conversation }}
@@ -295,6 +262,9 @@ state:
               transitions:
               - to: collect
                 when: true
+              workspace:
+                cell: ${{ inputs.conversation.requester_cell }}
+                ref: ${{ inputs.conversation.?requester_ref.orValue(context.git.ref) }}
             collect:
               inputs:
                 turn: "${{ state_exists('foreign') ? states.foreign.outputs : states.local.outputs }}"
@@ -367,7 +337,7 @@ state:
         inputs:
           previous: ${{ inputs.previous }}
           turn: ${{ inputs.turn }}
-          depth: ${{ inputs.previous.?depth.orValue(0) }}
+          depth: ${{ inputs.previous.depth }}
         sequence: []
         outputs:
           files: |-
@@ -387,7 +357,8 @@ state:
                  'next': inputs.previous.next == 'consultant' ? 'requester' : 'consultant',
                  'iteration': int(inputs.previous.iteration) + (inputs.previous.next == 'consultant' ? 1 : 0),
                  'round_iterations': int(inputs.previous.round_iterations) + (inputs.previous.next == 'consultant' ? 1 : 0),
-                 'requester_session': inputs.previous.next == 'requester'
+                 'requester_ref': inputs.previous.next == 'requester' ? inputs.turn.base_hash : inputs.previous.requester_ref,
+                           'requester_session': inputs.previous.next == 'requester'
                     ? inputs.turn.result.session : inputs.previous.requester_session,
                  'consultant_session': inputs.previous.next == 'consultant'
                     ? inputs.turn.result.session : inputs.previous.consultant_session,
@@ -404,10 +375,19 @@ state:
                     'files': inputs.turn.result.response.files,
                     'annotations': inputs.turn.?annotations.orValue([]), 'artifacts': sequence.resolve.outputs.files}]}], 'add') }}
       transitions:
-      - to: downstream
-        when: size(states.turn.outputs.turn.result.response.?requests.orValue([])) > 0 && inputs.depth < 4
+      - to: advice
+        when: size(states.turn.outputs.turn.result.response.?requests.orValue([])) > 0 &&
+          states.current.outputs.conversation.depth < 4
+        payload:
+          frame: ${{
+            {'conversation':outputs.conversation,'participant':states.current.outputs.conversation.next,'requests':states.turn.outputs.turn.result.response.requests,'index':0}
+            }}
+          parents: ${{ states.current.outputs.parents }}
       - to: current
         when: true
+        payload:
+          conversation: ${{ outputs.conversation }}
+          parents: ${{ states.current.outputs.parents }}
     failed:
       inputs:
         previous: ${{ states.current.outputs.conversation }}
@@ -440,11 +420,12 @@ state:
       transitions:
       - to: publish
         when: true
+        payload:
+          conversation: ${{ outputs.conversation }}
     publish:
       inputs:
         conversation: |-
-          ${{ state_output('invalid', 'conversation', state_output('failed', 'conversation',
-              state_output('current', 'conversation', states.start.outputs.conversation))) }}
+          ${{ transition.payload.conversation }}
       sequence:
       - id: publish_consultation_transcript
         op: command_execution
@@ -467,6 +448,14 @@ state:
       transitions:
       - to: report
         when: outputs.conversation.outcome == 'needs_review'
+      - to: return_advice
+        when: size(state_output('current','parents',[])) > 0
+        payload:
+          result: ${{
+            {'outcome':outputs.conversation.outcome,'summary':outputs.conversation.message,'final_artifacts':outputs.conversation.final_artifacts,'transcript':outputs.transcript}
+            }}
+          frame: ${{ states.current.outputs.parents[size(states.current.outputs.parents)-1] }}
+          parents: ${{ jq(states.current.outputs.parents, '.[0:-1]') }}
     report:
       inputs:
         conversation: ${{ states.publish.outputs.conversation }}
@@ -526,35 +515,9 @@ state:
       transitions:
       - to: current
         when: true
-    downstream:
-      workspace:
-        cell: "${{ states.current.outputs.conversation.next == 'consultant' ? states.current.outputs.conversation.consultant.cell
-          : states.current.outputs.conversation.requester_cell }}"
-        ref: "${{ states.current.outputs.conversation.next == 'consultant' ? states.current.outputs.conversation.consultant.ref
-          : context.git.ref }}"
-      inputs:
-        conversation: ${{ states.record.outputs.conversation }}
-        participant: ${{ states.current.outputs.conversation.next }}
-        requests: ${{ states.turn.outputs.turn.result.response.requests }}
-        depth: ${{ inputs.depth }}
-      sequence:
-      - id: consult_owners
-        op: recipes.run_and_wait
-        inputs:
-          wait:
-            condition: success
-            "on": goal
-          recipes: |-
-            ${{ jq({'requests':inputs.requests,'depth':inputs.depth,'documents':inputs.conversation.documents,'cell':context.workspace.cell,'repo':context.git.repo,'ref':context.git.ref,'hash':context.git.resolved_hash,'thread':inputs.conversation.thread,'iteration':inputs.conversation.iteration}, '. as $v | .requests | to_entries | map({cell_name:$v.cell,name:"git+https://github.com/colony-2/recipes.git//recipes/adaptive/consultation.yaml@main",git:{base_repo:$v.repo,base_ref:$v.ref,base_hash:$v.hash},inputs:{thread:($v.thread + "/downstream-" + ($v.iteration|tostring) + "-" + (.key|tostring)),request:.value.request,consultant_cell:.value.cell,consultant_ref:(.value.ref//"main"),consultant_role:(.value.role//"Owning cell: clarify the requested contract"),documents:$v.documents,depth:($v.depth+1)} })') }}
-      outputs:
-        conversation: |-
-          ${{ jq([inputs.conversation, {'outcome':'continue','next':inputs.participant,'message':'Read the downstream consultation results in inbox and continue the original agreement. These are advice, not proof of implemented work.','documents':jq([inputs.conversation.documents, jq(sequence.consult_owners.outputs.outputs, vars.documents_query)], 'add')}], 'add') }}
-      transitions:
-      - to: current
-        when: true
-      vars:
-        documents_query: |
-          to_entries | map(.key as $i | .value as $result | "downstream/"+($i|tostring)+"/" as $prefix | [($result.outputs.final_artifacts // {} | to_entries | map({key:($prefix+.key),value:(.value + {name:($prefix+.key)})}) | from_entries),{($prefix+"outcome.md"):{kind:"value",name:($prefix+"outcome.md"),format:"text",value:("Outcome: "+($result.outputs.outcome//"unknown")+"\n"+($result.outputs.summary//"Read the supplied agreement."))} }] | add) | add // {}
+        payload:
+          conversation: ${{ outputs.conversation }}
+          parents: ${{ states.current.outputs.parents }}
     recovery:
       include: ./operational-failure.yaml
       inputs:
@@ -566,6 +529,87 @@ state:
       inputs:
         reason: ${{ states.failed.outputs.conversation.error }}
         documents: ${{ states.failed.outputs.conversation.documents }}
+    advice:
+      inputs:
+        frame: ${{ transition.payload.frame }}
+        parents: ${{ transition.payload.parents }}
+      sequence:
+      - id: select
+        sequence: []
+        outputs:
+          cell: "${{ inputs.frame.participant == 'consultant' && nonempty(inputs.frame.conversation.consultant.cell) ? inputs.frame.conversation.consultant.cell
+            : inputs.frame.conversation.requester_cell }}"
+          ref: "${{ inputs.frame.participant == 'consultant' && nonempty(inputs.frame.conversation.consultant.cell) ? inputs.frame.conversation.consultant.ref
+            : inputs.frame.conversation.requester_ref }}"
+          request: ${{ inputs.frame.requests[inputs.frame.index] }}
+          thread: ${{ inputs.frame.conversation.thread + '/advice-' + string(inputs.frame.conversation.exchange_number)
+            + '-' + string(inputs.frame.index) }}
+        inputs:
+          frame: ${{ inputs.frame }}
+      outputs:
+        frame: ${{ inputs.frame }}
+        parents: ${{ inputs.parents }}
+        target: ${{ sequence.select.outputs }}
+      transitions:
+      - to: start_advice
+        when: true
+    start_advice:
+      include: ./consultation-start.yaml
+      inputs:
+        annotations: []
+        request: ${{ states.advice.outputs.target.request.request }}
+        consultant: "${{ {'cell':states.advice.outputs.target.request.cell,'ref':states.advice.outputs.target.request.?ref.orValue('main'),'role':states.advice.outputs.target.request.?role.orValue('Owning
+          cell: clarify the requested contract')} }}"
+        requester_session: {}
+        documents: ${{ states.advice.outputs.frame.conversation.documents }}
+        max_iterations: ${{ inputs.max_iterations }}
+        continuation: {}
+        direction: ''
+        cell: ${{ states.advice.outputs.target.cell }}
+        requester_ref: ${{ states.advice.outputs.target.ref }}
+        topic: ${{ states.advice.outputs.target.thread }}
+        thread: ${{ states.advice.outputs.target.thread }}
+        depth: ${{ states.advice.outputs.frame.conversation.depth + 1 }}
+      transitions:
+      - to: current
+        when: true
+        payload:
+          conversation: ${{ outputs.conversation }}
+          parents: ${{ states.advice.outputs.parents + [states.advice.outputs.frame] }}
+    return_advice:
+      inputs:
+        frame: ${{ transition.payload.frame }}
+        parents: ${{ transition.payload.parents }}
+        result: ${{ transition.payload.result }}
+      sequence:
+      - id: documents
+        include: ./document-bindings.yaml
+        inputs:
+          prefix: ${{ 'downstream/' + string(inputs.frame.conversation.exchange_number) + '/' +
+            string(inputs.frame.index) + '/' }}
+          documents: |-
+            ${{ jq([inputs.result.final_artifacts,
+                {'outcome.md': {'kind':'value', 'name':'outcome.md', 'format':'text',
+                  'value':'Outcome: ' + inputs.result.outcome + '\n' + inputs.result.summary} }], 'add') }}
+      outputs:
+        conversation: ${{ jq([inputs.frame.conversation,
+          {'outcome':'continue','next':inputs.frame.participant,'message':'Read the downstream consultation results in
+          inbox and continue the original agreement. These are advice, not proof of implemented
+          work.','documents':jq([inputs.frame.conversation.documents,sequence.documents.outputs.documents],'add')}],'add')
+          }}
+        frame: ${{ inputs.frame }}
+        parents: ${{ inputs.parents }}
+      transitions:
+      - to: advice
+        when: outputs.frame.index + 1 < size(outputs.frame.requests)
+        payload:
+          frame: ${{ jq([outputs.frame,{'index':outputs.frame.index+1,'conversation':outputs.conversation}],'add') }}
+          parents: ${{ outputs.parents }}
+      - to: current
+        when: true
+        payload:
+          conversation: ${{ outputs.conversation }}
+          parents: ${{ outputs.parents }}
 outputs:
   annotations: "${{ jq({'annotations': states.publish.outputs.conversation.?annotations.orValue([]), 'documents': states.publish.outputs.conversation.final_artifacts},
     '. as $v | [(.annotations // [])[] | select(.id as $id | $v.documents | has($id))]') }}"

@@ -17,3 +17,5 @@ capability discovery (validated against f1a153b898c5).
 | I09 | Critical | integration | c2j | Reviewers receive verification facts and current findings without recursive child results or runtime state dumps. | recipes/adaptive/inspect.yaml |
 | I10 | High | integration | c2j | Response repair supplies concrete corrections in files without authorizing implementation. | recipes/adaptive/response-repair.yaml |
 | I11 | Critical | integration | c2j | Intervention findings bypass automatic implementation retries; validation plans identify actor, authority, prerequisites, and evidence. | recipes/adaptive/inspect.yaml, recipes/adaptive/agent.yaml |
+| I12 | Critical | integration | c2j | Reviewers can return supplied evidence without preventing subsequent agents or candidate inspection from starting. | recipes/adaptive/agent-turn.yaml, recipes/adaptive/git-candidate.yaml |
+| I13 | Critical | integration | c2j | Original execution evidence remains authoritative when a reviewer returns a copy; verification files cannot replace approved specifications. | recipes/adaptive/verify.yaml, recipes/adaptive/agent-turn.yaml |

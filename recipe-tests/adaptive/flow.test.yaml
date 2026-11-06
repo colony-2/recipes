@@ -4770,7 +4770,7 @@ cases:
     expr: size(calls.filter(c, c.op == "input")) == 1
   - type: cel_true
     expr: '"design.md" in outputs.artifact_refs'
-- id: verification-document-collision-repairs
+- id: verification-files-cannot-replace-specifications
   type: integration_case
   runtime:
     secrets:
@@ -4780,10 +4780,13 @@ cases:
       root:
         files:
           README.md: A bounded application.
-          .c2/recipes/hooks/build/verify.yaml: "id: missing-evidence-verify\noutputs:\n  api_version: c2.build-hook/v1\n  artifact_refs:\n    test-statements.md:\n      format: text\n      kind: value\n      name: test-statements.md\n      value: Wrong
-            replacement\n  status: passed\n  summary: Checks passed but the hook report is invalid.\nsequence: []\n"
+          .c2/recipes/hooks/build/verify.yaml: "id: missing-evidence-verify\noutputs:\n  api_version: c2.build-hook/v1\n \
+            \ artifact_refs:\n    test-statements.md:\n      format: text\n      kind: value\n      name: test-statements.md\n\
+            \      value: Wrong replacement\n  status: passed\n  summary: Checks passed but the hook report is invalid.\n\
+            sequence: []\n"
     responses:
-    - node_path: build/workflow/adaptive-build/run/adaptive-develop/accept/sequence/outcome_review/adaptive-review/request_human_review
+    - node_path:
+        build/workflow/adaptive-build/run/adaptive-develop/accept/sequence/outcome_review/adaptive-review/request_human_review
       fields:
         decision: accept
   inputs:
@@ -4863,39 +4866,6 @@ cases:
           status: completed
           output_schema_valid: true
           response:
-            next: review
-            summary: Complete bounded work.
-            files:
-            - path: implementation.md
-              description: implementation.md
-              title: implementation.md
-              role: primary
-              order: 0
-            - path: test-results.md
-              description: test-results.md
-              title: test-results.md
-              role: primary
-              order: 1
-            questions: []
-        artifacts:
-          implementation.md: "# Outcome\nAlready satisfied."
-          test-results.md: "# Results\nT1 passed; existing behavior inspected."
-        effects:
-          objects:
-            session:
-              type: c2ops.codex.session/v1
-              metadata:
-                turn: review
-          worktree:
-            .c2/recipes/hooks/build/verify.yaml: "id: fixture-verify\nsequence: []\noutputs:\n  api_version: c2.build-hook/v1\n  status: passed\n  summary: Required checks completed.\n  artifact_refs: {}\n"
-    - match:
-        selector: nix:github:colony-2/c2ops/published#codex
-      behavior:
-        mode: return
-        outputs:
-          status: completed
-          output_schema_valid: true
-          response:
             summary: Complete bounded work.
             files:
             - path: assessment.md
@@ -4945,9 +4915,14 @@ cases:
         mode: passthrough
   assertions:
   - type: cel_true
-    expr: outputs.merged && outputs.verification.status == "passed"
+    expr: outputs.disposition == "unchanged" && outputs.verification.status == "passed"
   - type: cel_true
     expr: size(reviews) == 1
+  - type: cel_true
+    expr: calls.filter(c,c.op == "extension_execution" &&
+      c.inputs.selector.endsWith("#codex"))[2].artifacts["test-statements.md"].contains("Existing behavior remains
+      available") && calls.filter(c,c.op == "extension_execution" &&
+      c.inputs.selector.endsWith("#codex"))[2].artifacts["verification/test-statements.md"] == "Wrong replacement"
 - id: verification-raw-evidence-reaches-review
   type: integration_case
   runtime:
@@ -5319,3 +5294,167 @@ cases:
     - id: design.md
       ref: false
   expect_error: field 'annotations[0].ref' has wrong type
+- id: reviewer-echoed-evidence-reaches-accounting-and-summary
+  type: integration_case
+  runtime:
+    secrets:
+      jev_api_key: synthetic
+      codex_api_key: synthetic
+    cells:
+      root:
+        files:
+          README.md: A bounded application.
+          .c2/recipes/hooks/build/verify.yaml: "id: evidence-hook\noutputs:\n  api_version: c2.build-hook/v1\n  artifact_refs:\n\
+            \    tests.log:\n      format: text\n      kind: value\n      name: tests.log\n      value: All assertions passed.\n\
+            \  status: passed\n  summary: Checks passed.\nsequence: []\n"
+    responses:
+    - node_path:
+        build/workflow/adaptive-build/run/adaptive-develop/accept/sequence/outcome_review/adaptive-review/request_human_review
+      fields:
+        decision: accept
+  inputs:
+    prompt: Explain why no changes are needed.
+  mocks:
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#jev
+      behavior:
+        mode: return
+        outputs:
+          answers:
+            is_heavy:
+              type: noul
+              noul: 0.01
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: Complete bounded work.
+            files:
+            - path: test-statements.md
+              description: test-statements.md
+              title: test-statements.md
+              role: primary
+              order: 0
+            questions: []
+        artifacts:
+          test-statements.md: "# Expectations\n- T1 [Critical] [integration] [README.md] [Git] Existing behavior remains available."
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: review
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: Complete bounded work.
+            files:
+            - path: implementation.md
+              description: implementation.md
+              title: implementation.md
+              role: primary
+              order: 0
+            - path: test-results.md
+              description: test-results.md
+              title: test-results.md
+              role: primary
+              order: 1
+            questions: []
+        artifacts:
+          implementation.md: "# Outcome\nAlready satisfied."
+          test-results.md: "# Results\nT1 passed; existing behavior inspected."
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: review
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            summary: Complete bounded work.
+            files:
+            - path: assessment.md
+              description: assessment.md
+              title: assessment.md
+              role: primary
+              order: 0
+            - path: verification/tests.log
+              description: Supplied verification evidence
+            verdict: approve
+            subject: Improve candidate
+        artifacts:
+          assessment.md: "# Review\nEvidence checked."
+          verification/tests.log: Reviewer copy of the evidence.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: review
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            summary: Complete bounded work.
+            files:
+            - path: merge-review.md
+              description: merge-review.md
+              title: merge-review.md
+              role: primary
+              order: 0
+            verdict: approve
+            subject: Improve candidate
+        artifacts:
+          merge-review.md: "# Review\nEvidence checked."
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: review
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: disposition
+    value: unchanged
+  - type: cel_true
+    expr: size(calls.filter(c, c.op == "input")) == 1
+  - type: cel_true
+    expr: reviews[0].form.overview_document_id == "merge-review.md"
+  - type: cel_true
+    expr: reviews[0].form.document_metadata["test-statements.md"].role == "supporting"
+  - type: cel_true
+    expr: '!calls.exists(c, has(c.artifacts) && ("context.json" in c.artifacts || "feedback.json" in c.artifacts))'
+  - type: cel_true
+    expr: outputs.artifact_refs["tests.log"].name == "tests.log" && "tests.log" in reviews[0].form.documents
+  - type: cel_true
+    expr: '!outputs.artifact_refs.exists(k, k.startsWith("hooks/"))'
+  - type: cel_true
+    expr: calls.filter(c,c.op == "extension_execution" &&
+      c.inputs.selector.endsWith("#codex"))[3].artifacts["verification/tests.log"] == "All assertions passed."

@@ -61,6 +61,14 @@ internal references and owns submission, goal waiting, and recorded results. Cel
 creation retains the shared root-owner agreement and readiness gates. Creation
 alone never satisfies the original feature request.
 
+Shared consultations run inline, including advice requested from further owners.
+The conversation driver saves the requesting participant's conversation and
+checkpoint, runs nested turns in the participants' workspaces, and resumes that
+participant with the resulting documents. Sibling requests run in order. No child
+goal or child-result lookup is needed for this advice. The existing custom recipe
+selector still uses its child route while c2j's hook workspace restriction is
+being investigated; changing that interface is pending.
+
 Classification retains bounded repository context in `repository-context.json`.
 Jev currently requires inline state, so only complete context whose serialized
 JSON fits within 8 KB is passed inline. Larger context, unreadable documents, or
@@ -133,6 +141,13 @@ of individually accessible evidence over archives. See the
 This requires the version-2 [execution diagnostics](../../GUIDE-Command-Failure-Diagnostics.md)
 contract and self discovery. Current gap-closure validation used c2j `0252e9b`.
 Missing diagnostics produce an explicit error note; cancellation stops execution.
+
+Successful check outputs appear under `inbox/verification/`; they cannot replace
+approved documents with the same filename. Each agent receives one merged inbox
+binding. If a reviewer returns a copy of supplied evidence, the original execution
+reference wins at that evidence path. See the
+[consultation and evidence audit](../../guides/AUDIT_CONSULTATION_AND_EVIDENCE_REGRESSIONS.md)
+for the reported failures and the limits of the regression coverage.
 
 Implementation tasks may run bounded validation assigned by the test plan.
 Automatic child-job outputs are consumed and their results retained; serving
