@@ -5,6 +5,10 @@ Implementation assessment, 2026-11-05. This follows the four plans recorded in
 to remove compatibility paths and finish the remaining recipe gaps. It supersedes
 the earlier [implementation report](IMPLEMENTATION_ADAPTIVE_COORDINATION_AND_REVIEWS.md).
 
+Follow-up, 2026-11-06: authenticated checkout exposed an incomplete permission
+grant on read-only tasks. The [inheritance fix](FIX_INHERITED_TASK_PERMISSIONS.md)
+records the correction and new native credential-helper regression coverage.
+
 The four recipe changes are implemented. Coordination uses direct requests and
 native history; execution failures no longer become product-review questions;
 all review callers select current evidence; package decisions and failure evidence

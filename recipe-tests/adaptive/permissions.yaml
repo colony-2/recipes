@@ -1,0 +1,70 @@
+schema_version: 2
+id: permission-regression
+input_schema:
+  node:
+    type: string
+    required: true
+inputs:
+  node: ${{ inputs.node }}
+sequence:
+- id: prepare_fixture
+  op: command_execution
+  inputs:
+    env:
+      NODE: ${{ inputs.node }}
+      OUTBOX: ${{ context.environment.op.outbox }}
+    run: |
+      set -eu
+      python3 - <<'PY'
+      import json, os, pathlib, subprocess
+      def source(name):
+          return json.loads(subprocess.check_output(['yq', '-o=json', '.', '.test/' + name]))
+      def expression(value):
+          return '$' + '{' * 2 + ' ' + value + ' ' + '}' * 2
+      agent = source('agent-turn.yaml')['state']['states']
+      name = os.environ['NODE']
+      selected = source('register-cell.yaml')['sequence'][0] if name == 'register' else agent[name]
+      sibling = agent['start_implementation_session']
+      # Keep the production permission declarations and const behavior. Replace
+      # only the task body with a native credential/submission probe, without a model.
+      for node, identifier, submit, create in [
+          (selected, 'restricted', 'false', str(name == 'register').lower()),
+          (sibling, 'sibling', 'true', 'false'),
+      ]:
+          node.update(id=identifier, op='command_execution', inputs={
+              'env': {'ALLOW_SUBMIT': submit, 'ALLOW_CREATE': create},
+              'run': 'python3 .test/permission-probe.py',
+              'continue_on_error': True,
+          })
+          node.pop('transitions', None)
+          node.pop('artifacts', None)
+      schema = {'prompt': {'type': 'string'}, 'type': {'type': 'string', 'required': False}}
+      recipe = {'id': 'permission-probe', 'input_schema': schema, 'sequence': [selected, sibling], 'outputs': {
+          'restricted': expression('sequence.restricted.outputs.success ? json_parse(sequence.restricted.outputs.stdout) : {}'),
+          'sibling': expression('sequence.sibling.outputs.success ? json_parse(sequence.sibling.outputs.stdout) : {}'),
+          'restricted_error': expression('sequence.restricted.outputs.stderr'),
+          'sibling_error': expression('sequence.sibling.outputs.stderr'),
+          'restricted_jobs': expression('sequence.restricted.jobs.job_ids'),
+          'sibling_jobs': expression('sequence.sibling.jobs.job_ids'),
+      }}
+      pathlib.Path('.c2/recipes').mkdir(parents=True, exist_ok=True)
+      pathlib.Path('.c2/recipes/permission-probe.yaml').write_text(json.dumps(recipe))
+      pathlib.Path('.c2/recipes/noop.yaml').write_text(json.dumps({'id': 'noop', 'input_schema': schema, 'sequence': []}))
+      pathlib.Path(os.environ['OUTBOX'], 'permission-statements.md').write_bytes(pathlib.Path('.test/statements.md').read_bytes())
+      PY
+- id: launch_probe
+  op: command_execution
+  inputs:
+    run: c2j submit "Exercise task permissions" --advanced-recipe-file .c2/recipes/permission-probe.yaml --from-workspace --jobdb embed:/// --json
+- id: exercise_permissions
+  op: recipe.await_result_soft
+  inputs:
+    target:
+      job: ${{ sequence.launch_probe.jobs.job_ids[0] }}
+    wait:
+      "on": job
+      condition: complete
+    return_when: terminal
+outputs:
+  status: ${{ sequence.exercise_permissions.outputs.status }}
+  result: ${{ sequence.exercise_permissions.outputs.outputs }}

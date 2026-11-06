@@ -1,0 +1,67 @@
+recipe: permissions.yaml
+cases:
+- id: fresh-read-only-retains-git-and-denies-submission
+  type: integration_case
+  inputs:
+    node: start_read_only_session
+  runtime: &runtime
+    secrets:
+      checkout_alpha: synthetic-alpha-credential
+      checkout_beta: synthetic-beta-credential
+      unrelated_token: synthetic-unrelated-credential
+    config:
+      git-profile-ro: read
+      _c2j_git_profile_read:
+        version: 1
+        entries:
+        - url: https://fixture.invalid/
+          username: fixture
+          secret_ref: checkout_alpha
+    cells:
+      root:
+        file_sources:
+          .test/agent-turn.yaml: ../../recipes/adaptive/agent-turn.yaml
+          .test/register-cell.yaml: ../../recipes/create/register-cell.yaml
+          .test/permission-probe.py: ../fixtures/permission-probe.py
+          .test/statements.md: permission-statements.md
+  mocks: &mocks
+    ops:
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions: &assertions
+  - type: cel_true
+    expr: outputs.result.restricted.git_credential_resolved && outputs.result.restricted.unrelated_secret_denied && !outputs.result.restricted.submission_allowed
+  - type: cel_true
+    expr: outputs.result.sibling.git_credential_resolved && outputs.result.sibling.submission_allowed && !outputs.result.sibling.creation_allowed
+  - type: cel_true
+    expr: size(outputs.result.restricted_jobs) == 0 && size(outputs.result.sibling_jobs) == 1
+- id: resumed-read-only-uses-different-configured-secret
+  type: integration_case
+  inputs:
+    node: resume_read_only_session
+  runtime:
+    <<: *runtime
+    config:
+      git-profile-ro: alternate
+      _c2j_git_profile_alternate:
+        version: 1
+        entries:
+        - url: https://fixture.invalid/
+          username: fixture
+          secret_ref: checkout_beta
+  mocks: *mocks
+  assertions: *assertions
+- id: registration-retains-git-and-only-grants-creation
+  type: integration_case
+  inputs:
+    node: register
+  runtime: *runtime
+  mocks: *mocks
+  assertions:
+  - type: cel_true
+    expr: outputs.result.restricted.git_credential_resolved && outputs.result.restricted.creation_allowed && !outputs.result.restricted.submission_allowed && outputs.result.restricted.unrelated_secret_denied
+  - type: cel_true
+    expr: outputs.result.sibling.submission_allowed && !outputs.result.sibling.creation_allowed && size(outputs.result.restricted_jobs) == 0 && size(outputs.result.sibling_jobs) == 1

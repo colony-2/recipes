@@ -142,12 +142,17 @@ working agent. Unexplained blockers, repeated unchanged findings, invalid-respon
 exhaustion, and iteration limits stop the attempt with operational recovery
 instructions. Only explicit product decisions create ordinary human questions.
 
+Read-only tasks use `perms.inherit: true` with `jobs.submit: false`, preserving
+credentials from the configured Git profile. Cell registration uses the same
+inheritance mode while granting creation and denying submission. This requires
+c2j `eb636a5` or later; see the [permission regression fix](../../guides/FIX_INHERITED_TASK_PERMISSIONS.md).
+
 See [the direct-state implementation report](../../guides/IMPLEMENTATION_DIRECT_RECIPE_STATE.md)
 for the ownership of state values and validation results.
 
 Tests are in `../../recipe-tests/adaptive/`. Run with c2j supporting schema v2,
 structured rebase failures, review annotations, and named cells (validated against
-`0252e9b`):
+`eb636a5`):
 
 ```sh
 c2j test run --directory recipe-tests/adaptive --parallelism 2
