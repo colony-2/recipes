@@ -192,6 +192,9 @@ adaptive presentation.
 
 ## Adaptive recovery regression tests
 
+For an inspection sequence and the distinction between output inventories and
+exact values, see the [job inspection playbook](JOB_INSPECTION_PLAYBOOK.md).
+
 When changing child orchestration, run `recipe-tests/adaptive/parent-recovery.test.yaml`
 and `required-jobs.test.yaml`: these create a real failing child, submit a fresh
 corrected execution, and verify normal starting state and parent continuity.

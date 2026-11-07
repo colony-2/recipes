@@ -189,16 +189,39 @@ outputs:
       remains open. For most other-cell delivery, return consultation/execution requests and let the recipe
       coordinate them. Advisory and review assignments return their findings without submitting work.
 
-      Job inspection is available separately from job submission. Check c2j self for jobs.inspect.
-      Task tokens can inspect this job and its direct children, including finished children, not parents
-      or siblings. Use c2j job list --json, c2j job show JOB, and c2j job log JOB --json for discovery.
-      Copy exact task occurrence IDs from the log. Use c2j job fields JOB --task "$TASK" --json and
-      c2j job artifacts JOB --task "$TASK" --json to discover outputs even when the job failed before
-      final results. Read selected fields with c2j job log JOB --task "$TASK" --field /response/summary.
-      Download an exact artifact with c2j job artifact JOB --task "$TASK" --name NAME --output FILE.
-      Use --output for large values, --cursor for additional inventory pages, and --attempt for a
-      specific attempt; do not repeatedly dump full histories. c2j job result JOB --json reads final
-      recipe outputs, which may be absent after a failure. Missing output is not a passing result.
+      Inspect saved work directly when it can answer your question; routine inspection does not need
+      a human decision. Inspection reads persisted records without running or replaying the job.
+      Check c2j self for jobs.inspect, independently of job submission. Task tokens can inspect this
+      job and its direct children, including finished children, not parents or siblings.
+      Use this discovery sequence, stopping when you have the evidence needed:
+      1. Set JOB=self for this job, or use an actual child ID from c2j job list --json.
+         c2j job show "$JOB" --json gives status; c2j job log "$JOB" --json lists recorded tasks.
+         Choose a relevant task by its path, status, error, and attempts. Set TASK to its exact id,
+         quoted in the shell; a node name or chapter number is not a task ID.
+      2. c2j job log "$JOB" --task "$TASK" --json shows task details and bounded previews.
+         c2j job fields "$JOB" --task "$TASK" --limit 25 --json lists top-level field pointers,
+         types, and sizes. Copy a returned pointer into FIELD, then read its exact value with
+         c2j job log "$JOB" --task "$TASK" --field "$FIELD" --output selected-value.json.
+         Pointers address the task output itself, not the inspection response envelope. Paths such
+         as /response/summary are examples, not guaranteed fields. If /response is a JSON string,
+         retrieve /response and parse that string locally; a pointer cannot traverse inside it.
+         To examine the complete output when useful, use --field '' --output task-output.json.
+      3. c2j job artifacts "$JOB" --task "$TASK" --json lists that task's files, including available
+         diagnostics. Choose an exact returned name, then use c2j job artifact "$JOB" --task "$TASK"
+         --name "$NAME" --output check.log. The local filename can differ from the stored name.
+      4. For the final recipe output, use c2j job result "$JOB" --json and c2j job fields "$JOB" --json.
+         These show availability and inventories; read an actual value with c2j job result "$JOB"
+         --field "$FIELD" --output result-value.json. Omitting --task from artifact commands selects
+         final-result artifacts, not all task artifacts. Failed or running jobs may have no final
+         result: inspect the failed task's error/diagnostics and relevant earlier tasks instead.
+      Follow next_cursor with --cursor on the same inventory command when more entries are needed.
+      Use --attempt N consistently to inspect a particular retry; otherwise the latest attempt is used.
+      Keep downloaded inspection files in scratch outside checkout/outbox and choose unused output
+      paths; downloads do not overwrite files. A missing field is different from null, false, or empty.
+      If a field is absent, inspect the actual inventory and types before changing the query. If bytes
+      expired or access is denied, report the exact missing evidence and continue what you can; ask the
+      human only when an essential input or decision remains unavailable. Use next: wait when waiting
+      for child completion; do not repeatedly inspect an unchanged job just to keep the turn going.
       For selective recovery, first enter a scratch directory outside the checkout and outbox.
       c2j job snapshot JOB --task "$TASK" --dir ./recovered exports cumulative managed Git state
       and retained artifacts to that new directory. Read snapshot.json; select

@@ -66,10 +66,28 @@ sequence:
           return subprocess.check_output(['c2j', *args], text=True)
       # These run with a task token, including when job submission is disabled.
       assert json.loads(call('job', 'log', 'self', '--json'))['tasks']
+      final = json.loads(call('job', 'result', job, '--json'))
+      assert final['result']['availability'] != 'available'
       log = json.loads(call('job', 'log', job, '--json'))
       task = next(t['id'] for t in log['tasks'] if t.get('path','').endswith('/prepare_work'))
-      fields = json.loads(call('job', 'fields', job, '--task', task, '--json'))
-      assert fields['fields']
+      details = json.loads(call('job', 'log', job, '--task', task, '--json'))
+      assert details['task']['id'] == task
+      fields = json.loads(call('job', 'fields', job, '--task', task, '--limit', '25', '--json'))
+      success = next(f['pointer'] for f in fields['fields'] if f['pointer'] == '/success')
+      inspect_dir = pathlib.Path(tempfile.mkdtemp())
+      call('job', 'log', job, '--task', task, '--field', success, '--output', str(inspect_dir/'success.json'))
+      assert json.loads((inspect_dir/'success.json').read_text()) is True
+      call('job', 'log', job, '--task', task, '--field', '', '--output', str(inspect_dir/'task-output.json'))
+      assert json.loads((inspect_dir/'task-output.json').read_text())['success'] is True
+      missing = subprocess.run(['c2j','job','log',job,'--task',task,'--field','/response/summary'],
+                               capture_output=True, text=True)
+      assert missing.returncode != 0 and 'not found' in missing.stderr
+      failed_task = next(t['id'] for t in log['tasks'] if t.get('path','').endswith('/probe'))
+      diagnostics = json.loads(call('job', 'artifacts', job, '--task', failed_task, '--json'))['artifacts']
+      diagnostic = next(a['name'] for a in diagnostics if a['name'].endswith('probe.log'))
+      call('job', 'artifact', job, '--task', failed_task, '--name', diagnostic,
+           '--output', str(inspect_dir/'check.log'))
+      assert 'original-probe-failure' in (inspect_dir/'check.log').read_text()
       items = json.loads(call('job', 'artifacts', job, '--task', task, '--json'))['artifacts']
       assert any(a['name']=='useful.md' for a in items)
       call('job', 'artifact', job, '--task', task, '--name', 'useful.md', '--output', str(out/'useful.md'))
@@ -158,7 +176,25 @@ sequence:
 - id: check_parent
   op: command_execution
   inputs:
-    run: "test -f parent-only.txt\ntest ! -f unfinished-child.txt\ntest ! -f child-success.txt\n"
+    env:
+      CHILD: ${{ sequence.replacement.outputs.records[0].job_id }}
+    run: |
+      set -eu
+      test -f parent-only.txt
+      test ! -f unfinished-child.txt
+      test ! -f child-success.txt
+      python3 - <<'PYCODE'
+      import json, os, pathlib, subprocess, tempfile
+      job = os.environ['CHILD']
+      def call(*args):
+          return subprocess.check_output(['c2j', *args], text=True)
+      assert json.loads(call('job','result',job,'--json'))['result']['availability'] == 'available'
+      fields = json.loads(call('job','fields',job,'--json'))['fields']
+      pointer = next(f['pointer'] for f in fields if f['pointer'] == '/merged')
+      target = pathlib.Path(tempfile.mkdtemp()) / 'merged.json'
+      call('job','result',job,'--field',pointer,'--output',str(target))
+      assert json.loads(target.read_text()) is False
+      PYCODE
 outputs:
   first: ${{ sequence.first.outputs }}
   failed: ${{ sequence.failed.outputs }}
