@@ -93,12 +93,15 @@ vars:
           "\n\n## Context\n\n" + $v.summary)}) as $brief |
       ($v.annotations | map(select(.id == $v.overview and (.ref|del(.name)) == ($brief|del(.name)))) |
         map(.sources // []) | add // [] |
-        map(select(($v.documents[.id]|del(.name)) == (.ref|del(.name))) | .id)) as $sources |
+        map(select(type == "object" and (.id | type) == "string") |
+              select(.id as $id | $v.documents | has($id)) |
+              select(($v.documents[.id]|del(.name)) == (.ref|del(.name))) | .id)) as $sources |
       ($v.documents | with_entries(select(.key as $k | ($v.required + $sources) | index($k)))) +
       {($v.overview):($brief + {name:$v.overview})}
 outputs:
   response: ${{ sequence.request_human_review.outputs }}
   documents: ${{
-    jq([sequence.select.outputs.documents,sequence.request_human_review.outputs.?artifact_refs.orValue({})],'add') }}
+    jq([sequence.select.outputs.documents,sequence.request_human_review.outputs.?artifact_refs.orValue({})],'add')
+    }}
   changed: ${{ nonempty(sequence.request_human_review.outputs.fields.?feedback.orValue('')) ||
     size(sequence.request_human_review.outputs.?artifact_refs.orValue({})) > 0 }}

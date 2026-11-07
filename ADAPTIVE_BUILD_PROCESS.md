@@ -12,9 +12,11 @@ validation jobs; the recipe returns their results and failures to the parent aut
 ```mermaid
 flowchart TD
     Start([Build request]) --> Config[Configure hook: guidance and specialist checkpoints]
-    Config --> Decide{Jev: design needed?}
+    Config --> Entry{Complete execution handoff and no required design policy?}
+    Entry -->|Yes| Work
+    Entry -->|No| Decide{Jev: design needed?}
     Decide -->|Yes, uncertain, or required by configuration| Context[Before-design hook and configured specialists]
-    Decide -->|No| Tests[Define test-statements.md before implementation]
+    Decide -->|No| Tests[Define test-statements.md and execution handoff.md]
     Context --> Design[Conceptualize and design: ownership, outcomes, alternatives, interfaces, compatibility]
     Design --> DesignDoc[Publish design.md and accepted scope]
     DesignDoc --> Tests
@@ -76,13 +78,14 @@ flowchart TD
 - **Recovery:** ordinary debugging belongs to the working agent. Failed children,
   invalid target refs, preparation errors, and unexplained blockers return to the
   parent with their available diagnostics. A corrected execution request submits a
-  fresh job under the same agreement, starting from the normal target ref. It carries
-  original inputs and corrected instructions, without the failed child's unpublished
-  changes or session. Cancellation stays distinct and never triggers an automatic retry.
+  fresh job in the explicit destination cell, starting from its normal target ref.
+  It receives a corrected handoff and selected files. The parent can inspect intermediate
+  outputs and export a snapshot, then include a reviewed patch for the next writable task
+  to apply and retest. Sessions and execution history are not inherited. Cancellation stays distinct and never triggers an automatic retry.
   Three unsuccessful correction turns with the same reason and unchanged candidate
   produce an actionable operational handoff. The default has no fixed implementation
   turn cap; runtime budgets still apply. An explicit `max_iterations` counts substantive
-  implementation turns, excluding planning, coordination, and response correction.
+  implementation turns, excluding planning, coordination, waiting, and response correction.
 - **Formal evidence:** test statements have stable IDs, expectations, filenames,
   importance, test level, and dependencies. Implementation reports results against
   that baseline; changing the plan requires redesign and preserves existing expectations.
@@ -102,15 +105,15 @@ submission path described below.
 
 ```mermaid
 flowchart TD
-    Need([Another cell must produce work]) --> Owner{Existing owner or new cell?}
-    Owner -->|Existing cell| Serving[Consult the serving cell on a bounded request]
-    Owner -->|New cell| Root[Consult the project root on ownership and creation]
-    Serving --> Agreement{Serving agreement reached?}
-    Root --> Agreement
-    Agreement -->|No| Resolve[Continue dialogue or reconcile the unresolved request]
-    Resolve --> Agreement
-    Agreement -->|Yes| Phase{Implementation phase?}
-    Phase -->|No| Record[Record agreement; continue planning]
+    Need([Another cell must produce work]) --> Settled{Owner and scope settled?}
+    Settled -->|No| Owner{Existing owner or new cell?}
+    Owner -->|Existing cell| Serving[Consult the serving cell on the unresolved question]
+    Owner -->|New cell| Root[Root-owned creation and approval]
+    Serving --> Handoff[Generate an execution handoff and select supporting files]
+    Root --> Handoff
+    Settled -->|Yes| Handoff
+    Handoff --> Phase{Implementation phase?}
+    Phase -->|No| Record[Retain settled decisions; continue planning]
     Phase -->|Yes| Known{Execution job already recorded?}
     Known -->|Yes| Reuse[Inspect the recorded job]
     Known -->|No| Launch[Recipe starts child build or root-owned creation job]
@@ -123,18 +126,25 @@ flowchart TD
     Success -->|Yes| Resume[Resume parent with durable outcome and evidence]
 ```
 
-**Serving agreement is mandatory before prerequisite submission.** The recipe assigns
-agreement references; agents use them only when requesting execution. Native state
-outputs retain agreement and submission records, without carried status maps. Mixed
-independent requests are allowed. Re-entry follows the recorded job. A successful
-replacement satisfies its assignment; unrelated required children remain tracked.
-Factual answers end consultations. Requests for downstream advice stay inline;
-implementation needs and accepted nested agreements return to the coordinator.
-Returning from foreign advice restores the requester’s managed candidate, including
-unpublished changes. It does not fetch that candidate SHA from upstream. Creation retains root-owned approval and readiness
-requirements; creating a cell does not implement the original feature request.
-Creation must be requested explicitly. Inaccessible workspaces return for investigation
-and do not silently become root-cell creation requests.
+The parent synthesizes settled consultation and planning outcomes into an execution
+assignment. It requests `action: execute`, explicit `cell`/`ref`, and `handoff:
+work/<assignment>/`. That directory must contain `handoff.md`; only selected files
+beneath it are bound at the child's inbox root. Formal statements and exact supporting
+contracts belong there when needed. The execution owner can differ from the consultant;
+referrals do not require another acknowledgment consultation.
+
+Agents use native job IDs for `replaces` when requesting a corrected attempt. The
+coordinator retains submission records for durable replay, follows active or successful
+attempts instead of duplicating them, and never automatically retries cancellation.
+Design, test planning, and implementation start separate sessions. Consultation gets
+its own requester and consultant checkpoints; returning advice preserves the original
+working session and unpublished managed candidate. Creation retains root-owned approval
+and readiness requirements and does not implement the original feature request.
+
+A self-contained consultation question needs no attached documents. For supporting
+contracts, use an optional handoff directory for that question. Historical artifacts
+remain on their producing tasks. Subsequent progression turns receive the agent's
+selected current files, with the current handoff and formal baseline retained explicitly.
 
 ### Agent-submitted validation
 
@@ -148,16 +158,21 @@ IDs, inspects every tracked job, and returns available terminal results before
 waiting. Results appear under `inbox/results/<job>/`, with exported files under
 `artifacts/`; original failures appear under `inbox/error/children/<job>/`.
 A failed execution is returned even if its goal remains OPEN. Pending siblings
-remain tracked. If all children are pending, the current runtime can wait only on
+remain tracked. Return `wait` when no independent work remains, or `continue` with a
+concrete next action. A narrow Jev classification routes status-only continuations to
+durable waiting; uncertainty returns a focused response correction. Direct and
+coordinator children share status collection. If all children are pending, the current runtime can wait only on
 one; prompt wakeup on any child completion needs the runtime addition described in
 [recovery runtime requirements](guides/REQUIREMENTS_C2J_PARENT_RECOVERY.md).
 
 Planning, consultation, read-only review, and response correction cannot submit
-jobs. Project prerequisites use the coordinator's accepted agreements. Small direct
-validation jobs use the same failure delivery, after which the parent can validate
-locally or submit another corrected experiment. No intermediate child files or
-sessions are retrieved; exported final results and the original failure envelope
-are the available evidence.
+jobs. Inspection is separate from submission: these tasks can inspect their own job
+and direct children. `c2j job log`, `fields`, `artifacts`, and `artifact` expose saved
+outputs even when no final result exists. `c2j job snapshot` exports cumulative state
+to scratch. The agent selects useful files or a patch; the next writable task reviews,
+applies, and retests it. Unavailable saved work permits a fresh start. Parent and sibling
+reads are not available to ordinary task tokens; report specific missing inputs instead
+of starting another consultation to message the parent.
 
 Persistent worker tools use `packages: [{reference: ..., check: [...]}]`, for example
 `check: [go, version]` or `check: [ruff, --version]`. The cell's

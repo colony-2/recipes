@@ -87,9 +87,19 @@ from repairable execution failure. The current coordinator checks the original
 envelope and never automatically replaces this cancelled work. Its regression
 fixture is `native-cancelled-child-is-not-replaced`.
 
-## Separate future work
+## Inspection support and recipe adoption
 
-Task-level output inspection and selected intermediate-artifact reuse remain in
-[the future recovery proposal](PROPOSAL_CHILD_RECOVERY_WITH_INTERMEDIATE_RESULTS.md).
-Fresh recovery works without those APIs. Private Git/module transport and package
-installer defects still belong to their respective runtime/tool owners.
+Update, 2026-11-07: [GUIDE-Job-Inspection.md](../GUIDE-Job-Inspection.md) documents
+task/output inspection, individual artifact reads, and cumulative snapshot export,
+including authenticated access to the current job and direct children. The
+previous request for an inspection API is fulfilled by that documented contract;
+recipe adoption and native task-helper tests now use c2j v0.0.122. See
+[the implementation assessment](ASSESSMENT_HANDOFF_ROUTING_AND_RECOVERY.md),
+[selected-result recovery](PROPOSAL_CHILD_RECOVERY_WITH_INTERMEDIATE_RESULTS.md)
+and item 9 of [the handoff plan](PLAN_ADAPTIVE_HANDOFF_ROUTING_AND_RECOVERY.md).
+
+Start-again recovery still works when saved work cannot be reused. The inspection
+guide does not establish wait-any or dynamic resource adoption; the other
+requirements above retain their stated baseline until separately verified.
+Private Git/module transport and package installer defects still belong to their
+respective runtime/tool owners.

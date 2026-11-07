@@ -56,8 +56,10 @@ state:
       - to: dispatch
         when: true
         payload:
-          phase: test-plan
+          phase: "${{ 'handoff.md' in outputs.documents && 'test-statements.md' in outputs.documents ? 'implement' :
+            'test-plan' }}"
           documents: ${{ outputs.documents }}
+          session: {}
     dispatch:
       inputs:
         documents: ${{ transition.payload.documents }}
@@ -85,10 +87,10 @@ state:
         request_prefix: ${{ inputs.request_prefix }}
       transitions:
       - to: iteration_limit
-        when: "int(inputs.max_iterations) > 0 && (state_exists('work') ? size(states.work.runs.filter(r,r.outputs.phase ==
-          'implement' && !(r.outputs.next in ['coordinate','blocked']) && r.outputs.assignment != 'repair')) + (states.work.outputs.phase
-          == 'implement' && !(states.work.outputs.next in ['coordinate','blocked']) && states.work.outputs.assignment != 'repair'
-          ? 1 : 0) : 0) >= int(inputs.max_iterations)"
+        when: "int(inputs.max_iterations) > 0 && (state_exists('work') ? size(states.work.runs.filter(r,r.outputs.phase
+          == 'implement' && !(r.outputs.next in ['coordinate','blocked','wait']) && r.outputs.assignment != 'repair'))
+          + (states.work.outputs.phase == 'implement' && !(states.work.outputs.next in ['coordinate','blocked','wait'])
+          && states.work.outputs.assignment != 'repair' ? 1 : 0) : 0) >= int(inputs.max_iterations)"
         payload:
           documents: ${{ outputs.documents }}
           annotations: ${{ outputs.annotations }}
@@ -107,7 +109,11 @@ state:
         documents: ${{ states.dispatch.outputs.documents }}
         evidence_documents: ${{ states.dispatch.outputs.evidence_documents }}
         retained_artifacts: ${{ states.dispatch.outputs.retained_artifacts }}
-        pending_jobs: ${{ state_output('work','pending_jobs',[]) }}
+        pending_jobs: "${{ jq(state_output('work','pending_jobs',[]) + state_output('record','pending_jobs',[]),'unique').filter(j,!((state_exists('coordinate')
+          ? jq(states.coordinate.runs.map(r,r.outputs.records) + [states.coordinate.outputs.records],'add') : []) + (state_exists('work')
+          ? jq(states.work.runs.map(r,r.outputs.child_results) + [states.work.outputs.child_results],'add').map(r,{'action':'await','job_id':r.job_id,'result':r})
+          : []) + (state_exists('wait_children') ? jq(states.wait_children.runs.map(r,r.outputs.results) + [states.wait_children.outputs.results],'add').map(r,{'action':'await','job_id':r.job_id,'result':r})
+          : [])).exists(h,h.action == 'await' && h.job_id == j)) }}"
       sequence:
       - id: agent
         include: ./agent.yaml
@@ -127,6 +133,7 @@ state:
           jobs: ${{ sequence.agent.outputs.turn.jobs }}
           allowed: ${{ inputs.phase == 'implement' && inputs.assignment != 'repair' }}
           pending: ${{ inputs.pending_jobs }}
+          wait: false
       - id: expectations
         include: ./expectations.yaml
         inputs:
@@ -143,6 +150,7 @@ state:
         child_results: ${{ sequence.children.outputs.results }}
         phase: ${{ inputs.phase }}
         next: ${{ sequence.agent.outputs.turn.result.?response.orValue({}).?next.orValue('') }}
+        child_documents: ${{ sequence.children.outputs.documents }}
       transitions:
       - to: record
         when: true
@@ -165,25 +173,30 @@ state:
         documents: ${{ states.work.outputs.documents }}
         annotations: ${{ states.dispatch.outputs.annotations }}
         phase: ${{ states.dispatch.outputs.phase }}
-        coordination: "${{ (state_exists('coordinate') ? jq(states.coordinate.runs.map(r,r.outputs.records) + [states.coordinate.outputs.records],
-          'add') : []) }}"
+        coordination: "${{ (state_exists('coordinate') ? jq(states.coordinate.runs.map(r,r.outputs.records) + [states.coordinate.outputs.records],'add')
+          : []) + (state_exists('work') ? jq(states.work.runs.map(r,r.outputs.child_results) + [states.work.outputs.child_results],'add').map(r,{'action':'await','job_id':r.job_id,'result':r})
+          : []) + (state_exists('wait_children') ? jq(states.wait_children.runs.map(r,r.outputs.results) + [states.wait_children.outputs.results],'add').map(r,{'action':'await','job_id':r.job_id,'result':r})
+          : []) }}"
+        child_documents: ${{ states.work.outputs.child_documents }}
+        direct_pending: ${{ states.work.outputs.pending_jobs }}
       sequence: []
       outputs:
         issues: ${{ vars.issues }}
         session: ${{ inputs.turn.result.?session.orValue(inputs.session) }}
-        documents: "${{ inputs.turn.result.?output_schema_valid.orValue(false) ? (jq([inputs.assignment == 'repair' ? inputs.base_documents
-          : inputs.documents, jq({'files':inputs.turn.result.?response.orValue({}).?files.orValue([]),'artifacts':inputs.turn.artifacts},
-          '. as $v | $v.files | map(select(.path as $p | $v.artifacts | has($p)) | {key:.path,value:$v.artifacts[.path]})
-          | from_entries')], 'add')) : inputs.documents }}"
+        documents: "${{ inputs.turn.result.?output_schema_valid.orValue(false) ? jq([jq(inputs.documents, 'with_entries(select(.key
+          == \"test-statements.md\" or .key == \"handoff.md\"))'), inputs.turn.documents, inputs.child_documents], 'add')
+          : inputs.documents }}"
         annotations: ${{ inputs.annotations + inputs.turn.?annotations.orValue([]) }}
-        pending_jobs: ${{ inputs.coordination.filter(e,e.action == 'execute' && !inputs.coordination.exists(n,n.action
-          == 'execute' && n.?replaces.orValue('') == e.job_id)).filter(e,!inputs.coordination.exists(a,a.action ==
-          'await' && a.job_id == e.job_id)).map(e,e.job_id) }}
-        failed_jobs: ${{ inputs.coordination.filter(e,e.action == 'execute' && !inputs.coordination.exists(n,n.action ==
-          'execute' && n.?replaces.orValue('') == e.job_id)).filter(e,inputs.coordination.exists(a,a.action == 'await'
-          && a.job_id == e.job_id && (a.result.status != 'completed' ||
-          !(a.result.?outputs.orValue({}).?merged.orValue(false) ||
-          a.result.?outputs.orValue({}).?disposition.orValue('') in ['unchanged','delegated'])))).map(e,e.job_id) }}
+        pending_jobs: ${{ jq(inputs.coordination.filter(e,e.action == 'execute' &&
+          !inputs.coordination.exists(n,n.action == 'execute' && n.?replaces.orValue('') ==
+          e.job_id)).filter(e,!inputs.coordination.exists(a,a.action == 'await' && a.job_id ==
+          e.job_id)).map(e,e.job_id) + inputs.direct_pending, 'unique') }}
+        failed_jobs: ${{ inputs.coordination.filter(e,e.action == 'execute' &&
+          !inputs.coordination.exists(n,n.action == 'execute' && n.?replaces.orValue('') ==
+          e.job_id)).filter(e,inputs.coordination.exists(a,a.action == 'await' && a.job_id == e.job_id &&
+          (a.result.status != 'completed' || !(a.result.?outputs.orValue({}).?merged.orValue(false) ||
+          a.result.?outputs.orValue({}).?disposition.orValue('') in ['unchanged','delegated'])))).map(e,e.job_id)
+          }}
       vars:
         issues: |-
           ${{ (size(states.work.outputs.turn.result.?response.orValue({}).?packages.orValue([])) > 0 && states.work.outputs.turn.result.response.next != 'blocked' ? ['Use next: blocked with a package request so the recipe can authorize and validate it before continuing.'] : []) + (states.work.outputs.turn.result.?response.orValue({}).?next.orValue('') == 'ask_user' ? [] : states.work.outputs.turn.?issues.orValue([]))
@@ -196,11 +209,11 @@ state:
             + (states.work.outputs.turn.result.response.next != 'ask_user' && size(states.work.outputs.turn.result.response.?files.orValue([]).map(f, f.path)) != size(jq(states.work.outputs.turn.result.response.?files.orValue([]), 'map(.path) | unique')) ? ['List each resolved artifact only once.'] : [])
             + (states.work.outputs.turn.result.response.next == 'review' && !states.work.outputs.turn.result.response.?files.orValue([]).exists(f, f.path == {'design': 'design.md', 'test-plan': 'test-statements.md', 'implement': 'implementation.md'}[states.dispatch.outputs.phase]) ? ['Review requires ' + {'design': 'design.md', 'test-plan': 'test-statements.md', 'implement': 'implementation.md'}[states.dispatch.outputs.phase] + ' in the returned files.'] : [])
             + (states.work.outputs.turn.result.response.next == 'ask_user' && (!nonempty(states.work.outputs.turn.result.response.?review_title.orValue('')) || size(states.work.outputs.turn.result.response.?questions.orValue([])) == 0 || states.work.outputs.turn.result.response.?questions.orValue([]).exists(q, q.id == 'annotations')) ? ['ask_user requires review_title naming the decision and focused questions; annotations is a reserved question id.'] : [])
-           : []) + (states.work.outputs.turn.result.?response.orValue({}).?next.orValue('') == 'coordinate' && size(states.work.outputs.turn.result.response.?requests.orValue([])) == 0 ? ['Return at least one consultation or execution request.'] : []) + (states.dispatch.outputs.phase == 'implement' && states.work.outputs.turn.result.?response.orValue({}).?next.orValue('') == 'review' && !states.work.outputs.turn.result.response.?files.orValue([]).exists(f, f.path == 'test-results.md') ? ['Publish test-results.md mapping statement IDs to results and evidence.'] : []) + (states.work.outputs.expectations_changed && states.work.outputs.turn.result.response.next != 'redesign' ? ['Formal expectations are fixed before implementation. Return redesign to update their plan with preserved expectations and any required deprecation.'] : []) }}
+           : []) + (states.work.outputs.turn.result.?response.orValue({}).?next.orValue('') == 'coordinate' && size(states.work.outputs.turn.result.response.?requests.orValue([])) == 0 ? ['Return at least one consultation or execution request.'] : []) + (states.dispatch.outputs.phase == 'implement' && states.work.outputs.turn.result.?response.orValue({}).?next.orValue('') == 'review' && !states.work.outputs.turn.result.response.?files.orValue([]).exists(f, f.path == 'test-results.md') ? ['Publish test-results.md mapping statement IDs to results and evidence.'] : []) + (states.work.outputs.expectations_changed && states.work.outputs.turn.result.response.next != 'redesign' ? ['Formal expectations are fixed before implementation. Return redesign to update their plan with preserved expectations and any required deprecation.'] : []) + (states.dispatch.outputs.phase == 'test-plan' && states.work.outputs.turn.result.?response.orValue({}).?next.orValue('') == 'review' && !('handoff.md' in states.work.outputs.turn.documents) ? ['Publish handoff.md synthesized from the settled design and consultation outcomes for the new implementation session.'] : []) }}
       transitions:
       - to: reject_invalid_build_request
-        when: size(outputs.issues) > 0 && (states.work.outputs.turn.result.?status.orValue('failed') != 'completed' ||
-          size(states.work.outputs.turn.jobs.?job_ids.orValue([])) > 0)
+        when: size(outputs.issues) > 0 && (states.work.outputs.turn.result.?status.orValue('failed') != 'completed'
+          || size(states.work.outputs.turn.jobs.?job_ids.orValue([])) > 0)
         payload:
           reason: ${{ jq(outputs.issues,'join("; ")') }}
       - to: repair
@@ -239,18 +252,19 @@ state:
           requests: ${{ states.work.outputs.turn.result.response.requests }}
           documents: ${{ outputs.documents }}
           annotations: ${{ outputs.annotations }}
-      - to: coordinate
-        when: "states.work.outputs.turn.result.response.next in ['review','outside','blocked'] && size(outputs.pending_jobs)
-          > 0"
+      - to: wait_children
+        when: states.work.outputs.turn.result.response.next in ['review','outside','blocked','wait'] &&
+          size(outputs.pending_jobs)>0
         payload:
-          requests: "${{ outputs.pending_jobs.map(j,{'action':'await','job':j}) }}"
           documents: ${{ outputs.documents }}
           annotations: ${{ outputs.annotations }}
+          jobs: ${{ outputs.pending_jobs }}
       - to: recover_work
-        when: "states.work.outputs.turn.result.response.next in ['review','outside'] && size(outputs.failed_jobs) > 0"
+        when: states.work.outputs.turn.result.response.next in ['review','outside'] && size(outputs.failed_jobs) >
+          0
         payload:
-          reason: "${{ 'Required child work is incomplete. Read coordination/ and error/; request a fresh execution with corrected
-            instructions for the failed assignment. Jobs: ' + jq(outputs.failed_jobs,'join(\", \")') }}"
+          reason: "${{ 'Required child work is incomplete. Read coordination/ and error/; request a fresh execution with
+            corrected instructions for the failed assignment. Jobs: ' + jq(outputs.failed_jobs,'join(\", \")') }}"
           documents: ${{ outputs.documents }}
           annotations: ${{ outputs.annotations }}
       - to: recover_work
@@ -259,16 +273,24 @@ state:
           reason: ${{ states.work.outputs.turn.result.response.summary }}
           documents: ${{ outputs.documents }}
           annotations: ${{ outputs.annotations }}
-      - to: dispatch
-        when: states.work.outputs.turn.result.response.next in ['review','outside'] &&
-          size(states.work.outputs.pending_jobs)>0
-        payload:
-          documents: ${{ outputs.documents }}
-          annotations: ${{ outputs.annotations }}
       - to: stopped
         when: states.work.outputs.turn.result.response.next == 'outside'
         payload:
           disposition: outside
+          documents: ${{ outputs.documents }}
+          annotations: ${{ outputs.annotations }}
+      - to: scheduling
+        when: states.work.outputs.turn.result.response.next == 'continue' && size(outputs.pending_jobs)>0
+        payload:
+          documents: ${{ outputs.documents }}
+          annotations: ${{ outputs.annotations }}
+          jobs: ${{ outputs.pending_jobs }}
+      - to: repair
+        when: states.work.outputs.turn.result.response.next == 'wait'
+        payload:
+          turn: ${{ states.work.outputs.turn }}
+          issues:
+          - There are no pending child jobs. Continue useful local work or return the actual outcome.
           documents: ${{ outputs.documents }}
           annotations: ${{ outputs.annotations }}
       - to: dispatch
@@ -318,6 +340,7 @@ state:
           phase: test-plan
           documents: ${{ outputs.documents }}
           annotations: ${{ outputs.annotations }}
+          session: {}
       outputs:
         documents: ${{ inputs.documents }}
         annotations: ${{ inputs.annotations }}
@@ -333,6 +356,7 @@ state:
           phase: implement
           documents: ${{ outputs.documents }}
           annotations: ${{ outputs.annotations }}
+          session: {}
       outputs:
         documents: ${{ inputs.documents }}
         annotations: ${{ inputs.annotations }}
@@ -348,8 +372,10 @@ state:
         session: ${{ states.record.outputs.session }}
         root_cell: ${{ states.start.outputs.root_cell }}
         root_ref: ${{ states.start.outputs.root_ref }}
-        history: "${{ (state_exists('coordinate') ? jq(states.coordinate.runs.map(r,r.outputs.records) + [states.coordinate.outputs.records],
-          'add') : []) }}"
+        history: "${{ (state_exists('coordinate') ? jq(states.coordinate.runs.map(r,r.outputs.records) + [states.coordinate.outputs.records],'add')
+          : []) + (state_exists('work') ? jq(states.work.runs.map(r,r.outputs.child_results) + [states.work.outputs.child_results],'add').map(r,{'action':'await','job_id':r.job_id,'result':r})
+          : []) + (state_exists('wait_children') ? jq(states.wait_children.runs.map(r,r.outputs.results) + [states.wait_children.outputs.results],'add').map(r,{'action':'await','job_id':r.job_id,'result':r})
+          : []) }}"
         prefix: ${{ states.dispatch.outputs.request_prefix }}
       sequence:
       - id: coordinate
@@ -385,8 +411,8 @@ state:
           documents: ${{ outputs.documents }}
           annotations: ${{ outputs.annotations }}
       - to: recover_work
-        when: "outputs.records.exists(r,r.action == 'create' ? !r.ready : r.action == 'await' && (r.result.status != 'completed'
-          || !(r.result.?outputs.orValue({}).?merged.orValue(false) || r.result.?outputs.orValue({}).?disposition.orValue('')
+        when: "outputs.records.exists(r,r.action == 'create' ? !r.ready : r.action == 'await' && (r.result.status !=
+          'completed' || !(r.result.?outputs.orValue({}).?merged.orValue(false) || r.result.?outputs.orValue({}).?disposition.orValue('')
           in ['unchanged','delegated'])))"
         payload:
           reason: A child did not complete its agreed work. Read coordination/ and error/ for the failure; choose a
@@ -481,8 +507,8 @@ state:
           documents: ${{ outputs.documents }}
           annotations: ${{ outputs.annotations }}
       - to: recover_work
-        when: '!outputs.approved && outputs.previous_summary == outputs.response.summary && outputs.previous_candidate ==
-          outputs.candidate.head'
+        when: '!outputs.approved && outputs.previous_summary == outputs.response.summary && outputs.previous_candidate
+          == outputs.candidate.head'
         payload:
           reason: The same assessment finding recurred without a candidate change. Resolve the missing evidence,
             capability, or requirement described in feedback/.
@@ -563,8 +589,8 @@ state:
         documents: ${{ transition.payload.documents }}
         annotations: ${{ transition.payload.annotations }}
         resume_merge: ${{ transition.from == 'merge' }}
-        merge_chases: "${{ state_output('rebase','merge_chases',inputs.prior_merge_chases) + (transition.from == 'merge' ?
-          1 : 0) }}"
+        merge_chases: "${{ state_output('rebase','merge_chases',inputs.prior_merge_chases) + (transition.from == 'merge'
+          ? 1 : 0) }}"
       sequence:
       - id: resolve_upstream_head
         op: command_execution
@@ -595,8 +621,8 @@ state:
         maximum_attempts: 1
       catch:
       - id: repair_restored_rebase_conflict
-        when: "inputs.prior_rebase_repairs + (state_exists('rebase_repair') ? size(states.rebase_repair.runs) + 1 : 0) < 2
-          && jq(json_parse(json_stringify(failure)),states.start.outputs.rebase_policy)"
+        when: "inputs.prior_rebase_repairs + (state_exists('rebase_repair') ? size(states.rebase_repair.runs) + 1 : 0)
+          < 2 && jq(json_parse(json_stringify(failure)),states.start.outputs.rebase_policy)"
         to: rebase_repair
         payload:
           documents: ${{ transition.payload.documents }}
@@ -655,7 +681,8 @@ state:
         candidate: ${{ sequence.candidate.outputs.candidate }}
         hook_digest: ${{ sequence.identity.outputs.digest }}
         documents: ${{
-          jq([inputs.documents,sequence.prepare.outputs.artifact_refs,sequence.candidate.outputs.documents], 'add') }}
+          jq([inputs.documents,sequence.prepare.outputs.artifact_refs,sequence.candidate.outputs.documents], 'add')
+          }}
         error_documents: ${{ sequence.errors.outputs.documents }}
         annotations: ${{ inputs.annotations }}
       transitions:
@@ -707,6 +734,7 @@ state:
           phase: design
           documents: ${{ outputs.documents }}
           annotations: ${{ outputs.annotations }}
+          session: {}
     specialists:
       inputs:
         documents: ${{ transition.payload.documents }}
@@ -868,8 +896,8 @@ state:
             required: true
             options:
             - value: accept
-              label: '${{ size(inputs.candidate.files) > 0 ? sequence.prompts.outputs.human.accept.accept_label_changed :
-                sequence.prompts.outputs.human.accept.accept_label_unchanged }}'
+              label: '${{ size(inputs.candidate.files) > 0 ? sequence.prompts.outputs.human.accept.accept_label_changed
+                : sequence.prompts.outputs.human.accept.accept_label_unchanged }}'
             - value: revise
               label: ${{ sequence.prompts.outputs.human.accept.revise_label }}
             - value: cancel
@@ -992,8 +1020,8 @@ state:
         maximum_attempts: 1
       catch:
       - id: chase_advanced_upstream
-        when: failure.kind == 'task_error' && failure.code == 'MERGE_UPSTREAM_ADVANCED' && failure.node.op == 'merge' &&
-          failure.node.id == 'merge_reviewed_candidate' &&
+        when: failure.kind == 'task_error' && failure.code == 'MERGE_UPSTREAM_ADVANCED' && failure.node.op ==
+          'merge' && failure.node.id == 'merge_reviewed_candidate' &&
           state_output('rebase','merge_chases',inputs.prior_merge_chases) < 3
         to: rebase
         payload:
@@ -1070,9 +1098,11 @@ state:
     iteration_limit:
       include: ./operational-failure.yaml
       inputs:
-        reason: The explicitly configured implementation-turn cap or response-correction limit was reached. Preserve the
-          work and report the unmet need to the parent; a new attempt starts from the normal cell state.
-        documents: ${{ jq([transition.payload.documents,transition.payload.?evidence_documents.orValue({})],'add') }}
+        reason: The explicitly configured implementation-turn cap or response-correction limit was reached.
+          Preserve the work and report the unmet need to the parent; a new attempt starts from the normal cell
+          state.
+        documents: ${{ jq([transition.payload.documents,transition.payload.?evidence_documents.orValue({})],'add')
+          }}
     intervention:
       include: ./operational-failure.yaml
       inputs:
@@ -1141,8 +1171,8 @@ state:
       outputs:
         reason: ${{ inputs.reason }}
         candidate: ${{ inputs.candidate }}
-        attempts: "${{ inputs.work_turn == inputs.previous_work_turn+1 && inputs.previous_reason == inputs.reason && inputs.previous_candidate
-          == inputs.candidate ? inputs.previous_attempts+1 : 1 }}"
+        attempts: '${{ inputs.work_turn == inputs.previous_work_turn+1 && inputs.previous_reason == inputs.reason &&
+          inputs.previous_candidate == inputs.candidate ? inputs.previous_attempts+1 : 1 }}'
         documents: ${{
           jq([inputs.documents,sequence.errors.outputs.documents,{'feedback/recovery.md':{'kind':'value','name':'feedback/recovery.md','format':'text','value':inputs.reason}
           }],'add') }}
@@ -1158,6 +1188,76 @@ state:
         when: true
         payload:
           assignment: recovery
+          documents: ${{ outputs.documents }}
+          annotations: ${{ outputs.annotations }}
+    scheduling:
+      inputs:
+        documents: ${{ transition.payload.documents }}
+        annotations: ${{ transition.payload.annotations }}
+        jobs: ${{ transition.payload.jobs }}
+        summary: ${{ states.work.outputs.turn.result.response.summary }}
+      sequence:
+      - id: intent
+        include: ./scheduling.yaml
+        inputs:
+          summary: ${{ inputs.summary }}
+      outputs:
+        decision: ${{ sequence.intent.outputs.decision }}
+        documents: ${{ inputs.documents }}
+        annotations: ${{ inputs.annotations }}
+        jobs: ${{ inputs.jobs }}
+      transitions:
+      - to: wait_children
+        when: outputs.decision == 'wait'
+        payload:
+          documents: ${{ outputs.documents }}
+          annotations: ${{ outputs.annotations }}
+          jobs: ${{ outputs.jobs }}
+      - to: dispatch
+        when: outputs.decision == 'continue'
+        payload:
+          documents: ${{ outputs.documents }}
+          annotations: ${{ outputs.annotations }}
+      - to: repair
+        when: true
+        payload:
+          turn: ${{ states.work.outputs.turn }}
+          issues:
+          - State the concrete independent action for continue, or return wait when only child results remain. The
+            scheduling intent could not be determined.
+          documents: ${{ outputs.documents }}
+          annotations: ${{ outputs.annotations }}
+    wait_children:
+      inputs:
+        documents: ${{ transition.payload.documents }}
+        annotations: ${{ transition.payload.annotations }}
+        jobs: ${{ transition.payload.jobs }}
+      sequence:
+      - id: children
+        include: ./child-results.yaml
+        inputs:
+          jobs: ${{ {'job_ids':inputs.jobs} }}
+          allowed: true
+          wait: true
+      outputs:
+        results: ${{ sequence.children.outputs.results }}
+        pending: ${{ sequence.children.outputs.pending }}
+        failed: ${{ sequence.children.outputs.failed ||
+          sequence.children.outputs.results.exists(r,r.?outputs.orValue({}).?disposition.orValue('') in
+          ['incomplete','blocked']) }}
+        documents: ${{ jq([inputs.documents,sequence.children.outputs.documents],'add') }}
+        annotations: ${{ inputs.annotations }}
+      transitions:
+      - to: recover_work
+        when: outputs.failed
+        payload:
+          reason: A child did not finish its assignment. Inspect its outputs, correct the handoff, and request a
+            fresh attempt when useful.
+          documents: ${{ outputs.documents }}
+          annotations: ${{ outputs.annotations }}
+      - to: dispatch
+        when: true
+        payload:
           documents: ${{ outputs.documents }}
           annotations: ${{ outputs.annotations }}
 outputs:
@@ -1177,7 +1277,9 @@ outputs:
   reviews: "${{ state_exists('accept') ? {'outcome':states.accept.outputs.response.?receipt.orValue({})} : {} }}"
   verification: ${{ state_output('verify','result',{}) }}
   publication: ${{ state_output('merge','publication',{}) }}
-  rebase_repairs: "${{ inputs.prior_rebase_repairs + (state_exists('rebase_repair') ? size(states.rebase_repair.runs) + 1
-    : 0) }}"
-  coordination: "${{ (state_exists('coordinate') ? jq(states.coordinate.runs.map(r,r.outputs.records) + [states.coordinate.outputs.records],
-    'add') : []) }}"
+  rebase_repairs: "${{ inputs.prior_rebase_repairs + (state_exists('rebase_repair') ? size(states.rebase_repair.runs)
+    + 1 : 0) }}"
+  coordination: "${{ (state_exists('coordinate') ? jq(states.coordinate.runs.map(r,r.outputs.records) + [states.coordinate.outputs.records],'add')
+    : []) + (state_exists('work') ? jq(states.work.runs.map(r,r.outputs.child_results) + [states.work.outputs.child_results],'add').map(r,{'action':'await','job_id':r.job_id,'result':r})
+    : []) + (state_exists('wait_children') ? jq(states.wait_children.runs.map(r,r.outputs.results) + [states.wait_children.outputs.results],'add').map(r,{'action':'await','job_id':r.job_id,'result':r})
+    : []) }}"

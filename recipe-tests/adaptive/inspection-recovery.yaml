@@ -1,0 +1,174 @@
+id: inspection-recovery
+sequence:
+- id: parent_work
+  op: command_execution
+  inputs:
+    run: echo retained-parent-work > parent-only.txt
+- id: first
+  include: ../../recipes/adaptive/coordinate.yaml
+  inputs:
+    phase: implement
+    root_cell: root
+    root_ref: main
+    consultation_recipe: unused
+    build_recipe: delivery
+    create_recipe: unused
+    session: {}
+    documents:
+      work/probe/handoff.md:
+        kind: value
+        name: work/probe/handoff.md
+        format: text
+        value: "${{ 'Verify the original delivery probe. Parent: ' + context.workflow.job_id }}"
+    prefix: first
+    requests:
+    - action: execute
+      cell: ${{ inputs.target_cell }}
+      handoff: work/probe/
+    history: []
+- id: failed
+  include: ../../recipes/adaptive/coordinate.yaml
+  inputs:
+    phase: implement
+    root_cell: root
+    root_ref: main
+    consultation_recipe: unused
+    build_recipe: delivery
+    create_recipe: unused
+    session: {}
+    documents: {}
+    prefix: failed
+    requests:
+    - action: await
+      job: ${{ sequence.first.outputs.records[0].job_id }}
+    history: ${{ sequence.first.outputs.records }}
+- id: recover_selected
+  op: command_execution
+  const: true
+  perms:
+    inherit: true
+    jobdb:
+      jobs:
+        submit: false
+  inputs:
+    env:
+      FAILED: ${{ sequence.first.outputs.records[0].job_id }}
+      OUTBOX: ${{ context.environment.op.outbox }}
+      REPO: ${{ context.git.repo }}
+    run: |
+      set -eu
+      python3 - <<'PYCODE'
+      import json, os, pathlib, subprocess, tempfile
+      job = os.environ['FAILED']
+      out = pathlib.Path(os.environ['OUTBOX']) / 'work/probe'
+      out.mkdir(parents=True)
+      def call(*args):
+          return subprocess.check_output(['c2j', *args], text=True)
+      # These run with a task token, including when job submission is disabled.
+      assert json.loads(call('job', 'log', 'self', '--json'))['tasks']
+      log = json.loads(call('job', 'log', job, '--json'))
+      task = next(t['id'] for t in log['tasks'] if t.get('path','').endswith('/prepare_work'))
+      fields = json.loads(call('job', 'fields', job, '--task', task, '--json'))
+      assert fields['fields']
+      items = json.loads(call('job', 'artifacts', job, '--task', task, '--json'))['artifacts']
+      assert any(a['name']=='useful.md' for a in items)
+      call('job', 'artifact', job, '--task', task, '--name', 'useful.md', '--output', str(out/'useful.md'))
+      assert (out/'useful.md').read_text() == 'Selected output from the failed attempt.\n'
+      scratch = pathlib.Path(tempfile.mkdtemp()) / 'snapshot'
+      # The harness registers synthetic HTTPS identities. For this same-cell case,
+      # fetch real prerequisite commits from the current fixture checkout through Git.
+      # No snapshot state or outputs are mocked; the child bundle supplies its changes.
+      os.environ['GIT_CONFIG_COUNT'] = '1'
+      os.environ['GIT_CONFIG_KEY_0'] = 'url.' + str(pathlib.Path.cwd()) + '.insteadOf'
+      os.environ['GIT_CONFIG_VALUE_0'] = os.environ['REPO']
+      call('job', 'snapshot', job, '--task', task, '--dir', str(scratch))
+      metadata = json.loads((scratch/'snapshot.json').read_text())
+      assert metadata['job_id'] == job
+      patch = subprocess.check_output(['git','-C',str(scratch/'worktree'),'diff','--binary','refs/c2j/base','HEAD'])
+      assert b'unfinished-child.txt' in patch
+      (out/'changes.patch').write_bytes(patch)
+      (out/'handoff.md').write_text('Use the corrected probe. Review and apply changes.patch, then verify unfinished-child.txt. '
+          + 'Source job: '+job+'; source task: '+task+'. Snapshot was exported after prepare_work. Retest recovered work.\n')
+      assert not (out/'unrelated.md').exists()
+      PYCODE
+    continue_on_error: true
+- id: check_inspection
+  op: command_execution
+  inputs:
+    env:
+      OK: ${{ string(sequence.recover_selected.outputs.success) }}
+    run: test "$OK" = true
+  catch:
+  - when: true
+    fail:
+      code: INSPECTION_TEST_FAILED
+      message: ${{ sequence.recover_selected.outputs.stderr }}
+- id: replacement
+  include: ../../recipes/adaptive/coordinate.yaml
+  inputs:
+    phase: implement
+    root_cell: root
+    root_ref: main
+    consultation_recipe: unused
+    build_recipe: delivery
+    create_recipe: unused
+    session: {}
+    documents: ${{ sequence.recover_selected.artifacts }}
+    prefix: replacement
+    requests:
+    - action: execute
+      cell: ${{ inputs.target_cell }}
+      handoff: work/probe/
+      replaces: ${{ sequence.first.outputs.records[0].job_id }}
+    history: ${{ sequence.first.outputs.records + sequence.failed.outputs.records }}
+- id: completed
+  include: ../../recipes/adaptive/coordinate.yaml
+  inputs:
+    phase: implement
+    root_cell: root
+    root_ref: main
+    consultation_recipe: unused
+    build_recipe: delivery
+    create_recipe: unused
+    session: {}
+    documents: {}
+    prefix: completed
+    requests:
+    - action: await
+      job: ${{ sequence.replacement.outputs.records[0].job_id }}
+    history: ${{ sequence.replacement.outputs.records }}
+- id: repeat
+  include: ../../recipes/adaptive/coordinate.yaml
+  inputs:
+    phase: implement
+    root_cell: root
+    root_ref: main
+    consultation_recipe: unused
+    build_recipe: delivery
+    create_recipe: unused
+    session: {}
+    documents: ${{ sequence.recover_selected.artifacts }}
+    prefix: repeat
+    requests:
+    - action: execute
+      cell: ${{ inputs.target_cell }}
+      handoff: work/probe/
+    history: ${{ sequence.first.outputs.records + sequence.failed.outputs.records +
+      sequence.replacement.outputs.records + sequence.completed.outputs.records }}
+- id: check_parent
+  op: command_execution
+  inputs:
+    run: "test -f parent-only.txt\ntest ! -f unfinished-child.txt\ntest ! -f child-success.txt\n"
+outputs:
+  first: ${{ sequence.first.outputs }}
+  failed: ${{ sequence.failed.outputs }}
+  replacement: ${{ sequence.replacement.outputs }}
+  completed: ${{ sequence.completed.outputs }}
+  repeat: ${{ sequence.repeat.outputs }}
+inputs:
+  target_cell: ${{ inputs.?target_cell.orValue('owner') }}
+schema_version: 2
+input_schema:
+  target_cell:
+    type: string
+    default_value: owner

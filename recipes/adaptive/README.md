@@ -11,7 +11,7 @@ and is preserved in the build's `title` output. Omitting it keeps the request
 unchanged and returns an empty title.
 
 See [the process diagrams](../../ADAPTIVE_BUILD_PROCESS.md) for the main workflow,
-mandatory serving consultation, native rebase recovery, and approval reuse.
+focused execution handoffs, native rebase recovery, and approval reuse.
 
 ```mermaid
 flowchart TD
@@ -55,11 +55,18 @@ strings or transport sidecars are needed. Internal helpers without input schemas
 remain unversioned and already pass native values directly. See the
 [schema v2 migration](../../guides/IMPLEMENTATION_RECIPE_SCHEMA_V2.md).
 
-A serving consultation **must agree before another cell's child job is submitted**.
-Agents return `requests` for consultation or execution. The coordinator assigns
-internal references and owns submission, exact-job waiting, and recorded results. Cell
-creation retains the shared root-owner agreement and readiness gates. Creation
-alone never satisfies the original feature request.
+Consultation resolves uncertain scope. The parent generates a settled execution
+handoff and returns `requests: [{action: execute, cell: <owner>, ref: main,
+handoff: work/<assignment>/}]`. The directory must contain `handoff.md`; the child
+receives only selected files below that prefix. The destination is explicit and may
+differ from the consultant. A corrected attempt uses `replaces: <failed job ID>`.
+Active and successful submissions are followed, and cancellation does not trigger a
+retry. Creation retains root-owner approval and readiness gates.
+
+Planning publishes handoff.md and test-statements.md. Each phase starts a new session;
+consultation checkpoints never replace the progression checkpoint. Recovery guidance
+supplements the current phase: planning stays read-only and implementation persists code.
+A complete supplied handoff skips redundant design unless cell policy requires it.
 
 Shared consultations run inline, including advice requested from further owners.
 The conversation driver saves the requesting participant's conversation and
@@ -70,11 +77,10 @@ selector still uses its explicit child route and the same exact-job failure cont
 Shared and nested advice runs inline. Converting arbitrary custom selectors into
 inline hooks is a separate interface change.
 
-Classification retains bounded repository context in `repository-context.json`.
-Jev currently requires inline state, so only complete context whose serialized
-JSON fits within 8 KB is passed inline. Larger context, unreadable documents, or
-malformed/truncated command output require design. This avoids parsing c2j's
-stdout preview as a complete large JSON document.
+Classification retains a larger source artifact in `repository-context.json` and
+bounds purpose, architecture, and README independently for inline Jev state. Useful
+context survives long or partly unreadable documents; truncation is disclosed. Design
+is chosen for uncertainty, not document length alone.
 
 Workspace selection uses registered cell names. Owner steps read
 `context.workflow.cell`; Git repository locations remain separate metadata.
@@ -256,3 +262,15 @@ for changes, validation, and runtime boundaries.
 
 The [parent recovery assessment](../../guides/ASSESSMENT_AGENT_AUTONOMY_AND_PARENT_RECOVERY.md)
 records current behavior and tests; older goal-wait descriptions are superseded.
+
+Job inspection is explained in every new session, including read-only roles. A parent
+can fetch selected intermediate artifacts from a failed child and export a cumulative
+snapshot to scratch. A fresh attempt receives only its corrected handoff, useful files,
+and an explicit patch when appropriate; it applies and retests that patch in its normal
+workspace. If saved work is unavailable, start again. See the
+[implementation assessment](../../guides/ASSESSMENT_HANDOFF_ROUTING_AND_RECOVERY.md).
+
+Direct and coordinator child results share collection. `next: wait` suspends durably;
+`continue` identifies independent local work. Jev classifies ambiguous status-only
+continuations, returning a correction if unavailable or uncertain. Ready failures are
+delivered before waiting on pending children; pending siblings remain tracked.

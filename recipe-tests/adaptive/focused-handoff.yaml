@@ -1,0 +1,54 @@
+schema_version: 2
+id: focused-handoff
+sequence:
+- id: settled_assignment
+  op: command_execution
+  inputs:
+    env:
+      OUTBOX: ${{ context.environment.op.outbox }}
+    run: |
+      set -eu
+      mkdir -p "$OUTBOX/work/api/supporting" "$OUTBOX/work/sibling"
+      printf 'Implement pagination. Decisions settled after consultation.\n' > "$OUTBOX/work/api/handoff.md"
+      printf 'T1: Preserve every page.\n' > "$OUTBOX/work/api/test-statements.md"
+      printf 'The accepted limit is 47.\n' > "$OUTBOX/work/api/supporting/contract.md"
+      echo unrelated > "$OUTBOX/work/sibling/handoff.md"
+      echo historical > "$OUTBOX/old-design.md"
+- id: execute
+  include: ../../recipes/adaptive/coordinate.yaml
+  inputs:
+    phase: implement
+    root_cell: root
+    root_ref: main
+    consultation_recipe: unused
+    build_recipe: delivery
+    create_recipe: unused
+    session: {}
+    documents: ${{ sequence.settled_assignment.artifacts }}
+    prefix: execute
+    requests:
+    - action: execute
+      cell: recipes
+      ref: main
+      handoff: work/api/
+    history:
+    - action: consult
+      reference: advice
+      target:
+        cell: root
+        ref: main
+      request:
+        kind: feature
+        request: Consult only; do not implement.
+      result:
+        outcome: agreed
+        execution_requests:
+        - cell: recipes
+          request: Implement pagination.
+- id: await
+  include: ../../recipes/adaptive/await-child.yaml
+  inputs:
+    job: ${{ sequence.execute.outputs.records[0].job_id }}
+outputs:
+  result: ${{ sequence.await.outputs.result }}
+  execution: ${{ sequence.execute.outputs }}

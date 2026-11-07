@@ -208,3 +208,17 @@ A mock returning `output_schema_valid: true` is not evidence of schema acceptanc
 
 See the [implementation assessment](ASSESSMENT_AGENT_AUTONOMY_AND_PARENT_RECOVERY.md)
 for runtime limitations, including any-child wakeup and dynamic environment needs.
+
+For execution handoffs and selective recovery, run `focused-handoff.test.yaml`,
+`phase-persistence.test.yaml`, `inspection-recovery.test.yaml`, `job-monitoring.test.yaml`,
+`scheduling.test.yaml`, and `required-jobs.test.yaml` under `recipe-tests/adaptive`.
+The inspection suite needs the c2j version pinned in `.c2j-version`; it uses actual
+task-token reads, snapshot export, and a fresh child that applies recovered changes.
+It maps only a synthetic fixture repository URL to real local Git objects for the
+snapshot prerequisite fetch. Production snapshot behavior is not mocked.
+
+An execution request selects an explicit cell and `handoff: work/<assignment>/`.
+Its selected artifacts must include `handoff.md`; only that directory reaches the
+child's inbox. Do not reintroduce agreement keys or copy consultation instructions
+into an execution prompt. Planning mocks must produce a handoff with their formal
+statements. Phase changes start fresh sessions; within-phase corrections may resume.

@@ -4,6 +4,7 @@ inputs:
   allowed: ${{ inputs.allowed }}
   pending: ${{ inputs.?pending.orValue([]) }}
   targets: ${{ jq(inputs.jobs.?job_ids.orValue([]) + inputs.?pending.orValue([]), 'unique') }}
+  wait: ${{ inputs.?wait.orValue(true) }}
 state:
   initial: scan
   states:
@@ -33,14 +34,16 @@ state:
       inputs:
         allowed: ${{ inputs.allowed }}
         targets: ${{ inputs.targets }}
-        inspected: "${{ state_exists('inspect') ? states.inspect.runs.map(r,r.outputs) + [states.inspect.outputs] : [] }}"
+        inspected: "${{ state_exists('inspect') ? states.inspect.runs.map(r,r.outputs) + [states.inspect.outputs] : []
+          }}"
+        wait: ${{ inputs.wait }}
       outputs:
         ready: ${{ inputs.inspected.filter(r,r.result.status in ['completed','failed','cancelled','timed_out']) }}
-        pending: "${{ inputs.allowed ? inputs.inspected.filter(r,!(r.result.status in
-          ['completed','failed','cancelled','timed_out'])).map(r,r.result.job_id) : inputs.targets }}"
+        pending: "${{ inputs.allowed ? inputs.inspected.filter(r,!(r.result.status in ['completed','failed','cancelled','timed_out'])).map(r,r.result.job_id)
+          : inputs.targets }}"
       transitions:
       - to: wait
-        when: inputs.allowed && size(outputs.ready) == 0 && size(outputs.pending) > 0
+        when: inputs.allowed && size(outputs.ready) == 0 && size(outputs.pending) > 0 && inputs.wait
       - to: collect
         when: true
     wait:
@@ -62,7 +65,8 @@ outputs:
   documents: ${{ states.collect.outputs.documents }}
   failed: ${{ states.collect.outputs.results.exists(r,r.status != 'completed' ||
     r.?outputs.orValue({}).?ok.orValue(true) == false || r.?outputs.orValue({}).?status.orValue('passed') in
-    ['failed','cancelled']) }}
+    ['failed','cancelled'] || r.?outputs.orValue({}).?disposition.orValue('') in
+    ['incomplete','blocked','cancelled']) }}
   pending: ${{ jq({'pending':states.choose.outputs.pending,'results':states.collect.outputs.results}, '. as $v |
     [(.pending // [])[] | . as $id | select($v.results | any(.job_id == $id) | not)]') }}
 vars:

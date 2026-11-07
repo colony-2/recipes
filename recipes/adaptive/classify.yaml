@@ -22,7 +22,7 @@ sequence:
           if not path.exists():
               return ''
           try:
-              # Bound model context; incomplete evidence cannot justify skipping design.
+              # Retain a larger source artifact; model fields are bounded independently below.
               with path.open('rb') as stream:
                   data = stream.read(65537)
               if len(data) > 65536:
@@ -37,14 +37,25 @@ sequence:
                      if pathlib.Path(n).is_file()), '')
       context = {'repository_purpose': purpose,
                  'repository_architecture': architecture + '\n\n' + readme,
-                 'usable': complete and bool(purpose.strip() or readme.strip())}
+                 'usable': bool(purpose.strip() or readme.strip()), 'source_complete': complete}
       payload = json.dumps(context)
       (pathlib.Path(os.environ['OUTBOX']) / 'repository-context.json').write_text(payload, encoding='utf-8')
-      # stdout is a diagnostic preview capped around 10 KB, not bulk JSON transport.
-      # Leave headroom and count serialized bytes, including JSON escaping.
-      if len(payload.encode('utf-8')) > 8000:
-          payload = json.dumps({'repository_purpose': '', 'repository_architecture': '', 'usable': False})
-      print(payload)
+      # Bound JSON-encoded fields independently, including escaping and Unicode.
+      def bounded(text, budget):
+          lo, hi = 0, len(text)
+          while lo < hi:
+              mid = (lo + hi + 1) // 2
+              if len(json.dumps(text[:mid]).encode('utf-8')) <= budget:
+                  lo = mid
+              else:
+                  hi = mid - 1
+          return text[:lo]
+      preview = {'repository_purpose': bounded(purpose, 2400),
+                 'repository_architecture': bounded(architecture, 2300) + '\n\n' + bounded(readme, 2300),
+                 'usable': context['usable']}
+      preview['truncated'] = not complete or any(
+          preview[key] != context[key] for key in ('repository_purpose', 'repository_architecture'))
+      print(json.dumps(preview))
       PYCODE
     env:
       OUTBOX: ${{ context.environment.op.outbox }}
@@ -56,9 +67,11 @@ sequence:
     timeout_seconds: 60
     state:
       repository_purpose: ${{ json_parse(sequence.read_repository_context.outputs.stdout).repository_purpose }}
-      repository_architecture: ${{ json_parse(sequence.read_repository_context.outputs.stdout).repository_architecture
-        }}
+      repository_architecture: ${{
+        json_parse(sequence.read_repository_context.outputs.stdout).repository_architecture }}
       request: ${{ inputs.request }}
+      context_truncated: ${{ json_parse(sequence.read_repository_context.outputs.stdout).?truncated.orValue(false)
+        }}
     questions:
       # Keep the existing Jev answer key; this question chooses design, not a build route.
       is_heavy:

@@ -1,15 +1,18 @@
-# Future recovery using selected intermediate results
+# Recovery using selected intermediate results
 
-Status: deferred proposal and c2j requirements, 2026-11-06. Implement after c2j
-provides agent-facing task/result inspection and artifact retrieval. This document
-does not change the current implementation plan.
+Status: recipe implementation, updated 2026-11-07 against
+[GUIDE-Job-Inspection.md](../GUIDE-Job-Inspection.md). c2j now documents the
+inspection, artifact retrieval, and snapshot export needed for this approach.
+The earlier request for a new inspection API is superseded. Recipe instructions and focused handoffs now support this path. See the
+[implementation assessment](ASSESSMENT_HANDOFF_ROUTING_AND_RECOVERY.md) for native
+task-token inspection, snapshot export, and fresh-child recovery tests.
 
-The [current recovery plan](PROPOSAL_AGENT_AUTONOMY_AND_PARENT_RECOVERY.md) uses
-the available failure information to submit a new job that starts the assignment
-again. That path requires no intermediate-result retrieval. This enhancement
-would let a parent preserve useful work by selecting outputs from the failed job
-and supplying them to an ordinary new submission. Restarting an execution is not
-required in either version.
+The [handoff and recovery plan](PLAN_ADAPTIVE_HANDOFF_ROUTING_AND_RECOVERY.md)
+now includes initial inspection guidance and selected-output recovery. The
+implemented start-again flow remains a useful fallback. Here, the parent can
+preserve useful work by selecting outputs from the failed job and supplying them
+to an ordinary new submission. This is selective recovery:
+reuse selected work in a new execution, without restarting the old execution.
 
 This specification fits the recipes cell's purpose. Recipes owns selection,
 handoff instructions, and the recovery flow. c2j owns the inspection APIs, CLI,
@@ -32,64 +35,87 @@ task-token access, and supported artifact/change retrieval.
    validate it, and make any required publication decisions. The parent follows
    its new native job ID and consumes its result.
 
-This does not copy the entire outbox, conversation, execution prefix, or session.
-The old job remains unchanged. A selected checkpoint may eventually be useful
-where a recipe already supports one, but checkpoints are not required for this
-feature. A goal relationship can describe the shared outcome without determining
-which execution the parent waits for.
+The old job remains unchanged. Carry only deliberately selected files and
+instructions, not the whole outbox, execution prefix, or session. A goal
+relationship can describe the shared outcome without determining which execution
+the parent waits for. Inspection is also useful independently of recovery when an
+agent needs a specific piece of saved context.
 
-## 2. Existing capabilities and the actual gap
+## 2. Available capabilities and adoption work
 
-Source reviewed: c2j main `089061be7a21cba9673eb2aeedf2aca159694588`.
+The supplied job-inspection guide documents:
 
-- `pkg/story/workflow.go` already exposes `GetJobRunStory`, `GetWorkflowOutcome`,
-  `GetArtifactByOrdinal`, and `GetWorkflowArtifact`. The story model includes task
-  paths, occurrences, attempts, statuses, errors, outputs, and artifact references.
+- `c2j job list`, `show`, `log`, and `story` for persisted jobs, tasks, and scopes.
+- `fields`, `artifacts`, selected `log`/`result` fields, and `artifact` downloads
+  for choosing and reading exact outputs.
+- `snapshot` for exporting cumulative Git state and retained artifacts into a
+  fresh directory, including selected task/attempt/workspace boundaries.
+- `jobs.inspect` through the task helper for the current job and direct children,
+  independently of permission to submit jobs.
 - `recipe.await_result_soft` supplies an exact job's terminal status and available
   final outputs/artifacts. Those final outputs may be absent when execution fails
-  before the recipe exports them.
+  before the recipe exports them; task inspection can still recover retained work.
 - `c2j submit --artifact name=path` already attaches local files. Native recipe
   submission also accepts stored artifact references. Neither requires inventing
   a new transport format.
-- The inspected CLI does not expose the compact task log and selective reads
-  described below. Delegated defaults exclude chapters and restart/lifecycle
-  operations; an agent cannot be expected to decode raw chapter storage to recover
-  intermediate work.
 
-Build a supported application interface over the existing story/result/artifact
-services. Reuse their decoding and native references. This is not a request for
-another event store, recipe-owned chapter parser, or lifecycle controller.
+Use `pkg/jobinspect.API` (`Inspect` and `Download`) and its `Export` workflow for
+programmatic integration. They read native persisted execution records without
+recipe replay or a live worker. The documented wire/result schema is version 1.
+No additional JobDB API is required for this implementation.
 
-## 3. Proposed CLI and API shape
+Recipe integration now teaches these commands, prepares focused recovery handoffs,
+and binds selected attachments into the recipient inbox. The implementation was
+validated with a locally built c2j v0.0.122 CLI/task helper, and `.c2j-version`
+now pins that release. Native inspection and snapshot recovery tests passed;
+[the assessment](ASSESSMENT_HANDOFF_ROUTING_AND_RECOVERY.md) records the evidence.
+This does not imply that every deployed worker has already been upgraded.
 
-The following commands are **proposed**, not currently available syntax. c2j can
-adjust naming while preserving the behavior. CLI and programmatic callers should
-share the same application service and result model.
+## 3. Documented CLI usage
+
+These commands follow the supplied guide. `JOB`, `TASK`, and `CURSOR` represent
+values discovered from the runtime; copy native task IDs exactly and quote them.
 
 ```sh
-# Compact task history and available outputs; no artifact bodies by default.
+# In a task, list direct children and inspect your own saved history.
+c2j self
+c2j job list --json
+c2j job log self
+
+# Compact history and recorded scope structure for a selected job.
+c2j job show JOB
 c2j job log JOB
 c2j job log JOB --json --limit 25 --cursor CURSOR
+c2j job story JOB --json
 
 # One task occurrence, including its output-field and artifact inventory.
-c2j job log JOB --task TASK --json
+c2j job log JOB --task "$TASK" --json
+c2j job fields JOB --task "$TASK" --limit 25 --json
+c2j job artifacts JOB --task "$TASK" --json
 
-# Read an exact structured output field, using a JSON Pointer.
-c2j job log JOB --task TASK --field /response/summary --output summary.json
+# Read a discovered field or the complete task output to a local file.
+c2j job log JOB --task "$TASK" --field /response/summary --output summary.json
+c2j job log JOB --task "$TASK" --field '' --output task-output.json
 
 # Job-level outcome and exported-output inventory, distinct from task outputs.
 c2j job result JOB --json
+c2j job fields JOB --json
 c2j job result JOB --field /assistant_summary --output result.json
 
 # Download one artifact, preserving its bytes.
-c2j job artifact JOB --task TASK --name check.log --output ./check.log
+c2j job artifact JOB --task "$TASK" --name check.log --output ./check.log
 ```
 
-`TASK` is a stable handle returned by the log. Use c2j's existing occurrence
-identity; agents should not synthesize keys from node names, retries, or chapter
-ordinals. Repeated execution of the same node must remain distinguishable.
-For artifacts exported at job level, omit `--task`; ambiguous names within a
-scope must return a useful error or accept the returned native artifact reference.
+`TASK` is a native occurrence ID returned by the log, not a node name or chapter
+ordinal. Repeated node executions have different IDs. Use the task's `attempts`
+list and `--attempt N` to select a retry; otherwise the latest attempt is used.
+Omit `--task` for job-result artifacts. An exact `reference.stored.key` can be
+passed as JSON with `--ref` instead of `--name`.
+
+Field paths are examples: discover the actual output first. `--field` uses JSON
+Pointer; escape `/` inside a key as `~1` and `~` as `~0`. Empty `--field ''`
+selects the whole output. Missing is distinct from null, false, zero, or an empty
+string. These reads preserve original types rather than using truncated previews.
 
 An illustrative default view:
 
@@ -121,20 +147,21 @@ and internal session objects out of the default view. Ordinary output fields mus
 retain their original types; a missing field is different from `false`, `0`, an
 empty string, or an explicit `null`.
 
-## 4. Retrieval requirements
+## 4. Retrieval behavior to preserve when integrating
 
-**Bounded discovery, exact selected reads.** Paginate task and artifact inventories;
-bound previews and report truncation explicitly. A large field must not silently
-become a shortened value. Allow exact selected values to be written to a local
-file, including structured JSON. Output limits should give the agent a clear next
-command rather than dump a chapter-sized body into its context.
+**Bounded discovery, exact selected reads.** Discovery defaults to 25 entries and
+allows at most 100 per page. Continue with the returned cursor. Summaries cap
+inventories; use `fields` and `artifacts` for paginated discovery. Terminal JSON is
+limited to 256 KiB; save large exact values with `--output FILE`. Output files are
+created exclusively, and failed downloads remove their partial files. Prefer
+scratch files over dumping complete outputs or binary artifacts into the prompt.
 
 **Useful failure coverage.** Include completed and failed task occurrences when
 the enclosing job fails or is cancelled. Report preparation failures even if no
 application output exists. Support running-job inspection, distinguishing pending
 outputs from absent outputs. Stable handles must survive subsequent task updates.
-An explicitly addressed hidden job should remain readable when the caller has
-access and its data is retained; deleted or expired data needs an honest result.
+Do not assume an old, hidden, deleted, or archived job is readable merely from its
+ID; access and retention determine what inspection can actually return.
 
 **No dependency on replaying the workflow.** Reading persisted task outputs must
 not execute commands, require a live worker, or resolve a newer recipe revision.
@@ -152,25 +179,41 @@ data as far as the access policy allows. Prevent accidental local overwrite and
 unsafe filename traversal. A reported artifact reference whose bytes cannot be
 retrieved must not appear as a successful download.
 
+`story` is a persisted scope view, not a replayed or reconstructed UI story.
+`completion_not_recorded` does not mean a scope is still running, and a running
+task may have no recorded result yet. Inspection pagination bounds returned
+inventories; the documented backend still loads history before projection and
+buffers remote artifacts internally. Keep inspection targeted rather than using
+it as a continuous polling mechanism.
+
 ## 5. Access from an ordinary agent task
 
-Provide supported read-only access for a task to inspect its current job and the
-children it is coordinating, including terminal children. The CLI should use the
-task's supplied connection and credentials. Expose the available actions through
-`c2j self` and command help so prompts can point agents there.
+The documented task helper allows inspection of the **current job and direct
+children**, including terminal children, for the lifetime of the task. Reads are
+independent of submission permission. `c2j self` advertises `jobs.inspect`; the
+CLI uses the task's authenticated connection. Standalone `--jobdb` or `--embed`
+selection does not bypass task access scope.
 
-Do not require a general chapter-reading/admin token, a restart permission, or a
-human approval for each result read. Apply existing access controls to unrelated
-jobs and restricted artifacts. Reading a log must not restart, mutate, approve,
-or adopt the source job's state. c2j owns the exact permission representation;
-recipes should consume this capability rather than reproduce authorization logic.
+This lets a parent recover its failed child's work and lets an agent retrieve its
+own earlier outputs. It does not promise access from a child to its parent, a
+sibling, or a grandchild. A nested coordinator should retrieve its own children's
+work and return selected artifacts through the normal handoff. Changing to a
+different cell workspace does not make another job's session available.
+
+Include the compact initial-context wording in item 9 of the
+[main plan](PLAN_ADAPTIVE_HANDOFF_ROUTING_AND_RECOVERY.md), including for advisory
+and review sessions. Inspection is optional and does not require an approval
+exchange. Required files should still be deliberately delivered. If a specific
+read is denied or unavailable, report the missing input and continue useful work.
+Do not implement a recipe-owned chapter parser or broaden access just to make
+implicit document dependencies work.
 
 ## 6. Supplying selected work to the new job
 
 The first version can download chosen files and use the existing submit flags:
 
 ```sh
-# The preceding proposed commands saved these selected files locally.
+# The preceding inspection commands saved these selected files locally.
 c2j submit --cell example --recipe-file ./repair.yaml \
   --inputs-file ./request.json \
   --artifact design.md=./design.md \
@@ -188,21 +231,58 @@ artifact submission path. A CLI convenience for attaching such references can
 avoid a download/upload round trip later, but it is not required for the initial
 feature. Do not introduce a separate artifact manifest protocol.
 
-**Unpublished code needs a usable representation.** A commit ID alone cannot
-transfer changes that were never pushed. Likewise, `--from-workspace` refers to
-the submitting task's workspace, not the failed child's workspace. The artifact
-inventory must expose enough information to retrieve a portable change artifact
-with its repository/base context, or use a documented supported snapshot export.
-A patch is suitable when it faithfully represents the changes; the export must
-account for binary files, modes, and deletions when present. Agents should not
-need to decode internal thin-pack objects themselves.
+Prefer the normal execution request and coordinator for actual recipe recovery.
+Prepare `work/<assignment>/handoff.md` and only the selected supporting files.
+Explain their source job/task/attempt and what was verified in concise Markdown;
+do not create a second machine-readable recovery manifest. Preserve native
+references when rebinding existing artifacts. The coordinator uses the existing
+`documents` binding path, records the replacement job, and durably waits for it.
+
+**Unpublished code has a documented snapshot export.** A commit ID alone cannot
+transfer unpublished changes. `--from-workspace` refers to the submitter's
+workspace, not the failed child's. Use c2j's exporter when code recovery is useful:
+
+```sh
+c2j job snapshot JOB --task "$TASK" --json
+c2j job snapshot JOB --task "$TASK" --workspace SCOPE_ID --dir ./recovered
+git -C ./recovered/worktree diff --binary refs/c2j/base HEAD > changes.patch
+```
+
+Select the relevant workspace from snapshot metadata. A single-workspace export
+has `snapshot.json`, `worktree/`, `artifacts/<producer>/attempt-N/<name>`, and Git
+bundles. Multiple workspaces use paths under `workspaces/`; read the returned
+paths instead of assuming `worktree/`. Keep the export in scratch outside outbox.
+The last command illustrates a single-workspace export with a recorded base.
+
+Snapshots contain **cumulative** state and retained task artifacts through the
+selected boundary, not only the selected task's changes. `after` is the default;
+`--boundary before` requires a task. Without a task selector, export uses the
+latest successful task state in each workspace. Explicitly selecting a failed
+attempt can expose saved diagnostic Git state labelled `failed_attempt`; it is
+not an accepted candidate. Inspect the repository, cell, workspace, base/target
+hashes, and provenance recorded in `snapshot.json` before choosing what to reuse.
+
+The exporter verifies the saved bundle and obtains exact prerequisites through
+existing Git credentials. It creates a new directory and never updates an
+existing checkout or substitutes today's branch tip for unavailable saved state.
+An empty-base export has no `refs/c2j/base`; use its exported files/checkout as
+appropriate rather than blindly running the diff example. A required missing or
+external artifact can make a complete directory export fail; individual artifact
+reads and snapshot metadata remain available. A useful published patch can be
+retrieved even when no usable Git export is available.
+
+Select the useful patch, files, and diagnostic logs from scratch into the new
+handoff. Do not attach the whole snapshot directory, every historical output, or
+internal session objects. In the const-task incident, discarded worktree edits
+are not recoverable as committed Git state merely because inspection exists;
+the explicitly published implementation patch is the useful saved work.
 
 The new job reads the supplied changes, applies or adapts them in its own managed
 checkout, and validates the result. Receiving an artifact does not automatically
 restore Git state or certify that prior work is correct. If no usable code export
 is available, say so and use the current fresh-start path.
 
-Example future handoff prompt:
+Example recovery handoff prompt:
 
 ```text
 Complete the original assignment. Relevant work from an earlier failed job is
@@ -219,23 +299,33 @@ generating a list of every diagnostic file.
 
 ## 7. Acceptance and adoption
 
-These are proposed behavior statements, not evidence of implemented support.
-Paths identify ownership areas in c2j or this repository; new CLI source layout
-is for c2j to choose. Each expectation is at most 30 words.
+These are adoption checks, not claims that this recipe integration has passed.
+Paths identify the documented c2j inspection service or recipe boundary. Each
+expectation is at most 30 words.
 
 | ID | Importance | Level / dependencies | Files / area | Expectation |
 | --- | --- | --- | --- | --- |
-| IR-01 | Critical | Integration / failed native job | c2j `pkg/story/` | A failed job without final recipe outputs exposes completed task outputs and available failure diagnostics. |
-| IR-02 | High | Integration / repeated tasks and retries | c2j `pkg/story/` | Repeated node executions have stable distinguishable handles, and paginated discovery does not silently omit occurrences. |
-| IR-03 | Critical | Integration / large outputs | c2j CLI and story service | Discovery stays bounded; an explicitly selected field can be exported exactly with its original type. |
+| IR-01 | Critical | Integration / failed native job | c2j `pkg/jobinspect/` | A failed job without final recipe outputs exposes completed task outputs and available failure diagnostics. |
+| IR-02 | High | Integration / repeated tasks and retries | c2j `pkg/jobinspect/` | Repeated node executions have stable distinguishable handles, and paginated discovery does not silently omit occurrences. |
+| IR-03 | Critical | Integration / large outputs | c2j CLI and `pkg/jobinspect/` | Discovery stays bounded; an explicitly selected field can be exported exactly with its original type. |
 | IR-04 | Critical | Integration / artifacts and native submission | c2j artifact service; recipes `coordinate.yaml` | Selected artifact bytes reach the new job unchanged; unselected files and session state are not carried forward. |
 | IR-05 | Critical | Integration / ordinary task token | c2j task permissions and CLI | A parent task reads its child's results and artifacts without administrative access; unrelated restricted jobs remain inaccessible. |
-| IR-06 | High | Integration / preparation failure and unavailable recipe source | c2j `pkg/story/` | Stored failure information remains inspectable without executing tasks or requiring the original worker and recipe source to remain available. |
+| IR-06 | High | Integration / preparation failure and unavailable recipe source | c2j `pkg/jobinspect/` | Stored failure information remains inspectable without executing tasks or requiring the original worker and recipe source to remain available. |
 | IR-07 | Critical | Integration / unpublished changes | c2j change export; recipes `coordinate.yaml` | A new job can recover selected unpublished changes without fetching an unavailable commit or inheriting the parent's unrelated workspace. |
-| IR-08 | High | Integration / cancellation and missing artifacts | c2j story and artifact services | Inspection leaves the source job unchanged and reports unavailable bytes accurately; cancellation never initiates recovery by itself. |
+| IR-08 | High | Integration / cancellation and missing artifacts | c2j `pkg/jobinspect/`; recipes `coordinate.yaml` | Inspection leaves the source job unchanged and reports unavailable bytes accurately; cancellation never initiates recovery by itself. |
+| IR-09 | Critical | Integration / multiple workspaces and Git | c2j snapshot exporter; recipes recovery tests | Recovery selects the intended workspace and cumulative boundary without mixing repositories or assuming a failed attempt was accepted. |
 
-First implement and test the c2j inspection/access/retrieval contract using real
-failed jobs. Then update the recipe's fresh-submission path to accept the selected
-intermediate files and add an end-to-end failed-child-to-new-job handoff test.
-Keep ordinary submission and exact-job waiting as the control flow. Until that
-boundary works, retain the current plan's simple start-again recovery.
+Validate the documented c2j capabilities with a current worker CLI/task helper,
+then exercise the recipe boundary with real failed jobs and selected outputs.
+Update the recipe's fresh-submission path to accept the focused handoff and add
+an end-to-end failed-child-to-new-job test. Include multi-workspace snapshots,
+an explicitly selected failed attempt, missing bytes, and unavailable parent or
+sibling access. A later writable task must observe the applied code; an attached
+patch or a successful inspection response is not sufficient.
+
+Keep ordinary new submission and exact-job waiting as the control flow. Failed
+retrieval does not force recovery to stop: start again from the corrected handoff
+when that remains useful. Do not duplicate an active execution or treat explicit
+cancellation as an automatic recovery request. Before enabling the feature,
+record which tested c2j release and worker helper provide these commands; do not
+leave a requirement for an inspection API that the supplied guide already provides.

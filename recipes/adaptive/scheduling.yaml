@@ -1,0 +1,30 @@
+id: adaptive-scheduling
+inputs:
+  summary: ${{ inputs.summary }}
+sequence:
+- id: prompts
+  include: ./prompts.yaml
+- id: intent
+  op: nix:github:colony-2/c2ops/published#jev
+  const: true
+  inputs:
+    api_key: ${{ context.secrets.jev_api_key }}
+    timeout_seconds: 60
+    state:
+      summary: ${{ inputs.summary }}
+    questions:
+      independent:
+        type: noul
+        instructions: ${{ sequence.prompts.outputs.scheduling.instructions }}
+        criteria:
+          'true': The agent identifies concrete work it can do now, independently of running children.
+          'false': The agent is only reporting child progress, waiting, or planning to poll for completion.
+  catch:
+  - when: failure.kind != 'cancellation'
+    continue:
+      outputs:
+        answers: {}
+outputs:
+  decision: ${{ jq(sequence.intent.outputs, 'try (if .answers.independent.type != "noul" or
+    (.answers.independent.noul | type) != "number" then "unknown" elif .answers.independent.noul >= 0.9 then
+    "continue" elif .answers.independent.noul <= 0.1 then "wait" else "unknown" end) catch "unknown"') }}

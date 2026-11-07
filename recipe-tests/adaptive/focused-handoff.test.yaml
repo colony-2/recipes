@@ -1,0 +1,70 @@
+recipe: focused-handoff.yaml
+cases:
+- id: explicit-owner-receives-only-selected-new-files
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          .c2/recipes/delivery.yaml: |
+            schema_version: 2
+            id: delivery
+            input_schema:
+              prompt:
+                type: string
+              documents:
+                type: artifact_map
+              root_cell:
+                type: string
+              root_ref:
+                type: string
+              annotations:
+                type: array
+                items:
+                  type: object
+            inputs:
+              documents: ${{ inputs.documents }}
+              prompt: ${{ inputs.prompt }}
+            sequence:
+            - id: check_handoff
+              op: command_execution
+              artifacts:
+                ./: ${{ inputs.documents }}
+              inputs:
+                env:
+                  INBOX: ${{ context.environment.op.inbox }}
+                  PROMPT: ${{ inputs.prompt }}
+                run: |
+                  set -eu
+                  test "$(cat "$INBOX/handoff.md")" = 'Implement pagination. Decisions settled after consultation.'
+                  test "$(cat "$INBOX/supporting/contract.md")" = 'The accepted limit is 47.'
+                  test "$(find "$INBOX" -type f | wc -l)" -eq 3
+                  test ! -f "$INBOX/old-design.md"
+                  case "$PROMPT" in *'Consult only'*|*'do not implement'*) exit 1;; esac
+                  echo handoff-consumed > implementation.txt
+            - id: next_task
+              op: command_execution
+              inputs:
+                run: test "$(cat implementation.txt)" = handoff-consumed
+            outputs:
+              disposition: unchanged
+              cell: ${{ context.workspace.cell }}
+          README.md: Dispatcher
+      recipes:
+        files:
+          README.md: Execution owner
+  mocks:
+    ops:
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.result.status == "completed" && outputs.result.outputs.cell == "recipes"
+  - type: cel_true
+    expr: size(calls.filter(c,c.op == "recipes.run")) == 1 && calls.filter(c,c.op ==
+      "recipes.run")[0].inputs.recipes[0].cell_name == "recipes"
+  - type: cel_true
+    expr: size(reviews)==0
