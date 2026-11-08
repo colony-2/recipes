@@ -22,7 +22,7 @@ Runtime cases still resolve op manifests when model responses are mocked.
 ```sh
 c2j test validate --directory .
 c2j test run --directory . --case-timeout 10m --out-dir .c2/test-results
-c2j test run --file recipe-tests/build-kernel.test.yaml --case build-without-purpose
+c2j test run --file recipe-tests/adaptive/flow.test.yaml --case direct-no-change
 ```
 
 Discovery recursively finds `*.test.yaml`, `*.test.yml`, `*.test.json`, and
@@ -44,27 +44,11 @@ responses are deterministic; package resolution, secrets, workspaces, checkpoint
 artifact binding, and continuation I/O execute normally. Rewriting selectors or
 removing declared tool requirements is not equivalent to this smoke test.
 
-For example:
-
-```yaml
-recipe: ../recipes/develop/verify.yaml
-cases:
-- id: failed-hook
-  type: integration_case
-  runtime:
-    cells:
-      root:
-        files:
-          build.sh: "echo verification failed; exit 7\n"
-  mocks:
-    ops:
-    - repeat: true
-      match: {op: command_execution}
-      behavior: {mode: passthrough}
-  assertions:
-  - {type: output_equals, path: ok, value: false}
-  - {type: output_equals, path: result.status, value: failed}
-```
+For executable examples, see the
+[verification cases](../recipe-tests/adaptive/verification.test.yaml) and their
+[recipe fixture](../recipe-tests/adaptive/verification.yaml). They use repository
+hooks, pass command execution through to the runtime, and assert `allowed` and
+`result.status` for successful and failed checks.
 
 Use ordinary cases with explicit mocks for branch coverage. Add `runtime: {}`
 when the test needs actual Git snapshots, artifact/object storage, input/review
@@ -135,5 +119,5 @@ temporary copy to confirm its corresponding test fails.
 Adaptive continuation cases cover export/import and session reuse; they do not
 restart a worker. Native failed-child cases confirm that the attempt's goal stays
 open. Mocked goal status cases cover recipe branching; they do not
-exercise an open goal's replacement/wakeup lifecycle. The missing native fixture
-actions are specified in [the c2j lifecycle request](FEATURE_REQUEST_C2J_TEST_LIFECYCLE_CONTROLS.md).
+exercise an open goal's replacement/wakeup lifecycle. These checks need
+additional native fixture controls.

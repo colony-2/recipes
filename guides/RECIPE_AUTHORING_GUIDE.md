@@ -2,6 +2,11 @@
 
 This is the default recipe-authoring workflow for this repo.
 
+Use the [documentation map](README.md) to find related contracts and the
+[general improvement guide](RECIPE_IMPROVEMENT_GUIDE.md) for design and testing
+decisions. Job audits have a separate [repository skill](../.agents/skills/audit-recipe-jobs/SKILL.md);
+they are not required for ordinary authoring work.
+
 Author recipes locally, then validate them by submitting the recipe file directly with `c2j submit --run --embed`. That path exercises the same durable runtime model the real job uses without a separate registry step.
 
 ## 1. Keep the Execution Model Straight

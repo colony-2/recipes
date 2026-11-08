@@ -2,6 +2,12 @@
 
 This repo uses Colony2 recipes as workflows. When editing recipes, prefer small, incremental changes and validate after each change with the local `c2j` loop.
 
+Use [the documentation map](README.md) to select related guides, and
+[general improvement guidance](RECIPE_IMPROVEMENT_GUIDE.md) for recipe decisions.
+Use [the audit skill](../.agents/skills/audit-recipe-jobs/SKILL.md) when the request
+involves observed job behavior. Keep general guidance, specialized procedures,
+and dated historical reports distinct; link existing material rather than copying it.
+
 ## Default Workflow Debugging (`c2j`)
 - Prefer `c2j submit --recipe-file ... --run --embed` while authoring. It validates the local yaml and runs it through the embedded runtime without requiring a separate registry step.
 - Use `c2j self` to confirm current-cell resolution before assuming the recipe is targeting the right repo.

@@ -8,6 +8,21 @@ and identify the owners of external outcomes. A missing purpose file does not
 require initialization or block work. Nested instructions specialize working
 practices without redefining ownership.
 
+## Guidance and skills
+
+For recipe changes, use [general improvement guidance](guides/RECIPE_IMPROVEMENT_GUIDE.md).
+The [documentation map](guides/README.md) points to authoring, operation, scope,
+artifact, testing, review, and recovery guides; read the ones relevant to the work.
+Historical reports and proposals explain earlier decisions but do not override
+the current request, source, or runtime contract.
+
+For audits of job behavior or improvements derived from those audits, use the
+repository skill [audit-recipe-jobs](.agents/skills/audit-recipe-jobs/SKILL.md).
+It is available through the normal `.agents/skills` discovery path. Follow the
+current recipe phase: planning gathers evidence and prepares a handoff;
+implementation executes the selected plan. Ordinary recipe edits do not require
+a job audit, and selecting documentation requires no extra classifier task.
+
 ## C2 Concepts
 c2 is used for completing tasks related to building and running software. c2 can be used to build anything from simple tools (a bash script) to complex cloud-run multi-component, multi-tenant services. c2 is responsible for creating, validating, debugging software. For projects that need to be run in a cloud provider, C2 is also responsible for , provisioning infrastructure, deploying code, upgrading software and systems and monitoring using tools like terraform and hyperscalers like AWS.
 

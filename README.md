@@ -36,6 +36,14 @@ follows the exact job and can submit a corrected fresh attempt after failure, ca
 selected artifacts or a reviewed patch when useful. Sessions and execution history are
 not inherited. See [handoffs and recovery](guides/ASSESSMENT_HANDOFF_ROUTING_AND_RECOVERY.md).
 
+Use the [documentation map](guides/README.md) and
+[general improvement guidance](guides/RECIPE_IMPROVEMENT_GUIDE.md) for recipe work.
+For analysis of observed job behavior, the repository skill
+[audit-recipe-jobs](.agents/skills/audit-recipe-jobs/SKILL.md) works within ordinary
+build phases and existing hooks. Put the JobDB, bounded cohort, and constraints
+in the normal build request. The [backgrounder index](guides/self-improvement/README.md)
+explains invocation, evidence, planning, tests, and later observation.
+
 Repository hooks live under `.c2/recipes/hooks/build/`. See the
 [hook guide](guides/BUILD_HOOKS_USER_GUIDE.md) and
 [examples](examples/build-hooks/README.md). Package requests use the explicit
