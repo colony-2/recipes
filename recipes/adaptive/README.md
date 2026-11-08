@@ -63,9 +63,10 @@ Consultation resolves uncertain scope. The parent generates a settled execution
 handoff and returns `requests: [{action: execute, cell: <owner>, ref: main,
 handoff: work/<assignment>/}]`. The directory must contain `handoff.md`; the child
 receives only selected files below that prefix. The destination is explicit and may
-differ from the consultant. A corrected attempt uses `replaces: <failed job ID>`.
-Active and successful submissions are followed, and cancellation does not trigger a
-retry. Creation retains root-owner approval and readiness gates.
+differ from the consultant. A corrected attempt uses `replaces: <failed or cancelled job ID>`.
+Active and successful submissions are followed. Cancellation alone does not trigger a
+retry; the parent uses its feedback to decide whether to revise the approach or stop
+the broader work. Creation retains root-owner approval and readiness gates.
 
 Planning publishes handoff.md and test-statements.md. Each phase starts a new session;
 consultation checkpoints never replace the progression checkpoint. Recovery guidance
@@ -227,11 +228,13 @@ the retired light/heavy workflows have been removed.
 The parent follows exact jobs. An OPEN goal does not hide a failed attempt.
 Native state records accepted agreements, submissions, and results; no parallel
 agent-maintained state map is needed. A correction uses `action: execute`, the
-destination `cell`/`ref`, a corrected `handoff` directory, and `replaces: <failed job ID>`.
-Failed or semantically incomplete assignments can start fresh from the target's
-normal ref. Pending, successful, or cancelled executions are not automatically
-replaced. Re-entry follows the recorded replacement. Required unrelated children
-remain blocking, while replaced historical failures become evidence.
+destination `cell`/`ref`, a corrected `handoff` directory, and `replaces: <failed or cancelled job ID>`.
+Failed, cancelled, or semantically incomplete assignments can start fresh from the target's
+normal ref when the parent explicitly requests corrected work. Cancellation feedback
+guides that decision; an instruction to stop the broader work is respected.
+Pending and successful executions are followed. Re-entry follows the recorded
+replacement. Required unrelated children remain blocking, while replaced historical
+failures become evidence.
 
 The collector inspects all current statuses before waiting. Already-finished
 siblings are delivered first. Waking on a later completion while waiting for another

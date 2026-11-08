@@ -84,3 +84,41 @@ cases:
       repeat: true
       behavior:
         mode: passthrough
+- id: cancellation-message-is-readable-without-final-outputs
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          README.md: Parent repository
+  mocks:
+    ops:
+    - match:
+        op: recipes.run
+      behavior:
+        mode: return
+        outputs:
+          job_ids: [cancelled-attempt]
+    - match:
+        op: recipe.await_result_soft
+      behavior:
+        mode: return
+        outputs:
+          job_id: cancelled-attempt
+          status: cancelled
+          terminal: true
+          failure_kind: cancellation
+          failure_message: Job submission already supports artifacts. Stop generating PDFs and use the existing API.
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: >-
+      outputs.failed && outputs.text.contains("Status: cancelled") &&
+      outputs.text.contains("Job submission already supports artifacts. Stop generating PDFs and use the existing API.")
+  - type: cel_true
+    expr: outputs.documents.exists(k,k.startsWith("error/children/cancelled-attempt/")) &&
+      size(calls.filter(c,c.op == "recipes.run")) == 1

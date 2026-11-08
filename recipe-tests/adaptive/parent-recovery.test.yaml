@@ -109,7 +109,7 @@ cases:
     expr: size(reviews) == 0 && calls.exists(c,c.node_path.endsWith("/check_parent"))
   - type: cel_true
     expr: outputs.failed.documents.exists(k,k.startsWith("error/children/") && k.endsWith("probe.log"))
-- id: native-cancelled-child-is-not-replaced
+- id: native-cancelled-child-accepts-corrected-replacement
   type: integration_case
   runtime:
     cells:
@@ -153,7 +153,7 @@ cases:
                 fail:
                   kind: cancellation
                   code: cancelled
-                  message: Explicit child cancellation.
+                  message: Cancel this approach. Use the corrected probe and continue the parent assignment.
             outputs:
               disposition: unchanged
               merged: false
@@ -212,8 +212,16 @@ cases:
   - type: cel_true
     expr: outputs.failed.records[0].result.outputs.attrs.c2j_failure.kind == "cancellation"
   - type: cel_true
-    expr: outputs.replacement.records[0].action == "await" && outputs.replacement.records[0].job_id ==
-      outputs.first.records[0].job_id && size(calls.filter(c,c.op == "recipes.run")) == 1
+    expr: outputs.replacement.records[0].action == "execute" && outputs.replacement.records[0].job_id !=
+      outputs.first.records[0].job_id && outputs.replacement.records[0].replaces == outputs.first.records[0].job_id
+  - type: cel_true
+    expr: outputs.completed.records[0].result.status == "completed" &&
+      outputs.completed.records[0].result.outputs.disposition == "unchanged"
+  - type: cel_true
+    expr: outputs.repeat.records[0].job_id == outputs.replacement.records[0].job_id &&
+      size(calls.filter(c,c.op == "recipes.run")) == 2 && size(reviews) == 0
+  - type: cel_true
+    expr: calls.exists(c,c.node_path.endsWith("/check_parent"))
 - id: same-cell-replacement-starts-without-parent-candidate
   type: integration_case
   runtime:

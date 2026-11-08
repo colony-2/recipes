@@ -268,34 +268,15 @@ cases:
     expr: outputs.result.valid && outputs.result.records[0].ready && outputs.result.records[0].action=="create"
   - type: cel_true
     expr: calls.filter(c,c.op=="recipes.run")[0].inputs.recipes[0].cell_name=="root" && size(reviews)==0
-- id: cancelled-child-is-not-resubmitted
+- id: corrective-cancellation-replaces-the-recorded-child
   type: integration_case
   inputs:
     requests:
     - action: execute
-      request: Try the same assignment again.
       cell: owner
       handoff: work/accepted/
       replaces: attempt-1
     history:
-    - action: consult
-      reference: accepted
-      request:
-        kind: feature
-        cell: owner
-        ref: main
-        request: Build agreed API
-      target:
-        cell: owner
-        ref: main
-      result:
-        outcome: agreed
-        final_artifacts: {}
-        continuation:
-          kind: value
-          name: conversation.json
-          format: json
-          value: {}
     - action: execute
       job_id: attempt-1
       cell: owner
@@ -305,7 +286,7 @@ cases:
         kind: value
         name: work/accepted/handoff.md
         format: text
-        value: Implement accepted API. Try the same assignment again.
+        value: Use the existing artifact submission API instead of generating PDFs. Continue the parent assignment.
   runtime:
     cells:
       root:
@@ -317,6 +298,11 @@ cases:
   mocks:
     ops:
     - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+    - match:
         op: recipe.await_result_soft
       behavior:
         mode: return
@@ -325,13 +311,21 @@ cases:
           status: cancelled
           terminal: true
           failure_kind: cancellation
-          failure_message: Cancelled by the owner.
+          failure_message: Job submission already supports artifacts. Stop generating PDFs and use the existing API.
       repeat: true
+    - match:
+        op: recipes.run
+      behavior:
+        mode: return
+        outputs:
+          job_ids: [corrected-attempt]
       optional: true
   assertions:
   - type: cel_true
-    expr: outputs.result.valid && outputs.result.records[0].result.status == "cancelled" && !calls.exists(c,c.op ==
-      "recipes.run")
+    expr: outputs.result.valid && outputs.result.records[0].action == "execute" &&
+      outputs.result.records[0].job_id == "corrected-attempt" && outputs.result.records[0].replaces == "attempt-1"
+  - type: cel_true
+    expr: size(calls.filter(c,c.op == "recipes.run")) == 1 && size(reviews) == 0
 - id: invalid-target-ref-preserves-resolution-error
   type: integration_case
   inputs:
@@ -357,34 +351,15 @@ cases:
     expr: '!outputs.result.valid && outputs.result.issues[0].contains("branch-that-does-not-exist")'
   - type: cel_true
     expr: '!calls.exists(c,c.op == "recipes.run") && size(reviews)==0'
-- id: completed-child-cancelled-outcome-is-not-resubmitted
+- id: corrective-cancelled-outcome-accepts-a-replacement
   type: integration_case
   inputs:
     requests:
     - action: execute
-      request: Try the same assignment again.
       cell: owner
       handoff: work/accepted/
       replaces: attempt-1
     history:
-    - action: consult
-      reference: accepted
-      request:
-        kind: feature
-        cell: owner
-        ref: main
-        request: Build agreed API
-      target:
-        cell: owner
-        ref: main
-      result:
-        outcome: agreed
-        final_artifacts: {}
-        continuation:
-          kind: value
-          name: conversation.json
-          format: json
-          value: {}
     - action: execute
       job_id: attempt-1
       cell: owner
@@ -394,7 +369,7 @@ cases:
         kind: value
         name: work/accepted/handoff.md
         format: text
-        value: Implement accepted API. Try the same assignment again.
+        value: Use the existing artifact submission API instead of generating PDFs. Continue the parent assignment.
   runtime:
     cells:
       root:
@@ -406,6 +381,11 @@ cases:
   mocks:
     ops:
     - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+    - match:
         op: recipe.await_result_soft
       behavior:
         mode: return
@@ -415,12 +395,21 @@ cases:
           terminal: true
           outputs:
             disposition: cancelled
+            summary: Stop generating PDFs and use the existing artifact submission API.
       repeat: true
+    - match:
+        op: recipes.run
+      behavior:
+        mode: return
+        outputs:
+          job_ids: [corrected-attempt]
       optional: true
   assertions:
   - type: cel_true
-    expr: outputs.result.valid && outputs.result.records[0].result.outputs.disposition == "cancelled" &&
-      !calls.exists(c,c.op == "recipes.run")
+    expr: outputs.result.valid && outputs.result.records[0].action == "execute" &&
+      outputs.result.records[0].job_id == "corrected-attempt" && outputs.result.records[0].replaces == "attempt-1"
+  - type: cel_true
+    expr: size(calls.filter(c,c.op == "recipes.run")) == 1 && size(reviews) == 0
 - id: different-ref-is-resolved-instead-of-reusing-another-branch
   type: integration_case
   inputs:
@@ -456,3 +445,128 @@ cases:
     expr: '!outputs.result.valid && !calls.exists(c,c.op in ["recipes.run","recipe.await_result_soft"])'
   - type: cel_true
     expr: outputs.result.issues.exists(i,i.contains("missing-ref"))
+- id: cancellation-without-replacement-request-does-not-resubmit
+  type: integration_case
+  inputs:
+    requests:
+    - action: execute
+      cell: owner
+      handoff: work/accepted/
+    history:
+    - action: execute
+      job_id: attempt-1
+      cell: owner
+      handoff: work/accepted/
+    documents:
+      work/accepted/handoff.md:
+        kind: value
+        name: work/accepted/handoff.md
+        format: text
+        value: Original assignment.
+  runtime:
+    cells:
+      root:
+        files:
+          README.md: root
+      owner:
+        files:
+          README.md: owner
+  mocks:
+    ops:
+    - match:
+        op: recipe.await_result_soft
+      behavior:
+        mode: return
+        outputs:
+          job_id: attempt-1
+          status: cancelled
+          terminal: true
+          failure_kind: cancellation
+          failure_message: Stop the broader work. Do not start another attempt.
+      repeat: true
+  assertions:
+  - type: cel_true
+    expr: outputs.result.valid && outputs.result.records[0].action == "await" &&
+      outputs.result.records[0].result.status == "cancelled" && !calls.exists(c,c.op == "recipes.run")
+  - type: cel_true
+    expr: outputs.result.records[0].result.failure_message == "Stop the broader work. Do not start another attempt."
+- id: cancellation-wait-returns-feedback-without-resubmitting
+  type: integration_case
+  inputs:
+    requests:
+    - action: await
+      job: attempt-1
+    history:
+    - action: execute
+      job_id: attempt-1
+      cell: owner
+  runtime:
+    cells:
+      root:
+        files:
+          README.md: root
+  mocks:
+    ops:
+    - match:
+        op: recipe.await_result_soft
+      behavior:
+        mode: return
+        outputs:
+          job_id: attempt-1
+          status: cancelled
+          terminal: true
+          failure_kind: cancellation
+          failure_message: Stop the broader work. Do not start another attempt.
+  assertions:
+  - type: cel_true
+    expr: outputs.result.valid && outputs.result.records[0].result.status == "cancelled" &&
+      outputs.result.records[0].result.failure_message == "Stop the broader work. Do not start another attempt."
+  - type: cel_true
+    expr: '!calls.exists(c,c.op == "recipes.run") && size(reviews) == 0'
+- id: cancelled-child-replacement-request-follows-active-replacement
+  type: integration_case
+  inputs:
+    requests:
+    - action: execute
+      cell: owner
+      handoff: work/corrected/
+      replaces: attempt-1
+    history:
+    - action: execute
+      job_id: attempt-1
+      cell: owner
+      handoff: work/original/
+    - action: execute
+      job_id: corrected-attempt
+      replaces: attempt-1
+      cell: owner
+      handoff: work/corrected/
+    documents:
+      work/corrected/handoff.md:
+        kind: value
+        name: work/corrected/handoff.md
+        format: text
+        value: Use the existing artifact submission API instead of generating PDFs.
+  runtime:
+    cells:
+      root:
+        files:
+          README.md: root
+  mocks:
+    ops:
+    - match:
+        op: recipe.await_result_soft
+      behavior:
+        mode: return
+        outputs:
+          job_id: corrected-attempt
+          status: running
+          terminal: false
+      repeat: true
+  assertions:
+  - type: cel_true
+    expr: outputs.result.valid && outputs.result.records[0].action == "await" &&
+      outputs.result.records[0].job_id == "corrected-attempt"
+  - type: cel_true
+    expr: '!calls.exists(c,c.op == "recipes.run") &&
+      calls.filter(c,c.op == "recipe.await_result_soft").all(c,c.inputs.target.job == "corrected-attempt")'

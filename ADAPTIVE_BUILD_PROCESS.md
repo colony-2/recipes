@@ -158,6 +158,8 @@ referrals do not require another acknowledgment consultation.
 Agents use native job IDs for `replaces` when requesting a corrected attempt. The
 coordinator retains submission records for durable replay, follows active or successful
 attempts instead of duplicating them, and never automatically retries cancellation.
+The parent interprets cancellation feedback: a correction can lead to a revised handoff
+and an explicit replacement; an instruction to stop the broader work is respected.
 Design, test planning, and implementation start separate sessions. Consultation gets
 its own requester and consultant checkpoints; returning advice preserves the original
 working session and unpublished managed candidate. Creation retains root-owned approval

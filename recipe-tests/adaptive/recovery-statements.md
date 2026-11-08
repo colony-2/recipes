@@ -25,6 +25,9 @@ and automatic iteration-stop behavior; no compatibility path is retained.
 | AR-16 | High | Integration / prompt rendering, scripted replies | `prompts.yaml`, `review.yaml` | An answered consultation returns its result; a genuine unresolved user decision receives a specific question and current decision brief. |
 | AR-17 | Critical | Integration / native submission and coordinator re-entry | `coordinate.yaml` | Re-entering after a recorded replacement submission follows that job without launching another; unrelated required children remain tracked. |
 | AR-18 | High | Integration / child failure before final outputs | `await-child.yaml`, `coordinate.yaml` | A child without final artifacts can be retried using its available failure and original inputs, without retrieving intermediate outputs or inheriting its session. |
+| AR-19 | Critical | Integration / native child submission and cancellation | `coordinate.yaml`, `prompts.yaml` | An explicit corrected assignment can replace a cancelled child; the replacement uses a fresh job and preserves the parent's work. |
+| AR-20 | Critical | Integration / scripted cancellation results, native coordination | `coordinate.yaml`, `child-results.yaml` | Cancellation feedback reaches the parent; observing cancellation without requesting a replacement never starts another execution. |
+| AR-21 | High | Integration / native child submission and coordinator re-entry | `coordinate.yaml` | Repeating a replacement request after cancellation follows the recorded replacement, without duplicating active or successful work. |
 
 ## Coverage boundaries
 
