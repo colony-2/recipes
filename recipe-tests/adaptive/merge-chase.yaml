@@ -19,6 +19,12 @@ input_schema:
   change_hook:
     type: boolean
     default_value: false
+  add_hook:
+    type: boolean
+    default_value: false
+  transient_failure:
+    type: boolean
+    default_value: false
 inputs:
   advances: ${{ inputs.advances }}
   fail_after_rebase: ${{ inputs.fail_after_rebase }}
@@ -26,6 +32,8 @@ inputs:
   change_reviewed_file: ${{ inputs.change_reviewed_file }}
   apply_candidate: ${{ inputs.apply_candidate }}
   change_hook: ${{ inputs.change_hook }}
+  add_hook: ${{ inputs.add_hook }}
+  transient_failure: ${{ inputs.transient_failure }}
 catch:
 - when: true
   continue:
@@ -44,6 +52,8 @@ sequence:
       CHANGE_REVIEWED_FILE: ${{ string(inputs.change_reviewed_file) }}
       APPLY_CANDIDATE: ${{ string(inputs.apply_candidate) }}
       CHANGE_HOOK: ${{ string(inputs.change_hook) }}
+      ADD_HOOK: ${{ string(inputs.add_hook) }}
+      TRANSIENT_FAILURE: ${{ string(inputs.transient_failure) }}
     run: |
       set -eu
       REPO=$(git remote get-url origin)
@@ -52,6 +62,8 @@ sequence:
       printf "upstream='%s'\nlimit=%s\nfail_after_rebase=%s\nconflict=%s\n" "$REPO" "$ADVANCES" "$FAIL_AFTER_REBASE" "$CONFLICT" > "$REPO/build.sh"
       printf 'change_reviewed_file=%s\napply_candidate=%s\n' "$CHANGE_REVIEWED_FILE" "$APPLY_CANDIDATE" >> "$REPO/build.sh"
       printf 'change_hook=%s\n' "$CHANGE_HOOK" >> "$REPO/build.sh"
+      printf 'add_hook=%s\n' "$ADD_HOOK" >> "$REPO/build.sh"
+      printf 'transient_failure=%s\n' "$TRANSIENT_FAILURE" >> "$REPO/build.sh"
       cat >> "$REPO/build.sh" <<'CHECK'
       set -eu
       counter="$upstream/.git/merge-chase-count"
@@ -78,10 +90,19 @@ sequence:
           printf '\n# Updated verification policy\n' >> "$upstream/.c2/recipes/hooks/build/verify.yaml"
           git -C "$upstream" add .c2/recipes/hooks/build/verify.yaml
         fi
+        if [ "$add_hook" = true ]; then
+          cp "$upstream/verify-after-advance.yaml" "$upstream/.c2/recipes/hooks/build/verify.yaml"
+          git -C "$upstream" add .c2/recipes/hooks/build/verify.yaml
+        fi
         git -C "$upstream" commit -m "Concurrent upstream change $count"
       fi
       if [ "$fail_after_rebase" = true ] && [ -f upstream.txt ] && [ ! -f repair.txt ]; then
         echo 'Rebased candidate needs implementation repair'
+        exit 1
+      fi
+      if [ "$transient_failure" = true ] && [ -f upstream.txt ] && [ ! -f "$upstream/.git/verification-retried" ]; then
+        touch "$upstream/.git/verification-retried"
+        echo 'Transient verification outage; the next check can run normally'
         exit 1
       fi
       test "$(head -n 1 candidate.txt)" = corrected

@@ -477,6 +477,7 @@ state:
           annotations: ${{ outputs.annotations }}
     assessment:
       inputs:
+        reviews: "${{ state_exists('accept') ? states.accept.runs.map(r,r.outputs) + [states.accept.outputs] : [] }}"
         documents: ${{ transition.payload.documents }}
         annotations: ${{ transition.payload.annotations }}
         request: ${{ inputs.prompt }}
@@ -485,12 +486,16 @@ state:
         agent_artifacts: ${{ states.verify.outputs.agent_artifacts }}
         candidate: ${{ states.prepare.outputs.candidate }}
       sequence:
+      - id: prior_approval
+        include: ./approved-review-documents.yaml
+        inputs:
+          reviews: ${{ inputs.reviews }}
       - id: assess
         include: ./inspect.yaml
         inputs:
           role: assessment
           request: ${{ inputs.request }}
-          documents: ${{ inputs.documents }}
+          documents: ${{ jq([inputs.documents,sequence.prior_approval.outputs.documents],'add') }}
           evidence_documents: ${{ inputs.agent_artifacts }}
           guidance: ${{ inputs.guidance }}
       outputs:
@@ -538,29 +543,31 @@ state:
             } }}"
     accounting:
       inputs:
+        reviews: "${{ state_exists('accept') ? states.accept.runs.map(r,r.outputs) + [states.accept.outputs] : [] }}"
         documents: ${{ transition.payload.documents }}
         annotations: ${{ transition.payload.annotations }}
         request: ${{ inputs.prompt }}
         guidance: ${{ inputs.prompt_additions.?outcome_assessment.orValue('') }}
         agent_artifacts: ${{ states.verify.outputs.agent_artifacts }}
         candidate: ${{ states.prepare.outputs.candidate }}
-        hook_digest: ${{ states.prepare.outputs.hook_digest }}
       sequence:
+      - id: prior_approval
+        include: ./approved-review-documents.yaml
+        inputs:
+          reviews: ${{ inputs.reviews }}
       - id: review
         include: ./inspect.yaml
         inputs:
           role: summary
           request: ${{ inputs.request }}
-          documents: ${{ inputs.documents }}
+          documents: ${{ jq([inputs.documents,sequence.prior_approval.outputs.documents],'add') }}
           evidence_documents: ${{ inputs.agent_artifacts }}
           guidance: ${{ inputs.guidance }}
       outputs:
-        documents: ${{ sequence.review.outputs.documents }}
+        documents: ${{ jq([sequence.review.outputs.documents,sequence.prior_approval.outputs.documents],'add') }}
         annotations: ${{ inputs.annotations + sequence.review.outputs.annotations }}
         approved: ${{ sequence.review.outputs.approved }}
         response: ${{ sequence.review.outputs.response }}
-        candidate: ${{ inputs.candidate }}
-        hook_digest: ${{ inputs.hook_digest }}
         commit_message: ${{
           jq([sequence.review.outputs.response.subject,sequence.review.outputs.response.summary,inputs.candidate.job_url],
           'join([10,10] | implode)') }}
@@ -589,7 +596,6 @@ state:
       inputs:
         documents: ${{ transition.payload.documents }}
         annotations: ${{ transition.payload.annotations }}
-        resume_merge: ${{ transition.from == 'merge' }}
         merge_chases: "${{ state_output('rebase','merge_chases',inputs.prior_merge_chases) + (transition.from == 'merge'
           ? 1 : 0) }}"
       sequence:
@@ -608,7 +614,6 @@ state:
         inputs:
           target_base_hash: ${{ jq(sequence.resolve_upstream_head.outputs.stdout, 'split("\n")[0]') }}
       outputs:
-        resume_merge: ${{ inputs.resume_merge }}
         merge_chases: ${{ inputs.merge_chases }}
         documents: ${{ inputs.documents }}
         annotations: ${{ inputs.annotations }}
@@ -668,8 +673,6 @@ state:
           settings: ${{ inputs.settings }}
       - id: candidate
         include: ./git-candidate.yaml
-      - id: identity
-        include: ./hook-identity.yaml
       - id: errors
         include: ./error-documents.yaml
         inputs:
@@ -680,7 +683,6 @@ state:
       outputs:
         result: ${{ sequence.prepare.outputs.result }}
         candidate: ${{ sequence.candidate.outputs.candidate }}
-        hook_digest: ${{ sequence.identity.outputs.digest }}
         documents: ${{
           jq([inputs.documents,sequence.prepare.outputs.artifact_refs,sequence.candidate.outputs.documents], 'add')
           }}
@@ -808,7 +810,8 @@ state:
         annotations: ${{ inputs.annotations }}
       transitions:
       - to: inspect_chased_candidate
-        when: outputs.allowed && states.rebase.outputs.resume_merge
+        when: outputs.allowed && state_exists('accept') &&
+          states.accept.outputs.response.fields.decision == 'accept' && !states.accept.outputs.changed
         payload:
           documents: ${{ outputs.documents }}
           annotations: ${{ outputs.annotations }}
@@ -828,9 +831,7 @@ state:
         documents: ${{ transition.payload.documents }}
         annotations: ${{ transition.payload.annotations }}
         agent_artifacts: ${{ states.verify.outputs.agent_artifacts }}
-        hook_digest: ${{ states.prepare.outputs.hook_digest }}
-        reviewed_candidate: ${{ states.accounting.outputs.candidate }}
-        reviewed_hook_digest: ${{ states.accounting.outputs.hook_digest }}
+        reviewed_candidate: ${{ states.accept.outputs.candidate }}
       sequence:
       - id: candidate
         include: ./git-candidate.yaml
@@ -840,9 +841,8 @@ state:
       outputs:
         candidate: ${{ sequence.candidate.outputs.candidate }}
         documents: ${{ jq([inputs.documents,sequence.candidate.outputs.documents], 'add') }}
-        reusable: ${{ (size(sequence.candidate.outputs.candidate.files) == 0 ||
-          sequence.candidate.outputs.candidate.change_digest == inputs.reviewed_candidate.change_digest) &&
-          inputs.hook_digest == inputs.reviewed_hook_digest }}
+        reusable: ${{ size(sequence.candidate.outputs.candidate.files) == 0 ||
+          sequence.candidate.outputs.candidate.change_digest == inputs.reviewed_candidate.change_digest }}
         annotations: ${{ inputs.annotations }}
       transitions:
       - to: stopped
@@ -874,26 +874,36 @@ state:
             } }}"
     accept:
       inputs:
+        reviews: "${{ state_exists('accept') ? states.accept.runs.map(r,r.outputs) + [states.accept.outputs] : [] }}"
         documents: ${{ transition.payload.documents }}
         annotations: ${{ transition.payload.annotations }}
         review_hint: ${{ transition.payload.?review_hint.orValue(states.prompts.outputs.human.requested_changes) }}
         candidate: ${{ states.prepare.outputs.candidate }}
+        candidate_diff: ${{ states.prepare.outputs.documents['merge-candidate.diff'] }}
+        candidate_inventory: ${{ states.prepare.outputs.documents['merge-candidate.json'] }}
         artifact_refs: ${{ states.verify.outputs.artifact_refs }}
         subject: ${{ states.accounting.outputs.response.subject }}
       sequence:
       - id: prompts
         include: ./prompts.yaml
+      - id: prior_approval
+        include: ./approved-review-documents.yaml
+        inputs:
+          reviews: ${{ inputs.reviews }}
       - id: outcome_review
         include: ./review.yaml
         inputs:
           annotations: ${{ inputs.annotations }}
-          title: "${{ 'Review: ' + inputs.subject }}"
-          documents: ${{ jq([inputs.documents,inputs.artifact_refs],'add') }}
+          title: "${{ (size(sequence.prior_approval.outputs.documents) > 0 ? 'Review changes since approval: ' : 'Review: ') + inputs.subject }}"
+          documents: >-
+            ${{ jq([inputs.documents,inputs.artifact_refs,sequence.prior_approval.outputs.documents,
+              {'merge-candidate.diff':inputs.candidate_diff,'merge-candidate.json':inputs.candidate_inventory}],'add') }}
           fields:
           - id: decision
             type: multiple_choice
-            question: '${{ size(inputs.candidate.files) > 0 ? sequence.prompts.outputs.human.accept.decision_question_changed
-              : sequence.prompts.outputs.human.accept.decision_question_unchanged }}'
+            question: '${{ size(sequence.prior_approval.outputs.documents) > 0 ? sequence.prompts.outputs.human.accept.decision_question_followup
+              : (size(inputs.candidate.files) > 0 ? sequence.prompts.outputs.human.accept.decision_question_changed
+              : sequence.prompts.outputs.human.accept.decision_question_unchanged) }}'
             required: true
             options:
             - value: accept
@@ -913,14 +923,18 @@ state:
             required: false
           overview: merge-review.md
           brief: ${{ inputs.documents['merge-review.md'] }}
-          required_documents: ${{ ['test-statements.md','test-results.md','assessment.md','implementation.md'] +
-            inputs.artifact_refs.map(k,k) }}
+          required_documents: ${{ ['test-statements.md','test-results.md','assessment.md','implementation.md','merge-candidate.diff','merge-candidate.json'] +
+            inputs.artifact_refs.map(k,k) + sequence.prior_approval.outputs.documents.map(k,k) }}
       - id: feedback
         include: ./feedback-documents.yaml
         inputs:
           fields: ${{ sequence.outcome_review.outputs.response.fields }}
           documents: ${{ sequence.outcome_review.outputs.response.?artifact_refs.orValue({}) }}
       outputs:
+        candidate: ${{ inputs.candidate }}
+        review: ${{ inputs.documents['merge-review.md'] }}
+        candidate_diff: ${{ inputs.candidate_diff }}
+        candidate_inventory: ${{ inputs.candidate_inventory }}
         documents: ${{
           jq([inputs.documents,sequence.outcome_review.outputs.response.?artifact_refs.orValue({}),sequence.feedback.outputs.documents],
           'add') }}

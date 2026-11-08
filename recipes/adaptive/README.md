@@ -22,9 +22,13 @@ flowchart TD
   T --> W[Implement and coordinate agreed child jobs]
   W --> R[Native rebase]
   R --> P[Prepare hook and candidate inventory]
-  P --> V[Verify hook and independent assessment]
+  P --> V[Verify hook]
   V -->|repair| W
-  V --> S[Merge review summary]
+  V --> A{Latest human acceptance covers unchanged work?}
+  A -->|yes; local changes remain| M
+  A -->|yes; no local changes remain| Done[Complete without merge]
+  A -->|no| I[Independent assessment]
+  I --> S[Merge review summary]
   S --> H{Human outcome review}
   H -->|request changes| W
   W -->|design change| D
@@ -114,10 +118,24 @@ the same name; annotations and valid links to other current documents are retain
 
 Native rebase failures enter repair only with restored workspaces and complete
 structured diagnostics. Conflict recovery saves the entire binary delta before
-adopting the recorded target through another native rebase. Equivalent changes can
-reuse approval after fresh verification; changed content or hook policy requires
-new review. Upstream chasing and conflict repairs are bounded. Publication failure
+adopting the recorded target through another native rebase. Unchanged approved work
+reuses the recorded human acceptance after fresh verification, without another
+model assessment or human review. Added or changed hooks still run but do not
+invalidate approval. Changed content requires a review focused on the difference;
+human revision requests and uploaded feedback prevent automatic reuse.
+Upstream chasing and conflict repairs are bounded. Publication failure
 fails the job even when the preceding merge succeeded.
+
+The acceptance state records the reviewed candidate and exact review/diff/inventory
+artifact references. Assessment, summary, and follow-up forms retrieve the latest
+accepted baseline from native state history via the empty-sequence
+`approved-review-documents.yaml` include; it creates no worker task. They receive
+the original material under `approved/`. The form explicitly includes those files
+and current comparison evidence even if the summary omits source annotations.
+Only the new brief is primary; it explains the changes and links the original
+approved review. Agent-produced copies cannot replace these baseline references.
+See the [merge-approval audit](../../guides/AUDIT_MERGE_APPROVAL_REUSE.md) for the
+unchanged implementation and newly added verification hook that exposed this gap.
 
 Helpers take specific inputs; there is no shared `flow` object. Decisions read
 verification, assessment, candidate, and coordination outputs directly. Native

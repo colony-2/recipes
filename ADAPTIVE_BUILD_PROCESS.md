@@ -37,7 +37,7 @@ flowchart TD
     Work -->|Ready; required children succeeded| Rebase[Native rebase onto current target]
     Rebase -->|Structured conflict| Recovery[Conflict recovery: see below]
     Recovery --> Work
-    Rebase -->|Success| Prepare[Prepare hook; record candidate and hook identity]
+    Rebase -->|Success| Prepare[Prepare hook; record candidate]
     Prepare --> Prepared{Preparation passed or skipped?}
     Prepared -->|No| Work
     Prepared -->|Yes| Specialists[Run configured outcome specialists]
@@ -46,7 +46,9 @@ flowchart TD
     SpecialistOK -->|Yes| Verify[Run verify hook; retain result and evidence]
     Verify --> Verified{Verification permits completion?}
     Verified -->|Failure or required skip| Work
-    Verified -->|Yes| Assess[Independent candidate assessment]
+    Verified -->|Yes| Prior{Latest human decision accepted this unchanged work?}
+    Prior -->|Yes| Changes
+    Prior -->|No| Assess[Independent candidate assessment]
     Assess --> Assessed{Assessment outcome?}
     Assessed -->|Repair or missing validation| Work
     Assessed -->|Actionable capability finding| Work
@@ -216,9 +218,9 @@ flowchart TD
     Budget -->|Yes| Rebase[Native rebase onto current target; attempt recorded in state history]
     Rebase -->|Success| Prepare[Prepare candidate; rerun outcome specialists and verification]
     Prepare --> Passed{All required checks permit completion?}
-    Passed -->|No| Work[Return to implementation and normal assessment and review]
-    Passed -->|Yes| Same{Same change digest or empty delta, and same hook identity?}
-    Same -->|No| Fresh[Fresh independent assessment, merge summary, and human review]
+    Passed -->|No| Work[Return to implementation; compare again after checks pass]
+    Passed -->|Yes| Same{Same approved change digest or empty delta?}
+    Same -->|No| Fresh[Independent assessment and review of changes since approval]
     Same -->|Yes| Changes{Local changes remain?}
     Changes -->|No| Done([Complete: unchanged or delegated])
     Changes -->|Yes| Merge[Reuse approval; squash and attempt native merge]
@@ -231,13 +233,28 @@ flowchart TD
     Eligible -->|No| Fail
     Eligible -->|Yes| Save[Save entire binary candidate diff and commit log]
     Save --> Adopt[Reset known clean candidate to recorded base; native rebase onto recorded target]
-    Adopt --> Clear[Record repair attempt; require fresh verification and outcome approval]
+    Adopt --> Clear[Record repair attempt; require fresh verification]
     Clear --> Work
 ```
 
 The agent reconciles the saved delta with concurrent changes; it never performs
 the rebase itself. Native state run history supplies iteration and recovery counts.
 Verification keeps only current evidence, separate from formal documents.
+
+Approval comes from the actual human `accept` state, not a later model summary.
+After checks pass, unchanged approved work proceeds to merge without another
+assessment, summary, or human prompt. Hook changes do not invalidate approval;
+the newly selected checks still execute and failures still return to repair.
+An unresolved human revision or uploaded feedback prevents automatic reuse.
+
+For a changed candidate, assessment and summary receive the exact last accepted
+review and candidate artifacts under `approved/`. The follow-up form includes
+those references explicitly, with one current primary brief focused on changes
+since approval, their reason, updated evidence, and the decision needed now.
+Previously approved and current diffs remain diagnostic supporting material.
+The recipe restores the original references from native review history even if
+an agent omits or returns a modified copy. This does not add a worker task or
+an agent-maintained approval record.
 
 ## Agent instructions, files, and recipe data
 
