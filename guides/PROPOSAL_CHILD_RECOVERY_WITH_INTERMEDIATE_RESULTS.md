@@ -50,8 +50,8 @@ The supplied job-inspection guide documents:
   for choosing and reading exact outputs.
 - `snapshot` for exporting cumulative Git state and retained artifacts into a
   fresh directory, including selected task/attempt/workspace boundaries.
-- `jobs.inspect` through the task helper for the current job and direct children,
-  independently of permission to submit jobs.
+- `jobs.inspect` through the task helper following existing JobDB read permissions,
+  including producer jobs outside the direct child chain, independently of submission.
 - `recipe.await_result_soft` supplies an exact job's terminal status and available
   final outputs/artifacts. Those final outputs may be absent when execution fails
   before the recipe exports them; task inspection can still recover retained work.
@@ -66,8 +66,9 @@ No additional JobDB API is required for this implementation.
 
 Recipe integration now teaches these commands, prepares focused recovery handoffs,
 and binds selected attachments into the recipient inbox. The implementation was
-validated with a locally built c2j v0.0.122 CLI/task helper, and `.c2j-version`
-now pins that release. Native inspection and snapshot recovery tests passed;
+initially validated with a locally built c2j v0.0.122 CLI/task helper. The current
+pin is v0.0.124, which extends inspection to existing JobDB read permissions.
+Native inspection and snapshot recovery tests passed;
 [the assessment](ASSESSMENT_HANDOFF_ROUTING_AND_RECOVERY.md) records the evidence.
 This does not imply that every deployed worker has already been upgraded.
 
@@ -77,9 +78,10 @@ These commands follow the supplied guide. `JOB`, `TASK`, and `CURSOR` represent
 values discovered from the runtime; copy native task IDs exactly and quote them.
 
 ```sh
-# In a task, list direct children and inspect your own saved history.
+# In a task, list visible jobs and inspect your own saved history.
 c2j self
 c2j job list --json
+c2j job list --parent JOB --json
 c2j job log self
 
 # Compact history and recorded scope structure for a selected job.

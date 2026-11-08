@@ -93,6 +93,10 @@ Formal Markdown test statements precede implementation. Stable IDs identify
 expectations, filenames, importance, test level, dependencies, and negative cases.
 Implementation cannot replace this baseline; redesign revisits the plan while
 preserving expectations and documenting required deprecations.
+The baseline covers this assignment's deliverable. An investigation can complete
+with findings or specific unavailability when requested, without certifying the
+parent's unresolved outcome. Latest human scope decisions govern generated plans;
+excluded platforms and optional environment checks do not become new requirements.
 
 Design normally needs no human approval. One outcome review presents
 `merge-review.md`, expectations, test outcomes, independent findings, and supporting
@@ -102,6 +106,9 @@ Users select “Request changes”; Codex routes the feedback to implementation 
 questions are additional human checkpoints. Repeated unchanged recovery preserves an actionable handoff to the parent; it
 does not manufacture a product question. The default implementation turn cap is
 disabled; runtime budgets and explicitly configured caps remain effective.
+`next: fail` ends an unsuccessful attempt immediately with its summary and selected
+evidence. Rewording blockers or negative assessments cannot evade bounded recovery
+of an unchanged candidate. Failure export preserves an agent's own `recovery.md`.
 Review metadata omits self-links when an agent reuses or revises a document with
 the same name; annotations and valid links to other current documents are retained.
 
@@ -173,7 +180,7 @@ Implementation tasks may run bounded validation assigned by the test plan.
 Automatic child-job outputs are consumed and their results retained; serving
 prerequisite work still uses the existing coordinator. Read-only reviews and
 negotiations cannot submit jobs. Actionable assessment findings return to the
-working agent. Unexplained blockers, repeated unchanged findings, invalid-response
+working agent. Unexplained blockers, repeated negative assessments of an unchanged candidate, invalid-response
 exhaustion, and iteration limits stop the attempt with operational recovery
 instructions. Only explicit product decisions create ordinary human questions.
 
@@ -185,9 +192,8 @@ c2j `eb636a5` or later; see the [permission regression fix](../../guides/FIX_INH
 See [the direct-state implementation report](../../guides/IMPLEMENTATION_DIRECT_RECIPE_STATE.md)
 for the ownership of state values and validation results.
 
-Tests are in `../../recipe-tests/adaptive/`. Run with c2j supporting schema v2,
-structured rebase failures, review annotations, and named cells (validated against
-`eb636a5`):
+Tests are in `../../recipe-tests/adaptive/`. Use the release in `.c2j-version`
+(currently 0.0.124), including its task inspection permissions:
 
 ```sh
 c2j test run --directory recipe-tests/adaptive --parallelism 2
@@ -203,7 +209,7 @@ the retired light/heavy workflows have been removed.
 The parent follows exact jobs. An OPEN goal does not hide a failed attempt.
 Native state records accepted agreements, submissions, and results; no parallel
 agent-maintained state map is needed. A correction uses `action: execute`, the
-existing `agreement`, and a nonempty `request` describing what should change.
+destination `cell`/`ref`, a corrected `handoff` directory, and `replaces: <failed job ID>`.
 Failed or semantically incomplete assignments can start fresh from the target's
 normal ref. Pending, successful, or cancelled executions are not automatically
 replaced. Re-entry follows the recorded replacement. Required unrelated children
@@ -214,8 +220,8 @@ siblings are delivered first. Waking on a later completion while waiting for ano
 child remains a [c2j dependency](../../guides/REQUIREMENTS_C2J_PARENT_RECOVERY.md).
 Result summaries live under `results/<job>/`, original exported files under its
 `artifacts/` subdirectory, and failures under `error/children/<job>/`. Fresh attempts
-receive original assignments/attachments and corrected instructions, with no
-intermediate-result recovery or failed-child checkpoint.
+receive a corrected execution assignment and selected retained files or a reviewed
+patch. Sessions and failed-child checkpoints are not inherited.
 
 Factual consultation answers terminate the exchange. Nested accepted work is
 exported with its actual owner; execution needs return to the coordinator instead
@@ -263,12 +269,18 @@ for changes, validation, and runtime boundaries.
 The [parent recovery assessment](../../guides/ASSESSMENT_AGENT_AUTONOMY_AND_PARENT_RECOVERY.md)
 records current behavior and tests; older goal-wait descriptions are superseded.
 
-Job inspection is explained in every new session, including read-only roles. A parent
+Job inspection is explained in every new session, including read-only roles. Reads
+follow existing JobDB permissions, including parent, sibling, and terminal jobs.
+Follow producer references to retrieve missing inputs before escalation. A parent
 can fetch selected intermediate artifacts from a failed child and export a cumulative
 snapshot to scratch. A fresh attempt receives only its corrected handoff, useful files,
 and an explicit patch when appropriate; it applies and retests that patch in its normal
-workspace. If saved work is unavailable, start again. See the
+workspace. If saved work is unavailable, start again when a concrete correction can
+help; otherwise return the exact unmet need. An unpublished snapshot can support local
+validation; normal remote dependency resolution requires source publication first. See the
 [implementation assessment](../../guides/ASSESSMENT_HANDOFF_ROUTING_AND_RECOVERY.md).
+The [operational-outcomes assessment](../../guides/ASSESSMENT_OPERATIONAL_OUTCOMES.md)
+records the subsequent failure, inspection, acceptance-scope, and review adjustments.
 
 Direct and coordinator child results share collection. `next: wait` suspends durably;
 `continue` identifies independent local work. Jev classifies ambiguous status-only

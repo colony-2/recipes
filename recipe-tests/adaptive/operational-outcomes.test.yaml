@@ -1,0 +1,1050 @@
+recipe: ../../build.yaml
+cases:
+- id: explicit-failure-ends-attempt-immediately
+  type: integration_case
+  runtime:
+    cell: gitvend
+    secrets:
+      jev_api_key: synthetic
+      codex_api_key: synthetic
+    cells:
+      gitvend:
+        files:
+          README.md: A bounded application.
+    responses: []
+  inputs:
+    prompt: Explain why no changes are needed.
+  mocks:
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#jev
+      behavior:
+        mode: return
+        outputs:
+          answers:
+            is_heavy:
+              type: noul
+              noul: 0.01
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: Complete bounded work.
+            files:
+            - path: test-statements.md
+              description: test-statements.md
+              title: test-statements.md
+              role: primary
+              order: 0
+            - path: handoff.md
+              description: Settled execution assignment
+              title: Execution handoff
+              role: supporting
+              order: 1
+              source_paths: null
+            questions: []
+        artifacts:
+          test-statements.md: "# Expectations\n- T1 [Critical] [integration] [README.md] [Git] Existing behavior remains
+            available."
+          handoff.md: "# Execution assignment\nComplete the requested bounded work against test-statements.md. Use settled
+            decisions and preserve existing behavior."
+        effects:
+          artifact_files:
+            operational-outcomes-statements.md: operational-outcomes-statements.md
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: review
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: fail
+            summary: Required publication is unavailable; return this unmet need to the parent.
+            files:
+            - path: recovery.md
+              description: Exact unmet input and attempted retrieval
+              title: Unmet input
+              role: primary
+              order: 0
+              source_paths: null
+            questions: []
+        artifacts:
+          recovery.md: |
+            # Missing source
+            The producer task retains the commit, but normal module resolution requires publication.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: review
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: size(reviews) == 0
+  - type: cel_true
+    expr: size(calls.filter(c,c.op == "extension_execution" && c.node_path.contains("/work/"))) == 2
+  - type: cel_true
+    expr: calls.exists(c,c.node_path.endsWith("/stop_attempt"))
+  expect_error: Required publication is unavailable; return this unmet need to the parent.
+- id: explicit-failure-ends-attempt-after-one-correction
+  type: integration_case
+  runtime:
+    cell: gitvend
+    secrets:
+      jev_api_key: synthetic
+      codex_api_key: synthetic
+    cells:
+      gitvend:
+        files:
+          README.md: A bounded application.
+    responses: []
+  inputs:
+    prompt: Explain why no changes are needed.
+  mocks:
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#jev
+      behavior:
+        mode: return
+        outputs:
+          answers:
+            is_heavy:
+              type: noul
+              noul: 0.01
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: Complete bounded work.
+            files:
+            - path: test-statements.md
+              description: test-statements.md
+              title: test-statements.md
+              role: primary
+              order: 0
+            - path: handoff.md
+              description: Settled execution assignment
+              title: Execution handoff
+              role: supporting
+              order: 1
+              source_paths: null
+            questions: []
+        artifacts:
+          test-statements.md: "# Expectations\n- T1 [Critical] [integration] [README.md] [Git] Existing behavior remains
+            available."
+          handoff.md: "# Execution assignment\nComplete the requested bounded work against test-statements.md. Use settled
+            decisions and preserve existing behavior."
+        effects:
+          artifact_files:
+            operational-outcomes-statements.md: operational-outcomes-statements.md
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: review
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: blocked
+            summary: A local validation command needs correction.
+            files:
+            - path: implementation.md
+              description: implementation.md
+              title: implementation.md
+              role: primary
+              order: 0
+            - path: test-results.md
+              description: test-results.md
+              title: test-results.md
+              role: primary
+              order: 1
+            questions: []
+        artifacts:
+          implementation.md: "# Outcome\nAlready satisfied."
+          test-results.md: "# Results\nT1 passed; existing behavior inspected."
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: review
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: fail
+            summary: Required publication is unavailable; return this unmet need to the parent.
+            files:
+            - path: recovery.md
+              description: Exact unmet input and attempted retrieval
+              title: Unmet input
+              role: primary
+              order: 0
+              source_paths: null
+            questions: []
+        artifacts:
+          recovery.md: |
+            # Missing source
+            The producer task retains the commit, but normal module resolution requires publication.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: review
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: size(reviews) == 0
+  - type: cel_true
+    expr: size(calls.filter(c,c.op == "extension_execution" && c.node_path.contains("/work/"))) == 3
+  - type: cel_true
+    expr: calls.exists(c,c.node_path.endsWith("/stop_attempt"))
+  expect_error: Required publication is unavailable; return this unmet need to the parent.
+- id: candidate-progress-allows-further-recovery
+  type: integration_case
+  runtime:
+    cell: gitvend
+    secrets:
+      jev_api_key: synthetic
+      codex_api_key: synthetic
+    cells:
+      gitvend:
+        files:
+          README.md: A bounded application.
+    responses: []
+  inputs:
+    prompt: Explain why no changes are needed.
+  mocks:
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#jev
+      behavior:
+        mode: return
+        outputs:
+          answers:
+            is_heavy:
+              type: noul
+              noul: 0.01
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: Complete bounded work.
+            files:
+            - path: test-statements.md
+              description: test-statements.md
+              title: test-statements.md
+              role: primary
+              order: 0
+            - path: handoff.md
+              description: Settled execution assignment
+              title: Execution handoff
+              role: supporting
+              order: 1
+              source_paths: null
+            questions: []
+        artifacts:
+          test-statements.md: "# Expectations\n- T1 [Critical] [integration] [README.md] [Git] Existing behavior remains
+            available."
+          handoff.md: "# Execution assignment\nComplete the requested bounded work against test-statements.md. Use settled
+            decisions and preserve existing behavior."
+        effects:
+          artifact_files:
+            operational-outcomes-statements.md: operational-outcomes-statements.md
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: review
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: blocked
+            summary: A local validation command needs correction.
+            files:
+            - path: implementation.md
+              description: implementation.md
+              title: implementation.md
+              role: primary
+              order: 0
+            - path: test-results.md
+              description: test-results.md
+              title: test-results.md
+              role: primary
+              order: 1
+            questions: []
+        artifacts:
+          implementation.md: "# Outcome\nAlready satisfied."
+          test-results.md: "# Results\nT1 passed; existing behavior inspected."
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: review
+          worktree:
+            README.md: "Completed correction 1; next integration issue remains.\n"
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: blocked
+            summary: A local validation command needs correction.
+            files:
+            - path: implementation.md
+              description: implementation.md
+              title: implementation.md
+              role: primary
+              order: 0
+            - path: test-results.md
+              description: test-results.md
+              title: test-results.md
+              role: primary
+              order: 1
+            questions: []
+        artifacts:
+          implementation.md: "# Outcome\nAlready satisfied."
+          test-results.md: "# Results\nT1 passed; existing behavior inspected."
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: review
+          worktree:
+            README.md: "Completed correction 2; next integration issue remains.\n"
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: blocked
+            summary: A local validation command needs correction.
+            files:
+            - path: implementation.md
+              description: implementation.md
+              title: implementation.md
+              role: primary
+              order: 0
+            - path: test-results.md
+              description: test-results.md
+              title: test-results.md
+              role: primary
+              order: 1
+            questions: []
+        artifacts:
+          implementation.md: "# Outcome\nAlready satisfied."
+          test-results.md: "# Results\nT1 passed; existing behavior inspected."
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: review
+          worktree:
+            README.md: "Completed correction 3; next integration issue remains.\n"
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: blocked
+            summary: A local validation command needs correction.
+            files:
+            - path: implementation.md
+              description: implementation.md
+              title: implementation.md
+              role: primary
+              order: 0
+            - path: test-results.md
+              description: test-results.md
+              title: test-results.md
+              role: primary
+              order: 1
+            questions: []
+        artifacts:
+          implementation.md: "# Outcome\nAlready satisfied."
+          test-results.md: "# Results\nT1 passed; existing behavior inspected."
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: review
+          worktree:
+            README.md: "Completed correction 4; next integration issue remains.\n"
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: blocked
+            summary: A local validation command needs correction.
+            files:
+            - path: implementation.md
+              description: implementation.md
+              title: implementation.md
+              role: primary
+              order: 0
+            - path: test-results.md
+              description: test-results.md
+              title: test-results.md
+              role: primary
+              order: 1
+            questions: []
+        artifacts:
+          implementation.md: "# Outcome\nAlready satisfied."
+          test-results.md: "# Results\nT1 passed; existing behavior inspected."
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: review
+          worktree:
+            README.md: "Completed correction 5; next integration issue remains.\n"
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: fail
+            summary: Local corrections completed; one external input remains unavailable.
+            files:
+            - path: recovery.md
+              description: Exact unmet input and attempted retrieval
+              title: Unmet input
+              role: primary
+              order: 0
+              source_paths: null
+            questions: []
+        artifacts:
+          recovery.md: |
+            # Missing source
+            The producer task retains the commit, but normal module resolution requires publication.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: review
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: size(reviews) == 0
+  - type: cel_true
+    expr: size(calls.filter(c,c.op == "extension_execution" && c.node_path.contains("/work/"))) == 7
+  expect_error: Local corrections completed; one external input remains unavailable.
+- id: investigation-finishes-with-specific-unavailability
+  type: integration_case
+  runtime:
+    cell: gitvend
+    secrets:
+      jev_api_key: synthetic
+      codex_api_key: synthetic
+    cells:
+      gitvend:
+        files:
+          README.md: A bounded application.
+    responses:
+    - node_path:
+        build/workflow/adaptive-build/run/adaptive-develop/accept/sequence/outcome_review/adaptive-review/request_human_review
+      fields:
+        decision: accept
+  inputs:
+    prompt: Investigate the historical recovery failure. Deliver findings or item-specific unavailability. Do not
+      repair or certify the parent recovery outcome.
+  mocks:
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#jev
+      behavior:
+        mode: return
+        outputs:
+          answers:
+            is_heavy:
+              type: noul
+              noul: 0.01
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: Complete bounded work.
+            files:
+            - path: test-statements.md
+              description: test-statements.md
+              title: test-statements.md
+              role: primary
+              order: 0
+            - path: handoff.md
+              description: Settled execution assignment
+              title: Execution handoff
+              role: supporting
+              order: 1
+              source_paths: null
+            questions: []
+        artifacts:
+          test-statements.md: |
+            # Investigation acceptance
+            - I1 [Critical] [integration] [report.md] [JobDB] Each requested item has retrieved evidence or a specific unavailability finding.
+          handoff.md: |
+            # Investigation assignment
+            Report evidence or item-specific unavailability. Parent recovery remains separate and is not certified by this report.
+        effects:
+          artifact_files:
+            operational-outcomes-statements.md: operational-outcomes-statements.md
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: review
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: Complete bounded work.
+            files:
+            - path: implementation.md
+              description: implementation.md
+              title: implementation.md
+              role: primary
+              order: 0
+            - path: test-results.md
+              description: test-results.md
+              title: test-results.md
+              role: primary
+              order: 1
+            questions: []
+        artifacts:
+          implementation.md: |
+            # Findings
+            The historical input bytes have expired. The producer job and task were located; retrieval returned unavailable. Parent recovery remains unresolved.
+          test-results.md: |
+            # Results
+            I1 passed: input bytes unavailable, with producer location and failed retrieval recorded. No product behavior or recovery has been certified.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: review
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            summary: Complete bounded work.
+            files:
+            - path: assessment.md
+              description: assessment.md
+              title: assessment.md
+              role: primary
+              order: 0
+            verdict: approve
+            subject: Improve candidate
+        artifacts:
+          assessment.md: |
+            # Assessment
+            Approve the investigation report: I1 requires evidence or specific unavailability. Parent recovery remains unresolved.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: review
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            summary: Complete bounded work.
+            files:
+            - path: merge-review.md
+              description: merge-review.md
+              title: merge-review.md
+              role: primary
+              order: 0
+            verdict: approve
+            subject: Improve candidate
+        artifacts:
+          merge-review.md: |
+            # Decision
+            Accept the completed investigation.
+            # Summary
+            Historical bytes expired; producer identified.
+            # Evidence and limitations
+            I1 met; parent recovery is unresolved.
+            # Recommendation
+            Accept findings without certifying parent recovery.
+            # Read more
+            implementation.md and test-results.md.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: review
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.disposition == "unchanged" && size(reviews) == 1
+  - type: cel_true
+    expr: '!calls.exists(c,c.node_path.endsWith("/stop_attempt") || c.node_path.contains("/questions/"))'
+  - type: cel_true
+    expr: size(calls.filter(c,c.op == "extension_execution" && c.node_path.contains("/work/"))) == 2
+- id: reworded-assessments-cannot-bypass-recovery-budget
+  type: integration_case
+  runtime:
+    cell: gitvend
+    secrets:
+      jev_api_key: synthetic
+      codex_api_key: synthetic
+    cells:
+      gitvend:
+        files:
+          README.md: A bounded application.
+    responses: []
+  inputs:
+    prompt: Explain why no changes are needed.
+  mocks:
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#jev
+      behavior:
+        mode: return
+        outputs:
+          answers:
+            is_heavy:
+              type: noul
+              noul: 0.01
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: Complete bounded work.
+            files:
+            - path: test-statements.md
+              description: test-statements.md
+              title: test-statements.md
+              role: primary
+              order: 0
+            - path: handoff.md
+              description: Settled execution assignment
+              title: Execution handoff
+              role: supporting
+              order: 1
+              source_paths: null
+            questions: []
+        artifacts:
+          test-statements.md: "# Expectations\n- T1 [Critical] [integration] [README.md] [Git] Existing behavior remains
+            available."
+          handoff.md: "# Execution assignment\nComplete the requested bounded work against test-statements.md. Use settled
+            decisions and preserve existing behavior."
+        effects:
+          artifact_files:
+            operational-outcomes-statements.md: operational-outcomes-statements.md
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: review
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: Complete bounded work.
+            files:
+            - path: implementation.md
+              description: implementation.md
+              title: implementation.md
+              role: primary
+              order: 0
+            - path: test-results.md
+              description: test-results.md
+              title: test-results.md
+              role: primary
+              order: 1
+            questions: []
+        artifacts:
+          implementation.md: "# Outcome\nAlready satisfied."
+          test-results.md: "# Results\nT1 passed; existing behavior inspected."
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: review
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            summary: Docker capability is missing.
+            files:
+            - path: assessment.md
+              description: assessment.md
+              title: assessment.md
+              role: primary
+              order: 0
+            verdict: revise
+            subject: Improve candidate
+            next: intervention
+        artifacts:
+          assessment.md: |
+            # Unresolved requirement
+            Docker capability is missing.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: review
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: Complete bounded work.
+            files:
+            - path: implementation.md
+              description: implementation.md
+              title: implementation.md
+              role: primary
+              order: 0
+            - path: test-results.md
+              description: test-results.md
+              title: test-results.md
+              role: primary
+              order: 1
+            questions: []
+        artifacts:
+          implementation.md: "# Outcome\nAlready satisfied."
+          test-results.md: "# Results\nT1 passed; existing behavior inspected."
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: review
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            summary: The required container engine is unavailable.
+            files:
+            - path: assessment.md
+              description: assessment.md
+              title: assessment.md
+              role: primary
+              order: 0
+            verdict: revise
+            subject: Improve candidate
+            next: intervention
+        artifacts:
+          assessment.md: |
+            # Unresolved requirement
+            The required container engine is unavailable.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: review
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: Complete bounded work.
+            files:
+            - path: implementation.md
+              description: implementation.md
+              title: implementation.md
+              role: primary
+              order: 0
+            - path: test-results.md
+              description: test-results.md
+              title: test-results.md
+              role: primary
+              order: 1
+            questions: []
+        artifacts:
+          implementation.md: "# Outcome\nAlready satisfied."
+          test-results.md: "# Results\nT1 passed; existing behavior inspected."
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: review
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            summary: No compatible container runtime is supplied.
+            files:
+            - path: assessment.md
+              description: assessment.md
+              title: assessment.md
+              role: primary
+              order: 0
+            verdict: revise
+            subject: Improve candidate
+            next: intervention
+        artifacts:
+          assessment.md: |
+            # Unresolved requirement
+            No compatible container runtime is supplied.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: review
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: Complete bounded work.
+            files:
+            - path: implementation.md
+              description: implementation.md
+              title: implementation.md
+              role: primary
+              order: 0
+            - path: test-results.md
+              description: test-results.md
+              title: test-results.md
+              role: primary
+              order: 1
+            questions: []
+        artifacts:
+          implementation.md: "# Outcome\nAlready satisfied."
+          test-results.md: "# Results\nT1 passed; existing behavior inspected."
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: review
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            summary: Execution still needs a Docker endpoint.
+            files:
+            - path: assessment.md
+              description: assessment.md
+              title: assessment.md
+              role: primary
+              order: 0
+            verdict: revise
+            subject: Improve candidate
+            next: intervention
+        artifacts:
+          assessment.md: |
+            # Unresolved requirement
+            Execution still needs a Docker endpoint.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: review
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: Complete bounded work.
+            files:
+            - path: implementation.md
+              description: implementation.md
+              title: implementation.md
+              role: primary
+              order: 0
+            - path: test-results.md
+              description: test-results.md
+              title: test-results.md
+              role: primary
+              order: 1
+            questions: []
+        artifacts:
+          implementation.md: "# Outcome\nAlready satisfied."
+          test-results.md: "# Results\nT1 passed; existing behavior inspected."
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: review
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            summary: The scoped container test remains unexecuted.
+            files:
+            - path: assessment.md
+              description: assessment.md
+              title: assessment.md
+              role: primary
+              order: 0
+            verdict: revise
+            subject: Improve candidate
+            next: intervention
+        artifacts:
+          assessment.md: |
+            # Unresolved requirement
+            The scoped container test remains unexecuted.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: review
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: size(reviews) == 0
+  - type: cel_true
+    expr: size(calls.filter(c,c.op == "extension_execution" && c.node_path.contains("/work/"))) == 6
+  - type: cel_true
+    expr: size(calls.filter(c,c.op == "extension_execution" && c.node_path.contains("/assessment/"))) == 5
+  - type: cel_true
+    expr: calls.exists(c,c.node_path.endsWith("/stop_attempt"))
+  expect_error: Three correction turns did not resolve the blocker

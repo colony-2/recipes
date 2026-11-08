@@ -29,6 +29,7 @@ flowchart TD
     Work -->|Child failure or unexplained blocker| Recover[Parent diagnoses; repairs locally or requests a fresh child]
     Recover --> Work
     Recover -->|Three unchanged repairs or explicit cap| Operational[Preserve work and report the concrete unmet need]
+    Work -->|Explicit fail response| Operational
     Work -->|Missing development tools| Packages[Authorize packages; validate separate child job; adopt config]
     Packages --> Work
     Direction -->|Answer or request changes| Work
@@ -49,7 +50,7 @@ flowchart TD
     Assess --> Assessed{Assessment outcome?}
     Assessed -->|Repair or missing validation| Work
     Assessed -->|Actionable capability finding| Work
-    Assessed -->|Repeated unchanged finding| Recover
+    Assessed -->|Still unapproved; unchanged candidate| Recover
     Assessed -->|Approved| Summary[Prepare one decision brief with outcomes, evidence, limitations, and supporting links]
     Summary --> SummaryOK{Evidence and accounting sufficient?}
     SummaryOK -->|No| Work
@@ -82,19 +83,38 @@ flowchart TD
   It receives a corrected handoff and selected files. The parent can inspect intermediate
   outputs and export a snapshot, then include a reviewed patch for the next writable task
   to apply and retest. Sessions and execution history are not inherited. Cancellation stays distinct and never triggers an automatic retry.
-  Three unsuccessful correction turns with the same reason and unchanged candidate
-  produce an actionable operational handoff. The default has no fixed implementation
+  `next: fail` immediately ends an unsuccessful attempt with its reason and selected
+  files, returning control to its parent. Three consecutive unsuccessful correction
+  turns with an unchanged candidate also produce an operational handoff; rewording
+  the blocker does not reset this count. Repeated negative assessments of the same
+  candidate enter recovery regardless of how their findings are phrased. Candidate changes or intervening successful
+  work permit further progress. The default has no fixed implementation
   turn cap; runtime budgets still apply. An explicit `max_iterations` counts substantive
   implementation turns, excluding planning, coordination, waiting, and response correction.
 - **Formal evidence:** test statements have stable IDs, expectations, filenames,
   importance, test level, and dependencies. Implementation reports results against
   that baseline; changing the plan requires redesign and preserves existing expectations.
+  Child baselines cover their own deliverables, with parent-wide integration checks
+  as supporting context. Investigations may finish with specific unavailability if
+  their acceptance allows it; this does not certify unresolved product behavior.
+  Latest human scope decisions govern validation. Excluded platforms and optional
+  environment checks do not become blockers; exact tool versions require a real need.
 - **Review documents:** exactly one current decision brief is primary. Current results,
   expectations, findings, and selected sources are supporting evidence. Raw execution
   diagnostics remain available without turning the whole inbox into a review bundle.
+  The overview explains the user-visible outcome, decision needed now, and what
+  changed since prior approval. Detailed hashes and file accounting are supporting material.
 - **Failures:** verification execution, output, evidence, or mutation failures return
   to implementation. Cancellation remains cancellation. Other fatal errors can stop
   any phase; the chart omits repetitive error edges.
+
+Missing files should be retrieved from their producer with the
+[job inspection commands](guides/JOB_INSPECTION_PLAYBOOK.md) before escalation.
+Failure export preserves selected files, including an existing `recovery.md`, and
+reports the reason in the failure; it does not add a generic colliding document.
+Saved unpublished commits support snapshot/patch validation. Consumers requiring
+ordinary remote Git or module resolution must instead wait for source publication;
+the recipe does not publish implicitly to satisfy an investigation.
 
 ## Cross-cell coordination
 
@@ -166,13 +186,13 @@ one; prompt wakeup on any child completion needs the runtime addition described 
 [recovery runtime requirements](guides/REQUIREMENTS_C2J_PARENT_RECOVERY.md).
 
 Planning, consultation, read-only review, and response correction cannot submit
-jobs. Inspection is separate from submission: these tasks can inspect their own job
-and direct children. `c2j job log`, `fields`, `artifacts`, and `artifact` expose saved
+jobs. Inspection is separate from submission and follows existing JobDB read
+permissions, including parents and siblings. `c2j job log`, `fields`, `artifacts`, and `artifact` expose saved
 outputs even when no final result exists. `c2j job snapshot` exports cumulative state
 to scratch. The agent selects useful files or a patch; the next writable task reviews,
-applies, and retests it. Unavailable saved work permits a fresh start. Parent and sibling
-reads are not available to ordinary task tokens; report specific missing inputs instead
-of starting another consultation to message the parent.
+applies, and retests it. Follow producer references before reporting a missing input.
+Unavailable saved work permits a fresh start when a concrete correction can help;
+otherwise return the exact unmet need instead of repeating an unproductive attempt.
 
 Persistent worker tools use `packages: [{reference: ..., check: [...]}]`, for example
 `check: [go, version]` or `check: [ruff, --version]`. The cell's

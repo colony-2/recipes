@@ -38,9 +38,24 @@ cases:
                     echo 'Selected output from the failed attempt.' > "$OUTBOX/useful.md"
                     echo 'Unrelated historical output' > "$OUTBOX/unrelated.md"
                     parent=$(sed 's/.*Parent: //' "$INBOX/handoff.md")
-                    if c2j job show "$parent" --json > "$OUTBOX/parent-access.log" 2>&1; then
-                      echo 'Child unexpectedly read parent' >&2; exit 1
-                    fi
+                    export PRODUCER="$parent"
+                    python3 - <<'PYCODE'
+                  import json, os, pathlib, subprocess, tempfile
+                  def call(*args):
+                      return subprocess.check_output(['c2j', *args], text=True)
+                  parent = os.environ['PRODUCER']
+                  log = json.loads(call('job', 'log', parent, '--json'))
+                  task = next(t['id'] for t in log['tasks'] if t.get('path', '').endswith('/parent_work'))
+                  items = json.loads(call('job', 'artifacts', parent, '--task', task, '--json'))['artifacts']
+                  assert any(a['name'] == 'required.md' for a in items)
+                  assert any(a['name'] == 'unrelated-parent.md' for a in items)
+                  scratch = pathlib.Path(tempfile.mkdtemp())
+                  call('job', 'artifact', parent, '--task', task, '--name', 'required.md', '--output', str(scratch/'required.md'))
+                  assert (scratch/'required.md').read_text() == 'essential-parent-evidence\n'
+                  assert not (scratch/'unrelated-parent.md').exists()
+                  assert not (pathlib.Path(os.environ['INBOX'])/'required.md').exists()
+                  (pathlib.Path(os.environ['OUTBOX'])/'parent-access.log').write_text('Retrieved selected parent evidence without submission permission.\n')
+                  PYCODE
                   else
                     test ! -f "$INBOX/unrelated.md"
                     test -f "$INBOX/useful.md"
@@ -49,6 +64,11 @@ cases:
                   fi
               artifacts:
                 ./: ${{ inputs.documents }}
+              perms:
+                inherit: true
+                jobdb:
+                  jobs:
+                    submit: false
             - id: probe
               op: command_execution
               inputs:

@@ -7,13 +7,22 @@ The adaptive recipe includes this guidance in each new agent session.
 
 ## Find the job and task
 
-Inside a task, `self` selects the current job. `c2j job list --json` lists its
-direct children. Task inspection also covers completed children, independently
-of submission permission. `c2j self` reports `jobs.inspect`. Parent, sibling,
-and arbitrary other jobs are outside that task's inspection scope.
+Inside a task, `self` selects the current job. `c2j job list --json` lists
+backend-visible jobs in the selected tenant; `--parent JOB` selects direct
+children. `c2j self` reports `jobs.inspect`. Reads follow existing JobDB read
+permissions for the task, independently of submission permission, including
+parent, sibling, unrelated, and terminal jobs. Use the supplied task connection.
+Do not infer a denial from a job's relationship to the current job.
+
+For a missing input, follow producer job/task/artifact references in the handoff
+first. Discover the task and select the required file; do not copy every document
+or ask the human to locate something already retained. If access is actually
+denied or bytes expired, preserve that exact result. A report can record specific
+unavailability when its assignment permits it; a required unresolved input goes
+back to the coordinator. Neither case proves the underlying product works.
 
 ```sh
-JOB=self                         # Or an actual child job ID.
+JOB=self                         # Or a known producer job ID.
 c2j job show "$JOB" --json
 c2j job log "$JOB" --json
 ```
@@ -92,8 +101,10 @@ success nor proof that no useful work was saved.
 - Download to scratch outside the managed checkout and outbox. Output paths must
   not exist. Large exact values require `--output`; previews can be truncated.
 - If access is denied or bytes are unavailable, report the exact missing evidence
-  and continue independent work. Ask the human only for an essential input or
-  decision that remains unavailable after inspection.
+  and continue independent work. Ask the human only for a necessary decision they
+  can resolve. A working agent with an essential unmet need and no useful correction
+  returns `next: fail` to end the attempt; an investigation may instead finish with
+  documented unavailability if its acceptance permits that result.
 - If the only remaining work is child completion, return `next: wait`. Repeatedly
   inspecting unchanged history does not advance the work.
 
@@ -102,7 +113,8 @@ export a snapshot into scratch, select useful artifacts or an explicit patch,
 and supply a corrected handoff to a fresh job. Downloading or attaching a patch
 does not apply it; the next writable task reviews, applies, and retests it.
 
-Validated with the repository's pinned c2j v0.0.122. The native
+Validated with the repository's pinned c2j v0.0.124. The native
 `recipe-tests/adaptive/inspection-recovery.test.yaml` exercises task discovery,
 exact fields, missing-field handling, failed-task diagnostics, artifact downloads,
-snapshot recovery, and final outputs using task credentials.
+snapshot recovery, parent artifact retrieval without submission permission,
+selective file delivery, and final outputs using task credentials.

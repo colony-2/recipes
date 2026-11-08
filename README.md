@@ -27,7 +27,8 @@ that creates no worker task. Specific typed values carry orchestration state;
 files carry evidence, feedback, command diagnostics, and review documents.
 Standing context is supplied when a session starts. Agents can use `c2j self` to
 inspect their execution context and capabilities, and `c2j job log`, `fields`,
-`artifacts`, and `snapshot` to retrieve selected work from this job or its direct children.
+`artifacts`, and `snapshot` to retrieve selected work from jobs visible through existing
+JobDB read permissions, including producer jobs outside the direct child chain.
 
 Serving consultations resolve external scope. The working agent generates a focused
 `handoff.md` and selects supporting files for an explicit execution owner. The parent

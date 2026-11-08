@@ -1,0 +1,42 @@
+id: failure-export-fixture
+sequence:
+- id: failed
+  include: ../../recipes/adaptive/operational-failure.yaml
+  inputs:
+    reason: Required source publication is unavailable.
+    documents:
+      recovery.md:
+        kind: value
+        name: recovery.md
+        format: text
+        value: "Original recovery evidence.\nPreserve this exact content.\n"
+      evidence/check.log:
+        kind: value
+        name: evidence/check.log
+        format: text
+        value: "producer fetch failed: revision unpublished\n"
+  catch:
+  - when: true
+    continue:
+      outputs:
+        code: ${{ failure.code }}
+        reason: ${{ failure.message }}
+- id: verify_files
+  op: command_execution
+  const: true
+  inputs:
+    run: |
+      python3 - <<'PY'
+      import json, pathlib, subprocess, tempfile
+      def call(*args):
+          return subprocess.check_output(['c2j', *args], text=True)
+      log = json.loads(call('job', 'log', 'self', '--json'))
+      task = next(t['id'] for t in log['tasks'] if t.get('path','').endswith('/stop_attempt'))
+      root = pathlib.Path(tempfile.mkdtemp())
+      call('job', 'artifact', 'self', '--task', task, '--name', 'recovery.md', '--output', str(root/'recovery.md'))
+      assert (root/'recovery.md').read_bytes() == b'Original recovery evidence.\nPreserve this exact content.\n'
+      call('job', 'artifact', 'self', '--task', task, '--name', 'evidence/check.log', '--output', str(root/'check.log'))
+      assert (root/'check.log').read_bytes() == b'producer fetch failed: revision unpublished\n'
+      PY
+outputs:
+  failure: ${{ sequence.failed.outputs }}

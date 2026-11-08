@@ -223,6 +223,11 @@ state:
           issues: ${{ outputs.issues }}
           documents: ${{ outputs.documents }}
           annotations: ${{ outputs.annotations }}
+      - to: operational_failure
+        when: states.work.outputs.turn.result.response.next == 'fail'
+        payload:
+          reason: ${{ states.work.outputs.turn.result.response.summary }}
+          documents: ${{ outputs.documents }}
       - to: recover_work
         when: states.work.outputs.children_failed
         payload:
@@ -476,7 +481,6 @@ state:
         annotations: ${{ transition.payload.annotations }}
         request: ${{ inputs.prompt }}
         guidance: ${{ inputs.prompt_additions.?outcome_assessment.orValue('') }}
-        previous_summary: ${{ state_output('assessment','response.summary','') }}
         previous_candidate: ${{ state_output('assessment','candidate.head','') }}
         agent_artifacts: ${{ states.verify.outputs.agent_artifacts }}
         candidate: ${{ states.prepare.outputs.candidate }}
@@ -496,21 +500,18 @@ state:
         response: ${{ sequence.assess.outputs.response }}
         candidate: ${{ inputs.candidate }}
         next: ${{ sequence.assess.outputs.next }}
-        previous_summary: ${{ inputs.previous_summary }}
         previous_candidate: ${{ inputs.previous_candidate }}
       transitions:
       - to: dispatch
-        when: outputs.next == 'intervention' && !(outputs.previous_summary == outputs.response.summary &&
-          outputs.previous_candidate == outputs.candidate.head)
+        when: outputs.next == 'intervention' && outputs.previous_candidate != outputs.candidate.head
         payload:
           assignment: feedback
           documents: ${{ outputs.documents }}
           annotations: ${{ outputs.annotations }}
       - to: recover_work
-        when: '!outputs.approved && outputs.previous_summary == outputs.response.summary && outputs.previous_candidate
-          == outputs.candidate.head'
+        when: '!outputs.approved && outputs.previous_candidate == outputs.candidate.head'
         payload:
-          reason: The same assessment finding recurred without a candidate change. Resolve the missing evidence,
+          reason: Assessment remains unapproved without a candidate change. Resolve the missing evidence,
             capability, or requirement described in feedback/.
           documents: ${{ outputs.documents }}
           annotations: ${{ outputs.annotations }}
@@ -1157,7 +1158,6 @@ state:
         annotations: ${{ transition.payload.annotations }}
         candidate: "${{ context.git.hash != '' ? context.git.hash : context.git.resolved_hash }}"
         failure: ${{ transition.payload.?failure.orValue({}) }}
-        previous_reason: ${{ state_output('recover_work','reason','') }}
         previous_candidate: ${{ state_output('recover_work','candidate','') }}
         previous_attempts: ${{ state_output('recover_work','attempts',0) }}
         work_turn: "${{ state_exists('work') ? size(states.work.runs)+1 : 0 }}"
@@ -1171,7 +1171,7 @@ state:
       outputs:
         reason: ${{ inputs.reason }}
         candidate: ${{ inputs.candidate }}
-        attempts: '${{ inputs.work_turn == inputs.previous_work_turn+1 && inputs.previous_reason == inputs.reason &&
+        attempts: '${{ inputs.work_turn == inputs.previous_work_turn+1 &&
           inputs.previous_candidate == inputs.candidate ? inputs.previous_attempts+1 : 1 }}'
         documents: ${{
           jq([inputs.documents,sequence.errors.outputs.documents,{'feedback/recovery.md':{'kind':'value','name':'feedback/recovery.md','format':'text','value':inputs.reason}
