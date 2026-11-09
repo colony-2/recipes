@@ -65,6 +65,12 @@ or a different cell's approval does not replace this cell's direction review.
 
 ## Human replies and automatic limits
 
+Later human feedback supersedes conflicting scope, requirements, and exclusions
+in the original request. A direction-review revision starts a fresh design
+session with an explicit instruction to update the one-pager and affected owner
+assignments before requesting review again. The original request remains available
+as history; the normal direction approval checkpoint still applies.
+
 Human questions and review rounds have no recipe turn limit. A new collected
 human response renews the automatic allowance; asking the question, presenting
 the review, and processing the reply do not spend it. This includes direction,

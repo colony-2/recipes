@@ -14,6 +14,7 @@ live trials evaluate the actual produced documents separately.
 | A2-7 | Public build uses adaptive2; the previous adaptive workflow remains available to its own regression tests. | High; integration, c2j | `direction-review.test.yaml`, `recipes/adaptive2/build.yaml`, `build.yaml` |
 | A2-8 | Recovery can add selected evidence while preserving the receiver-authored assignment; replacing the assignment requires a new agreement. | Critical; integration, c2j artifacts/children | `handoff.test.yaml`, `recipes/adaptive2/coordinate.yaml` |
 | A2-9 | Each consultation participant receives its own cell identity, the other owner, and selected request documents; the transcript attributes replies to the actual speaker. | High; integration, c2j workspaces/artifacts | `consultation.test.yaml`, `recipes/adaptive2/consultation.yaml` |
+| A2-10 | Scope-changing feedback reaches a fresh design session with explicit revision instructions; later human direction overrides conflicting original requirements before another one-pager review. | Critical; integration, c2j input/artifacts | `direction-review.test.yaml`, `recipes/adaptive2/prompts.yaml`, `recipes/adaptive2/develop.yaml` |
 
 ## Default build rollout
 
