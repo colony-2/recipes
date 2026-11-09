@@ -1,0 +1,157 @@
+recipe: review-links.yaml
+cases:
+- id: gallery-missing-images
+  type: integration_case
+  runtime: {}
+  inputs:
+    documents:
+      merge-review.md:
+        kind: value
+        name: merge-review.md
+        format: text
+        value: '[Screens](screens/gallery.md)'
+      screens/gallery.md:
+        kind: value
+        name: screens/gallery.md
+        format: text
+        value: '![Desktop](../evidence/desktop.png)'
+  mocks:
+    ops:
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: size(outputs.issues) == 1 && outputs.issues[0].contains("merge-review.md → screens/gallery.md →
+      evidence/desktop.png")
+- id: all-local-files-not-just-images
+  type: integration_case
+  runtime: {}
+  inputs:
+    documents:
+      merge-review.md:
+        kind: value
+        name: merge-review.md
+        format: text
+        value: '[Evidence](evidence/index.md)'
+      evidence/index.md:
+        kind: value
+        name: evidence/index.md
+        format: text
+        value: '[Tests](logs/check.log)'
+  mocks:
+    ops:
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: size(outputs.issues) == 1 && outputs.issues[0].contains("evidence/logs/check.log")
+- id: relative-reference-html-and-encoded
+  type: integration_case
+  runtime: {}
+  inputs:
+    documents:
+      merge-review.md:
+        kind: value
+        name: merge-review.md
+        format: text
+        value: '[Gallery](evidence/gallery.md)'
+      evidence/gallery.md:
+        kind: value
+        name: evidence/gallery.md
+        format: text
+        value: "![phone][p]\n\n[p]: ./screens/../phone%20view.png?download=1#view\n\n<a href=\"../test-results.md#checks\"\
+          >Results</a><img src=\"phone%20view.png\">"
+      evidence/phone view.png:
+        kind: value
+        name: evidence/phone view.png
+        format: text
+        value: image bytes
+      test-results.md:
+        kind: value
+        name: test-results.md
+        format: text
+        value: pass
+  mocks:
+    ops:
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: size(outputs.issues) == 0
+- id: external-anchors-code-and-cycles
+  type: integration_case
+  runtime: {}
+  inputs:
+    documents:
+      merge-review.md:
+        kind: value
+        name: merge-review.md
+        format: text
+        value: "[Gallery](gallery.md)\n[Web](https://example.com/image.png)\n[Anchor](#part)\n`![example](missing.png)`\n\
+          \n```md\n[example](missing.md)\n```\n<pre><a href=\"missing.log\">Example</a></pre>"
+      gallery.md:
+        kind: value
+        name: gallery.md
+        format: text
+        value: '[Back](merge-review.md)'
+  mocks:
+    ops:
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: size(outputs.issues) == 0
+- id: escape-cannot-read-repository
+  type: integration_case
+  runtime: {}
+  inputs:
+    documents:
+      merge-review.md:
+        kind: value
+        name: merge-review.md
+        format: text
+        value: '[Source](../PURPOSE.md)'
+  mocks:
+    ops:
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: size(outputs.issues) == 1 && outputs.issues[0].contains("escapes")
+- id: unreadable-reference-is-not-success
+  type: integration_case
+  runtime: {}
+  inputs:
+    documents:
+      merge-review.md:
+        kind: value
+        name: merge-review.md
+        format: text
+        value: '[Missing](missing.md)'
+      missing.md:
+        kind: stored
+        name: missing.md
+        stored:
+          key:
+            jobId: missing-producer
+            taskOrdinal: 1
+            name: missing.md
+            sizeBytes: 1
+  assertions:
+  - type: cel_true
+    expr: size(outputs.issues) > 0

@@ -9,7 +9,7 @@ exercise the inline protocol and original artifact identity.
 `../self-improvement/build.test.yaml` covers the public build's existing local
 hooks and audit inputs. The previous `../adaptive/` flow suites intentionally use
 `../adaptive/build.yaml`, a test-only copy of the old public input contract which
-includes the unchanged adaptive implementation. Their helper coverage remains
+includes the retained adaptive implementation. Their helper coverage remains
 useful, but they do not prove the new direction flow.
 
 Run the normal native suite with the pinned c2j and packaged operations:
@@ -31,3 +31,30 @@ normalization and correction through the public build, including identical and
 changed outbox copies. `human-turns.test.yaml` repeats human reviews under an
 explicit one-turn allowance. `merge-turns.test.yaml` uses a real concurrent Git
 writer to check approval reuse and renewed retry allowances.
+
+The November 9 additions cover selected review links, actual native approval
+recovery, correction/implementation grants, receipt expiry, parent waiting, and
+UI validation routing. `../adaptive/approval-equivalence.test.yaml` uses real Git
+history to test same-file context, binary changes, executable modes and extra edits.
+The older cap assertions now explicitly choose Stop at the new decision; their
+work-pass counts and human-exclusion assertions remain unchanged.
+
+`visual-review.live.yaml` renders an actual static page with `chromium` on PATH,
+then uses live Codex assessment and summary plus the normal final review selector.
+It retains the original binary screenshot for export. It does not publish code.
+`limit-decision.live.yaml` produces live implementation, mechanical-report and
+scope-conflict decision briefs. Native choices are scripted to finish these local
+trials; the explanatory text is model-generated.
+
+```sh
+c2j test run --file recipe-tests/adaptive2/visual-review.live.yaml \
+  --include-live --case-timeout 4m --parallelism 1 --out-dir /tmp/visual-review
+c2j test run --file recipe-tests/adaptive2/limit-decision.live.yaml \
+  --include-live --case-timeout 4m --parallelism 1 --out-dir /tmp/limit-reviews
+```
+
+`limit-child.test.yaml` exercises actual child submission, native input, parent
+waiting and terminal completion status. The harness answers pending forms promptly;
+it cannot test a prolonged unanswered review, process-restart replay, or deadline
+expiry while waiting. Receipt replay tests exercise the recipe's idempotent
+accounting; they are not a substitute for those runtime lifecycle tests.

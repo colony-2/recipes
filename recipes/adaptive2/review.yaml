@@ -12,20 +12,47 @@ sequence:
 - id: prompts
   include: ./prompts.yaml
 - id: select
-  sequence: []
-  outputs:
-    documents: ${{
-      jq({'overview':inputs.overview,'brief':inputs.brief,'documents':inputs.documents,'annotations':inputs.annotations,'required':inputs.required_documents,'title':inputs.title,'summary':inputs.summary,'fields':inputs.fields},
-      vars.selection) }}
+  include: ./review-selection.yaml
   inputs:
+    title: ${{ inputs.title }}
+    documents: ${{ inputs.documents }}
+    fields: ${{ inputs.fields }}
+    annotations: ${{ inputs.annotations }}
+    summary: ${{ inputs.summary }}
     overview: ${{ inputs.overview }}
     brief: ${{ inputs.brief }}
-    documents: ${{ inputs.documents }}
-    annotations: ${{ inputs.annotations }}
     required_documents: ${{ inputs.required_documents }}
-    title: ${{ inputs.title }}
-    summary: ${{ inputs.summary }}
-    fields: ${{ inputs.fields }}
+- id: validate
+  inputs:
+    overview: ${{ inputs.overview }}
+    documents: ${{ sequence.select.outputs.documents }}
+  state:
+    initial:
+    - to: check
+      when: inputs.overview == 'merge-review.md'
+    - to: skip
+      when: 'true'
+    states:
+      skip:
+        sequence: []
+      check:
+        include: ./review-links.yaml
+        inputs:
+          documents: ${{ inputs.documents }}
+        transitions:
+        - to: reject
+          when: size(outputs.issues) > 0
+          payload:
+            issues: ${{ outputs.issues }}
+      reject:
+        op: command_execution
+        inputs:
+          run: exit 1
+        catch:
+        - when: 'true'
+          fail:
+            code: REVIEW_ATTACHMENTS_INVALID
+            message: "${{ 'Review attachments invalid: ' + jq(transition.payload.issues,'join(\"; \")') }}"
 - id: request_human_review
   op: input
   inputs:
@@ -88,19 +115,6 @@ vars:
   form_fields: |
     map(if .type == "multiple_choice" or .type == "checkboxes"
         then . else del(.options) end)
-  selection: |
-    . as $v |
-      ($v.brief // {kind:"value",name:$v.overview,format:"text",
-        value:("# " + $v.title + "\n\n## Decision\n\n" +
-          ($v.fields | map(select(.id != "annotations" and .id != "feedback") | .question) | join("\n\n")) +
-          "\n\n## Context\n\n" + $v.summary)}) as $brief |
-      ($v.annotations | map(select(.id == $v.overview and (.ref|del(.name)) == ($brief|del(.name)))) |
-        map(.sources // []) | add // [] |
-        map(select(type == "object" and (.id | type) == "string") |
-              select(.id as $id | $v.documents | has($id)) |
-              select(($v.documents[.id]|del(.name)) == (.ref|del(.name))) | .id)) as $sources |
-      ($v.documents | with_entries(select(.key as $k | ($v.required + $sources) | index($k)))) +
-      {($v.overview):($brief + {name:$v.overview})}
 outputs:
   response: ${{ sequence.request_human_review.outputs }}
   documents: ${{

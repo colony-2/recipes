@@ -220,6 +220,9 @@ state:
         previous: "${{ size(states.execution.outputs.existing) > 0 ? states.execution.outputs.existing[size(states.execution.outputs.existing)-1].job_id
           : '' }}"
         documents: ${{ states.execution.outputs.documents }}
+        resume_from: ${{
+          states.pick.outputs.request.?resume_from.orValue(states.pick.outputs.request.?replaces.orValue(''))
+          }}
       sequence:
       - id: prompts
         include: ./prompts.yaml
@@ -234,12 +237,8 @@ state:
               base_ref: ${{ context.git.ref }}
               base_hash: ${{ context.git.resolved_hash }}
             name: ${{ inputs.build_recipe }}
-            inputs:
-              prompt: ${{ sequence.prompts.outputs.children.prerequisite }}
-              documents: ${{ inputs.documents }}
-              annotations: []
-              root_cell: ${{ inputs.root_cell }}
-              root_ref: ${{ inputs.root_ref }}
+            inputs: "${{ jq([{ 'prompt':sequence.prompts.outputs.children.prerequisite,'documents':inputs.documents,'annotations':[],'root_cell':inputs.root_cell,'root_ref':inputs.root_ref
+              }, nonempty(inputs.resume_from) ? {'resume_from':inputs.resume_from} : {}], 'add') }}"
           wait:
             on: job
             condition: complete

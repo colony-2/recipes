@@ -6,7 +6,8 @@ import json
 from pathlib import Path
 
 
-def export(report: Path, destination: Path, producer_files: Path | None = None) -> None:
+def export(report: Path, destination: Path, producer_files: Path | None = None,
+           *, baseline: str | None = None, runtime_version: str | None = None) -> None:
     run = json.loads(report.read_text())["run"]
     files = {}
     destination.mkdir(parents=True, exist_ok=True)
@@ -76,8 +77,8 @@ def export(report: Path, destination: Path, producer_files: Path | None = None) 
         "case_hash": run["case_hash"],
         "status": run["status"],
         "duration_ms": run["duration_ms"],
-        "runtime": "c2j 0.0.124 (33e2a4de4e99d3a577a38dca4b8de33d43a099ce)",
-        "baseline": "33f6474 plus adaptive2 changes in this checkout",
+        "runtime": runtime_version or "Not recorded by this export; consult the native run provenance.",
+        "baseline": baseline or "Not recorded by this export; consult the native run provenance.",
         "native_report": str(report),
         "review_forms": forms,
         "files": files,
@@ -100,5 +101,8 @@ if __name__ == "__main__":
     parser.add_argument("destination", type=Path)
     parser.add_argument("--producer-files", type=Path,
                         help="Untouched producer snapshot for bodies the native trace did not retain")
+    parser.add_argument("--baseline", help="Recipe revision used when the trial ran")
+    parser.add_argument("--runtime-version", help="c2j version used when the trial ran")
     args = parser.parse_args()
-    export(args.report, args.destination, args.producer_files)
+    export(args.report, args.destination, args.producer_files,
+           baseline=args.baseline, runtime_version=args.runtime_version)

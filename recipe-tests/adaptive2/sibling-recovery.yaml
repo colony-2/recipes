@@ -1,0 +1,43 @@
+schema_version: 2
+id: sibling-recovery
+sequence:
+- id: source
+  op: recipes.run
+  inputs:
+    recipes:
+    - cell_name: ${{ context.workflow.cell }}
+      name: prior-approval
+      inputs: {}
+    wait:
+      on: job
+      condition: complete
+- id: await_source
+  include: ../../recipes/adaptive/await-child.yaml
+  inputs:
+    job: ${{ sequence.source.outputs.job_ids[0] }}
+- id: submit_recovery
+  op: recipes.run
+  inputs:
+    recipes:
+    - cell_name: ${{ context.workflow.cell }}
+      name: build
+      inputs:
+        prompt: Continue the previously approved implementation. Do not repeat direction review.
+        resume_from: ${{ sequence.source.outputs.job_ids[0] }}
+        documents:
+          handoff.md:
+            kind: value
+            name: handoff.md
+            format: text
+            value: Implement candidate.txt according to the approved scope.
+          test-statements.md:
+            kind: value
+            name: test-statements.md
+            format: text
+            value: "# Tests\nCandidate behavior remains available."
+- id: wait_recovery
+  include: ../../recipes/adaptive/await-child.yaml
+  inputs:
+    job: ${{ sequence.submit_recovery.outputs.job_ids[0] }}
+outputs:
+  result: ${{ sequence.wait_recovery.outputs.result }}

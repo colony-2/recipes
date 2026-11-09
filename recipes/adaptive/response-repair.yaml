@@ -5,6 +5,9 @@ inputs:
   documents: ${{ inputs.documents }}
   session: ${{ inputs.?session.orValue({}) }}
   attempts: ${{ int(inputs.?attempts.orValue(0)) }}
+  limit: ${{ int(inputs.?limit.orValue(2)) }}
+  allowance: ${{ int(inputs.?allowance.orValue(2)) }}
+  request: ${{ inputs.?request.orValue('Complete the agreed consultation and provide a usable work report.') }}
 state:
   initial: prompts
   states:
@@ -12,8 +15,9 @@ state:
       include: ./prompts.yaml
       transitions:
       - to: automatic
-        when: inputs.attempts < 2 && size(inputs.turn.result.?session.orValue(inputs.session)) > 0 &&
-          size(inputs.turn.jobs.?job_ids.orValue([])) == 0
+        when: inputs.attempts < inputs.limit && size(inputs.turn.result.?session.orValue(inputs.session)) > 0 && size(inputs.turn.?jobs.orValue({}).?job_ids.orValue([])) == 0
+      - to: decision
+        when: size(inputs.turn.?jobs.orValue({}).?job_ids.orValue([])) == 0
       - to: recovery
         when: true
     automatic:
@@ -21,17 +25,33 @@ state:
     recovery:
       include: ./operational-failure.yaml
       inputs:
-        reason: "${{ 'Response correction exhausted or has no safe checkpoint: ' + jq(inputs.issues,'join(\"; \")') }}"
+        reason: "${{ 'The invalid report accompanied submitted child jobs. Inspect their outcomes before retrying: ' + jq(inputs.issues,'join(\"; \")') }}"
         documents: ${{
           jq([inputs.documents,inputs.turn.documents,inputs.turn.?repair_documents.orValue({}),{'error/previous-response.json':{'kind':'value','name':'error/previous-response.json','format':'json','value':inputs.turn.result.?response.orValue({})}
           }], 'add') }}
+        code: ADAPTIVE_RESPONSE_REPAIR_UNAVAILABLE
+    decision:
+      include: ../adaptive2/limit-decision.yaml
+      inputs:
+        request: ${{ inputs.request }}
+        summary: ${{ inputs.turn.result.?response.orValue({}).?reply.orValue('The returned report does not yet meet the requested contract.') }}
+        issues: ${{ inputs.issues }}
+        documents: ${{ jq([inputs.documents,inputs.turn.documents,inputs.turn.?repair_documents.orValue({})], 'add') }}
+        kind: correction
+        allowance: ${{ inputs.allowance }}
+        used: ${{ inputs.attempts - (inputs.limit - inputs.allowance) }}
+        can_resume: ${{ size(inputs.turn.result.?session.orValue(inputs.session)) > 0 }}
+        can_fresh: true
 outputs:
-  retry: true
+  retry: ${{ !state_exists('decision') || states.decision.outputs.action != 'stop' }}
   attempts: ${{ inputs.attempts+1 }}
-  session: ${{ inputs.turn.result.?session.orValue(inputs.session) }}
+  session: "${{ state_exists('decision') && states.decision.outputs.action == 'fresh' ? {} : inputs.turn.result.?session.orValue(inputs.session) }}"
   artifacts: ${{ inputs.turn.artifacts }}
-  documents: >-
-    ${{ jq([inputs.documents,inputs.turn.documents,inputs.turn.?repair_documents.orValue({}),{'error/response-corrections.md':{'kind':'value','name':'error/response-corrections.md','format':'text','value':jq(inputs.issues,'join("\n")')},'error/previous-response.json':{'kind':'value','name':'error/previous-response.json','format':'json','value':inputs.turn.result.?response.orValue({})}
-    }],'add') }}
+  documents: |-
+    ${{ jq([state_output('decision','documents',{}),jq([inputs.documents,inputs.turn.documents,inputs.turn.?repair_documents.orValue({}),{'error/response-corrections.md':{'kind':'value','name':'error/response-corrections.md','format':'text','value':jq(inputs.issues,'join("\n")')},'error/previous-response.json':{'kind':'value','name':'error/previous-response.json','format':'json','value':inputs.turn.result.?response.orValue({})} }],'add'),state_exists('decision') ? {'feedback/limit.md':{'kind':'value','name':'feedback/limit.md','format':'text','value':states.decision.outputs.direction} } : {}], 'add') }}
   prompt: ${{ states.prompts.outputs.repair.prompt }}
   base_hash: ${{ inputs.turn.?base_hash.orValue('') }}
+  limit: "${{ state_exists('decision') ? inputs.attempts + states.decision.outputs.allowance : inputs.limit }}"
+  allowance: ${{ state_output('decision','allowance',inputs.allowance) }}
+  review_receipts: ${{ state_output('decision','receipts',[]) }}
+  code: "${{ state_exists('decision') && states.decision.outputs.action == 'stop' ? 'ADAPTIVE_STOPPED_BY_USER' : '' }}"

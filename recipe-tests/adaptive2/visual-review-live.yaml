@@ -1,0 +1,73 @@
+schema_version: 2
+id: visual-live
+sequence:
+- id: capture
+  op: command_execution
+  inputs:
+    env:
+      OUTBOX: ${{ context.environment.op.outbox }}
+    run: |
+      set -eu
+      sed -i 's/#777/#1447c4/g' index.html
+      chromium --no-sandbox --disable-gpu --no-pdf-header-footer --hide-scrollbars --screenshot="$OUTBOX/phone.png" --window-size=390,844 "file://$PWD/index.html"
+      printf '# Button contrast\nThe Save button now uses a dark blue background and white text.\n\n![Phone view](phone.png)\n' > "$OUTBOX/implementation.md"
+      printf '# Test statements\n- VIS-1 [High] [integration; Chromium] [index.html] Save remains clearly readable on a 390-pixel phone layout.\n' > "$OUTBOX/test-statements.md"
+      printf '# Test results\nVIS-1: Chromium rendered the actual index.html at 390x844; inspect phone.png. Static fixture, no backend or production data.\n' > "$OUTBOX/test-results.md"
+- id: candidate
+  include: ../../recipes/adaptive/git-candidate.yaml
+- id: assess
+  include: ../../recipes/adaptive2/inspect.yaml
+  inputs:
+    role: assessment
+    request: Improve the Save button contrast on this static phone page. Preserve the layout. A screenshot of the implemented page is required.
+    documents: ${{ jq([{'phone.png':sequence.capture.artifacts['phone.png'],'implementation.md':sequence.capture.artifacts['implementation.md'],'test-results.md':sequence.capture.artifacts['test-results.md'],'test-statements.md':sequence.capture.artifacts['test-statements.md']}, sequence.candidate.outputs.documents],'add') }}
+- id: summarize
+  include: ../../recipes/adaptive2/inspect.yaml
+  inputs:
+    role: summary
+    request: Write a short merge review of the Save button contrast change. Include the actual phone screenshot. No production deployment or backend testing is part of this static page change.
+    documents: ${{ sequence.assess.outputs.documents }}
+    annotations: ${{ sequence.assess.outputs.annotations }}
+    required_documents:
+    - test-statements.md
+    - test-results.md
+    - assessment.md
+    - implementation.md
+    - merge-candidate.diff
+    - merge-candidate.json
+- id: review
+  include: ../../recipes/adaptive2/review.yaml
+  inputs:
+    title: Review Save button contrast on phones
+    overview: merge-review.md
+    brief: ${{ sequence.summarize.outputs.documents['merge-review.md'] }}
+    documents: ${{ sequence.summarize.outputs.documents }}
+    annotations: ${{ sequence.summarize.outputs.annotations }}
+    required_documents:
+    - test-statements.md
+    - test-results.md
+    - assessment.md
+    - implementation.md
+    - merge-candidate.diff
+    - merge-candidate.json
+    fields:
+    - id: decision
+      type: multiple_choice
+      question: Finish this local review trial?
+      required: true
+      options:
+      - value: done
+        label: Finish trial
+- id: retain_review_packet
+  op: command_execution
+  const: true
+  artifacts:
+    ./: ${{ sequence.review.outputs.documents }}
+  inputs:
+    run: test -s "$INBOX/phone.png"
+    env:
+      INBOX: ${{ context.environment.op.inbox }}
+outputs:
+  artifact_refs: ${{ sequence.review.outputs.documents }}
+  assessed: ${{ sequence.assess.outputs.approved }}
+  summary_approved: ${{ sequence.summarize.outputs.approved }}

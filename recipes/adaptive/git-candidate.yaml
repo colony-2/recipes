@@ -11,9 +11,11 @@ sequence:
     env:
       BASE: ${{ context.git.execution.base_hash }}
       OUTBOX: ${{ context.environment.op.outbox }}
+      APPROVED_CANDIDATE: ${{ json_stringify(inputs.approved_candidate) }}
+      INBOX: ${{ context.environment.op.inbox }}
     run: |
       python3 - <<'PY'
-      import hashlib, json, os, pathlib, subprocess
+      import hashlib, json, os, pathlib, subprocess, tempfile
       from urllib.parse import quote
       def git(*args):
           return subprocess.check_output(['git', *args])
@@ -28,14 +30,37 @@ sequence:
       # files. Raw records include paths, full before/after blob IDs, and modes;
       # changes to binary files, symlinks, and executable bits remain significant.
       change_digest = hashlib.sha256(git('diff', '--raw', '--no-abbrev', '--no-renames', '-z', base, head)).hexdigest()
-      candidate = {'base': base, 'head': head, 'files': files, 'job_url': job_url, 'change_digest': change_digest}
+      # Prove the candidate is the approved edit transplanted onto this base.
+      # A scratch index never changes the managed checkout or its index. Compare
+      # complete trees, preserving binary contents, paths, modes and deletions.
+      approved = json.loads(os.environ['APPROVED_CANDIDATE'])
+      equivalent = False
+      reason = 'No earlier approval was supplied.'
+      if approved:
+          if change_digest == approved.get('change_digest'):
+              equivalent, reason = True, 'The approved change records are identical.'
+          else:
+              try:
+                  patch = (pathlib.Path(os.environ['INBOX']) / 'approved-patch.diff').read_bytes()
+                  with tempfile.TemporaryDirectory(prefix='approved-patch-') as scratch:
+                      env = {**os.environ, 'GIT_INDEX_FILE': str(pathlib.Path(scratch) / 'index')}
+                      subprocess.run(['git', 'read-tree', base], env=env, check=True, capture_output=True)
+                      if patch:
+                          subprocess.run(['git', 'apply', '--cached', '--3way', '--whitespace=nowarn', '-'], input=patch, env=env, check=True, capture_output=True)
+                      tree = subprocess.check_output(['git', 'write-tree'], env=env).decode().strip()
+                      equivalent = tree == git('rev-parse', head + '^{tree}').decode().strip()
+                      reason = 'The approved patch on the new base produces the exact candidate tree.' if equivalent else 'The candidate contains changes beyond the approved patch on this base.'
+              except (subprocess.CalledProcessError, KeyError, OSError) as error:
+                  detail = getattr(error, 'stderr', b'') or str(error).encode()
+                  reason = 'Equivalence could not be established: ' + detail.decode(errors='replace')[:1000]
+      candidate = {'approval_equivalent': equivalent, 'approval_comparison': reason, 'base': base, 'head': head, 'files': files, 'job_url': job_url, 'change_digest': change_digest}
       outbox = pathlib.Path(os.environ['OUTBOX'])
       (outbox / 'merge-candidate.json').write_text(json.dumps(candidate, indent=2) + '\n')
-      (outbox / 'merge-candidate.diff').write_bytes(git('diff', '--binary', '--no-ext-diff', '--no-renames', base, head))
+      (outbox / 'merge-candidate.diff').write_bytes(git('diff', '--binary', '--full-index', '--no-ext-diff', '--no-renames', base, head))
       print(json.dumps(candidate))
       PY
   artifacts:
-    ./: ${{ jq([inputs.documents, inputs.evidence_documents], 'add') }}
+    ./: "${{ jq([inputs.documents, inputs.evidence_documents, inputs.approved_diff != null ? {'approved-patch.diff':jq([inputs.approved_diff,{'name':'approved-patch.diff'}],'add')} : {}], 'add') }}"
 outputs:
   candidate: ${{ json_parse(sequence.inspect_candidate_diff.outputs.stdout) }}
   documents: '${{ {''merge-candidate.json'': sequence.inspect_candidate_diff.artifacts[''merge-candidate.json''],
@@ -43,3 +68,5 @@ outputs:
 inputs:
   documents: ${{ inputs.?documents.orValue({}) }}
   evidence_documents: ${{ inputs.?evidence_documents.orValue({}) }}
+  approved_candidate: ${{ inputs.?approved_candidate.orValue({}) }}
+  approved_diff: ${{ inputs.?approved_diff.orValue(null) }}

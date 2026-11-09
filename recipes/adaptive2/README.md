@@ -59,9 +59,9 @@ The default consultation selector names adaptive2 and runs inline. Explicit
 change before submitting remote jobs that resolve the repository's `main` branch;
 existing jobs retain their captured recipes. Creation uses the existing workflow.
 
-Initial live documents are available for review. Reusing a parent's approval for
-a child brief, executing approved prerequisites during planning, and a complete
-live oversight/recovery/merge trial remain follow-up work in the assessment.
+Initial live documents are available for review. Approved recovery from a previous
+job in the same cell is now supported as described below. A consultation agreement
+or a different cell's approval does not replace this cell's direction review.
 
 ## Human replies and automatic limits
 
@@ -72,7 +72,8 @@ outcome, consultation, and package decisions. Reusing a saved response or an
 automatic package-policy decision does not renew it.
 
 `max_iterations` defaults to zero (disabled). A positive value limits consecutive
-automatic implementation work. Response correction still allows two retries;
+automatic implementation work. Reaching it asks for direction. Response correction
+starts with two retries and then asks for direction;
 unchanged operational blockers allow three correction turns. Consultations retain
 their per-round automatic limit. New human direction in nested advice also renews
 the suspended caller's round. Native Git retries remain bounded, with a new human
@@ -94,3 +95,67 @@ handoff directory; the recipe does not guess which scope to execute.
 
 See the [incident and plan](../../guides/adaptive2/PROPOSAL_AUTONOMOUS_TURN_LIMITS.md)
 and [implementation assessment](../../guides/adaptive2/turn-limits/implementation.md).
+
+## Review attachments and approved recovery
+
+Visible UI changes need screenshots of the implemented behavior, with relevant
+states and viewport sizes. The existing assessment checks applicability and sends
+missing or inadequate evidence to writable validation. Reuse applicable captures;
+a rebase alone does not make them stale. A nonvisual change or an explicit human
+exemption does not need a screenshot.
+
+The merge summary selects attachments explicitly. List every supporting file,
+including gallery images, directly in `merge-review.md`'s `source_paths`. Every
+local link in every selected Markdown or HTML document must resolve to a readable
+selected attachment. The same selector and link checker run during summary repair
+and final form assembly. They check images, documents and logs, including nested
+and reference-style links. Use plain code paths or external source URLs for code
+citations. Unrelated artifacts stay out of the review.
+
+To recover unchanged approved work, submit `resume_from: <previous-job-id>` with
+the receiver's settled `handoff.md`, `test-statements.md`, and selected recovery
+artifacts. Coordinating replacement submissions set this from `resume_from` or
+`replaces`; custom build recipes receiving replacements must accept that input.
+The recipe verifies the prior native direction decision and retrieves its original
+one-pager. A read-only assessment checks that the current assignment is covered.
+Only then does a fresh writable implementation session start. Missing approval,
+a different cell, or changed scope returns to ordinary direction review. Prior
+checks do not substitute for verification of the recovered candidate.
+
+Configure and run inherit the managed owner workspace. A recovered candidate is
+not replaced by an explicit selection of the cell's branch. The configure mutation
+guard and exact publication workspace remain in force.
+
+## Decisions after automatic work pauses
+
+An exhausted implementation allowance, or exhausted report correction in work,
+consultation or inspection, produces a short native review. It explains the goal,
+progress, blocker and saved work. A failed explanation step uses retained facts.
+The human can renew the current allowance, choose a larger finite allowance,
+choose a supported different approach, return a proposed scope change to planning,
+or stop. The recipe offers only actions supported by the current loop.
+
+An increase from two to four grants four **new** corrections; it does not grant
+two extra or four lifetime attempts. Each further exhausted round needs another
+decision. Grants expire after that correction episode or the next genuine human
+decision. Original receipts propagate through inline consultations and inspection;
+replaying one does not renew the budget. Correction stays read-only and never
+waives evidence or acceptance requirements. Missing session context offers a fresh
+read-only report attempt instead of an unsafe resume.
+
+Stop retains results and prevents publication. A stopped build or inspection ends
+as runtime `failed_app` with `ADAPTIVE_STOPPED_BY_USER`, meaning unfinished work,
+not delivery. An inline consultation returns `cancelled`, its retained artifacts,
+and the decision receipt to its caller. Separately running children are not
+implicitly cancelled; the decision says this. Parents receive a child's unfinished
+outcome and must not silently replace deliberately stopped work. Runtime deadlines
+remain separate from recipe allowances.
+
+Approval reuse after a rebase still requires verification. When raw change records
+differ, the recipe applies the original approved binary-capable diff to the new
+base in a scratch index and compares the complete result tree with the candidate.
+Identical trees reuse approval. Conflicts, missing evidence or extra changes retain
+the focused review. Modes and binary contents remain significant.
+
+See the [November 9 implementation assessment](../../guides/audits/2026-11-09/implementation.md)
+and [test results](../../guides/audits/2026-11-09/test-results.md).

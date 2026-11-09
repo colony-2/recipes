@@ -266,6 +266,9 @@ state:
                 documents: ${{ state_output('repair', 'documents', inputs.conversation.documents) }}
                 session: ${{ state_output('repair', 'session', vars.session) }}
                 attempts: ${{ state_output('repair', 'attempts', 0) }}
+                limit: ${{ state_output('repair','limit',2) }}
+                allowance: ${{ state_output('repair','allowance',2) }}
+                request: ${{ inputs.conversation.request }}
               transitions:
               - to: abandoned
                 when: '!outputs.retry'
@@ -300,6 +303,7 @@ state:
           turn: "${{ jq([states.collect.outputs.turn, state_exists('repair') ? {'repair_documents': states.repair.outputs.documents}
             : {}, state_exists('abandoned') ? {'repair_cancelled': true, 'artifacts': states.repair.outputs.artifacts}
             : {}], 'add') }}"
+          review_receipts: "${{ jq((state_exists('repair') ? states.repair.runs.map(r,r.outputs.review_receipts) + [states.repair.outputs.review_receipts] : []), 'flatten | unique_by(.request_id,.submission_id)') }}"
         id: exchange
         catch:
         - when: failure.kind != 'cancellation'
@@ -313,9 +317,12 @@ state:
                 documents: {}
                 artifacts: {}
                 jobs: {}
+                repair_cancelled: ${{ failure.code == 'ADAPTIVE_STOPPED_BY_USER' }}
+              review_receipts: []
       outputs:
         valid: ${{ sequence.exchange.outputs.valid }}
         turn: ${{ sequence.exchange.outputs.turn }}
+        review_receipts: ${{ sequence.exchange.outputs.review_receipts }}
       transitions:
       - to: record
         when: outputs.valid
@@ -388,7 +395,8 @@ state:
            'consultant_session': inputs.previous.next == 'consultant' ? inputs.turn.?checkpoint.orValue(inputs.previous.consultant_session) : inputs.previous.consultant_session,
            'documents': jq([inputs.previous.documents, inputs.turn.documents, inputs.turn.?repair_documents.orValue({})], 'add'),
            'pending_response': inputs.turn.result.?response.orValue({}),
-           'message': inputs.turn.result.?errorMessage.orValue('Consultation turn did not complete; no agreement accepted. Correct the request or environment.'),
+           'final_artifacts': jq([inputs.previous.documents, inputs.turn.documents, inputs.turn.?repair_documents.orValue({})], 'add'),
+           'message': inputs.turn.?repair_cancelled.orValue(false) ? 'The reviewer stopped this consultation. Saved work is retained; no agreement was accepted.' : inputs.turn.result.?errorMessage.orValue('Consultation turn did not complete; no agreement accepted. Correct the request or environment.'),
            'error': inputs.turn.?repair_cancelled.orValue(false) ? 'Result correction cancelled by the reviewer; no agreement accepted.' : inputs.turn.result.?errorMessage.orValue('Consultation turn did not complete; no agreement accepted.')
            }], 'add') }}
       transitions:
@@ -578,9 +586,7 @@ state:
         frame: ${{ transition.payload.frame }}
         parents: ${{ transition.payload.parents }}
         result: ${{ transition.payload.result }}
-        human_round: "${{ size(jq((state_exists('expert_record') ? states.expert_record.runs.map(r,r.outputs.receipt)
-          + [states.expert_record.outputs.receipt] : []), 'map(select(.submission_id? != null)) | unique_by(.request_id,
-          .submission_id)')) }}"
+        human_round: "${{ size(jq((state_exists('expert_record') ? states.expert_record.runs.map(r,r.outputs.receipt) + [states.expert_record.outputs.receipt] : []) + (state_exists('turn') ? states.turn.runs.map(r,r.outputs.review_receipts) + [states.turn.outputs.review_receipts] : []), 'flatten | map(select(.submission_id? != null)) | unique_by(.request_id, .submission_id)')) }}"
       sequence:
       - id: documents
         include: ../adaptive/document-bindings.yaml
@@ -684,10 +690,7 @@ state:
           && !states.turn.outputs.turn.result.response.?requests.orValue([]).exists(r,r.action == 'execute')
           && states.current.outputs.conversation.depth < 4
         payload:
-          frame: "${{ {'conversation':outputs.conversation,'participant':states.current.outputs.conversation.next,'requests':states.turn.outputs.turn.result.response.requests.filter(r,r.action
-            == 'consult'),'human_round':size(jq((state_exists('expert_record') ? states.expert_record.runs.map(r,r.outputs.receipt)
-            + [states.expert_record.outputs.receipt] : []), 'map(select(.submission_id? != null)) | unique_by(.request_id,
-            .submission_id)')),'index':0} }}"
+          frame: "${{ {'conversation':outputs.conversation,'participant':states.current.outputs.conversation.next,'requests':states.turn.outputs.turn.result.response.requests.filter(r,r.action == 'consult'),'human_round':size(jq((state_exists('expert_record') ? states.expert_record.runs.map(r,r.outputs.receipt) + [states.expert_record.outputs.receipt] : []) + (state_exists('turn') ? states.turn.runs.map(r,r.outputs.review_receipts) + [states.turn.outputs.review_receipts] : []), 'flatten | map(select(.submission_id? != null)) | unique_by(.request_id, .submission_id)')),'index':0} }}"
           parents: ${{ states.current.outputs.parents }}
       - to: current
         when: true
@@ -715,7 +718,6 @@ outputs:
   execution_requests: ${{ states.publish.outputs.conversation.?execution_requests.orValue([]) }}
   handoff: ${{ states.publish.outputs.conversation.?handoff.orValue('') }}
   work_kind: ${{ states.publish.outputs.conversation.?work_kind.orValue('') }}
-  review_receipts: "${{ (state_exists('expert_record') ? states.expert_record.runs.map(r,r.outputs.receipt) + [states.expert_record.outputs.receipt]
-    : []) }}"
+  review_receipts: "${{ jq((state_exists('expert_record') ? states.expert_record.runs.map(r,r.outputs.receipt) + [states.expert_record.outputs.receipt] : []) + (state_exists('turn') ? states.turn.runs.map(r,r.outputs.review_receipts) + [states.turn.outputs.review_receipts] : []), 'flatten | map(select(.submission_id? != null)) | unique_by(.request_id,.submission_id)') }}"
   failure_code: "${{ states.publish.outputs.conversation.outcome == 'failed' ? states.publish.outputs.conversation.?failure_code.orValue('')
     : '' }}"

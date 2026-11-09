@@ -32,9 +32,6 @@ sequence:
       MAX_ITERATIONS: ${{ string(inputs.max_iterations) }}
 - id: configure
   include: ./hook-configure.yaml
-  workspace:
-    cell: ${{ context.workflow.cell }}
-    ref: ${{ context.git.ref }}
   inputs:
     request: ${{ inputs.prompt }}
     target_directory: ${{ inputs.target_directory }}
@@ -51,29 +48,21 @@ sequence:
       ok:
         sequence: []
       invalid:
-        id: invalid_configuration
-        op: command_execution
+        include: ./operational-failure.yaml
         inputs:
-          run: exit 1
-        catch:
-        - when: true
-          fail:
-            code: BUILD_CONFIGURATION_INVALID
-            message: Configuration hook failed.
+          code: BUILD_CONFIGURATION_INVALID
+          reason: ${{ inputs.reason }}
+          documents: ${{ inputs.documents }}
   inputs:
     status: "${{ size(sequence.configure.outputs.settings.consultations.map(c, c.key)) == size(jq(sequence.configure.outputs.settings.consultations,
       'map(.key) | unique')) ? sequence.configure.outputs.result.status : 'failed' }}"
+    reason: "${{ sequence.configure.outputs.result.status == 'failed' ? sequence.configure.outputs.result.summary : 'Configure hook declared duplicate consultation keys.' }}"
+    documents: ${{ sequence.configure.outputs.artifact_refs }}
 - id: classify
   include: ./classify.yaml
-  workspace:
-    cell: ${{ context.workflow.cell }}
-    ref: ${{ context.git.ref }}
   inputs:
     request: ${{ inputs.prompt }}
 - id: run
-  workspace:
-    cell: ${{ context.workflow.cell }}
-    ref: ${{ context.git.ref }}
   inputs:
     annotations: ${{ inputs.annotations }}
     prompt: ${{ inputs.prompt }}

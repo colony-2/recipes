@@ -1,0 +1,40 @@
+schema_version: 2
+id: approved-recovery
+sequence:
+- id: source
+  op: recipes.run
+  inputs:
+    recipes:
+    - cell_name: ${{ context.workflow.cell }}
+      name: prior-approval
+      inputs: {}
+    wait:
+      on: job
+      condition: complete
+- id: await_source
+  include: ../../recipes/adaptive/await-child.yaml
+  inputs:
+    job: ${{ sequence.source.outputs.job_ids[0] }}
+- id: seed_candidate
+  op: command_execution
+  inputs:
+    run: printf 'Recovered candidate\n' > seed.txt
+- id: build
+  include: ../../build.yaml
+  inputs:
+    prompt: Continue the previously approved implementation. Do not repeat direction review.
+    resume_from: ${{ sequence.source.outputs.job_ids[0] }}
+    documents:
+      handoff.md:
+        kind: value
+        name: handoff.md
+        format: text
+        value: Implement candidate.txt according to the approved scope.
+      test-statements.md:
+        kind: value
+        name: test-statements.md
+        format: text
+        value: "# Tests\nCandidate behavior remains available."
+outputs:
+  merged: ${{ sequence.build.outputs.merged }}
+  reviews: ${{ sequence.build.outputs.reviews }}

@@ -1,31 +1,58 @@
 recipe: response-repair.yaml
 cases:
-- id: adaptive-response-repair-exhausted
+- id: exhausted-correction-continues
   type: integration_case
   inputs:
     attempts: 2
+    checkpoint: true
   mocks:
     ops:
     - &id001
       match:
-        op: command_execution
+        selector: nix:github:colony-2/c2ops/published#codex
       behavior:
-        mode: passthrough
-      repeat: true
-  runtime: {}
+        mode: return
+        outputs:
+          status: failed
+          output_schema_valid: false
+          errorMessage: Explanation unavailable
+  runtime:
+    responses:
+    - node_path: response-repair-probe/correction/correction/adaptive2-response-repair/decision/decision/adaptive2-limit-decision/ask/sequence/review/adaptive2-review/request_human_review
+      fields:
+        action: increase
   assertions:
   - type: cel_true
-    expr: 'outputs.result.failed && outputs.result.code == "ADAPTIVE_RESPONSE_REPAIR_EXHAUSTED" && outputs.result.cause.message.contains("Two
-      automatic response corrections did not resolve: Missing response artifacts") && reviews.size() == 0'
-- id: adaptive-response-repair-unavailable
+    expr: outputs.result.retry && outputs.result.allowance == 4 && outputs.result.limit == 6 && size(outputs.result.review_receipts) == 1
+- id: missing-checkpoint-rebuilds-report
   type: integration_case
   inputs:
     attempts: 0
+    checkpoint: false
   mocks:
     ops:
     - *id001
-  runtime: {}
+  runtime:
+    responses:
+    - node_path: response-repair-probe/correction/correction/adaptive2-response-repair/decision/decision/adaptive2-limit-decision/ask/sequence/review/adaptive2-review/request_human_review
+      fields:
+        action: fresh
   assertions:
   - type: cel_true
-    expr: 'outputs.result.failed && outputs.result.code == "ADAPTIVE_RESPONSE_REPAIR_UNAVAILABLE" && outputs.result.cause.message.contains("Response
-      correction cannot safely resume this task: Missing response artifacts") && reviews.size() == 0'
+    expr: outputs.result.retry && size(outputs.result.session) == 0 && size(outputs.result.review_receipts) == 1
+- id: submitted-side-effects-do-not-get-blind-retry
+  type: integration_case
+  inputs:
+    submitted_children: true
+    attempts: 2
+  runtime: {}
+  mocks:
+    ops:
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.result.failed && outputs.result.code=="ADAPTIVE_RESPONSE_REPAIR_UNAVAILABLE" && size(reviews)==0

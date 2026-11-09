@@ -15,6 +15,7 @@ inputs:
   create_recipe: ${{ inputs.create_recipe }}
   require_verification: ${{ inputs.require_verification }}
   max_iterations: ${{ inputs.max_iterations }}
+  resume_from: ${{ inputs.?resume_from.orValue('') }}
 sequence:
 - id: initial_candidate
   op: command_execution
@@ -32,9 +33,6 @@ sequence:
       MAX_ITERATIONS: ${{ string(inputs.max_iterations) }}
 - id: configure
   include: ../adaptive/hook-configure.yaml
-  workspace:
-    cell: ${{ context.workflow.cell }}
-    ref: ${{ context.git.ref }}
   inputs:
     request: ${{ inputs.prompt }}
     target_directory: ${{ inputs.target_directory }}
@@ -51,22 +49,17 @@ sequence:
       ok:
         sequence: []
       invalid:
-        id: invalid_configuration
-        op: command_execution
+        include: ../adaptive/operational-failure.yaml
         inputs:
-          run: exit 1
-        catch:
-        - when: true
-          fail:
-            code: BUILD_CONFIGURATION_INVALID
-            message: Configuration hook failed.
+          code: BUILD_CONFIGURATION_INVALID
+          reason: ${{ inputs.reason }}
+          documents: ${{ inputs.documents }}
   inputs:
     status: "${{ size(sequence.configure.outputs.settings.consultations.map(c, c.key)) == size(jq(sequence.configure.outputs.settings.consultations,
       'map(.key) | unique')) ? sequence.configure.outputs.result.status : 'failed' }}"
+    reason: "${{ sequence.configure.outputs.result.status == 'failed' ? sequence.configure.outputs.result.summary : 'Configure hook declared duplicate consultation keys.' }}"
+    documents: ${{ sequence.configure.outputs.artifact_refs }}
 - id: run
-  workspace:
-    cell: ${{ context.workflow.cell }}
-    ref: ${{ context.git.ref }}
   inputs:
     annotations: ${{ inputs.annotations }}
     prompt: ${{ inputs.prompt }}
@@ -84,6 +77,7 @@ sequence:
     max_iterations: ${{ inputs.max_iterations }}
     prompt_additions: ${{ sequence.configure.outputs.settings.prompt_additions }}
     consultations: ${{ sequence.configure.outputs.settings.consultations }}
+    resume_from: ${{ inputs.resume_from }}
   include: ./develop.yaml
 outputs:
   annotations: ${{ sequence.run.outputs.annotations }}

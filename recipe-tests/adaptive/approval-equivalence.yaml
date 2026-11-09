@@ -1,0 +1,53 @@
+schema_version: 2
+id: equivalence-probe
+input_schema:
+  extra:
+    type: string
+    default_value: ''
+inputs:
+  extra: ${{ inputs.extra }}
+sequence:
+- id: edit
+  op: command_execution
+  inputs:
+    run: |
+      sed -i 's/original/corrected/' candidate.txt
+      printf 'approved binary\000bytes' > image.bin
+- id: approved
+  include: ../../recipes/adaptive/git-candidate.yaml
+- id: advance
+  op: command_execution
+  const: true
+  inputs:
+    run: |
+      set -eu
+      repo=$(git remote get-url origin)
+      sed -i 's/Neighboring test name/Renamed upstream test/' "$repo/candidate.txt"
+      git -C "$repo" add candidate.txt
+      git -C "$repo" commit -m "Change neighboring upstream context"
+      git -C "$repo" rev-parse HEAD
+- id: rebase
+  op: rebase
+  inputs:
+    target_base_hash: ${{ jq(sequence.advance.outputs.stdout, 'split("\\n") | map(select(length>0)) | last') }}
+- id: extra
+  op: command_execution
+  inputs:
+    env:
+      CHANGE: ${{ inputs.extra }}
+    run: |
+      set -eu
+      case "$CHANGE" in
+       mode) chmod +x candidate.txt ;;
+       binary) printf 'different binary\000bytes' > image.bin ;;
+       behavior) sed -i 's/corrected/different behavior/' candidate.txt ;;
+       *) : ;;
+      esac
+- id: compare
+  include: ../../recipes/adaptive/git-candidate.yaml
+  inputs:
+    approved_candidate: ${{ sequence.approved.outputs.candidate }}
+    approved_diff: ${{ sequence.approved.outputs.documents['merge-candidate.diff'] }}
+outputs:
+  candidate: ${{ sequence.compare.outputs.candidate }}
+  old: ${{ sequence.approved.outputs.candidate }}

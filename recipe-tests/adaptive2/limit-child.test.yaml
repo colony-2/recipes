@@ -1,0 +1,82 @@
+recipe: limit-child.yaml
+cases:
+- id: child-awaits-limit-continue
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          PURPOSE.md: Own the importer.
+        file_sources: &id001
+          .c2/recipes/limit-child.yaml: limit-child-source.yaml
+          .c2/recipes/adaptive2/limit-decision.yaml: ../../recipes/adaptive2/limit-decision.yaml
+          .c2/recipes/adaptive2/prompts.yaml: ../../recipes/adaptive2/prompts.yaml
+          .c2/recipes/adaptive2/agent-turn.yaml: ../../recipes/adaptive2/agent-turn.yaml
+          .c2/recipes/adaptive/artifact-result.yaml: ../../recipes/adaptive/artifact-result.yaml
+          .c2/recipes/adaptive/artifact-annotations.yaml: ../../recipes/adaptive/artifact-annotations.yaml
+          .c2/recipes/adaptive2/review.yaml: ../../recipes/adaptive2/review.yaml
+          .c2/recipes/adaptive2/review-selection.yaml: ../../recipes/adaptive2/review-selection.yaml
+          .c2/recipes/adaptive2/review-links.yaml: ../../recipes/adaptive2/review-links.yaml
+          .c2/recipes/adaptive/operational-failure.yaml: ../../recipes/adaptive/operational-failure.yaml
+    responses:
+    - node_path: child-limit/decision/decision/adaptive2-limit-decision/ask/sequence/review/adaptive2-review/request_human_review
+      fields:
+        action: continue
+  mocks:
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: failed
+          errorMessage: Explanation unavailable
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: size(reviews)==1 && calls.filter(c,c.op=="recipes.run").size()==1
+  - type: output_equals
+    path: child.status
+    value: completed
+  - type: output_equals
+    path: runtime_status
+    value: success
+- id: child-awaits-limit-stop
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          PURPOSE.md: Own the importer.
+        file_sources: *id001
+    responses:
+    - node_path: child-limit/decision/decision/adaptive2-limit-decision/ask/sequence/review/adaptive2-review/request_human_review
+      fields:
+        action: stop
+  mocks:
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: failed
+          errorMessage: Explanation unavailable
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: size(reviews)==1 && calls.filter(c,c.op=="recipes.run").size()==1
+  - type: output_equals
+    path: child.status
+    value: failed
+  - type: output_equals
+    path: runtime_status
+    value: failed_app

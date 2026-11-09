@@ -1,0 +1,42 @@
+id: adaptive2-review-selection
+inputs:
+  title: ${{ inputs.title }}
+  documents: ${{ inputs.documents }}
+  fields: ${{ inputs.fields }}
+  annotations: ${{ inputs.?annotations.orValue([]) }}
+  summary: ${{ inputs.?summary.orValue('') }}
+  overview: ${{ inputs.overview }}
+  brief: ${{ inputs.?brief.orValue(null) }}
+  required_documents: ${{ inputs.?required_documents.orValue([]) }}
+sequence:
+- id: select
+  sequence: []
+  outputs:
+    documents: ${{
+      jq({'overview':inputs.overview,'brief':inputs.brief,'documents':inputs.documents,'annotations':inputs.annotations,'required':inputs.required_documents,'title':inputs.title,'summary':inputs.summary,'fields':inputs.fields},
+      vars.selection) }}
+  inputs:
+    overview: ${{ inputs.overview }}
+    brief: ${{ inputs.brief }}
+    documents: ${{ inputs.documents }}
+    annotations: ${{ inputs.annotations }}
+    required_documents: ${{ inputs.required_documents }}
+    title: ${{ inputs.title }}
+    summary: ${{ inputs.summary }}
+    fields: ${{ inputs.fields }}
+vars:
+  selection: |
+    . as $v |
+      ($v.brief // {kind:"value",name:$v.overview,format:"text",
+        value:("# " + $v.title + "\n\n## Decision\n\n" +
+          ($v.fields | map(select(.id != "annotations" and .id != "feedback") | .question) | join("\n\n")) +
+          "\n\n## Context\n\n" + $v.summary)}) as $brief |
+      ($v.annotations | map(select(.id == $v.overview and (.ref|del(.name)) == ($brief|del(.name)))) |
+        map(.sources // []) | add // [] |
+        map(select(type == "object" and (.id | type) == "string") |
+              select(.id as $id | $v.documents | has($id)) |
+              select(($v.documents[.id]|del(.name)) == (.ref|del(.name))) | .id)) as $sources |
+      ($v.documents | with_entries(select(.key as $k | ($v.required + $sources) | index($k)))) +
+      {($v.overview):($brief + {name:$v.overview})}
+outputs:
+  documents: ${{ sequence.select.outputs.documents }}

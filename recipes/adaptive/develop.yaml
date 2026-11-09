@@ -73,7 +73,24 @@ state:
         base_documents: ${{ transition.payload.?base_documents.orValue(transition.payload.documents) }}
         repair_attempts: ${{ transition.payload.?repair_attempts.orValue(0) }}
         request_prefix: "${{ 'request-' + string(state_exists('work') ? size(states.work.runs) + 1 : 0) }}"
-      sequence: []
+        receipts: "${{ (state_exists('questions') ? states.questions.runs.map(r,r.outputs.response.receipt) + [states.questions.outputs.response.receipt] : []) + (state_exists('accept') ? states.accept.runs.map(r,r.outputs.response.receipt) + [states.accept.outputs.response.receipt] : []) + (state_exists('packages') ? states.packages.runs.map(r,r.outputs.review_receipts) + [states.packages.outputs.review_receipts] : []) + (state_exists('coordinate') ? states.coordinate.runs.map(r,r.outputs.review_receipts) + [states.coordinate.outputs.review_receipts] : []) + (state_exists('autonomous_limit') ? states.autonomous_limit.runs.map(r,r.outputs.review_receipts) + [states.autonomous_limit.outputs.review_receipts] : []) + (state_exists('response_repair_exhausted') ? states.response_repair_exhausted.runs.map(r,r.outputs.review_receipts) + [states.response_repair_exhausted.outputs.review_receipts] : []) + (state_exists('assessment') ? states.assessment.runs.map(r,r.outputs.review_receipts) + [states.assessment.outputs.review_receipts] : []) + (state_exists('accounting') ? states.accounting.runs.map(r,r.outputs.review_receipts) + [states.accounting.outputs.review_receipts] : []) }}"
+        work: "${{ state_exists('work') ? (states.work.runs.map(r,r.outputs) + [states.work.outputs]).map(w, {'phase':w.phase,'assignment':w.assignment,'next':w.next,'human_round':w.human_round,'human_reply':w.human_reply}) : [] }}"
+        limit: ${{ inputs.max_iterations }}
+        override_allowance: ${{ state_output('autonomous_limit','allowance',0) }}
+        override_round: ${{ state_output('autonomous_limit','human_round',-1) }}
+        repair_limit: ${{ transition.payload.?repair_limit.orValue(2) }}
+        repair_allowance: ${{ transition.payload.?repair_allowance.orValue(2) }}
+      sequence:
+      - id: budget
+        include: ../adaptive2/autonomous-budget.yaml
+        inputs:
+          receipts: ${{ inputs.receipts }}
+          work: ${{ inputs.work }}
+          phase: ${{ inputs.phase }}
+          assignment: ${{ inputs.assignment }}
+          limit: ${{ inputs.limit }}
+          override_allowance: ${{ inputs.override_allowance }}
+          override_round: ${{ inputs.override_round }}
       outputs:
         phase: ${{ inputs.phase }}
         session: ${{ inputs.session }}
@@ -85,12 +102,16 @@ state:
         base_documents: ${{ inputs.base_documents }}
         repair_attempts: ${{ inputs.repair_attempts }}
         request_prefix: ${{ inputs.request_prefix }}
+        human_round: ${{ sequence.budget.outputs.human_round }}
+        human_reply: ${{ sequence.budget.outputs.human_reply }}
+        used: ${{ sequence.budget.outputs.used }}
+        exhausted: ${{ sequence.budget.outputs.exhausted }}
+        limit: ${{ sequence.budget.outputs.limit }}
+        repair_limit: ${{ inputs.repair_limit }}
+        repair_allowance: ${{ inputs.repair_allowance }}
       transitions:
-      - to: iteration_limit
-        when: "int(inputs.max_iterations) > 0 && (state_exists('work') ? size(states.work.runs.filter(r,r.outputs.phase
-          == 'implement' && !(r.outputs.next in ['coordinate','blocked','wait']) && r.outputs.assignment != 'repair'))
-          + (states.work.outputs.phase == 'implement' && !(states.work.outputs.next in ['coordinate','blocked','wait'])
-          && states.work.outputs.assignment != 'repair' ? 1 : 0) : 0) >= int(inputs.max_iterations)"
+      - to: autonomous_limit
+        when: outputs.exhausted
         payload:
           documents: ${{ outputs.documents }}
           annotations: ${{ outputs.annotations }}
@@ -114,6 +135,8 @@ state:
           ? jq(states.work.runs.map(r,r.outputs.child_results) + [states.work.outputs.child_results],'add').map(r,{'action':'await','job_id':r.job_id,'result':r})
           : []) + (state_exists('wait_children') ? jq(states.wait_children.runs.map(r,r.outputs.results) + [states.wait_children.outputs.results],'add').map(r,{'action':'await','job_id':r.job_id,'result':r})
           : [])).exists(h,h.action == 'await' && h.job_id == j)) }}"
+        human_round: ${{ states.dispatch.outputs.human_round }}
+        human_reply: ${{ states.dispatch.outputs.human_reply }}
       sequence:
       - id: agent
         include: ./agent.yaml
@@ -151,6 +174,8 @@ state:
         phase: ${{ inputs.phase }}
         next: ${{ sequence.agent.outputs.turn.result.?response.orValue({}).?next.orValue('') }}
         child_documents: ${{ sequence.children.outputs.documents }}
+        human_round: ${{ inputs.human_round }}
+        human_reply: ${{ inputs.human_reply }}
       transitions:
       - to: record
         when: true
@@ -405,6 +430,7 @@ state:
         annotations: ${{ sequence.coordinate.outputs.annotations }}
         records: ${{ sequence.coordinate.outputs.records }}
         issues: ${{ sequence.coordinate.outputs.issues }}
+        review_receipts: ${{ sequence.coordinate.outputs.review_receipts }}
       transitions:
       - to: repair
         when: '!outputs.valid'
@@ -469,6 +495,7 @@ state:
           jq([inputs.documents,sequence.review.outputs.response.?artifact_refs.orValue({}),sequence.feedback.outputs.documents],
           'add') }}
         annotations: ${{ inputs.annotations }}
+        response: ${{ sequence.review.outputs.response }}
       transitions:
       - to: dispatch
         when: true
@@ -506,6 +533,7 @@ state:
         candidate: ${{ inputs.candidate }}
         next: ${{ sequence.assess.outputs.next }}
         previous_candidate: ${{ inputs.previous_candidate }}
+        review_receipts: ${{ sequence.assess.outputs.review_receipts }}
       transitions:
       - to: dispatch
         when: outputs.next == 'intervention' && outputs.previous_candidate != outputs.candidate.head
@@ -571,6 +599,7 @@ state:
         commit_message: ${{
           jq([sequence.review.outputs.response.subject,sequence.review.outputs.response.summary,inputs.candidate.job_url],
           'join([10,10] | implode)') }}
+        review_receipts: ${{ sequence.review.outputs.review_receipts }}
       transitions:
       - to: accept
         when: outputs.approved
@@ -832,17 +861,19 @@ state:
         annotations: ${{ transition.payload.annotations }}
         agent_artifacts: ${{ states.verify.outputs.agent_artifacts }}
         reviewed_candidate: ${{ states.accept.outputs.candidate }}
+        approved_diff: ${{ states.accept.outputs.documents['merge-candidate.diff'] }}
       sequence:
       - id: candidate
         include: ./git-candidate.yaml
         inputs:
           documents: ${{ inputs.documents }}
           evidence_documents: ${{ inputs.agent_artifacts }}
+          approved_candidate: ${{ inputs.reviewed_candidate }}
+          approved_diff: ${{ inputs.approved_diff }}
       outputs:
         candidate: ${{ sequence.candidate.outputs.candidate }}
         documents: ${{ jq([inputs.documents,sequence.candidate.outputs.documents], 'add') }}
-        reusable: ${{ size(sequence.candidate.outputs.candidate.files) == 0 ||
-          sequence.candidate.outputs.candidate.change_digest == inputs.reviewed_candidate.change_digest }}
+        reusable: ${{ size(sequence.candidate.outputs.candidate.files) == 0 || sequence.candidate.outputs.candidate.approval_equivalent }}
         annotations: ${{ inputs.annotations }}
       transitions:
       - to: stopped
@@ -1072,6 +1103,8 @@ state:
         assignment: ${{ states.dispatch.outputs.assignment }}
         base_documents: ${{ states.dispatch.outputs.base_documents }}
         repair_attempts: ${{ states.dispatch.outputs.repair_attempts }}
+        repair_limit: ${{ states.dispatch.outputs.repair_limit }}
+        repair_allowance: ${{ states.dispatch.outputs.repair_allowance }}
       sequence:
       - id: errors
         include: ./error-documents.yaml
@@ -1088,9 +1121,12 @@ state:
         retained_artifacts: ${{ inputs.turn.artifacts }}
         attempts: ${{ inputs.repair_attempts + 1 }}
         annotations: ${{ inputs.annotations }}
+        issues: ${{ inputs.issues }}
+        repair_limit: ${{ inputs.repair_limit }}
+        repair_allowance: ${{ inputs.repair_allowance }}
       transitions:
-      - to: iteration_limit
-        when: outputs.attempts > 2
+      - to: response_repair_exhausted
+        when: outputs.attempts > outputs.repair_limit
         payload:
           assignment: repair
           session: ${{ outputs.session }}
@@ -1099,6 +1135,9 @@ state:
           retained_artifacts: ${{ outputs.retained_artifacts }}
           documents: ${{ outputs.documents }}
           annotations: ${{ outputs.annotations }}
+          repair_limit: ${{ outputs.repair_limit }}
+          repair_allowance: ${{ outputs.repair_allowance }}
+          issues: ${{ outputs.issues }}
       - to: dispatch
         when: true
         payload:
@@ -1110,14 +1149,9 @@ state:
           repair_attempts: ${{ outputs.attempts }}
           documents: ${{ outputs.documents }}
           annotations: ${{ outputs.annotations }}
-    iteration_limit:
-      include: ./operational-failure.yaml
-      inputs:
-        reason: The explicitly configured implementation-turn cap or response-correction limit was reached.
-          Preserve the work and report the unmet need to the parent; a new attempt starts from the normal cell
-          state.
-        documents: ${{ jq([transition.payload.documents,transition.payload.?evidence_documents.orValue({})],'add')
-          }}
+          repair_limit: ${{ outputs.repair_limit }}
+          repair_allowance: ${{ outputs.repair_allowance }}
+          issues: ${{ outputs.issues }}
     intervention:
       include: ./operational-failure.yaml
       inputs:
@@ -1145,6 +1179,7 @@ state:
         annotations: ${{ inputs.annotations }}
         decision: ${{ sequence.request.outputs.decision }}
         errors: ${{ sequence.request.outputs.errors }}
+        review_receipts: ${{ [sequence.request.outputs.review.?receipt.orValue({})] }}
       transitions:
       - to: dispatch
         when: true
@@ -1274,6 +1309,157 @@ state:
         payload:
           documents: ${{ outputs.documents }}
           annotations: ${{ outputs.annotations }}
+    autonomous_limit:
+      inputs:
+        phase: ${{ states.dispatch.outputs.phase }}
+        session: ${{ states.dispatch.outputs.session }}
+        assignment: ${{ states.dispatch.outputs.assignment }}
+        base_documents: ${{ states.dispatch.outputs.base_documents }}
+        evidence_documents: ${{ states.dispatch.outputs.evidence_documents }}
+        retained_artifacts: ${{ states.dispatch.outputs.retained_artifacts }}
+        repair_attempts: ${{ states.dispatch.outputs.repair_attempts }}
+        repair_limit: ${{ states.dispatch.outputs.repair_limit }}
+        repair_allowance: ${{ states.dispatch.outputs.repair_allowance }}
+        human_round: ${{ states.dispatch.outputs.human_round }}
+        documents: ${{ transition.payload.documents }}
+        annotations: ${{ transition.payload.annotations }}
+        request: ${{ inputs.prompt }}
+        summary: ${{ state_output('work','turn.result.response.summary','No usable progress summary is available.') }}
+        pending_jobs: ${{ state_output('record','pending_jobs',[]) }}
+        allowance: ${{ states.dispatch.outputs.limit }}
+        used: ${{ states.dispatch.outputs.used }}
+        issues: []
+      sequence:
+      - id: decision
+        include: ../adaptive2/limit-decision.yaml
+        inputs:
+          request: ${{ inputs.request }}
+          summary: ${{ inputs.summary }}
+          issues: ${{ inputs.issues }}
+          documents: ${{ inputs.documents }}
+          allowance: ${{ inputs.allowance }}
+          used: ${{ inputs.used }}
+          pending_jobs: ${{ inputs.pending_jobs }}
+          kind: implementation
+          can_resume: true
+          can_fresh: true
+          allow_scope: true
+      outputs:
+        phase: ${{ inputs.phase }}
+        session: "${{ sequence.decision.outputs.action == 'fresh' ? {} : inputs.session }}"
+        assignment: ${{ inputs.assignment }}
+        base_documents: ${{ inputs.base_documents }}
+        evidence_documents: ${{ inputs.evidence_documents }}
+        retained_artifacts: ${{ inputs.retained_artifacts }}
+        repair_attempts: ${{ inputs.repair_attempts }}
+        repair_limit: ${{ inputs.repair_limit }}
+        repair_allowance: ${{ inputs.repair_allowance }}
+        human_round: ${{ inputs.human_round + size(sequence.decision.outputs.receipts) }}
+        annotations: ${{ inputs.annotations }}
+        documents: ${{ jq([inputs.documents,sequence.decision.outputs.documents, {'feedback/limit.md':{'kind':'value','name':'feedback/limit.md','format':'text','value':sequence.decision.outputs.direction} }],'add') }}
+        action: ${{ sequence.decision.outputs.action }}
+        allowance: ${{ sequence.decision.outputs.allowance }}
+        review_receipts: ${{ sequence.decision.outputs.receipts }}
+      transitions:
+      - to: human_stopped
+        when: outputs.action == 'stop'
+        payload:
+          documents: ${{ outputs.documents }}
+      - to: design_next
+        when: outputs.action == 'scope'
+        payload:
+          documents: ${{ outputs.documents }}
+          annotations: ${{ outputs.annotations }}
+      - to: dispatch
+        when: true
+        payload:
+          phase: ${{ outputs.phase }}
+          session: ${{ outputs.session }}
+          assignment: ${{ outputs.assignment }}
+          base_documents: ${{ outputs.base_documents }}
+          evidence_documents: ${{ outputs.evidence_documents }}
+          retained_artifacts: ${{ outputs.retained_artifacts }}
+          repair_attempts: ${{ outputs.repair_attempts }}
+          repair_limit: ${{ outputs.repair_limit }}
+          repair_allowance: ${{ outputs.repair_allowance }}
+          documents: ${{ outputs.documents }}
+          annotations: ${{ outputs.annotations }}
+    response_repair_exhausted:
+      inputs:
+        phase: ${{ states.dispatch.outputs.phase }}
+        session: ${{ states.repair.outputs.session }}
+        assignment: repair
+        base_documents: ${{ states.repair.outputs.base_documents }}
+        evidence_documents: ${{ states.repair.outputs.error_documents }}
+        retained_artifacts: ${{ states.repair.outputs.retained_artifacts }}
+        repair_attempts: ${{ states.repair.outputs.attempts }}
+        repair_limit: ${{ states.dispatch.outputs.repair_limit }}
+        repair_allowance: ${{ states.dispatch.outputs.repair_allowance }}
+        human_round: ${{ states.dispatch.outputs.human_round }}
+        documents: ${{ transition.payload.documents }}
+        annotations: ${{ transition.payload.annotations }}
+        request: ${{ inputs.prompt }}
+        summary: ${{ state_output('work','turn.result.response.summary','No usable progress summary is available.') }}
+        pending_jobs: ${{ state_output('record','pending_jobs',[]) }}
+        allowance: ${{ states.dispatch.outputs.repair_allowance }}
+        used: ${{ states.repair.outputs.attempts - 1 - (states.dispatch.outputs.repair_limit - states.dispatch.outputs.repair_allowance) }}
+        issues: ${{ states.repair.outputs.issues }}
+      sequence:
+      - id: decision
+        include: ../adaptive2/limit-decision.yaml
+        inputs:
+          request: ${{ inputs.request }}
+          summary: ${{ inputs.summary }}
+          issues: ${{ inputs.issues }}
+          documents: ${{ inputs.documents }}
+          allowance: ${{ inputs.allowance }}
+          used: ${{ inputs.used }}
+          pending_jobs: ${{ inputs.pending_jobs }}
+          kind: correction
+          can_resume: ${{ size(inputs.session) > 0 }}
+          can_fresh: true
+          allow_scope: false
+      outputs:
+        phase: ${{ inputs.phase }}
+        session: "${{ sequence.decision.outputs.action == 'fresh' ? {} : inputs.session }}"
+        assignment: ${{ inputs.assignment }}
+        base_documents: ${{ inputs.base_documents }}
+        evidence_documents: ${{ inputs.evidence_documents }}
+        retained_artifacts: ${{ inputs.retained_artifacts }}
+        repair_attempts: ${{ inputs.repair_attempts }}
+        repair_limit: ${{ inputs.repair_attempts - 1 + sequence.decision.outputs.allowance }}
+        repair_allowance: ${{ sequence.decision.outputs.allowance }}
+        human_round: ${{ inputs.human_round + size(sequence.decision.outputs.receipts) }}
+        annotations: ${{ inputs.annotations }}
+        documents: ${{ jq([inputs.documents,sequence.decision.outputs.documents, {'feedback/limit.md':{'kind':'value','name':'feedback/limit.md','format':'text','value':sequence.decision.outputs.direction} }],'add') }}
+        action: ${{ sequence.decision.outputs.action }}
+        allowance: ${{ sequence.decision.outputs.allowance }}
+        review_receipts: ${{ sequence.decision.outputs.receipts }}
+      transitions:
+      - to: human_stopped
+        when: outputs.action == 'stop'
+        payload:
+          documents: ${{ outputs.documents }}
+      - to: dispatch
+        when: true
+        payload:
+          phase: ${{ outputs.phase }}
+          session: ${{ outputs.session }}
+          assignment: ${{ outputs.assignment }}
+          base_documents: ${{ outputs.base_documents }}
+          evidence_documents: ${{ outputs.evidence_documents }}
+          retained_artifacts: ${{ outputs.retained_artifacts }}
+          repair_attempts: ${{ outputs.repair_attempts }}
+          repair_limit: ${{ outputs.repair_limit }}
+          repair_allowance: ${{ outputs.repair_allowance }}
+          documents: ${{ outputs.documents }}
+          annotations: ${{ outputs.annotations }}
+    human_stopped:
+      include: ../adaptive/operational-failure.yaml
+      inputs:
+        code: ADAPTIVE_STOPPED_BY_USER
+        reason: The human stopped this attempt at an automatic-work limit. Work remains incomplete; retained results are not approval to publish or silently retry. Separately running children may continue.
+        documents: ${{ transition.payload.documents }}
 outputs:
   annotations: ${{
     state_output('merge','annotations',state_output('stopped','annotations',state_output('record','annotations',inputs.annotations)))

@@ -6,6 +6,8 @@ inputs:
   assignment: ${{ inputs.?assignment.orValue('') }}
   guidance: ${{ inputs.?guidance.orValue('') }}
   evidence_documents: ${{ inputs.?evidence_documents.orValue({}) }}
+  annotations: ${{ inputs.?annotations.orValue([]) }}
+  required_documents: ${{ inputs.?required_documents.orValue([]) }}
 state:
   initial: evaluate
   states:
@@ -21,6 +23,10 @@ state:
         guidance: ${{ inputs.guidance }}
         evidence_documents: ${{ inputs.evidence_documents }}
         retained_artifacts: ${{ transition.payload.?retained_artifacts.orValue({}) }}
+        annotations: ${{ transition.payload.?annotations.orValue(inputs.annotations) }}
+        required_documents: ${{ inputs.required_documents }}
+        limit: ${{ transition.payload.?limit.orValue(2) }}
+        allowance: ${{ transition.payload.?allowance.orValue(2) }}
       sequence:
       - id: schemas
         include: ./response-schemas.yaml
@@ -49,10 +55,55 @@ state:
           read_only: true
           evidence_documents: ${{ sequence.documents.outputs.evidence }}
           retained_artifacts: ${{ inputs.retained_artifacts }}
+      - id: packet
+        inputs:
+          role: ${{ inputs.role }}
+          documents: ${{ jq([inputs.documents,sequence.agent.outputs.documents],'add') }}
+          annotations: ${{ inputs.annotations + sequence.agent.outputs.annotations }}
+          required_documents: ${{ inputs.required_documents }}
+          approved: ${{ sequence.agent.outputs.result.?response.orValue({}).?verdict.orValue('revise') == 'approve' }}
+        state:
+          initial:
+          - to: validate
+            when: inputs.role == 'summary' && 'merge-review.md' in inputs.documents && inputs.approved
+          - to: skip
+            when: 'true'
+          states:
+            skip:
+              sequence: []
+            validate:
+              sequence:
+              - id: select
+                include: ./review-selection.yaml
+                inputs:
+                  title: Review completed work
+                  summary: ''
+                  fields: []
+                  overview: merge-review.md
+                  brief: ${{ inputs.documents['merge-review.md'] }}
+                  documents: ${{ inputs.documents }}
+                  annotations: ${{ inputs.annotations }}
+                  required_documents: ${{ inputs.required_documents }}
+              - id: links
+                include: ./review-links.yaml
+                inputs:
+                  documents: ${{ sequence.select.outputs.documents }}
+              outputs:
+                issues: ${{ sequence.links.outputs.issues }}
+              inputs:
+                documents: ${{ inputs.documents }}
+                annotations: ${{ inputs.annotations }}
+                required_documents: ${{ inputs.required_documents }}
+        outputs:
+          issues: ${{ state_output('validate','issues',[]) }}
       outputs:
         turn: ${{ sequence.agent.outputs }}
         attempt: ${{ inputs.attempt }}
         documents: ${{ jq([inputs.documents, sequence.agent.outputs.documents], 'add') }}
+        link_issues: ${{ sequence.packet.outputs.issues }}
+        annotations: ${{ inputs.annotations + sequence.agent.outputs.annotations }}
+        limit: ${{ inputs.limit }}
+        allowance: ${{ inputs.allowance }}
       transitions:
       - to: check
         when: true
@@ -62,11 +113,7 @@ state:
         turn: ${{ states.evaluate.outputs.turn }}
         role: ${{ inputs.role }}
       vars:
-        issues: '${{ states.evaluate.outputs.turn.issues + (states.evaluate.outputs.turn.result.?status.orValue(''failed'')
-          != ''completed'' || !states.evaluate.outputs.turn.result.?output_schema_valid.orValue(false) ? [''Return a completed
-          schema-valid review.''] : []) + (!((inputs.role == ''summary'' ? ''merge-review.md'' : ''assessment.md'') in states.evaluate.outputs.turn.documents)
-          ? [''Publish and declare the required review document.''] : []) + (inputs.role == ''summary'' && !states.evaluate.outputs.turn.result.?response.orValue({}).?subject.orValue('''').matches(''^[^[:cntrl:]]{1,72}$'')
-          ? [''Return a single-line commit subject.''] : []) }}'
+        issues: '${{ states.evaluate.outputs.turn.issues + states.evaluate.outputs.link_issues + (states.evaluate.outputs.turn.result.?status.orValue(''failed'') != ''completed'' || !states.evaluate.outputs.turn.result.?output_schema_valid.orValue(false) ? [''Return a completed schema-valid review.''] : []) + (!((inputs.role == ''summary'' ? ''merge-review.md'' : ''assessment.md'') in states.evaluate.outputs.turn.documents) ? [''Publish and declare the required review document.''] : []) + (inputs.role == ''summary'' && !states.evaluate.outputs.turn.result.?response.orValue({}).?subject.orValue('''').matches(''^[^[:cntrl:]]{1,72}$'') ? [''Return a single-line commit subject.''] : []) }}'
       outputs:
         valid: ${{ size(vars.issues) == 0 }}
         issues: ${{ vars.issues }}
@@ -75,7 +122,7 @@ state:
         when: states.evaluate.outputs.turn.result.?status.orValue('failed') != 'completed' ||
           size(states.evaluate.outputs.turn.jobs.?job_ids.orValue([])) > 0
       - to: evaluate
-        when: '!outputs.valid && states.evaluate.outputs.attempt < 2'
+        when: '!outputs.valid && states.evaluate.outputs.attempt < states.evaluate.outputs.limit'
         payload:
           attempt: ${{ int(states.evaluate.outputs.attempt) + 1 }}
           session: ${{ states.evaluate.outputs.turn.result.?session.orValue({}) }}
@@ -84,7 +131,10 @@ state:
             }], 'add') }}
           issues: ${{ outputs.issues }}
           retained_artifacts: ${{ states.evaluate.outputs.turn.artifacts }}
-      - to: failed
+          annotations: ${{ states.evaluate.outputs.annotations }}
+          limit: ${{ states.evaluate.outputs.limit }}
+          allowance: ${{ states.evaluate.outputs.allowance }}
+      - to: escalate
         when: '!outputs.valid'
     failed:
       id: invalid_review
@@ -96,11 +146,46 @@ state:
         fail:
           code: BUILD_REVIEW_INVALID
           message: ${{ jq(states.check.outputs.issues, 'join("; ")') }}
+    escalate:
+      include: ../adaptive2/limit-decision.yaml
+      inputs:
+        request: ${{ inputs.request }}
+        summary: ${{ states.evaluate.outputs.turn.result.?response.orValue({}).?summary.orValue('The work report remains unusable.') }}
+        issues: ${{ states.check.outputs.issues }}
+        documents: ${{ jq([states.evaluate.outputs.documents,states.evaluate.outputs.turn.?repair_documents.orValue({}),{'error/previous-response.json':{'kind':'value','name':'error/previous-response.json','format':'json','value':states.evaluate.outputs.turn.result.?response.orValue({})} }], 'add') }}
+        kind: correction
+        allowance: ${{ states.evaluate.outputs.allowance }}
+        used: ${{ states.evaluate.outputs.attempt - (states.evaluate.outputs.limit - states.evaluate.outputs.allowance) }}
+        can_resume: ${{ size(states.evaluate.outputs.turn.result.?session.orValue({})) > 0 }}
+        can_fresh: true
+      transitions:
+      - to: human_stopped
+        when: outputs.action == 'stop'
+        payload:
+          documents: ${{ outputs.documents }}
+      - to: evaluate
+        when: 'true'
+        payload:
+          attempt: ${{ states.evaluate.outputs.attempt + 1 }}
+          limit: ${{ states.evaluate.outputs.attempt + outputs.allowance }}
+          allowance: ${{ outputs.allowance }}
+          session: "${{ outputs.action == 'fresh' ? {} : states.evaluate.outputs.turn.result.?session.orValue({}) }}"
+          documents: ${{ jq([outputs.documents, {'feedback/limit.md':{'kind':'value','name':'feedback/limit.md','format':'text','value':outputs.direction} }], 'add') }}
+          issues: ${{ states.check.outputs.issues }}
+          retained_artifacts: ${{ states.evaluate.outputs.turn.artifacts }}
+          annotations: ${{ states.evaluate.outputs.annotations }}
+    human_stopped:
+      include: ../adaptive/operational-failure.yaml
+      inputs:
+        code: ADAPTIVE_STOPPED_BY_USER
+        reason: The human stopped this attempt at an automatic-work limit. Work remains incomplete; retained results are not approval to publish or silently retry. Separately running children may continue.
+        documents: ${{ transition.payload.documents }}
 outputs:
   next: '${{ states.evaluate.outputs.turn.result.response.?next.orValue(states.evaluate.outputs.turn.result.response.verdict
     == ''approve'' ? ''complete'' : ''implementation'') }}'
   approved: ${{ states.evaluate.outputs.turn.result.response.verdict == 'approve' }}
   response: ${{ states.evaluate.outputs.turn.result.response }}
   documents: ${{ states.evaluate.outputs.documents }}
-  annotations: ${{ states.evaluate.outputs.turn.annotations }}
+  annotations: ${{ states.evaluate.outputs.annotations }}
   artifact_refs: ${{ states.evaluate.outputs.turn.documents }}
+  review_receipts: "${{ jq((state_exists('escalate') ? states.escalate.runs.map(r,r.outputs.receipts) + [states.escalate.outputs.receipts] : []), 'flatten | unique_by(.request_id,.submission_id)') }}"

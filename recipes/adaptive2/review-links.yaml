@@ -1,0 +1,115 @@
+id: adaptive2-review-links
+inputs:
+  documents: ${{ inputs.documents }}
+sequence:
+- id: check_links
+  op: command_execution
+  const: true
+  execution_needs:
+    packages:
+    - nix:github:NixOS/nixpkgs/e7439b6b14ad3cc35d05608ebca9bce01a25f5f8#python3
+    - nix:github:NixOS/nixpkgs/e7439b6b14ad3cc35d05608ebca9bce01a25f5f8#cmark
+  artifacts:
+    documents/: ${{ inputs.documents }}
+  inputs:
+    env:
+      REVIEW_INBOX: ${{ context.environment.op.inbox }}
+      REVIEW_NAMES: ${{ json_stringify(inputs.documents.map(k,k)) }}
+    run: |
+      python3 - <<'PY'
+      import json, os, pathlib, posixpath, subprocess
+      from html.parser import HTMLParser
+      from urllib.parse import urlsplit, unquote
+
+      class Links(HTMLParser):
+          def __init__(self):
+              super().__init__(convert_charrefs=True)
+              self.ignored = []
+              self.links = []
+          def handle_starttag(self, tag, attrs):
+              if tag in ('pre', 'code', 'script', 'style'):
+                  self.ignored.append(tag)
+              if self.ignored:
+                  return
+              key = {'a':'href', 'img':'src'}.get(tag)
+              if key:
+                  self.links.extend(v for k,v in attrs if k == key and v is not None)
+          def handle_endtag(self, tag):
+              if tag in self.ignored:
+                  self.ignored = self.ignored[:self.ignored.index(tag)]
+
+      root = (pathlib.Path(os.environ['REVIEW_INBOX']) / 'documents').resolve()
+      names = set(json.loads(os.environ['REVIEW_NAMES']))
+      issues, graph, total, count = [], {}, 0, 0
+      def issue(message):
+          if len(issues) < 100:
+              issues.append(message)
+          elif len(issues) == 100:
+              issues.append('Review validation incomplete: more than 100 issues. Repair these links and validate again.')
+      for name in sorted(names):
+          path = (root / name).resolve()
+          try:
+              if not path.is_relative_to(root) or not path.is_file():
+                  raise ValueError('not a readable attachment file')
+              with path.open('rb') as f:
+                  f.read(1)
+              if path.suffix.lower() not in ('.md', '.markdown', '.html', '.htm'):
+                  continue
+              size = path.stat().st_size
+              total += size
+              if size > 5*1024*1024 or total > 32*1024*1024:
+                  issue(name + ': review validation incomplete; document parsing allowance exceeded.')
+                  continue
+              text = path.read_text(encoding='utf-8')
+              if path.suffix.lower() in ('.md', '.markdown'):
+                  result = subprocess.run(['cmark','--unsafe'], input=text, text=True,
+                                          capture_output=True, timeout=30, check=True)
+                  text = result.stdout
+              parser = Links()
+              parser.feed(text)
+              targets = []
+              for link in parser.links:
+                  count += 1
+                  if count > 10000:
+                      issue(name + ': review validation incomplete; link allowance exceeded.')
+                      break
+                  try:
+                      url = urlsplit(link.strip())
+                      if url.scheme or url.netloc or not url.path:
+                          continue
+                      decoded = unquote(url.path, errors='strict').replace('\\','/')
+                      target = posixpath.normpath(posixpath.join(posixpath.dirname(name), decoded))
+                      if decoded.startswith('/') or target == '..' or target.startswith('../') or '\x00' in target:
+                          issue(name + ' → ' + link + ': escapes review attachment paths.')
+                      else:
+                          targets.append((link,target))
+                  except (ValueError, UnicodeError) as e:
+                      issue(name + ' → ' + link + ': invalid attachment link: ' + str(e))
+              graph[name] = targets
+          except (OSError, ValueError, UnicodeError, subprocess.SubprocessError) as e:
+              issue(name + ': cannot validate/read selected attachment: ' + str(e))
+      visited = set()
+      def visit(name, chain):
+          if name in visited:
+              return
+          visited.add(name)
+          for original,target in graph.get(name, []):
+              if target not in names:
+                  issue(' → '.join(chain + [target]) + ': missing from review attachments (link ' + repr(original) + '). Select the exact retained artifact or repair this link; required evidence must remain.')
+              elif target not in visited:
+                  if len(chain) >= 128:
+                      issue(' → '.join(chain) + ': review validation incomplete; link depth exceeded.')
+                  else:
+                      visit(target, chain + [target])
+      for name in sorted(names, key=lambda n: (n != 'merge-review.md', n)):
+          visit(name, [name])
+      print(json.dumps({'issues': issues}))
+      PY
+  catch:
+  - when: failure.kind != 'cancellation'
+    continue:
+      outputs:
+        stdout: >-
+          ${{ json_stringify({'issues':['Review attachments could not be validated: ' + failure.message]}) }}
+outputs:
+  issues: ${{ json_parse(sequence.check_links.outputs.stdout).issues }}
