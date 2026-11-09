@@ -1,0 +1,59 @@
+schema_version: 2
+id: response-repair-probe
+input_schema:
+  kind:
+    type: string
+    default_value: correction
+  attempts:
+    type: number
+    default_value: 2
+inputs:
+  kind: ${{ inputs.kind }}
+  attempts: ${{ inputs.attempts }}
+state:
+  initial: choose
+  states:
+    choose:
+      sequence: []
+      transitions:
+      - to: agent
+        when: inputs.kind == 'agent'
+      - to: correction
+        when: true
+    correction:
+      include: ../../recipes/adaptive2/response-repair.yaml
+      inputs:
+        turn:
+          result:
+            response: {}
+          documents: {}
+          artifacts: {}
+          jobs: {}
+        issues:
+        - Missing response artifacts
+        documents: {}
+        attempts: ${{ inputs.attempts }}
+      catch:
+      - when: true
+        continue:
+          outputs:
+            failed: true
+            code: ${{ failure.code }}
+            cause: ${{ failure }}
+    agent:
+      include: ../../recipes/adaptive/agent-turn.yaml
+      inputs:
+        prompt: Resume checks
+        schema:
+          type: object
+        documents: {}
+        read_only: false
+      catch:
+      - when: true
+        continue:
+          outputs:
+            failed: true
+            code: ${{ failure.code }}
+            cause: ${{ failure }}
+outputs:
+  result: "${{ state_exists('agent') ? states.agent.outputs : states.correction.outputs }}"

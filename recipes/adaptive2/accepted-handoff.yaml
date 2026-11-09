@@ -1,0 +1,123 @@
+id: adaptive2-accepted-handoff
+inputs:
+  cell: ${{ inputs.cell }}
+  directory: ${{ inputs.directory }}
+  documents: ${{ inputs.documents }}
+  agreements: ${{ inputs.agreements }}
+state:
+  initial: select
+  states:
+    select:
+      sequence: []
+      inputs:
+        cell: ${{ inputs.cell }}
+        directory: ${{ inputs.directory }}
+        documents: ${{ inputs.documents }}
+        agreements: ${{ inputs.agreements }}
+      outputs:
+        candidates: >-
+          ${{ jq(inputs.agreements.filter(a,a.cell == inputs.cell && a.result.?outcome.orValue('') == 'agreed' &&
+          a.result.?work_kind.orValue('') in ['feature','bug','explanation','oversight'] && nonempty(a.result.?handoff.orValue(''))
+          && (a.result.handoff + 'handoff.md') in a.result.final_artifacts).map(a, {'directory':a.?directory.orValue(''),
+          'documents':jq({'directory':a.result.handoff,'documents':a.result.final_artifacts}, '. as $v | .documents
+          | with_entries(select(.key | startswith($v.directory)) | .key |= ltrimstr($v.directory) | .value.name
+          = .key)')}), 'unique_by(.documents)') }}
+      transitions:
+      - to: choose
+        when: true
+    choose:
+      sequence: []
+      inputs:
+        candidates: ${{ states.select.outputs.candidates }}
+        directory: ${{ inputs.directory }}
+        documents: ${{ inputs.documents }}
+      outputs:
+        candidates: >-
+          ${{ inputs.candidates.exists(a,a.directory == inputs.directory) ? inputs.candidates.filter(a,a.directory
+          == inputs.directory) : inputs.candidates.exists(a, 'handoff.md' in inputs.documents && jq(inputs.documents['handoff.md'],'del(.name)')
+          == jq(a.documents['handoff.md'],'del(.name)')) ? inputs.candidates.filter(a,'handoff.md' in inputs.documents
+          && jq(inputs.documents['handoff.md'],'del(.name)') == jq(a.documents['handoff.md'],'del(.name)')) : inputs.candidates
+          }}
+      transitions:
+      - to: missing
+        when: size(outputs.candidates) == 0
+      - to: ambiguous
+        when: size(outputs.candidates) > 1
+      - to: prepare
+        when: true
+    prepare:
+      sequence: []
+      inputs:
+        original: ${{ states.choose.outputs.candidates[0].documents }}
+        documents: ${{ inputs.documents }}
+      outputs:
+        original: ${{ inputs.original }}
+        unknown: ${{ inputs.documents.filter(k, !(k in inputs.original) && !k.startsWith('recovery/') &&
+          !k.startsWith('feedback/')) }}
+        different: ${{ inputs.documents.filter(k,k in inputs.original && jq(inputs.documents[k],'del(.name)')
+          != jq(inputs.original[k],'del(.name)')) }}
+      transitions:
+      - to: unknown
+        when: size(outputs.unknown) > 0
+      - to: compare
+        when: size(outputs.different) > 0
+    compare:
+      op: command_execution
+      const: true
+      execution_needs:
+        packages:
+        - nix:github:NixOS/nixpkgs/e7439b6b14ad3cc35d05608ebca9bce01a25f5f8#python3
+      artifacts:
+        ./: >-
+          ${{ jq({'original':states.prepare.outputs.original,'supplied':inputs.documents,'paths':states.prepare.outputs.different},
+          '. as $v | [(.paths[] | . as $p | {key:("original/"+$p),value:($v.original[$p] + {name:("original/"+$p)})}),
+          (.paths[] | . as $p | {key:("supplied/"+$p),value:($v.supplied[$p] + {name:("supplied/"+$p)})})] | from_entries')
+          }}
+        paths.json:
+          kind: value
+          name: paths.json
+          format: json
+          value: ${{ states.prepare.outputs.different }}
+      inputs:
+        env:
+          INBOX: ${{ context.environment.op.inbox }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          inbox = Path(os.environ['INBOX'])
+          paths = json.loads((inbox / 'paths.json').read_text())
+          changed = [name for name in paths
+                     if (inbox / 'original' / name).read_bytes() != (inbox / 'supplied' / name).read_bytes()]
+          print(json.dumps(changed))
+          PY
+    missing:
+      sequence: []
+    ambiguous:
+      sequence: []
+    unknown:
+      sequence: []
+outputs:
+  valid: ${{ state_exists('prepare') && !state_exists('unknown') &&
+    size(json_parse(state_output('compare','stdout','[]'))) == 0 }}
+  documents: >-
+    ${{ state_exists('prepare') ? jq({'selected':inputs.documents,'original':states.prepare.outputs.original}, '.
+    as $v | .selected | with_entries(.key as $k | if ($v.original | has($k)) then .value = $v.original[$k] else
+    . end)') : inputs.documents }}
+  restored: >-
+    ${{ state_exists('prepare') ? jq({'selected':inputs.documents,'original':states.prepare.outputs.original,'directory':inputs.directory},
+    '. as $v | .original | with_entries(select(.key as $k | $v.selected | has($k)) | .key = ($v.directory + .key)
+    | .value.name = .key)') : {} }}
+  rejected: >-
+    ${{ state_exists('compare') ? jq({'documents':inputs.documents,'changed':json_parse(states.compare.outputs.stdout)},
+    '. as $v | .documents | with_entries(select(.key as $k | $v.changed | index($k)) | .key = ("error/rejected-handoff/"
+    + .key) | .value.name = .key)') : {} }}
+  reason: >-
+    ${{ state_exists('missing') ? 'No accepted receiver-authored assignment is recorded for ' + inputs.cell + '.
+    Consult that owner before requesting execution.' : state_exists('ambiguous') ? 'Several accepted assignments
+    exist for ' + inputs.cell + '. Select the original consultation handoff directory.' : state_exists('unknown')
+    ? 'These selected files are not in the accepted assignment: ' + jq(states.prepare.outputs.unknown,'join(", ")')
+    + '. Select agreed files; put additional recovery evidence in recovery/ or feedback/.' : size(json_parse(state_output('compare','stdout','[]')))
+    > 0 ? 'The accepted ' + inputs.cell + ' assignment was changed: ' + jq(json_parse(states.compare.outputs.stdout),'join(",
+    ")') + '. The original has been restored in the inbox; proposed changes are in error/rejected-handoff/. Ask
+    the receiver to revise the assignment if those changes are needed.' : '' }}

@@ -23,3 +23,20 @@ live trials evaluate the actual produced documents separately.
 | A2-R2 | Named child builds resolve the public entrypoint in the destination workspace and require direction approval before implementation. | Critical; integration, c2j/Git/Nix | `default-child.test.yaml`, `build.yaml` |
 | A2-R3 | Existing configure and verify hooks work with direction approval; ordinary requests need no audit documents. | High; integration, c2j/Nix | `../self-improvement/build.test.yaml`, `build.yaml` |
 | A2-R4 | Invalid public annotations fail before any agent starts. | High; integration, c2j | `build-delivery.test.yaml`, `build.yaml` |
+
+## Automatic limits and accepted assignments
+
+These extend the expectations in [the approved plan](../../guides/adaptive2/PROPOSAL_AUTONOMOUS_TURN_LIMITS.md).
+
+| ID | Expectation | Importance; level/dependencies | Files |
+| --- | --- | --- | --- |
+| A2-T1 | Human questions, answers, and repeated direction or outcome revisions complete with a one-turn automatic allowance. | Critical; integration, c2j input | `human-turns.test.yaml`, `recipes/adaptive2/develop.yaml` |
+| A2-T2 | Continued automatic implementation stops at its configured allowance with a specific reason. | Critical; integration, c2j | `human-turns.test.yaml`, `recipes/adaptive2/autonomous-budget.yaml` |
+| A2-T3 | New human consultation or package decisions renew the caller's allowance; replaying a saved decision does not. | Critical; integration, c2j input | `human-turns.test.yaml`, `autonomous-budget.test.yaml` |
+| A2-T4 | Human direction renews consultation rounds, including suspended callers of nested advice; automatic debate remains bounded. | High; integration, c2j input/workspaces | `consultation-turns.test.yaml`, `recipes/adaptive2/consultation.yaml` |
+| A2-T5 | An unchanged handoff copy starts execution using the receiving owner's original document. | Critical; integration, c2j artifacts/children | `build-handoff-recovery.test.yaml`, `recipes/adaptive2/accepted-handoff.yaml` |
+| A2-T6 | Changed assignments cannot execute; correction restores original inbox files and preserves proposed edits separately. | Critical; integration, c2j artifacts | `build-handoff-recovery.test.yaml`, `recipes/adaptive2/develop.yaml` |
+| A2-T7 | Exhausted response correction reports the actual offending file and keeps its evidence. | High; integration, c2j | `build-handoff-recovery.test.yaml`, `recipes/adaptive2/develop.yaml` |
+| A2-T8 | Human feedback renews operational correction; repeated unchanged failures still stop. | High; integration, c2j | `human-turns.test.yaml`, `recipes/adaptive2/develop.yaml` |
+| A2-T9 | Unchanged merge chasing reuses approval and stays bounded; a new human approval starts a fresh retry allowance. | High; integration, c2j/Git | `merge-turns.test.yaml`, `recipes/adaptive2/develop.yaml` |
+| A2-T10 | Missing correction checkpoints and exhausted correction retries produce different codes while preserving the unresolved cause. | High; integration, c2j | `response-repair.test.yaml`, `recipes/adaptive2/response-repair.yaml` |

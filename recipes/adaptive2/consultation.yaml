@@ -501,6 +501,7 @@ state:
                      'fields': inputs.response.fields, 'review': inputs.review,
                      'receipt': inputs.response.?receipt.orValue({}),
                      'files': inputs.response.?artifact_refs.orValue({})}]}], 'add') }}
+        receipt: ${{ inputs.response.?receipt.orValue({}) }}
       transitions:
       - to: current
         when: true
@@ -510,9 +511,12 @@ state:
     recovery:
       sequence: []
       outputs:
-        conversation: ${{ jq([inputs.conversation,{'outcome':'failed','message':'The consultation exhausted
-          its advisory round. Return the unresolved question or implementation need to the
-          coordinator.','final_artifacts':inputs.conversation.documents}],'add') }}
+        conversation: "${{ jq([inputs.conversation, {'outcome':'failed', 'failure_code':inputs.nested_request ?
+          'ADAPTIVE_CONSULTATION_DEPTH_LIMIT' : 'ADAPTIVE_CONSULTATION_LIMIT', 'message':inputs.nested_request ?
+          'The consultation reached its nested-advice limit. Return the unresolved question to the coordinator.'
+          : 'The consultation stopped after ' + string(inputs.conversation.max_iterations) + ' automatic rounds
+          without new human direction. Return the unresolved question or implementation need to the coordinator.',
+          'final_artifacts':inputs.conversation.documents}], 'add') }}"
       transitions:
       - to: publish
         when: true
@@ -520,6 +524,8 @@ state:
           conversation: ${{ outputs.conversation }}
       inputs:
         conversation: ${{ states.current.outputs.conversation }}
+        nested_request: ${{ state_exists('turn') &&
+          states.turn.outputs.turn.result.response.?requests.orValue([]).exists(r,r.action == 'consult') }}
     advice:
       inputs:
         frame: ${{ transition.payload.frame }}
@@ -572,6 +578,9 @@ state:
         frame: ${{ transition.payload.frame }}
         parents: ${{ transition.payload.parents }}
         result: ${{ transition.payload.result }}
+        human_round: "${{ size(jq((state_exists('expert_record') ? states.expert_record.runs.map(r,r.outputs.receipt)
+          + [states.expert_record.outputs.receipt] : []), 'map(select(.submission_id? != null)) | unique_by(.request_id,
+          .submission_id)')) }}"
       sequence:
       - id: documents
         include: ../adaptive/document-bindings.yaml
@@ -587,6 +596,7 @@ state:
           ${{ jq([inputs.frame.conversation,
             {'outcome': size(inputs.result.?execution_requests.orValue([])) > 0 ? 'work_requested' : 'continue',
              'next':inputs.frame.participant,
+                       'round_iterations': inputs.human_round > inputs.frame.human_round ? 0 : inputs.frame.conversation.round_iterations,
              'message': size(inputs.result.?execution_requests.orValue([])) > 0 ? 'Implementation requested by the serving consultation. Return this work to the coordinator.' : 'Read downstream/ for the advice or accepted scope. Finish the original question when answered; no dispatch or acknowledgement exchange is needed.',
              'documents':jq([inputs.frame.conversation.documents,sequence.documents.outputs.documents],'add'),
              'final_artifacts':size(inputs.result.?execution_requests.orValue([])) > 0 ? sequence.documents.outputs.documents : inputs.frame.conversation.final_artifacts,
@@ -595,7 +605,7 @@ state:
                (inputs.result.outcome == 'agreed' ? [{'request':jq([{'kind':'feature','ref':'main'},inputs.frame.requests[inputs.frame.index]],'add'),
                  'target':{'cell':inputs.frame.requests[inputs.frame.index].cell,'ref':inputs.frame.requests[inputs.frame.index].?ref.orValue('main')},
                  'result':{'outcome':'agreed','handoff':inputs.result.?handoff.orValue(''),'work_kind':inputs.result.?work_kind.orValue(''),'final_artifacts':inputs.result.final_artifacts,'continuation':inputs.result.transcript,'annotations':inputs.result.?annotations.orValue([])} }] : [])}], 'add') }}
-        frame: ${{ inputs.frame }}
+        frame: ${{ jq([inputs.frame, {'human_round':inputs.human_round}],'add') }}
         parents: ${{ inputs.parents }}
       transitions:
       - to: advice
@@ -674,9 +684,10 @@ state:
           && !states.turn.outputs.turn.result.response.?requests.orValue([]).exists(r,r.action == 'execute')
           && states.current.outputs.conversation.depth < 4
         payload:
-          frame: ${{
-            {'conversation':outputs.conversation,'participant':states.current.outputs.conversation.next,'requests':states.turn.outputs.turn.result.response.requests.filter(r,r.action
-            == 'consult'),'index':0} }}
+          frame: "${{ {'conversation':outputs.conversation,'participant':states.current.outputs.conversation.next,'requests':states.turn.outputs.turn.result.response.requests.filter(r,r.action
+            == 'consult'),'human_round':size(jq((state_exists('expert_record') ? states.expert_record.runs.map(r,r.outputs.receipt)
+            + [states.expert_record.outputs.receipt] : []), 'map(select(.submission_id? != null)) | unique_by(.request_id,
+            .submission_id)')),'index':0} }}"
           parents: ${{ states.current.outputs.parents }}
       - to: current
         when: true
@@ -704,3 +715,7 @@ outputs:
   execution_requests: ${{ states.publish.outputs.conversation.?execution_requests.orValue([]) }}
   handoff: ${{ states.publish.outputs.conversation.?handoff.orValue('') }}
   work_kind: ${{ states.publish.outputs.conversation.?work_kind.orValue('') }}
+  review_receipts: "${{ (state_exists('expert_record') ? states.expert_record.runs.map(r,r.outputs.receipt) + [states.expert_record.outputs.receipt]
+    : []) }}"
+  failure_code: "${{ states.publish.outputs.conversation.outcome == 'failed' ? states.publish.outputs.conversation.?failure_code.orValue('')
+    : '' }}"

@@ -1,0 +1,131 @@
+schema_version: 2
+id: merge-chase
+input_schema:
+  advances:
+    type: number
+    default_value: 1
+  fail_after_rebase:
+    type: boolean
+    default_value: false
+  conflict:
+    type: boolean
+    default_value: false
+  change_reviewed_file:
+    type: boolean
+    default_value: false
+  apply_candidate:
+    type: boolean
+    default_value: false
+  change_hook:
+    type: boolean
+    default_value: false
+  add_hook:
+    type: boolean
+    default_value: false
+  transient_failure:
+    type: boolean
+    default_value: false
+  fail_after_advance:
+    type: number
+    default_value: 0
+inputs:
+  advances: ${{ inputs.advances }}
+  fail_after_rebase: ${{ inputs.fail_after_rebase }}
+  conflict: ${{ inputs.conflict }}
+  change_reviewed_file: ${{ inputs.change_reviewed_file }}
+  apply_candidate: ${{ inputs.apply_candidate }}
+  change_hook: ${{ inputs.change_hook }}
+  add_hook: ${{ inputs.add_hook }}
+  transient_failure: ${{ inputs.transient_failure }}
+  fail_after_advance: ${{ inputs.fail_after_advance }}
+catch:
+- when: true
+  continue:
+    outputs:
+      failed: true
+      failure: ${{ json_parse(json_stringify(failure)) }}
+sequence:
+- id: install_concurrent_writer_check
+  op: command_execution
+  const: true
+  inputs:
+    env:
+      ADVANCES: ${{ string(inputs.advances) }}
+      FAIL_AFTER_REBASE: ${{ string(inputs.fail_after_rebase) }}
+      CONFLICT: ${{ string(inputs.conflict) }}
+      CHANGE_REVIEWED_FILE: ${{ string(inputs.change_reviewed_file) }}
+      APPLY_CANDIDATE: ${{ string(inputs.apply_candidate) }}
+      CHANGE_HOOK: ${{ string(inputs.change_hook) }}
+      ADD_HOOK: ${{ string(inputs.add_hook) }}
+      TRANSIENT_FAILURE: ${{ string(inputs.transient_failure) }}
+      FAIL_AFTER_ADVANCE: ${{ string(inputs.fail_after_advance) }}
+    run: |
+      set -eu
+      REPO=$(git remote get-url origin)
+      # Fixture repositories have controlled temporary paths. The counter lives
+      # outside the candidate and survives worktree changes between native ops.
+      printf "upstream='%s'\nlimit=%s\nfail_after_rebase=%s\nconflict=%s\n" "$REPO" "$ADVANCES" "$FAIL_AFTER_REBASE" "$CONFLICT" > "$REPO/build.sh"
+      printf 'change_reviewed_file=%s\napply_candidate=%s\n' "$CHANGE_REVIEWED_FILE" "$APPLY_CANDIDATE" >> "$REPO/build.sh"
+      printf 'change_hook=%s\n' "$CHANGE_HOOK" >> "$REPO/build.sh"
+      printf 'add_hook=%s\n' "$ADD_HOOK" >> "$REPO/build.sh"
+      printf 'fail_after_advance=%s\n' "$FAIL_AFTER_ADVANCE" >> "$REPO/build.sh"
+            printf 'transient_failure=%s\n' "$TRANSIENT_FAILURE" >> "$REPO/build.sh"
+      cat >> "$REPO/build.sh" <<'CHECK'
+      set -eu
+      counter="$upstream/.git/merge-chase-count"
+      count=0
+      if [ -f "$counter" ]; then count=$(cat "$counter"); fi
+      if [ "$count" -lt "$limit" ]; then
+        count=$((count + 1))
+        printf '%s\n' "$count" > "$counter"
+        printf 'Concurrent upstream change %s\n' "$count" > "$upstream/upstream.txt"
+        git -C "$upstream" add upstream.txt
+        if [ "$conflict" = true ]; then
+          printf 'Conflicting upstream behavior\n' > "$upstream/candidate.txt"
+          git -C "$upstream" add candidate.txt
+        fi
+        if [ "$change_reviewed_file" = true ]; then
+          printf 'Additional upstream context\n' >> "$upstream/candidate.txt"
+          git -C "$upstream" add candidate.txt
+        fi
+        if [ "$apply_candidate" = true ]; then
+          cp candidate.txt "$upstream/candidate.txt"
+          git -C "$upstream" add candidate.txt
+        fi
+        if [ "$change_hook" = true ]; then
+          printf '\n# Updated verification policy\n' >> "$upstream/.c2/recipes/hooks/build/verify.yaml"
+          git -C "$upstream" add .c2/recipes/hooks/build/verify.yaml
+        fi
+        if [ "$add_hook" = true ]; then
+          cp "$upstream/verify-after-advance.yaml" "$upstream/.c2/recipes/hooks/build/verify.yaml"
+          git -C "$upstream" add .c2/recipes/hooks/build/verify.yaml
+        fi
+        git -C "$upstream" commit -m "Concurrent upstream change $count"
+      fi
+      if [ "$count" -ge "$fail_after_advance" ] && [ "$fail_after_rebase" = true ] && [ -f upstream.txt ] && [ ! -f repair.txt ]; then
+        echo 'Rebased candidate needs implementation repair'
+        exit 1
+      fi
+      if [ "$transient_failure" = true ] && [ -f upstream.txt ] && [ ! -f "$upstream/.git/verification-retried" ]; then
+        touch "$upstream/.git/verification-retried"
+        echo 'Transient verification outage; the next check can run normally'
+        exit 1
+      fi
+      test "$(head -n 1 candidate.txt)" = corrected
+      CHECK
+      git -C "$REPO" add build.sh
+      git -C "$REPO" commit -m "Install concurrent-writer verification fixture"
+- id: build
+  include: ../../build.yaml
+  inputs:
+    prompt: Correct the widget behavior and verify it against concurrent upstream changes.
+    target_directory: .
+    documents: {}
+    root_cell: ''
+    root_ref: ''
+    consultation_recipe: consultation
+    build_recipe: build
+    create_recipe: create
+outputs:
+  failed: false
+  build: ${{ sequence.build.outputs }}

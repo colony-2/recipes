@@ -65,7 +65,23 @@ state:
         base_documents: ${{ transition.payload.?base_documents.orValue(transition.payload.documents) }}
         repair_attempts: ${{ transition.payload.?repair_attempts.orValue(0) }}
         request_prefix: "${{ 'request-' + string(state_exists('work') ? size(states.work.runs) + 1 : 0) }}"
-      sequence: []
+        receipts: "${{ (state_exists('questions') ? states.questions.runs.map(r,r.outputs.response.receipt) + [states.questions.outputs.response.receipt]
+          : []) + (state_exists('direction') ? states.direction.runs.map(r,r.outputs.response.receipt) + [states.direction.outputs.response.receipt]
+          : []) + (state_exists('accept') ? states.accept.runs.map(r,r.outputs.response.receipt) + [states.accept.outputs.response.receipt]
+          : []) + (state_exists('packages') ? states.packages.runs.map(r,r.outputs.review_receipts) + [states.packages.outputs.review_receipts]
+          : []) + (state_exists('coordinate') ? states.coordinate.runs.map(r,r.outputs.review_receipts) + [states.coordinate.outputs.review_receipts]
+          : []) }}"
+        work: "${{ state_exists('work') ? (states.work.runs.map(r,r.outputs) + [states.work.outputs]).map(w, {'phase':w.phase,'assignment':w.assignment,'next':w.next,'human_round':w.human_round,'human_reply':w.human_reply}) : [] }}"
+        limit: ${{ inputs.max_iterations }}
+      sequence:
+      - id: budget
+        include: ./autonomous-budget.yaml
+        inputs:
+          receipts: ${{ inputs.receipts }}
+          work: ${{ inputs.work }}
+          phase: ${{ inputs.phase }}
+          assignment: ${{ inputs.assignment }}
+          limit: ${{ inputs.limit }}
       outputs:
         phase: ${{ inputs.phase }}
         session: ${{ inputs.session }}
@@ -77,15 +93,17 @@ state:
         base_documents: ${{ inputs.base_documents }}
         repair_attempts: ${{ inputs.repair_attempts }}
         request_prefix: ${{ inputs.request_prefix }}
+        human_round: ${{ sequence.budget.outputs.human_round }}
+        human_reply: ${{ sequence.budget.outputs.human_reply }}
+        used: ${{ sequence.budget.outputs.used }}
+        exhausted: ${{ sequence.budget.outputs.exhausted }}
       transitions:
-      - to: iteration_limit
-        when: "int(inputs.max_iterations) > 0 && (state_exists('work') ? size(states.work.runs.filter(r,r.outputs.phase
-          == 'implement' && !(r.outputs.next in ['coordinate','blocked','wait']) && r.outputs.assignment != 'repair'))
-          + (states.work.outputs.phase == 'implement' && !(states.work.outputs.next in ['coordinate','blocked','wait'])
-          && states.work.outputs.assignment != 'repair' ? 1 : 0) : 0) >= int(inputs.max_iterations)"
+      - to: autonomous_limit
+        when: outputs.exhausted
         payload:
           documents: ${{ outputs.documents }}
           annotations: ${{ outputs.annotations }}
+          used: ${{ outputs.used }}
       - to: work
         when: true
     work:
@@ -107,6 +125,8 @@ state:
           + (state_exists('work') ? jq(states.work.runs.map(r,r.outputs.child_results) + [states.work.outputs.child_results],'add').map(r,{'action':'await','job_id':r.job_id,'result':r})
           : []) + (state_exists('wait_children') ? jq(states.wait_children.runs.map(r,r.outputs.results) + [states.wait_children.outputs.results],'add').map(r,{'action':'await','job_id':r.job_id,'result':r})
           : [])).exists(h,h.action == 'await' && h.job_id == j)) }}"
+        human_round: ${{ states.dispatch.outputs.human_round }}
+        human_reply: ${{ states.dispatch.outputs.human_reply }}
       sequence:
       - id: agent
         include: ./agent.yaml
@@ -144,6 +164,8 @@ state:
         phase: ${{ inputs.phase }}
         next: ${{ sequence.agent.outputs.turn.result.?response.orValue({}).?next.orValue('') }}
         child_documents: ${{ sequence.children.outputs.documents }}
+        human_round: ${{ inputs.human_round }}
+        human_reply: ${{ inputs.human_reply }}
       transitions:
       - to: record
         when: true
@@ -404,17 +426,23 @@ state:
       outputs:
         valid: ${{ sequence.coordinate.outputs.valid }}
         session: ${{ sequence.coordinate.outputs.session }}
-        documents: ${{ sequence.coordinate.outputs.documents }}
+        documents: ${{
+          jq([sequence.coordinate.outputs.documents,sequence.coordinate.outputs.restored_documents,sequence.coordinate.outputs.rejected_documents],'add')
+          }}
         annotations: ${{ sequence.coordinate.outputs.annotations }}
         records: ${{ sequence.coordinate.outputs.records }}
         issues: ${{ sequence.coordinate.outputs.issues }}
+        restored_documents: ${{ sequence.coordinate.outputs.restored_documents }}
+        review_receipts: ${{ sequence.coordinate.outputs.review_receipts }}
       transitions:
       - to: repair
         when: '!outputs.valid'
         payload:
           turn: ${{
-            jq([states.work.outputs.turn,{'result':jq([states.work.outputs.turn.result,{'session':outputs.session}],
-            'add')}], 'add') }}
+            jq([states.work.outputs.turn,{'result':jq([states.work.outputs.turn.result,{'session':outputs.session}],'add'),
+            'documents':jq([states.work.outputs.turn.documents,outputs.restored_documents],'add'),
+            'repair_documents':jq([states.work.outputs.turn.?repair_documents.orValue({}),outputs.restored_documents],'add'),
+            'artifacts':jq([states.work.outputs.turn.artifacts,outputs.restored_documents],'add')}], 'add') }}
           issues: ${{ outputs.issues }}
           documents: ${{ outputs.documents }}
           annotations: ${{ outputs.annotations }}
@@ -472,6 +500,7 @@ state:
           jq([inputs.documents,sequence.review.outputs.response.?artifact_refs.orValue({}),sequence.feedback.outputs.documents],
           'add') }}
         annotations: ${{ inputs.annotations }}
+        response: ${{ sequence.review.outputs.response }}
       transitions:
       - to: dispatch
         when: true
@@ -489,6 +518,14 @@ state:
         previous_candidate: ${{ state_output('assessment','candidate.head','') }}
         agent_artifacts: ${{ states.verify.outputs.agent_artifacts }}
         candidate: ${{ states.prepare.outputs.candidate }}
+        human_round: "${{ size(jq((state_exists('questions') ? states.questions.runs.map(r,r.outputs.response.receipt)
+          + [states.questions.outputs.response.receipt] : []) + (state_exists('direction') ? states.direction.runs.map(r,r.outputs.response.receipt)
+          + [states.direction.outputs.response.receipt] : []) + (state_exists('accept') ? states.accept.runs.map(r,r.outputs.response.receipt)
+          + [states.accept.outputs.response.receipt] : []) + (state_exists('packages') ? states.packages.runs.map(r,r.outputs.review_receipts)
+          + [states.packages.outputs.review_receipts] : []) + (state_exists('coordinate') ? states.coordinate.runs.map(r,r.outputs.review_receipts)
+          + [states.coordinate.outputs.review_receipts] : []), 'flatten | map(select(.submission_id? != null)) |
+          unique_by(.request_id, .submission_id)')) }}"
+        previous_human_round: ${{ state_output('assessment','human_round',-1) }}
       sequence:
       - id: prior_approval
         include: ../adaptive/approved-review-documents.yaml
@@ -509,7 +546,9 @@ state:
         response: ${{ sequence.assess.outputs.response }}
         candidate: ${{ inputs.candidate }}
         next: ${{ sequence.assess.outputs.next }}
-        previous_candidate: ${{ inputs.previous_candidate }}
+        previous_candidate: "${{ inputs.human_round == inputs.previous_human_round ? inputs.previous_candidate :
+          '' }}"
+        human_round: ${{ inputs.human_round }}
       transitions:
       - to: dispatch
         when: outputs.next == 'intervention' && outputs.previous_candidate != outputs.candidate.head
@@ -602,8 +641,21 @@ state:
       inputs:
         documents: ${{ transition.payload.documents }}
         annotations: ${{ transition.payload.annotations }}
-        merge_chases: "${{ state_output('rebase','merge_chases',inputs.prior_merge_chases) + (transition.from ==
-          'merge' ? 1 : 0) }}"
+        merge_chases: "${{ (size(jq((state_exists('questions') ? states.questions.runs.map(r,r.outputs.response.receipt)
+          + [states.questions.outputs.response.receipt] : []) + (state_exists('direction') ? states.direction.runs.map(r,r.outputs.response.receipt)
+          + [states.direction.outputs.response.receipt] : []) + (state_exists('accept') ? states.accept.runs.map(r,r.outputs.response.receipt)
+          + [states.accept.outputs.response.receipt] : []) + (state_exists('packages') ? states.packages.runs.map(r,r.outputs.review_receipts)
+          + [states.packages.outputs.review_receipts] : []) + (state_exists('coordinate') ? states.coordinate.runs.map(r,r.outputs.review_receipts)
+          + [states.coordinate.outputs.review_receipts] : []), 'flatten | map(select(.submission_id? != null)) |
+          unique_by(.request_id, .submission_id)')) == state_output('rebase','human_round',0) ? state_output('rebase','merge_chases',inputs.prior_merge_chases)
+          : 0) + (transition.from == 'merge' ? 1 : 0) }}"
+        human_round: "${{ size(jq((state_exists('questions') ? states.questions.runs.map(r,r.outputs.response.receipt)
+          + [states.questions.outputs.response.receipt] : []) + (state_exists('direction') ? states.direction.runs.map(r,r.outputs.response.receipt)
+          + [states.direction.outputs.response.receipt] : []) + (state_exists('accept') ? states.accept.runs.map(r,r.outputs.response.receipt)
+          + [states.accept.outputs.response.receipt] : []) + (state_exists('packages') ? states.packages.runs.map(r,r.outputs.review_receipts)
+          + [states.packages.outputs.review_receipts] : []) + (state_exists('coordinate') ? states.coordinate.runs.map(r,r.outputs.review_receipts)
+          + [states.coordinate.outputs.review_receipts] : []), 'flatten | map(select(.submission_id? != null)) |
+          unique_by(.request_id, .submission_id)')) }}"
       sequence:
       - id: resolve_upstream_head
         op: command_execution
@@ -623,6 +675,7 @@ state:
         merge_chases: ${{ inputs.merge_chases }}
         documents: ${{ inputs.documents }}
         annotations: ${{ inputs.annotations }}
+        human_round: ${{ inputs.human_round }}
       transitions:
       - to: prepare
         when: true
@@ -633,8 +686,20 @@ state:
         maximum_attempts: 1
       catch:
       - id: repair_restored_rebase_conflict
-        when: "inputs.prior_rebase_repairs + (state_exists('rebase_repair') ? size(states.rebase_repair.runs) +
-          1 : 0) < 2 && jq(json_parse(json_stringify(failure)),states.start.outputs.rebase_policy)"
+        when: "(state_exists('rebase_repair') ? size((states.rebase_repair.runs.map(r,r.outputs) + [states.rebase_repair.outputs]).filter(r,r.human_round
+          == size(jq((state_exists('questions') ? states.questions.runs.map(r,r.outputs.response.receipt) + [states.questions.outputs.response.receipt]
+          : []) + (state_exists('direction') ? states.direction.runs.map(r,r.outputs.response.receipt) + [states.direction.outputs.response.receipt]
+          : []) + (state_exists('accept') ? states.accept.runs.map(r,r.outputs.response.receipt) + [states.accept.outputs.response.receipt]
+          : []) + (state_exists('packages') ? states.packages.runs.map(r,r.outputs.review_receipts) + [states.packages.outputs.review_receipts]
+          : []) + (state_exists('coordinate') ? states.coordinate.runs.map(r,r.outputs.review_receipts) + [states.coordinate.outputs.review_receipts]
+          : []), 'flatten | map(select(.submission_id? != null)) | unique_by(.request_id, .submission_id)')))) :
+          0) + (size(jq((state_exists('questions') ? states.questions.runs.map(r,r.outputs.response.receipt) + [states.questions.outputs.response.receipt]
+          : []) + (state_exists('direction') ? states.direction.runs.map(r,r.outputs.response.receipt) + [states.direction.outputs.response.receipt]
+          : []) + (state_exists('accept') ? states.accept.runs.map(r,r.outputs.response.receipt) + [states.accept.outputs.response.receipt]
+          : []) + (state_exists('packages') ? states.packages.runs.map(r,r.outputs.review_receipts) + [states.packages.outputs.review_receipts]
+          : []) + (state_exists('coordinate') ? states.coordinate.runs.map(r,r.outputs.review_receipts) + [states.coordinate.outputs.review_receipts]
+          : []), 'flatten | map(select(.submission_id? != null)) | unique_by(.request_id, .submission_id)')) ==
+          0 ? inputs.prior_rebase_repairs : 0) < 2 && jq(json_parse(json_stringify(failure)),states.start.outputs.rebase_policy)"
         to: rebase_repair
         payload:
           documents: ${{ transition.payload.documents }}
@@ -644,6 +709,13 @@ state:
         documents: ${{ transition.payload.documents }}
         annotations: ${{ transition.payload.annotations }}
         failure: ${{ transition.failure }}
+        human_round: "${{ size(jq((state_exists('questions') ? states.questions.runs.map(r,r.outputs.response.receipt)
+          + [states.questions.outputs.response.receipt] : []) + (state_exists('direction') ? states.direction.runs.map(r,r.outputs.response.receipt)
+          + [states.direction.outputs.response.receipt] : []) + (state_exists('accept') ? states.accept.runs.map(r,r.outputs.response.receipt)
+          + [states.accept.outputs.response.receipt] : []) + (state_exists('packages') ? states.packages.runs.map(r,r.outputs.review_receipts)
+          + [states.packages.outputs.review_receipts] : []) + (state_exists('coordinate') ? states.coordinate.runs.map(r,r.outputs.review_receipts)
+          + [states.coordinate.outputs.review_receipts] : []), 'flatten | map(select(.submission_id? != null)) |
+          unique_by(.request_id, .submission_id)')) }}"
       sequence:
       - id: recovery
         include: ../adaptive/rebase-recovery.yaml
@@ -662,6 +734,7 @@ state:
         error_documents: ${{ sequence.recovery.outputs.documents }}
         documents: ${{ inputs.documents }}
         annotations: ${{ inputs.annotations }}
+        human_round: ${{ inputs.human_round }}
     prepare:
       inputs:
         documents: ${{ transition.payload.documents }}
@@ -1046,9 +1119,15 @@ state:
         maximum_attempts: 1
       catch:
       - id: chase_advanced_upstream
-        when: failure.kind == 'task_error' && failure.code == 'MERGE_UPSTREAM_ADVANCED' && failure.node.op ==
-          'merge' && failure.node.id == 'merge_reviewed_candidate' &&
-          state_output('rebase','merge_chases',inputs.prior_merge_chases) < 3
+        when: "failure.kind == 'task_error' && failure.code == 'MERGE_UPSTREAM_ADVANCED' && failure.node.op == 'merge'
+          && failure.node.id == 'merge_reviewed_candidate' && (size(jq((state_exists('questions') ? states.questions.runs.map(r,r.outputs.response.receipt)
+          + [states.questions.outputs.response.receipt] : []) + (state_exists('direction') ? states.direction.runs.map(r,r.outputs.response.receipt)
+          + [states.direction.outputs.response.receipt] : []) + (state_exists('accept') ? states.accept.runs.map(r,r.outputs.response.receipt)
+          + [states.accept.outputs.response.receipt] : []) + (state_exists('packages') ? states.packages.runs.map(r,r.outputs.review_receipts)
+          + [states.packages.outputs.review_receipts] : []) + (state_exists('coordinate') ? states.coordinate.runs.map(r,r.outputs.review_receipts)
+          + [states.coordinate.outputs.review_receipts] : []), 'flatten | map(select(.submission_id? != null)) |
+          unique_by(.request_id, .submission_id)')) > state_output('rebase','human_round',0) || state_output('rebase','merge_chases',inputs.prior_merge_chases)
+          < 3)"
         to: rebase
         payload:
           documents: ${{ transition.payload.documents }}
@@ -1099,8 +1178,9 @@ state:
         retained_artifacts: ${{ inputs.turn.artifacts }}
         attempts: ${{ inputs.repair_attempts + 1 }}
         annotations: ${{ inputs.annotations }}
+        issues: ${{ inputs.issues }}
       transitions:
-      - to: iteration_limit
+      - to: response_repair_exhausted
         when: outputs.attempts > 2
         payload:
           assignment: repair
@@ -1110,6 +1190,7 @@ state:
           retained_artifacts: ${{ outputs.retained_artifacts }}
           documents: ${{ outputs.documents }}
           annotations: ${{ outputs.annotations }}
+          issues: ${{ outputs.issues }}
       - to: dispatch
         when: true
         payload:
@@ -1121,14 +1202,6 @@ state:
           repair_attempts: ${{ outputs.attempts }}
           documents: ${{ outputs.documents }}
           annotations: ${{ outputs.annotations }}
-    iteration_limit:
-      include: ../adaptive/operational-failure.yaml
-      inputs:
-        reason: The explicitly configured implementation-turn cap or response-correction limit was reached.
-          Preserve the work and report the unmet need to the parent; a new attempt starts from the normal cell
-          state.
-        documents: ${{
-          jq([transition.payload.documents,transition.payload.?evidence_documents.orValue({})],'add') }}
     intervention:
       include: ../adaptive/operational-failure.yaml
       inputs:
@@ -1156,6 +1229,7 @@ state:
         annotations: ${{ inputs.annotations }}
         decision: ${{ sequence.request.outputs.decision }}
         errors: ${{ sequence.request.outputs.errors }}
+        review_receipts: ${{ [sequence.request.outputs.review.?receipt.orValue({})] }}
       transitions:
       - to: dispatch
         when: true
@@ -1176,6 +1250,7 @@ state:
       inputs:
         reason: ${{ transition.payload.reason }}
         documents: ${{ transition.payload.?documents.orValue({}) }}
+        code: ${{ transition.payload.?code.orValue('ADAPTIVE_RECOVERY_REQUIRED') }}
     recover_work:
       inputs:
         reason: ${{ transition.payload.reason }}
@@ -1187,6 +1262,14 @@ state:
         previous_attempts: ${{ state_output('recover_work','attempts',0) }}
         work_turn: "${{ state_exists('work') ? size(states.work.runs)+1 : 0 }}"
         previous_work_turn: ${{ state_output('recover_work','work_turn',-1) }}
+        human_round: "${{ size(jq((state_exists('questions') ? states.questions.runs.map(r,r.outputs.response.receipt)
+          + [states.questions.outputs.response.receipt] : []) + (state_exists('direction') ? states.direction.runs.map(r,r.outputs.response.receipt)
+          + [states.direction.outputs.response.receipt] : []) + (state_exists('accept') ? states.accept.runs.map(r,r.outputs.response.receipt)
+          + [states.accept.outputs.response.receipt] : []) + (state_exists('packages') ? states.packages.runs.map(r,r.outputs.review_receipts)
+          + [states.packages.outputs.review_receipts] : []) + (state_exists('coordinate') ? states.coordinate.runs.map(r,r.outputs.review_receipts)
+          + [states.coordinate.outputs.review_receipts] : []), 'flatten | map(select(.submission_id? != null)) |
+          unique_by(.request_id, .submission_id)')) }}"
+        previous_human_round: ${{ state_output('recover_work','human_round',-1) }}
       sequence:
       - id: errors
         include: ../adaptive/error-documents.yaml
@@ -1196,19 +1279,21 @@ state:
       outputs:
         reason: ${{ inputs.reason }}
         candidate: ${{ inputs.candidate }}
-        attempts: '${{ inputs.work_turn == inputs.previous_work_turn+1 && inputs.previous_candidate == inputs.candidate
-          ? inputs.previous_attempts+1 : 1 }}'
+        attempts: '${{ inputs.human_round == inputs.previous_human_round && inputs.work_turn == inputs.previous_work_turn+1
+          && inputs.previous_candidate == inputs.candidate ? inputs.previous_attempts+1 : 1 }}'
         documents: ${{
           jq([inputs.documents,sequence.errors.outputs.documents,{'feedback/recovery.md':{'kind':'value','name':'feedback/recovery.md','format':'text','value':inputs.reason}
           }],'add') }}
         annotations: ${{ inputs.annotations }}
         work_turn: ${{ inputs.work_turn }}
+        human_round: ${{ inputs.human_round }}
       transitions:
       - to: operational_failure
         when: outputs.attempts > 3
         payload:
           reason: ${{ 'Three correction turns did not resolve the blocker. ' + outputs.reason }}
           documents: ${{ outputs.documents }}
+          code: ADAPTIVE_OPERATIONAL_RECOVERY_EXHAUSTED
       - to: dispatch
         when: true
         payload:
@@ -1359,6 +1444,21 @@ state:
         work_kind: ${{ states.direction.outputs.work_kind }}
         one_pager: ${{ states.direction.outputs.one_pager }}
         receipt: ${{ states.direction.outputs.response.?receipt.orValue({}) }}
+    autonomous_limit:
+      include: ../adaptive/operational-failure.yaml
+      inputs:
+        code: ADAPTIVE_AUTONOMOUS_LIMIT
+        reason: ${{ 'The configured allowance of ' + string(inputs.max_iterations) + ' autonomous
+          implementation turns was exhausted. No new human response was collected during this attempt. Inspect
+          the retained work before continuing.' }}
+        documents: ${{ transition.payload.documents }}
+    response_repair_exhausted:
+      include: ../adaptive/operational-failure.yaml
+      inputs:
+        code: ADAPTIVE_RESPONSE_REPAIR_EXHAUSTED
+        reason: "${{ 'Two automatic response corrections did not resolve: ' + jq(transition.payload.issues,'join(\"\
+          ; \")') }}"
+        documents: ${{ jq([transition.payload.documents,transition.payload.evidence_documents],'add') }}
 outputs:
   annotations: ${{
     state_output('merge','annotations',state_output('stopped','annotations',state_output('record','annotations',inputs.annotations)))

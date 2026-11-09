@@ -1,0 +1,28 @@
+id: adaptive2-autonomous-budget
+inputs:
+  receipts: ${{ inputs.receipts }}
+  work: ${{ inputs.work }}
+  phase: ${{ inputs.phase }}
+  assignment: ${{ inputs.assignment }}
+  limit: ${{ int(inputs.limit) }}
+sequence:
+- id: human
+  sequence: []
+  inputs:
+    receipts: ${{ inputs.receipts }}
+  outputs:
+    round: ${{ size(jq(inputs.receipts, 'flatten | map(select(.submission_id? != null)) | unique_by(.request_id, .submission_id)')) }}
+- id: count
+  sequence: []
+  inputs:
+    round: ${{ sequence.human.outputs.round }}
+    work: ${{ inputs.work }}
+  outputs:
+    human_reply: >-
+      ${{ inputs.round > (size(inputs.work) > 0 ? inputs.work[size(inputs.work)-1].human_round : 0) }}
+    used: ${{ size(inputs.work.filter(w, w.human_round == inputs.round && !w.human_reply && w.phase == 'implement' && w.assignment != 'repair' && !(w.next in ['coordinate','blocked','wait','ask_user','review']))) }}
+outputs:
+  human_round: ${{ sequence.human.outputs.round }}
+  human_reply: ${{ sequence.count.outputs.human_reply }}
+  used: ${{ sequence.count.outputs.used }}
+  exhausted: ${{ inputs.limit > 0 && inputs.phase == 'implement' && inputs.assignment != 'repair' && !sequence.count.outputs.human_reply && sequence.count.outputs.used >= inputs.limit }}

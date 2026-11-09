@@ -172,7 +172,7 @@ state:
           : h.cell == states.pick.outputs.request.cell && h.?ref.orValue('main') == states.pick.outputs.request.?ref.orValue('main')
           && h.?handoff.orValue('') == states.pick.outputs.request.handoff)) }}"
         receiver_agreements: |-
-          ${{ jq((inputs.history + (state_exists('record') ? states.record.runs.map(r,r.outputs.record) + [states.record.outputs.record] : [])).filter(h,h.action == 'consult').map(h, [{'cell':h.target.cell,'result':h.result}] + h.result.?agreements.orValue([]).map(a,{'cell':a.target.cell,'result':a.result})), 'add // []') }}
+          ${{ jq((inputs.history + (state_exists('record') ? states.record.runs.map(r,r.outputs.record) + [states.record.outputs.record] : [])).filter(h,h.action == 'consult').map(h, [{'cell':h.target.cell,'directory':'coordination/' + h.?reference.orValue('') + '/artifacts/' + h.result.?handoff.orValue(''),'result':h.result}] + h.result.?agreements.orValue([]).map(a,{'cell':a.target.cell,'result':a.result})), 'add // []') }}
         cell: ${{ states.pick.outputs.request.cell }}
       sequence:
       - id: handoff
@@ -180,12 +180,21 @@ state:
         inputs:
           directory: ${{ inputs.directory }}
           documents: ${{ inputs.documents }}
+      - id: accepted
+        include: ./accepted-handoff.yaml
+        inputs:
+          cell: ${{ inputs.cell }}
+          directory: ${{ inputs.directory }}
+          documents: ${{ sequence.handoff.outputs.documents }}
+          agreements: '${{ sequence.handoff.outputs.valid ? inputs.receiver_agreements : [] }}'
       outputs:
-        documents: ${{ sequence.handoff.outputs.documents }}
+        documents: ${{ sequence.accepted.outputs.documents }}
         valid: ${{ sequence.handoff.outputs.valid }}
         existing: ${{ inputs.existing }}
-        received: |-
-          ${{ inputs.receiver_agreements.filter(a,a.cell == inputs.cell && a.result.?outcome.orValue('') == 'agreed' && a.result.?work_kind.orValue('') in ['feature','bug','explanation','oversight'] && nonempty(a.result.?handoff.orValue('')) && (a.result.handoff + 'handoff.md') in a.result.final_artifacts && ('handoff.md' in sequence.handoff.outputs.documents) && sequence.handoff.outputs.documents.all(k, k.startsWith('recovery/') || k.startsWith('feedback/') || ((a.result.handoff + k) in a.result.final_artifacts && jq(sequence.handoff.outputs.documents[k], 'del(.name)') == jq(a.result.final_artifacts[a.result.handoff + k], 'del(.name)')))) }}
+        accepted: ${{ sequence.accepted.outputs.valid }}
+        restored: ${{ sequence.accepted.outputs.restored }}
+        rejected: ${{ sequence.accepted.outputs.rejected }}
+        reason: ${{ sequence.accepted.outputs.reason }}
       transitions:
       - to: invalid
         when: '!outputs.valid'
@@ -193,11 +202,9 @@ state:
           reason: Execution requires a safe handoff directory containing handoff.md among the selected files.
             Publish it and list all necessary files before requesting execution.
       - to: invalid
-        when: size(outputs.received) == 0
+        when: '!outputs.accepted'
         payload:
-          reason: Execution requires the agreed receiving cell's typed handoff and original selected artifact
-            references. Ask that cell to write or revise the assignment; do not substitute requester-authored
-            files.
+          reason: ${{ outputs.reason }}
       - to: inspect_execution
         when: size(outputs.existing)>0
       - to: execution_target
@@ -342,6 +349,12 @@ outputs:
     : state_output('record','documents',inputs.documents) }}"
   annotations: ${{ state_output('record','annotations',inputs.annotations) }}
   issues: "${{ state_exists('invalid') ? [states.invalid.outputs.reason] : [] }}"
+  restored_documents: "${{ state_exists('execution') ? jq(states.execution.runs.map(r,r.outputs.restored) + [states.execution.outputs.restored],'add')
+    : {} }}"
+  rejected_documents: "${{ state_exists('execution') ? jq(states.execution.runs.map(r,r.outputs.rejected) + [states.execution.outputs.rejected],'add')
+    : {} }}"
+  review_receipts: "${{ state_exists('record') ? jq(states.record.runs.map(r,r.outputs.record) + [states.record.outputs.record],
+    '[.[] | select(.action == \"consult\") | .result.review_receipts // []] | flatten') : [] }}"
 vars:
   status_documents: |
     . as $v | .record as $r |

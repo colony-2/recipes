@@ -1,0 +1,473 @@
+recipe: ../../build.yaml
+cases:
+- id: unchanged-copy-starts-receiver-child
+  type: integration_case
+  inputs:
+    prompt: Save drafts while typing.
+    build_recipe: child
+  runtime:
+    cell: notebook
+    cells:
+      notebook:
+        files:
+          PURPOSE.md: Own notebook.
+          .c2/recipes/child.yaml: "id: receiver-child\nsequence:\n- id: consume\n  op: command_execution\n  artifacts:\n\
+            \    ./: ${{ inputs.documents }}\n  inputs:\n    run: cat \"$INBOX/handoff.md\"\n    env:\n      INBOX:
+            ${{ context.environment.op.inbox }}\noutputs:\n  disposition: unchanged\n  summary: ${{ sequence.consume.outputs.stdout
+            }}\nschema_version: 2\ninput_schema:\n  prompt:\n    type: string\n    default_value: ''\n  root_cell:\n\
+            \    type: string\n    default_value: ''\n  root_ref:\n    type: string\n    default_value: ''\n  documents:\n\
+            \    type: artifact_map\n    default_value: {}\n  annotations:\n    type: array\n    default_value:
+            []\n    items:\n      type: object\ninputs:\n  documents: ${{ inputs.documents }}\n"
+          README.md: A notebook.
+      storage:
+        files:
+          PURPOSE.md: Own draft persistence.
+    responses:
+    - node_path:
+        build/workflow/adaptive2-workflow/run/adaptive2-develop/direction/sequence/review/adaptive2-review/request_human_review
+      fields:
+        decision: accept
+    - node_path:
+        build/workflow/adaptive2-workflow/run/adaptive2-develop/accept/sequence/outcome_review/adaptive2-review/request_human_review
+      fields:
+        decision: accept
+  mocks:
+    ops:
+    - &id001
+      match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: notebook
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: coordinate
+            work_kind: feature
+            summary: Ask storage to reject conflicting writes.
+            files: []
+            requests:
+            - action: consult
+              kind: bug
+              cell: storage
+              ref: main
+              request: Reject conflicting writes without losing either draft.
+        artifacts: {}
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: coordinate
+    - &id002
+      match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: storage
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: agreed
+            reply: Fix stale writes in storage.
+            work_kind: bug
+            handoff: iter1/consultant/work/
+            files:
+            - path: iter1/consultant/summary.md
+              description: Consultation evidence
+            - path: iter1/consultant/work/handoff.md
+              description: Consultation evidence
+            requests:
+            review_title:
+        artifacts:
+          iter1/consultant/summary.md: "# Storage: prevent conflicting writes\nPreserve both drafts. The requester
+            questioned retry behavior.\n"
+          iter1/consultant/work/handoff.md: "# Storage bug: reject stale draft writes\nWork type: bug.\nExpected:
+            stale writes fail. Observed: overwrite.\nAcceptance: preserve the earlier write and return a conflict.\n"
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                participant: consultant
+                iteration: 1
+    - &id003
+      match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: notebook
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            work_kind: feature
+            summary: Keep unfinished notes when navigating away.
+            files:
+            - path: one-pager.md
+              description: Direction for saving unfinished notes
+              title: 'Approve 1p for notebook feature: save drafts while typing'
+              role: primary
+              order: 0
+              source_paths:
+              - request.md
+            questions:
+            review_title: 'Approve 1p for notebook feature: save drafts while typing'
+            requests:
+            packages:
+        artifacts:
+          one-pager.md: "# Save drafts\n\n## Problem Description\nPeople lose text.\n\n## Key challenges/design
+            questions & answers\n| Question | Answer |\n| --- | --- |\n| Offline? | Excluded. |\n"
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: shape
+    - &id004
+      match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: notebook
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: Complete bounded work.
+            files:
+            - path: test-statements.md
+              description: test-statements.md
+              title: test-statements.md
+              role: primary
+              order: 0
+            - path: handoff.md
+              description: Settled execution assignment
+              title: Execution handoff
+              role: supporting
+              order: 1
+              source_paths:
+            questions: []
+        artifacts:
+          test-statements.md: "# Expectations\n- T1 [Critical] [integration] [README.md] [Git] Existing behavior
+            remains available."
+          handoff.md: "# Execution assignment\nComplete the requested bounded work against test-statements.md. Use
+            settled decisions and preserve existing behavior."
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: review
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: notebook
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: coordinate
+            summary: Start the accepted storage fix.
+            files:
+            - path: coordination/request-0-0/artifacts/iter1/consultant/work/handoff.md
+              description: Agreed storage assignment
+            requests:
+            - action: execute
+              cell: storage
+              ref: main
+              handoff: coordination/request-0-0/artifacts/iter1/consultant/work/
+        artifacts:
+          coordination/request-0-0/artifacts/iter1/consultant/work/handoff.md: "# Storage bug: reject stale draft
+            writes\nWork type: bug.\nExpected: stale writes fail. Observed: overwrite.\nAcceptance: preserve the
+            earlier write and return a conflict.\n"
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: coordinate
+    - &id005
+      match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: notebook
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: wait
+            summary: Wait for the storage fix.
+            files: []
+        artifacts: {}
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: review
+    - &id006
+      match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: notebook
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: Complete bounded work.
+            files:
+            - path: implementation.md
+              description: implementation.md
+              title: implementation.md
+              role: primary
+              order: 0
+            - path: test-results.md
+              description: test-results.md
+              title: test-results.md
+              role: primary
+              order: 1
+            questions: []
+        artifacts:
+          implementation.md: "# Outcome\nAlready satisfied."
+          test-results.md: "# Results\nT1 passed; existing behavior inspected."
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: review
+    - &id007
+      match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: notebook
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            summary: Complete bounded work.
+            files:
+            - path: assessment.md
+              description: assessment.md
+              title: assessment.md
+              role: primary
+              order: 0
+            verdict: approve
+            subject: Improve candidate
+        artifacts:
+          assessment.md: "# Review\nEvidence checked."
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: review
+    - &id008
+      match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: notebook
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            summary: Complete bounded work.
+            files:
+            - path: merge-review.md
+              description: merge-review.md
+              title: merge-review.md
+              role: primary
+              order: 0
+            verdict: approve
+            subject: Improve candidate
+        artifacts:
+          merge-review.md: "# Review\nEvidence checked."
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: review
+    - &id009
+      match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: disposition
+    value: unchanged
+  - type: cel_true
+    expr: calls.filter(c,c.op == "recipes.run").size() == 1
+  - type: cel_true
+    expr: calls.filter(c,c.op ==
+      "recipes.run")[0].inputs.recipes[0].inputs.documents["handoff.md"].stored.key.name ==
+      "iter1/consultant/work/handoff.md"
+- id: changed-copy-recovers-original-from-cache
+  type: integration_case
+  inputs:
+    prompt: Save drafts while typing.
+    build_recipe: child
+  runtime:
+    cell: notebook
+    cells:
+      notebook:
+        files:
+          PURPOSE.md: Own notebook.
+          .c2/recipes/child.yaml: "id: receiver-child\nsequence:\n- id: consume\n  op: command_execution\n  artifacts:\n\
+            \    ./: ${{ inputs.documents }}\n  inputs:\n    run: cat \"$INBOX/handoff.md\"\n    env:\n      INBOX:
+            ${{ context.environment.op.inbox }}\noutputs:\n  disposition: unchanged\n  summary: ${{ sequence.consume.outputs.stdout
+            }}\nschema_version: 2\ninput_schema:\n  prompt:\n    type: string\n    default_value: ''\n  root_cell:\n\
+            \    type: string\n    default_value: ''\n  root_ref:\n    type: string\n    default_value: ''\n  documents:\n\
+            \    type: artifact_map\n    default_value: {}\n  annotations:\n    type: array\n    default_value:
+            []\n    items:\n      type: object\ninputs:\n  documents: ${{ inputs.documents }}\n"
+          README.md: A notebook.
+      storage:
+        files:
+          PURPOSE.md: Own draft persistence.
+    responses:
+    - node_path:
+        build/workflow/adaptive2-workflow/run/adaptive2-develop/direction/sequence/review/adaptive2-review/request_human_review
+      fields:
+        decision: accept
+    - node_path:
+        build/workflow/adaptive2-workflow/run/adaptive2-develop/accept/sequence/outcome_review/adaptive2-review/request_human_review
+      fields:
+        decision: accept
+  mocks:
+    ops:
+    - *id001
+    - *id002
+    - *id003
+    - *id004
+    - &id010
+      match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: notebook
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: coordinate
+            summary: Start the accepted storage fix.
+            files:
+            - path: coordination/request-0-0/artifacts/iter1/consultant/work/handoff.md
+              description: Agreed storage assignment
+            requests:
+            - action: execute
+              cell: storage
+              ref: main
+              handoff: coordination/request-0-0/artifacts/iter1/consultant/work/
+        artifacts:
+          coordination/request-0-0/artifacts/iter1/consultant/work/handoff.md: Requester changed the scope.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: coordinate
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: notebook
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: coordinate
+            summary: Start the accepted storage fix.
+            files:
+            - path: coordination/request-0-0/artifacts/iter1/consultant/work/handoff.md
+              description: Agreed storage assignment
+            requests:
+            - action: execute
+              cell: storage
+              ref: main
+              handoff: coordination/request-0-0/artifacts/iter1/consultant/work/
+        artifacts: {}
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: coordinate
+    - *id005
+    - *id006
+    - *id007
+    - *id008
+    - *id009
+  assertions:
+  - type: output_equals
+    path: disposition
+    value: unchanged
+  - type: cel_true
+    expr: calls.filter(c,c.op == "recipes.run").size() == 1
+  - type: cel_true
+    expr: calls.filter(c,c.op ==
+      "recipes.run")[0].inputs.recipes[0].inputs.documents["handoff.md"].stored.key.name ==
+      "iter1/consultant/work/handoff.md"
+  - type: cel_true
+    expr: calls.filter(c,c.op == "extension_execution" &&
+      c.node_path.contains("/work/"))[4].artifacts["coordination/request-0-0/artifacts/iter1/consultant/work/handoff.md"].contains("Storage
+      bug") && calls.filter(c,c.op == "extension_execution" &&
+      c.node_path.contains("/work/"))[4].artifacts["error/rejected-handoff/handoff.md"].contains("Requester
+      changed")
+- id: changed-copy-exhaustion-reports-actual-error
+  type: integration_case
+  inputs:
+    prompt: Save drafts while typing.
+    build_recipe: child
+  runtime:
+    cell: notebook
+    cells:
+      notebook:
+        files:
+          PURPOSE.md: Own notebook.
+          .c2/recipes/child.yaml: "id: receiver-child\nsequence:\n- id: consume\n  op: command_execution\n  artifacts:\n\
+            \    ./: ${{ inputs.documents }}\n  inputs:\n    run: cat \"$INBOX/handoff.md\"\n    env:\n      INBOX:
+            ${{ context.environment.op.inbox }}\noutputs:\n  disposition: unchanged\n  summary: ${{ sequence.consume.outputs.stdout
+            }}\nschema_version: 2\ninput_schema:\n  prompt:\n    type: string\n    default_value: ''\n  root_cell:\n\
+            \    type: string\n    default_value: ''\n  root_ref:\n    type: string\n    default_value: ''\n  documents:\n\
+            \    type: artifact_map\n    default_value: {}\n  annotations:\n    type: array\n    default_value:
+            []\n    items:\n      type: object\ninputs:\n  documents: ${{ inputs.documents }}\n"
+          README.md: A notebook.
+      storage:
+        files:
+          PURPOSE.md: Own draft persistence.
+    responses:
+    - node_path:
+        build/workflow/adaptive2-workflow/run/adaptive2-develop/direction/sequence/review/adaptive2-review/request_human_review
+      fields:
+        decision: accept
+    expect_error: 'Two automatic response corrections did not resolve: The accepted storage assignment was changed:
+      handoff.md.'
+  mocks:
+    ops:
+    - *id001
+    - *id002
+    - *id003
+    - *id004
+    - *id010
+    - *id010
+    - *id010
+    - *id009
+  assertions:
+  - type: cel_true
+    expr: '!calls.exists(c,c.op == "recipes.run")'
+  - type: cel_true
+    expr: calls.filter(c,c.op == "extension_execution" && c.node_path.contains("/work/")).size() == 6

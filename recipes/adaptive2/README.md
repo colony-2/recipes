@@ -19,7 +19,7 @@ omissions, interface changes, and differences from the approved plan.
 Consultations run inline in the receiving cell's managed workspace. The receiver
 checks existing alternatives, summarizes the exchange, and authors any follow-up
 `handoff.md` as one of the four assignment types. The requester can challenge it;
-the coordinator checks the accepted artifact's identity before execution.
+the coordinator forwards the receiver's accepted documents for execution.
 `conversation.md` preserves public replies and links their selected documents.
 
 The fork changes framing, review transitions, consultation presentation, and
@@ -34,7 +34,7 @@ Use the runtime pinned by [`.c2j-version`](../../.c2j-version) and the
 [native testing setup](../../guides/NATIVE_RECIPE_TESTING.md):
 
 ```sh
-c2j test run --directory recipe-tests/adaptive2 --out-dir /tmp/adaptive2-native
+c2j test run --directory recipe-tests/adaptive2 --case-timeout 3m --out-dir /tmp/adaptive2-native
 c2j test run --file recipe-tests/adaptive2/live-review.live.yaml \
   --include-live --case-timeout 30m --artifact-mode inline \
   --artifact-max-bytes 262144 --out-dir /tmp/adaptive2-live
@@ -62,3 +62,35 @@ existing jobs retain their captured recipes. Creation uses the existing workflow
 Initial live documents are available for review. Reusing a parent's approval for
 a child brief, executing approved prerequisites during planning, and a complete
 live oversight/recovery/merge trial remain follow-up work in the assessment.
+
+## Human replies and automatic limits
+
+Human questions and review rounds have no recipe turn limit. A new collected
+human response renews the automatic allowance; asking the question, presenting
+the review, and processing the reply do not spend it. This includes direction,
+outcome, consultation, and package decisions. Reusing a saved response or an
+automatic package-policy decision does not renew it.
+
+`max_iterations` defaults to zero (disabled). A positive value limits consecutive
+automatic implementation work. Response correction still allows two retries;
+unchanged operational blockers allow three correction turns. Consultations retain
+their per-round automatic limit. New human direction in nested advice also renews
+the suspended caller's round. Native Git retries remain bounded, with a new human
+response starting a fresh allowance. Runtime execution/time budgets remain separate.
+
+The recipe uses existing input receipts and task history. Custom consultation
+recipes that collect human direction should return `review_receipts`, an array of
+their native input response receipts, so the calling build can recognize it.
+Keep each original receipt's request and submission identifiers; do not generate
+replacement identifiers or reconstruct receipts from model output.
+
+Execution forwards the receiver's accepted handoff references. If a parent
+republishes a selected file, the recipe compares its bytes with the agreed file.
+An identical copy uses the original. A changed copy returns a file-specific error,
+restores the agreed inbox document, and preserves the proposed edit under
+`error/rejected-handoff/`. Additional recovery and feedback files remain selected
+explicitly. Multiple possible agreements require the original consultation's
+handoff directory; the recipe does not guess which scope to execute.
+
+See the [incident and plan](../../guides/adaptive2/PROPOSAL_AUTONOMOUS_TURN_LIMITS.md)
+and [implementation assessment](../../guides/adaptive2/turn-limits/implementation.md).
