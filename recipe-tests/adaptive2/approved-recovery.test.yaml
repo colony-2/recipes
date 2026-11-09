@@ -2,6 +2,8 @@ recipe: approved-recovery.yaml
 cases:
 - id: approved-recovery-persists-candidate-without-new-direction
   type: integration_case
+  inputs:
+    history_rounds: 105
   runtime:
     secrets:
       jev_api_key: synthetic
@@ -147,6 +149,64 @@ cases:
     expr: calls.exists(c,c.node_path.contains("start_implementation_session") && c.worktree["seed.txt"].contains("Recovered candidate"))
   - type: cel_true
     expr: '!calls.exists(c,c.node_path.contains("/direction/sequence/review/adaptive2-review/"))'
+- id: unavailable-source-stops-before-design-or-implementation
+  type: integration_case
+  inputs:
+    source_job: nonexistent-recovery-source
+  runtime:
+    expect_error: Recovery approval inspection failed
+    cells:
+      root:
+        files:
+          README.md: A bounded application.
+        file_sources:
+          .c2/recipes/prior-approval.yaml: approved-source.yaml
+    responses:
+    - node_path: prior-approved-work/direction/sequence/review
+      fields:
+        decision: accept
+  mocks:
+    ops:
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: size(reviews) == 1 && !calls.exists(c,c.op == "extension_execution")
+  - type: cel_true
+    expr: size(calls.filter(c,c.op == "recipes.run")) == 1
+  - type: cel_true
+    expr: calls.exists(c,c.node_path.endsWith("/inspect_approval"))
+- id: active-source-stops-before-duplicate-work
+  type: integration_case
+  inputs:
+    source_job: self
+  runtime:
+    expect_error: Recovery approval inspection failed
+    cells:
+      root:
+        files:
+          README.md: A bounded application.
+        file_sources:
+          .c2/recipes/prior-approval.yaml: approved-source.yaml
+    responses:
+    - node_path: prior-approved-work/direction/sequence/review
+      fields:
+        decision: accept
+  mocks:
+    ops:
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: size(reviews) == 1 && !calls.exists(c,c.op == "extension_execution")
+  - type: cel_true
+    expr: size(calls.filter(c,c.op == "recipes.run")) == 1
 - id: revised-direction-does-not-count-as-approval
   type: integration_case
   runtime:

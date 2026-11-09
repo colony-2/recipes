@@ -40,3 +40,12 @@ These extend the expectations in [the approved plan](../../guides/adaptive2/PROP
 | A2-T8 | Human feedback renews operational correction; repeated unchanged failures still stop. | High; integration, c2j | `human-turns.test.yaml`, `recipes/adaptive2/develop.yaml` |
 | A2-T9 | Unchanged merge chasing reuses approval and stays bounded; a new human approval starts a fresh retry allowance. | High; integration, c2j/Git | `merge-turns.test.yaml`, `recipes/adaptive2/develop.yaml` |
 | A2-T10 | Missing correction checkpoints and exhausted correction retries produce different codes while preserving the unresolved cause. | High; integration, c2j | `response-repair.test.yaml`, `recipes/adaptive2/response-repair.yaml` |
+
+## Approval recovery inspection
+
+| ID | Expectation | Importance; level/dependencies | Files |
+| --- | --- | --- | --- |
+| A2-AR1 | Approved work resumes writable implementation without another direction review when its history exceeds terminal limits and approval appears on a later page. | Critical; integration, c2j/Git/Nix | `approved-recovery.test.yaml`, `approved-source.yaml`, `recipes/adaptive2/recovery-approval.yaml` |
+| A2-AR2 | Failed approval inspection stops with its diagnostic before design, implementation, child submission, or another human review. | Critical; integration, c2j/Git/Nix | `approved-recovery.test.yaml`, `recipes/adaptive2/recovery-approval.yaml` |
+| A2-AR3 | A successfully inspected revision decision still requires direction review; unreadable approval evidence never grants implementation access. | Critical; integration, c2j artifacts/input | `approved-recovery.test.yaml`, `recipes/adaptive2/recovery-approval.yaml` |
+| A2-AR4 | Recovery from an active source stops before starting duplicate work or another design review. | Critical; integration, c2j | `approved-recovery.test.yaml`, `recipes/adaptive2/recovery-approval.yaml` |

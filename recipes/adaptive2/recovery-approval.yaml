@@ -16,17 +16,22 @@ sequence:
       python3 - <<'PY'
       import json, os, subprocess, tempfile, pathlib
       job = os.environ['RECOVERY_JOB']
+      class NoApproval(ValueError):
+          pass
       def cli(*args):
-          p = subprocess.run(['c2j','job',*args], text=True, capture_output=True, timeout=60)
-          if p.returncode:
-              raise ValueError(p.stderr.strip() or 'Job inspection failed')
-          return json.loads(p.stdout)
+          with tempfile.TemporaryDirectory(prefix='approval-inspection-') as tmp:
+              dest = pathlib.Path(tmp)/'result.json'
+              p = subprocess.run(['c2j','job',*args,'--output',str(dest)],
+                                 text=True, capture_output=True, timeout=60)
+              if p.returncode:
+                  raise RuntimeError(p.stderr.strip() or 'Job inspection failed')
+              return json.loads(dest.read_text())
       try:
           info = cli('show',job,'--json')['job']
           if info.get('cell') != os.environ['RECOVERY_CELL']:
-              raise ValueError('Recovery approval belongs to a different cell.')
+              raise NoApproval('Recovery approval belongs to a different cell.')
           if info.get('status') not in ('COMPLETED','CANCELLED'):
-              raise ValueError('Previous work is still active; do not duplicate its execution.')
+              raise RuntimeError('Previous work is still active; do not duplicate its execution.')
           tasks, cursor = [], None
           for page in range(100):
               args = ['log',job,'--limit','100','--json']
@@ -38,52 +43,53 @@ sequence:
               if not cursor:
                   break
           if cursor:
-              raise ValueError('Approval inspection incomplete: task inventory exceeds the inspection allowance.')
+              raise RuntimeError('Approval inspection incomplete: task inventory exceeds the inspection allowance.')
           direction = [t for t in tasks if t.get('type') == 'input:collect_user_input'
                        and '/scope:"state:direction"#' in t['id']]
           if not direction:
-              raise ValueError('No recorded human direction decision was found.')
+              raise NoApproval('No recorded human direction decision was found.')
           task = direction[-1]
           if task.get('status') != 'succeeded':
-              raise ValueError('The latest direction question has no completed human decision.')
+              raise NoApproval('The latest direction question has no completed human decision.')
           with tempfile.TemporaryDirectory(prefix='approved-recovery-') as tmp:
-              def output(task_id, filename):
-                  dest = str(pathlib.Path(tmp)/filename)
-                  p = subprocess.run(['c2j','job','log',job,'--task',task_id,'--field','','--output',dest],
-                                     text=True,capture_output=True,timeout=60)
-                  if p.returncode:
-                      raise ValueError(p.stderr.strip())
-                  return json.loads(pathlib.Path(dest).read_text())
-              answer = output(task['id'],'answer.json')
+              answer = cli('log',job,'--task',task['id'],'--field','')
               fields = answer.get('fields',{})
               if isinstance(fields,str):
                   fields = json.loads(fields)
               receipt = answer.get('receipt',{})
               if fields.get('decision') != 'accept' or fields.get('feedback') or answer.get('artifact_refs'):
-                  raise ValueError('The latest human direction did not approve unchanged scope.')
+                  raise NoApproval('The latest human direction did not approve unchanged scope.')
               if not receipt.get('request_id') or not receipt.get('submission_id'):
-                  raise ValueError('The approval has no native input receipt.')
+                  raise NoApproval('The approval has no native input receipt.')
               form_id = task['id'].replace('task:"input:collect_user_input"','task:"input:generate_form"')
-              form = output(form_id,'form.json')
+              form = cli('log',job,'--task',form_id,'--field','')
               overview = form.get('overview_document_id')
               ref = form.get('documents',{}).get(overview)
               if overview != 'one-pager.md' or not ref or ref.get('kind') != 'stored':
-                  raise ValueError('The approved one-pager is not available as an original stored artifact.')
+                  raise NoApproval('The approved one-pager is not available as an original stored artifact.')
               key = ref['stored']['key']
               p = subprocess.run(['c2j','job','artifact',key['jobId'],'--ref',json.dumps(key),
                                   '--output',str(pathlib.Path(tmp)/'one-pager.md')],
                                  text=True,capture_output=True,timeout=60)
               if p.returncode:
-                  raise ValueError('The approved one-pager is unreadable: '+p.stderr.strip())
+                  raise RuntimeError('The approved one-pager is unreadable: '+p.stderr.strip())
               ref = dict(ref,name='approved-direction/one-pager.md')
               proof = {'job':job,'task':task['id'],'receipt':receipt,'one_pager':ref}
               print(json.dumps({'valid':True,'reason':'Recovered recorded direction approval.',
                                 'receipt':receipt,'documents':{'approved-direction/one-pager.md':ref,
                                 'recovery/approval.json':{'kind':'value','name':'recovery/approval.json',
                                 'format':'json','value':proof}}}))
-      except (ValueError, KeyError, OSError, subprocess.SubprocessError) as e:
+      except NoApproval as e:
           print(json.dumps({'valid':False,'reason':str(e),'receipt':{},'documents':{}}))
+      except (RuntimeError, ValueError, KeyError, OSError, subprocess.SubprocessError) as e:
+          raise SystemExit('Could not inspect recovery approval for job '+job+': '+str(e))
       PY
+  catch:
+  - when: failure.kind != 'cancellation'
+    fail:
+      code: ADAPTIVE_RECOVERY_INSPECTION_FAILED
+      message: '${{ "Recovery approval inspection failed: " + failure.message }}'
+      cause: ${{ failure }}
 outputs:
   valid: ${{ json_parse(sequence.inspect_approval.outputs.stdout).valid }}
   reason: ${{ json_parse(sequence.inspect_approval.outputs.stdout).reason }}

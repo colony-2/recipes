@@ -1,5 +1,15 @@
 schema_version: 2
 id: approved-recovery
+input_schema:
+  history_rounds:
+    type: number
+    default_value: 0
+  source_job:
+    type: string
+    default_value: ''
+inputs:
+  history_rounds: ${{ inputs.history_rounds }}
+  source_job: ${{ inputs.source_job }}
 sequence:
 - id: source
   op: recipes.run
@@ -7,7 +17,8 @@ sequence:
     recipes:
     - cell_name: ${{ context.workflow.cell }}
       name: prior-approval
-      inputs: {}
+      inputs:
+        history_rounds: ${{ inputs.history_rounds }}
     wait:
       on: job
       condition: complete
@@ -19,11 +30,45 @@ sequence:
   op: command_execution
   inputs:
     run: printf 'Recovered candidate\n' > seed.txt
+- id: check_large_history
+  inputs:
+    history_rounds: ${{ inputs.history_rounds }}
+    source_job: ${{ sequence.source.outputs.job_ids[0] }}
+  state:
+    initial:
+    - to: inspect
+      when: inputs.history_rounds > 0
+    - to: skip
+      when: true
+    states:
+      skip:
+        sequence: []
+      inspect:
+        op: command_execution
+        const: true
+        inputs:
+          env:
+            SOURCE_JOB: ${{ inputs.source_job }}
+          run: |
+            python3 - <<'PY'
+            import json, os, pathlib, subprocess, tempfile
+            command = ['c2j','job','log',os.environ['SOURCE_JOB'],'--limit','100','--json']
+            result = subprocess.run(command, text=True, capture_output=True)
+            assert result.returncode != 0 and 'result exceeds terminal limit' in result.stderr, result.stderr
+            with tempfile.TemporaryDirectory() as tmp:
+                dest = pathlib.Path(tmp)/'history.json'
+                subprocess.run(command+['--output',str(dest)], check=True)
+                data = json.loads(dest.read_text())
+                assert dest.stat().st_size > 256*1024
+                assert data.get('next_cursor')
+                assert all(t['type'] != 'input:collect_user_input' for t in data['tasks'])
+                print('Large first page verified; approval requires pagination.')
+            PY
 - id: build
   include: ../../build.yaml
   inputs:
     prompt: Continue the previously approved implementation. Do not repeat direction review.
-    resume_from: ${{ sequence.source.outputs.job_ids[0] }}
+    resume_from: '${{ nonempty(inputs.source_job) ? inputs.source_job : sequence.source.outputs.job_ids[0] }}'
     documents:
       handoff.md:
         kind: value

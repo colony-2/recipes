@@ -122,6 +122,12 @@ Only then does a fresh writable implementation session start. Missing approval,
 a different cell, or changed scope returns to ordinary direction review. Prior
 checks do not substitute for verification of the recovered candidate.
 
+Inspection reads exact JSON files and follows task-history pagination, including
+large histories. A failed inspection or unreadable approved artifact stops with
+`ADAPTIVE_RECOVERY_INSPECTION_FAILED` and a retained command diagnostic. It does
+not treat that failure as missing approval or start another design review. An
+active source job also stops recovery to avoid duplicate work.
+
 Configure and run inherit the managed owner workspace. A recovered candidate is
 not replaced by an explicit selection of the cell's branch. The configure mutation
 guard and exact publication workspace remain in force.

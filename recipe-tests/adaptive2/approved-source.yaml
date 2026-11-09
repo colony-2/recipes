@@ -4,11 +4,57 @@ input_schema:
   decision:
     type: string
     default_value: accept
+  history_rounds:
+    type: number
+    default_value: 0
 inputs:
   decision: ${{ inputs.decision }}
+  history_rounds: ${{ inputs.history_rounds }}
 state:
-  initial: direction
+  initial:
+  - to: history
+    when: inputs.history_rounds > 0
+  - to: direction
+    when: true
   states:
+    # Match the nested task paths and command fields of a real adaptive job.
+    # Approval follows the history so a paginated reader must find it later.
+    history:
+      inputs:
+        round: ${{ transition.payload.?round.orValue(0) }}
+      sequence:
+      - id: workflow
+        sequence:
+        - id: adaptive2-workflow
+          sequence:
+          - id: run
+            sequence:
+            - id: adaptive2-develop
+              sequence:
+              - id: work
+                sequence:
+                - id: agent
+                  sequence:
+                  - id: adaptive2-agent
+                    sequence:
+                    - id: turn
+                      sequence:
+                      - id: check_progress
+                        op: command_execution
+                        const: true
+                        inputs:
+                          run: |
+                            printf '%0200d\n' 0
+                            printf '%0200d\n' 0 >&2
+      outputs:
+        round: ${{ inputs.round + 1 }}
+      transitions:
+      - to: history
+        when: outputs.round < inputs.history_rounds
+        payload:
+          round: ${{ outputs.round }}
+      - to: direction
+        when: true
     direction:
       inputs:
         decision: ${{ inputs.decision }}
