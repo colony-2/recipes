@@ -1,0 +1,68 @@
+id: adaptive2-route-target
+inputs:
+  request: ${{ inputs.request }}
+  root_cell: ${{ inputs.root_cell }}
+  root_ref: ${{ inputs.root_ref }}
+  create_recipe: ${{ inputs.create_recipe }}
+  documents: ${{ inputs.documents }}
+state:
+  initial: choose
+  states:
+    choose:
+      sequence: []
+      transitions:
+      - to: proposal
+        when: inputs.request.kind == 'create'
+      - to: probe
+        when: true
+    proposal:
+      sequence: []
+      outputs:
+        target: ${{ {'cell':inputs.request.cell,'repo':'','ref':'main','state':'proposed','detail':'Explicit request for
+          root evaluation.'} }}
+      transitions:
+      - to: create_guard
+        when: true
+      inputs:
+        request: ${{ inputs.request }}
+    probe:
+      include: ../adaptive/resolve-target.yaml
+      inputs:
+        cell: ${{ inputs.request.cell }}
+        ref: ${{ inputs.request.ref }}
+      transitions:
+      - to: invalid
+        when: outputs.target.state != 'ready'
+    create:
+      include: ./create-request.yaml
+      inputs:
+        request: ${{ inputs.request }}
+        target: ${{ state_output('probe','target',state_output('proposal','target',{})) }}
+        root_cell: ${{ inputs.root_cell }}
+        root_ref: ${{ inputs.root_ref }}
+        create_recipe: ${{ inputs.create_recipe }}
+        documents: ${{ inputs.documents }}
+    create_guard:
+      sequence: []
+      transitions:
+      - to: invalid
+        when: '!nonempty(inputs.root_cell) || !nonempty(inputs.create_recipe)'
+      - to: create
+        when: true
+    invalid:
+      sequence: []
+outputs:
+  target: "${{ (state_exists('create') ? states.create.outputs.result.?outputs.orValue({}).?created_cells.orValue([]) : []).exists(c,c.?cell.orValue('')
+    == inputs.request.cell) ? jq((state_exists('create') ? states.create.outputs.result.?outputs.orValue({}).?created_cells.orValue([])
+    : []).filter(c,c.?cell.orValue('') == inputs.request.cell)[0], '. + {ref:\"main\",state:\"ready\"}') : state_output('probe','target',state_output('proposal','target',{}))
+    }}"
+  creation: "${{ state_exists('create') ? states.create.outputs : null }}"
+  documents: ${{ jq([inputs.documents,state_output('create','documents',{})], 'add') }}
+  ready: "${{ !state_exists('invalid') && !state_exists('create') || (states.create.outputs.result.status == 'completed' &&
+    states.create.outputs.result.outputs.?merged.orValue(false) && states.create.outputs.result.outputs.?disposition.orValue('')
+    == 'created' && size((state_exists('create') ? states.create.outputs.result.?outputs.orValue({}).?created_cells.orValue([])
+    : []))>0 && (state_exists('create') ? states.create.outputs.result.?outputs.orValue({}).?created_cells.orValue([]) : []).all(c,nonempty(c.repo)
+    && nonempty(c.revision) && c.ref in ['main','refs/heads/main']) && (inputs.request.cell == '' || (state_exists('create')
+    ? states.create.outputs.result.?outputs.orValue({}).?created_cells.orValue([]) : []).exists(c,c.?cell.orValue('') == inputs.request.cell)))
+    }}"
+  valid: ${{ !state_exists('invalid') }}

@@ -1,0 +1,37 @@
+id: adaptive2-create-request
+version: 1.0.0
+inputs:
+  request: ${{ inputs.request }}
+  target: ${{ inputs.target }}
+  root_cell: ${{ inputs.root_cell }}
+  root_ref: ${{ inputs.root_ref }}
+  create_recipe: ${{ inputs.create_recipe }}
+  documents: ${{ inputs.documents }}
+workspace:
+  cell: ${{ inputs.root_cell }}
+  ref: ${{ inputs.root_ref }}
+sequence:
+- id: prompts
+  include: ./prompts.yaml
+  inputs:
+    request: ${{ inputs.request.request }}
+- id: submit_creation
+  op: recipes.run
+  inputs:
+    recipes: "${{ [{'cell_name': context.workspace.cell, 'git': {'base_repo': context.git.repo, 'base_ref': context.git.ref,
+      'base_hash': context.git.resolved_hash}, 'name': inputs.create_recipe, 'inputs': {'prompt': sequence.prompts.outputs.children.creation,
+      'root_cell': inputs.root_cell, 'root_ref': inputs.root_ref, 'documents': jq([inputs.documents, {'create-request.json':
+      {'kind': 'value', 'name': 'create-request.json', 'format': 'json', 'value': {'request': inputs.request, 'target': inputs.target,
+      'requester_job': context.workflow.job_id} } }], 'add')} }] }}"
+    wait:
+      on: job
+      condition: complete
+- id: await_creation
+  include: ../adaptive/await-child.yaml
+  inputs:
+    job: ${{ sequence.submit_creation.outputs.job_ids[0] }}
+outputs:
+  job_id: ${{ sequence.submit_creation.outputs.job_ids[0] }}
+  result: ${{ sequence.await_creation.outputs.result }}
+  documents: ${{ jq([sequence.await_creation.outputs.result.?outputs.orValue({}).?artifact_refs.orValue({}),
+    sequence.await_creation.outputs.errors], 'add') }}

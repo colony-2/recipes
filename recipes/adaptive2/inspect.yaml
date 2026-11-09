@@ -1,0 +1,106 @@
+id: adaptive2-inspect
+inputs:
+  role: ${{ inputs.role }}
+  request: ${{ inputs.request }}
+  documents: ${{ inputs.documents }}
+  assignment: ${{ inputs.?assignment.orValue('') }}
+  guidance: ${{ inputs.?guidance.orValue('') }}
+  evidence_documents: ${{ inputs.?evidence_documents.orValue({}) }}
+state:
+  initial: evaluate
+  states:
+    evaluate:
+      inputs:
+        attempt: ${{ transition.payload.?attempt.orValue(0) }}
+        session: ${{ transition.payload.?session.orValue({}) }}
+        documents: ${{ transition.payload.?documents.orValue(inputs.documents) }}
+        issues: ${{ transition.payload.?issues.orValue([]) }}
+        role: ${{ inputs.role }}
+        request: ${{ inputs.request }}
+        assignment: ${{ inputs.assignment }}
+        guidance: ${{ inputs.guidance }}
+        evidence_documents: ${{ inputs.evidence_documents }}
+        retained_artifacts: ${{ transition.payload.?retained_artifacts.orValue({}) }}
+      sequence:
+      - id: schemas
+        include: ./response-schemas.yaml
+      - id: prompts
+        include: ./prompts.yaml
+        inputs:
+          request: ${{ inputs.request }}
+          assignment: ${{ inputs.assignment }}
+          guidance: ${{ inputs.guidance }}
+          review_role: ${{ inputs.role }}
+          correct_response: ${{ size(inputs.issues) > 0 }}
+      - id: documents
+        include: ../adaptive/task-documents.yaml
+        inputs:
+          documents: ${{ inputs.documents }}
+          evidence: '${{ jq([inputs.evidence_documents,size(inputs.issues) > 0 ? {''error/response-corrections.md'': {''kind'':''value'',''name'':''error/response-corrections.md'',''format'':''text'',''value'':jq(inputs.issues,''map("-
+            " + .) | join("\n")'')} } : {}], ''add'') }}'
+      - id: agent
+        include: ./agent-turn.yaml
+        inputs:
+          prompt: ${{ sequence.prompts.outputs.inspect.task }}
+          instructions: ${{ sequence.prompts.outputs.inspect.instructions }}
+          schema: ${{ sequence.schemas.outputs.inspect }}
+          session: ${{ inputs.session }}
+          documents: ${{ sequence.documents.outputs.documents }}
+          read_only: true
+          evidence_documents: ${{ sequence.documents.outputs.evidence }}
+          retained_artifacts: ${{ inputs.retained_artifacts }}
+      outputs:
+        turn: ${{ sequence.agent.outputs }}
+        attempt: ${{ inputs.attempt }}
+        documents: ${{ jq([inputs.documents, sequence.agent.outputs.documents], 'add') }}
+      transitions:
+      - to: check
+        when: true
+    check:
+      sequence: []
+      inputs:
+        turn: ${{ states.evaluate.outputs.turn }}
+        role: ${{ inputs.role }}
+      vars:
+        issues: '${{ states.evaluate.outputs.turn.issues + (states.evaluate.outputs.turn.result.?status.orValue(''failed'')
+          != ''completed'' || !states.evaluate.outputs.turn.result.?output_schema_valid.orValue(false) ? [''Return a completed
+          schema-valid review.''] : []) + (!((inputs.role == ''summary'' ? ''merge-review.md'' : ''assessment.md'') in states.evaluate.outputs.turn.documents)
+          ? [''Publish and declare the required review document.''] : []) + (inputs.role == ''summary'' && !states.evaluate.outputs.turn.result.?response.orValue({}).?subject.orValue('''').matches(''^[^[:cntrl:]]{1,72}$'')
+          ? [''Return a single-line commit subject.''] : []) }}'
+      outputs:
+        valid: ${{ size(vars.issues) == 0 }}
+        issues: ${{ vars.issues }}
+      transitions:
+      - to: failed
+        when: states.evaluate.outputs.turn.result.?status.orValue('failed') != 'completed' ||
+          size(states.evaluate.outputs.turn.jobs.?job_ids.orValue([])) > 0
+      - to: evaluate
+        when: '!outputs.valid && states.evaluate.outputs.attempt < 2'
+        payload:
+          attempt: ${{ int(states.evaluate.outputs.attempt) + 1 }}
+          session: ${{ states.evaluate.outputs.turn.result.?session.orValue({}) }}
+          documents: ${{
+            jq([states.evaluate.outputs.documents,states.evaluate.outputs.turn.repair_documents,{'error/previous-response.json':{'kind':'value','name':'error/previous-response.json','format':'json','value':states.evaluate.outputs.turn.result.?response.orValue({})}
+            }], 'add') }}
+          issues: ${{ outputs.issues }}
+          retained_artifacts: ${{ states.evaluate.outputs.turn.artifacts }}
+      - to: failed
+        when: '!outputs.valid'
+    failed:
+      id: invalid_review
+      op: command_execution
+      inputs:
+        run: exit 1
+      catch:
+      - when: true
+        fail:
+          code: BUILD_REVIEW_INVALID
+          message: ${{ jq(states.check.outputs.issues, 'join("; ")') }}
+outputs:
+  next: '${{ states.evaluate.outputs.turn.result.response.?next.orValue(states.evaluate.outputs.turn.result.response.verdict
+    == ''approve'' ? ''complete'' : ''implementation'') }}'
+  approved: ${{ states.evaluate.outputs.turn.result.response.verdict == 'approve' }}
+  response: ${{ states.evaluate.outputs.turn.result.response }}
+  documents: ${{ states.evaluate.outputs.documents }}
+  annotations: ${{ states.evaluate.outputs.turn.annotations }}
+  artifact_refs: ${{ states.evaluate.outputs.turn.documents }}

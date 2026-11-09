@@ -51,13 +51,18 @@ cases:
             ../../.agents/skills/audit-recipe-jobs/agents/openai.yaml
     responses:
     - node_path:
-        build/workflow/adaptive-build/run/adaptive-develop/accept/sequence/outcome_review/adaptive-review/request_human_review
+        build/workflow/adaptive2-workflow/run/adaptive2-develop/direction/sequence/review/adaptive2-review/request_human_review
+      fields:
+        decision: accept
+    - node_path:
+        build/workflow/adaptive2-workflow/run/adaptive2-develop/accept/sequence/outcome_review/adaptive2-review/request_human_review
       fields:
         decision: accept
   inputs:
-    prompt: "Use $audit-recipe-jobs to audit job behavior and implement justified recipe improvements.\n\nJobDB: http://audit.invalid/c2\n\
-      Scope: Jobs created from 2026-11-07T00:00:00Z to 2026-11-08T00:00:00Z; include failed and successful jobs.\nConstraints:
-      Preserve 100% of accepted scope.\nDo not modify audited jobs.\nInspect review questions and child recovery."
+    prompt: "Use $audit-recipe-jobs to audit job behavior and implement justified recipe improvements.\n\n\
+      JobDB: http://audit.invalid/c2\nScope: Jobs created from 2026-11-07T00:00:00Z to 2026-11-08T00:00:00Z;
+      include failed and successful jobs.\nConstraints: Preserve 100% of accepted scope.\nDo not modify audited
+      jobs.\nInspect review questions and child recovery."
     title: Recipe improvement fixture
     documents:
       previous-audit.md:
@@ -68,14 +73,40 @@ cases:
   mocks:
     ops:
     - match:
-        selector: nix:github:colony-2/c2ops/published#jev
+        selector: nix:github:colony-2/c2ops/published#codex
       behavior:
         mode: return
         outputs:
-          answers:
-            is_heavy:
-              type: noul
-              noul: 0.01
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            work_kind: oversight
+            summary: Agree on the requested outcome before implementation.
+            files:
+            - path: one-pager.md
+              description: Direction for saving unfinished notes
+              title: 'Approve 1p for recipes oversight: preserve the requested behavior'
+              role: primary
+              order: 0
+              source_paths:
+              - request.md
+            questions:
+            review_title: 'Approve 1p for recipes oversight: preserve the requested behavior'
+            requests:
+            packages:
+        artifacts:
+          one-pager.md: "# Preserve the requested behavior\n\n## Problem Description\nThe requested outcome
+            needs verification.\n\n## Non Goals\nUnrelated changes.\n\n## What we are planning to do\nImplement
+            the request and verify its acceptance checks.\n\n## Compat/Upgrade\nKeep existing interfaces.\n\
+            \n## Key challenges/design questions & answers\n| Question | Answer |\n| --- | --- |\n| What proves
+            completion? | The approved test statements. |\n"
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: shape
     - match:
         selector: nix:github:colony-2/c2ops/published#codex
       behavior:
@@ -97,29 +128,29 @@ cases:
               title: Execution handoff
               role: supporting
               order: 1
-              source_paths: null
+              source_paths:
             - path: audit.md
               description: audit.md
               title: audit.md
               role: supporting
               order: 2
-              source_paths: null
+              source_paths:
             - path: inventory.md
               description: inventory.md
               title: inventory.md
               role: supporting
               order: 2
-              source_paths: null
+              source_paths:
             - path: improvement-plan.md
               description: improvement-plan.md
               title: improvement-plan.md
               role: supporting
               order: 2
-              source_paths: null
+              source_paths:
             questions: []
         artifacts:
-          test-statements.md: "# Expectations\n- T1 [Critical] [integration] [README.md] [Git] Existing behavior remains
-            available."
+          test-statements.md: "# Expectations\n- T1 [Critical] [integration] [README.md] [Git] Existing behavior
+            remains available."
           handoff.md: |
             # Execution handoff
             Read audit.md and improvement-plan.md. Validate the no-change conclusion and prepare the normal outcome review.
@@ -165,19 +196,19 @@ cases:
               title: audit.md
               role: supporting
               order: 2
-              source_paths: null
+              source_paths:
             - path: inventory.md
               description: inventory.md
               title: inventory.md
               role: supporting
               order: 2
-              source_paths: null
+              source_paths:
             - path: improvement-plan.md
               description: improvement-plan.md
               title: improvement-plan.md
               role: supporting
               order: 2
-              source_paths: null
+              source_paths:
             questions: []
         artifacts:
           implementation.md: |
@@ -256,9 +287,10 @@ cases:
         mode: passthrough
   assertions:
   - type: cel_true
-    expr: outputs.disposition == "unchanged" && !outputs.merged && size(reviews) == 1
+    expr: outputs.disposition == "unchanged" && !outputs.merged && size(reviews) == 2
   - type: cel_true
-    expr: size(calls.filter(c,c.op == "extension_execution" && c.inputs.selector.endsWith("#codex"))) == 4
+    expr: size(calls.filter(c,c.op == "extension_execution" && c.inputs.selector.endsWith("#codex"))) ==
+      5
   - type: cel_true
     expr: calls.all(c,c.cell == "recipes")
   - type: cel_true
@@ -267,7 +299,7 @@ cases:
     expr: calls.filter(c,c.op == "extension_execution" &&
       c.inputs.selector.endsWith("#codex"))[0].node_path.endsWith("/start_read_only_session") &&
       calls.filter(c,c.op == "extension_execution" &&
-      c.inputs.selector.endsWith("#codex"))[1].node_path.endsWith("/start_implementation_session")
+      c.inputs.selector.endsWith("#codex"))[2].node_path.endsWith("/start_implementation_session")
   - type: cel_true
     expr: calls.exists(c,c.node_path.endsWith("/check_repository_guidance"))
   - type: cel_true
@@ -279,30 +311,29 @@ cases:
       2026-11-07T00:00:00Z to 2026-11-08T00:00:00Z; include failed and successful jobs.")
   - type: cel_true
     expr: calls.filter(c,c.op == "extension_execution" &&
-      c.inputs.selector.endsWith("#codex"))[0].inputs.inputs.prompt.contains("Preserve 100% of accepted scope.\nDo
-      not modify audited jobs.")
+      c.inputs.selector.endsWith("#codex"))[0].inputs.inputs.prompt.contains("Preserve 100% of accepted
+      scope.\nDo not modify audited jobs.")
   - type: cel_true
     expr: calls.filter(c,c.op == "extension_execution" &&
-      c.inputs.selector.endsWith("#codex"))[0].inputs.inputs.prompt.contains("Inspect review questions and child
-      recovery.")
+      c.inputs.selector.endsWith("#codex"))[0].inputs.inputs.prompt.contains("Inspect review questions
+      and child recovery.")
   - type: cel_true
     expr: '"previous-audit.md" in calls.filter(c,c.op == "extension_execution" && c.inputs.selector.endsWith("#codex"))[0].artifacts'
   - type: cel_true
-    expr: '"audit.md" in calls.filter(c,c.op == "extension_execution" && c.inputs.selector.endsWith("#codex"))[1].artifacts
-      && "improvement-plan.md" in calls.filter(c,c.op == "extension_execution" && c.inputs.selector.endsWith("#codex"))[1].artifacts
-      && !("scratch-not-selected.txt" in calls.filter(c,c.op == "extension_execution" && c.inputs.selector.endsWith("#codex"))[1].artifacts)'
+    expr: '"audit.md" in calls.filter(c,c.op == "extension_execution" && c.inputs.selector.endsWith("#codex"))[2].artifacts
+      && "improvement-plan.md" in calls.filter(c,c.op == "extension_execution" && c.inputs.selector.endsWith("#codex"))[2].artifacts
+      && !("scratch-not-selected.txt" in calls.filter(c,c.op == "extension_execution" && c.inputs.selector.endsWith("#codex"))[2].artifacts)'
   - type: cel_true
     expr: '"audit.md" in outputs.artifact_refs && "improvement-plan.md" in outputs.artifact_refs'
   - type: cel_true
     expr: calls.filter(c,c.op == "extension_execution" &&
-      c.inputs.selector.endsWith("#codex"))[0].inputs.inputs.prompt.contains("Before implementation, publish
-      test-statements.md")
+      c.inputs.selector.endsWith("#codex"))[0].inputs.inputs.prompt.contains("one-pager.md")
   - type: cel_true
-    expr: size(calls.filter(c,c.op == "extension_execution" && c.inputs.selector.endsWith("#jev"))) == 1
+    expr: size(calls.filter(c,c.op == "extension_execution" && c.inputs.selector.endsWith("#jev"))) == 0
   - type: cel_true
     expr: calls.filter(c,c.op == "extension_execution" &&
       c.inputs.selector.endsWith("#codex"))[0].inputs.inputs.prompt.contains("$audit-recipe-jobs")
-- id: local-configure-hook-can-require-design
+- id: local-configure-hook-preserves-guidance-with-direction-review
   type: integration_case
   runtime:
     secrets:
@@ -364,14 +395,19 @@ cases:
             ../../.agents/skills/audit-recipe-jobs/agents/openai.yaml
     responses:
     - node_path:
-        build/workflow/adaptive-build/run/adaptive-develop/accept/sequence/outcome_review/adaptive-review/request_human_review
+        build/workflow/adaptive2-workflow/run/adaptive2-develop/direction/sequence/review/adaptive2-review/request_human_review
+      fields:
+        decision: accept
+    - node_path:
+        build/workflow/adaptive2-workflow/run/adaptive2-develop/accept/sequence/outcome_review/adaptive2-review/request_human_review
       fields:
         decision: accept
     cell: recipes
   inputs:
-    prompt: "Use $audit-recipe-jobs to audit job behavior and implement justified recipe improvements.\n\nJobDB: http://audit.invalid/c2\n\
-      Scope: Jobs created from 2026-11-07T00:00:00Z to 2026-11-08T00:00:00Z; include failed and successful jobs.\nConstraints:
-      Preserve 100% of accepted scope.\nDo not modify audited jobs.\nInspect review questions and child recovery."
+    prompt: "Use $audit-recipe-jobs to audit job behavior and implement justified recipe improvements.\n\n\
+      JobDB: http://audit.invalid/c2\nScope: Jobs created from 2026-11-07T00:00:00Z to 2026-11-08T00:00:00Z;
+      include failed and successful jobs.\nConstraints: Preserve 100% of accepted scope.\nDo not modify audited
+      jobs.\nInspect review questions and child recovery."
     title: Recipe improvement fixture
     documents:
       previous-audit.md:
@@ -381,15 +417,6 @@ cases:
         value: 'Prior cohort: repeated requests for retained inputs.'
   mocks:
     ops:
-    - match:
-        selector: nix:github:colony-2/c2ops/published#jev
-      behavior:
-        mode: return
-        outputs:
-          answers:
-            is_heavy:
-              type: noul
-              noul: 0.01
     - match:
         selector: nix:github:colony-2/c2ops/published#codex
       behavior:
@@ -401,6 +428,13 @@ cases:
             next: review
             summary: Audit complete; no new recipe change justified.
             files:
+            - path: one-pager.md
+              description: Direction for saving unfinished notes
+              title: 'Approve 1p for recipes oversight: preserve the requested behavior'
+              role: primary
+              order: 0
+              source_paths:
+              - request.md
             - path: design.md
               description: design.md
               title: design.md
@@ -411,20 +445,22 @@ cases:
               title: audit.md
               role: supporting
               order: 2
-              source_paths: null
+              source_paths:
             - path: inventory.md
               description: inventory.md
               title: inventory.md
               role: supporting
               order: 2
-              source_paths: null
+              source_paths:
             - path: improvement-plan.md
               description: improvement-plan.md
               title: improvement-plan.md
               role: supporting
               order: 2
-              source_paths: null
+              source_paths:
             questions: []
+            work_kind: oversight
+            review_title: 'Approve 1p for recipes oversight: preserve the requested behavior'
         artifacts:
           design.md: "# Design\nPreserve behavior."
           audit.md: |
@@ -437,6 +473,11 @@ cases:
             # Improvement plan
             No code change justified; retain the audit and observe the next cohort.
           scratch-not-selected.txt: Unrelated downloaded history must stay on its producing task.
+          one-pager.md: "# Preserve the requested behavior\n\n## Problem Description\nThe requested outcome
+            needs verification.\n\n## Non Goals\nUnrelated changes.\n\n## What we are planning to do\nImplement
+            the request and verify its acceptance checks.\n\n## Compat/Upgrade\nKeep existing interfaces.\n\
+            \n## Key challenges/design questions & answers\n| Question | Answer |\n| --- | --- |\n| What proves
+            completion? | The approved test statements. |\n"
         effects:
           objects:
             session:
@@ -464,29 +505,29 @@ cases:
               title: Execution handoff
               role: supporting
               order: 1
-              source_paths: null
+              source_paths:
             - path: audit.md
               description: audit.md
               title: audit.md
               role: supporting
               order: 2
-              source_paths: null
+              source_paths:
             - path: inventory.md
               description: inventory.md
               title: inventory.md
               role: supporting
               order: 2
-              source_paths: null
+              source_paths:
             - path: improvement-plan.md
               description: improvement-plan.md
               title: improvement-plan.md
               role: supporting
               order: 2
-              source_paths: null
+              source_paths:
             questions: []
         artifacts:
-          test-statements.md: "# Expectations\n- T1 [Critical] [integration] [README.md] [Git] Existing behavior remains
-            available."
+          test-statements.md: "# Expectations\n- T1 [Critical] [integration] [README.md] [Git] Existing behavior
+            remains available."
           handoff.md: |
             # Execution handoff
             Read audit.md and improvement-plan.md. Validate the no-change conclusion and prepare the normal outcome review.
@@ -531,19 +572,19 @@ cases:
               title: audit.md
               role: supporting
               order: 2
-              source_paths: null
+              source_paths:
             - path: inventory.md
               description: inventory.md
               title: inventory.md
               role: supporting
               order: 2
-              source_paths: null
+              source_paths:
             - path: improvement-plan.md
               description: improvement-plan.md
               title: improvement-plan.md
               role: supporting
               order: 2
-              source_paths: null
+              source_paths:
             questions: []
         artifacts:
           implementation.md: |
@@ -622,9 +663,10 @@ cases:
         mode: passthrough
   assertions:
   - type: cel_true
-    expr: outputs.disposition == "unchanged" && !outputs.merged && size(reviews) == 1
+    expr: outputs.disposition == "unchanged" && !outputs.merged && size(reviews) == 2
   - type: cel_true
-    expr: size(calls.filter(c,c.op == "extension_execution" && c.inputs.selector.endsWith("#codex"))) == 5
+    expr: size(calls.filter(c,c.op == "extension_execution" && c.inputs.selector.endsWith("#codex"))) ==
+      5
   - type: cel_true
     expr: calls.all(c,c.cell == "recipes")
   - type: cel_true
@@ -645,12 +687,12 @@ cases:
       2026-11-07T00:00:00Z to 2026-11-08T00:00:00Z; include failed and successful jobs.")
   - type: cel_true
     expr: calls.filter(c,c.op == "extension_execution" &&
-      c.inputs.selector.endsWith("#codex"))[0].inputs.inputs.prompt.contains("Preserve 100% of accepted scope.\nDo
-      not modify audited jobs.")
+      c.inputs.selector.endsWith("#codex"))[0].inputs.inputs.prompt.contains("Preserve 100% of accepted
+      scope.\nDo not modify audited jobs.")
   - type: cel_true
     expr: calls.filter(c,c.op == "extension_execution" &&
-      c.inputs.selector.endsWith("#codex"))[0].inputs.inputs.prompt.contains("Inspect review questions and child
-      recovery.")
+      c.inputs.selector.endsWith("#codex"))[0].inputs.inputs.prompt.contains("Inspect review questions
+      and child recovery.")
   - type: cel_true
     expr: '"previous-audit.md" in calls.filter(c,c.op == "extension_execution" && c.inputs.selector.endsWith("#codex"))[0].artifacts'
   - type: cel_true
@@ -661,9 +703,9 @@ cases:
     expr: '"audit.md" in outputs.artifact_refs && "improvement-plan.md" in outputs.artifact_refs'
   - type: cel_true
     expr: calls.filter(c,c.op == "extension_execution" &&
-      c.inputs.selector.endsWith("#codex"))[0].inputs.inputs.prompt.contains("Develop design.md")
+      c.inputs.selector.endsWith("#codex"))[0].inputs.inputs.prompt.contains("one-pager.md")
   - type: cel_true
-    expr: size(calls.filter(c,c.op == "extension_execution" && c.inputs.selector.endsWith("#jev"))) == 1
+    expr: size(calls.filter(c,c.op == "extension_execution" && c.inputs.selector.endsWith("#jev"))) == 0
   - type: cel_true
     expr: calls.filter(c,c.op == "extension_execution" &&
       c.inputs.selector.endsWith("#codex"))[0].inputs.inputs.prompt.contains("$audit-recipe-jobs")
@@ -718,7 +760,11 @@ cases:
             ../../.agents/skills/audit-recipe-jobs/agents/openai.yaml
     responses:
     - node_path:
-        build/workflow/adaptive-build/run/adaptive-develop/accept/sequence/outcome_review/adaptive-review/request_human_review
+        build/workflow/adaptive2-workflow/run/adaptive2-develop/direction/sequence/review/adaptive2-review/request_human_review
+      fields:
+        decision: accept
+    - node_path:
+        build/workflow/adaptive2-workflow/run/adaptive2-develop/accept/sequence/outcome_review/adaptive2-review/request_human_review
       fields:
         decision: accept
   inputs:
@@ -727,14 +773,40 @@ cases:
   mocks:
     ops:
     - match:
-        selector: nix:github:colony-2/c2ops/published#jev
+        selector: nix:github:colony-2/c2ops/published#codex
       behavior:
         mode: return
         outputs:
-          answers:
-            is_heavy:
-              type: noul
-              noul: 0.01
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            work_kind: oversight
+            summary: Agree on the requested outcome before implementation.
+            files:
+            - path: one-pager.md
+              description: Direction for saving unfinished notes
+              title: 'Approve 1p for recipes oversight: preserve the requested behavior'
+              role: primary
+              order: 0
+              source_paths:
+              - request.md
+            questions:
+            review_title: 'Approve 1p for recipes oversight: preserve the requested behavior'
+            requests:
+            packages:
+        artifacts:
+          one-pager.md: "# Preserve the requested behavior\n\n## Problem Description\nThe requested outcome
+            needs verification.\n\n## Non Goals\nUnrelated changes.\n\n## What we are planning to do\nImplement
+            the request and verify its acceptance checks.\n\n## Compat/Upgrade\nKeep existing interfaces.\n\
+            \n## Key challenges/design questions & answers\n| Question | Answer |\n| --- | --- |\n| What proves
+            completion? | The approved test statements. |\n"
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: shape
     - match:
         selector: nix:github:colony-2/c2ops/published#codex
       behavior:
@@ -756,13 +828,13 @@ cases:
               title: Execution handoff
               role: supporting
               order: 1
-              source_paths: null
+              source_paths:
             questions: []
         artifacts:
-          test-statements.md: "# Expectations\n- T1 [Critical] [integration] [README.md] [Git] Existing behavior remains
-            available."
-          handoff.md: "# Execution assignment\nComplete the requested bounded work against test-statements.md. Use settled
-            decisions and preserve existing behavior."
+          test-statements.md: "# Expectations\n- T1 [Critical] [integration] [README.md] [Git] Existing behavior
+            remains available."
+          handoff.md: "# Execution assignment\nComplete the requested bounded work against test-statements.md.
+            Use settled decisions and preserve existing behavior."
         effects:
           objects:
             session:
@@ -857,14 +929,15 @@ cases:
         mode: passthrough
   assertions:
   - type: cel_true
-    expr: outputs.disposition == "unchanged" && size(reviews) == 1
+    expr: outputs.disposition == "unchanged" && size(reviews) == 2
   - type: cel_true
     expr: '!("audit.md" in outputs.artifact_refs) && !("inventory.md" in outputs.artifact_refs) && !("improvement-plan.md"
       in outputs.artifact_refs)'
   - type: cel_true
-    expr: size(calls.filter(c,c.op == "extension_execution" && c.inputs.selector.endsWith("#codex"))) == 4
+    expr: size(calls.filter(c,c.op == "extension_execution" && c.inputs.selector.endsWith("#codex"))) ==
+      5
   - type: cel_true
-    expr: size(calls.filter(c,c.op == "extension_execution" && c.inputs.selector.endsWith("#jev"))) == 1
+    expr: size(calls.filter(c,c.op == "extension_execution" && c.inputs.selector.endsWith("#jev"))) == 0
   - type: cel_true
     expr: '!calls.exists(c,c.op == "recipes.run")'
   - type: cel_true
@@ -922,9 +995,9 @@ cases:
             ../../.agents/skills/audit-recipe-jobs/agents/openai.yaml
     responses: []
   inputs:
-    prompt: Use $audit-recipe-jobs to audit all jobs, including hidden jobs, created in the last 24 hours on
-      http://audit.invalid/c2. Complete coverage is required. No inventory was supplied. Do not change the audited
-      jobs.
+    prompt: Use $audit-recipe-jobs to audit all jobs, including hidden jobs, created in the last 24 hours
+      on http://audit.invalid/c2. Complete coverage is required. No inventory was supplied. Do not change
+      the audited jobs.
     title: Recipe improvement fixture
     documents:
       previous-audit.md:
@@ -934,15 +1007,6 @@ cases:
         value: 'Prior cohort: repeated requests for retained inputs.'
   mocks:
     ops:
-    - match:
-        selector: nix:github:colony-2/c2ops/published#jev
-      behavior:
-        mode: return
-        outputs:
-          answers:
-            is_heavy:
-              type: noul
-              noul: 0.01
     - match:
         selector: nix:github:colony-2/c2ops/published#codex
       behavior:
@@ -959,7 +1023,7 @@ cases:
               title: audit.md
               role: supporting
               order: 2
-              source_paths: null
+              source_paths:
             questions: []
         artifacts:
           audit.md: |
@@ -980,9 +1044,10 @@ cases:
   - type: cel_true
     expr: size(reviews) == 0
   - type: cel_true
-    expr: size(calls.filter(c,c.op == "extension_execution" && c.inputs.selector.endsWith("#codex"))) == 1
+    expr: size(calls.filter(c,c.op == "extension_execution" && c.inputs.selector.endsWith("#codex"))) ==
+      1
   - type: cel_true
     expr: calls.exists(c,c.node_path.endsWith("/stop_attempt"))
   - type: cel_true
-    expr: size(calls.filter(c,c.op == "extension_execution" && c.inputs.selector.endsWith("#jev"))) == 1
+    expr: size(calls.filter(c,c.op == "extension_execution" && c.inputs.selector.endsWith("#jev"))) == 0
   expect_error: Complete hidden-job coverage is unavailable; no inventory was supplied.

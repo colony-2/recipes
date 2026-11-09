@@ -1,0 +1,74 @@
+schema_version: 2
+id: adaptive2-handoff-probe
+input_schema:
+  tamper:
+    type: boolean
+    default_value: false
+  recovery:
+    type: boolean
+    default_value: false
+  build_recipe:
+    type: string
+    default_value: child
+inputs:
+  tamper: ${{ inputs.tamper }}
+  recovery: ${{ inputs.recovery }}
+  build_recipe: ${{ inputs.build_recipe }}
+sequence:
+- id: consult
+  include: ../../recipes/adaptive2/consultation.yaml
+  inputs:
+    thread: draft-conflicts
+    request: Reject conflicting writes without losing either draft.
+    consultant_cell: storage
+    consultant_role: Own persistence and write the agreed assignment.
+- id: coordinate
+  include: ../../recipes/adaptive2/coordinate.yaml
+  inputs:
+    requests:
+    - action: execute
+      cell: storage
+      ref: main
+      handoff: work/
+    phase: implement
+    root_cell: root
+    root_ref: main
+    consultation_recipe:
+      git+https://github.com/colony-2/recipes.git//recipes/adaptive2/consultation.yaml@main
+    build_recipe: ${{ inputs.build_recipe }}
+    create_recipe: create
+    session: {}
+    prefix: execute
+    documents: >-
+      ${{ jq([(inputs.tamper ? {'work/handoff.md':{'kind':'value','name':'work/handoff.md','format':'text','value':'Requester
+      changed the scope.'} }
+       : {'work/handoff.md':jq([sequence.consult.outputs.final_artifacts[sequence.consult.outputs.handoff +
+      'handoff.md'],{'name':'work/handoff.md'}],'add')}),
+      inputs.recovery ? {'work/recovery/notes.md':{'kind':'value','name':'work/recovery/notes.md','format':'text','value':'Retained
+      validation evidence from a failed attempt.'} } : {}], 'add') }}
+    history:
+    - action: consult
+      target:
+        cell: storage
+      result: ${{ sequence.consult.outputs }}
+- id: follow_child
+  inputs:
+    valid: ${{ sequence.coordinate.outputs.valid }}
+    job: "${{ size(sequence.coordinate.outputs.records) > 0 ? sequence.coordinate.outputs.records[0].job_id
+      : '' }}"
+  state:
+    initial:
+    - to: wait
+      when: inputs.valid
+    - to: done
+      when: true
+    states:
+      wait:
+        include: ../../recipes/adaptive/await-child.yaml
+        inputs:
+          job: ${{ inputs.job }}
+      done:
+        sequence: []
+outputs:
+  valid: ${{ sequence.coordinate.outputs.valid }}
+  records: ${{ sequence.coordinate.outputs.records }}

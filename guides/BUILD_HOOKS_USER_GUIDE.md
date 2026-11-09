@@ -17,11 +17,15 @@ All paths below are relative to the repository root, including in a monorepo.
 
 | File under `.c2/recipes/hooks/build/` | When it runs | What to use it for |
 | --- | --- | --- |
-| `configure.yaml` | Once, before choosing light or heavy development | Prompt additions, named values, specialist requests, requiring design |
-| `before_design.yaml` | Before each heavy design round, including redesign | Research, alternatives, constraints, reference material |
+| `configure.yaml` | Once, before framing the request | Prompt additions, named values, specialist requests |
+| `before_design.yaml` | Before each framing round, including redesign | Research, alternatives, constraints, reference material |
 | `prepare.yaml` | After rebase, before candidate assessment and verification | Formatting or generating files that need review |
 | `verify.yaml` | Before successful completion, including unchanged and delegated outcomes | Tests, lint, builds, existing CI workflows |
 | `publish.yaml` | After a successful merge | Packages, images, documentation, deployments |
+
+The current shared build uses adaptive2 and always requests direction approval for
+delivery work. Configure hooks may still return `require_design`; setting it to
+false does not bypass this checkpoint. See [the process](../ADAPTIVE_BUILD_PROCESS.md).
 
 Prepare may change the managed repository; its changes receive normal assessment
 and review. The other hooks must preserve the managed candidate. Publish uses the
@@ -117,11 +121,12 @@ outputs:
 
 The five prompt-addition keys shown above are the supported keys. Guidance is added
 to the appropriate phase without replacing workflow instructions, output schemas,
-or human approval. `implementation` applies on both development paths; assessment
+or human approval. `implementation` applies during implementation; assessment
 guidance also reaches the configured specialists at that checkpoint.
 
-`require_design: true` selects heavy development. Adding only design prompt text
-or a `before_design.yaml` file does not force a light build to have a design phase.
+Adaptive2 always frames delivery work and asks for direction approval.
+`require_design` remains accepted by the shared configure contract but does not
+change that behavior. Design guidance and `before_design.yaml` run during framing.
 
 Omitted settings use defaults: `require_design: false`, empty prompt additions,
 empty variables, and no configured consultations. Unknown settings are rejected.
@@ -130,7 +135,7 @@ text resembling shell commands or template expressions. Keep credentials out of
 settings and prompt text; use hook permissions instead.
 
 Configuration is captured once for the build. It survives revision, upstream
-rebases, and escalation from light to heavy. Editing configure affects a new build.
+rebases, and redesign. Editing configure affects a new build.
 Other hooks resolve at their checkpoint from the current candidate, including
 unpushed changes. Child builds load their own cell's configuration.
 
@@ -213,9 +218,9 @@ consultations:
 ```
 
 `before_design` runs after the research hook. `plan_assessment` follows design and
-test planning. Either checkpoint forces heavy development. `outcome_assessment`
-runs after preparation and before verification on both light and heavy builds.
-The heavy path retains its general assessment in addition to these specialists.
+test planning after direction approval. `outcome_assessment` runs after preparation
+and before verification. The general candidate assessment also runs when a new
+outcome approval is needed.
 
 A required consultation needs both agreement and an explicit passing assessment.
 Agreement that problems exist cannot satisfy the gate. Revision findings return
@@ -357,7 +362,7 @@ build paths and security review. Static validation alone does not load late hook
 | Symptom | What to check |
 | --- | --- |
 | Verify is skipped | Is `verify.yaml` at the exact root-relative hook path and present in the candidate? An existing script alone is not discovered. |
-| Research never runs | Light builds have no design round. Set `require_design: true` or configure a design-stage consultation. |
+| Research never runs | Check the hook path and its invocation diagnostics; adaptive2 runs `before_design` during framing. |
 | Prompt edits have no effect | Configure is captured at startup. Start a new build, and check the phase-specific key. |
 | Read-only hook changed the candidate | Move tracked-file generation or formatting into prepare. |
 | Hook output contract fails | Check the API version, allowed fields, status, and native artifact references. |

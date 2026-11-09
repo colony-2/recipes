@@ -1,0 +1,120 @@
+recipe: handoff.yaml
+cases:
+- id: named-child-enters-adaptive2-in-receiver-workspace
+  type: integration_case
+  inputs:
+    tamper: false
+    build_recipe: build
+  runtime:
+    cell: notebook
+    cells:
+      notebook:
+        files:
+          PURPOSE.md: Own notebook.
+        file_sources:
+          .c2/recipes/build.yaml: ../../build.yaml
+          .c2/recipes/recipes/adaptive2: ../../recipes/adaptive2
+          .c2/recipes/recipes/adaptive: ../../recipes/adaptive
+          .c2/recipes/recipes/response-schemas.yaml: ../../recipes/response-schemas.yaml
+      storage:
+        files:
+          PURPOSE.md: Own draft persistence.
+    responses:
+    - node_path:
+        build/workflow/adaptive2-workflow/run/adaptive2-develop/direction/sequence/review/adaptive2-review/request_human_review
+      fields:
+        decision: cancel
+  mocks:
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: storage
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: agreed
+            reply: Fix stale writes in storage.
+            work_kind: bug
+            handoff: iter1/consultant/work/
+            files:
+            - path: iter1/consultant/summary.md
+              description: Consultation evidence
+            - path: iter1/consultant/work/handoff.md
+              description: Consultation evidence
+            requests:
+            review_title:
+        artifacts:
+          iter1/consultant/summary.md: "# Storage: prevent conflicting writes\nPreserve both drafts. The requester
+            questioned retry behavior.\n"
+          iter1/consultant/work/handoff.md: "# Storage bug: reject stale draft writes\nWork type: bug.\nExpected:
+            stale writes fail. Observed: overwrite.\nAcceptance: preserve the earlier write and return a conflict.\n"
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                participant: consultant
+                iteration: 1
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: storage
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            work_kind: bug
+            summary: Agree on the requested outcome before implementation.
+            files:
+            - path: one-pager.md
+              description: Direction for saving unfinished notes
+              title: 'Approve 1p for storage bug: preserve the requested behavior'
+              role: primary
+              order: 0
+              source_paths:
+              - request.md
+            questions:
+            review_title: 'Approve 1p for storage bug: preserve the requested behavior'
+            requests:
+            packages:
+        artifacts:
+          one-pager.md: "# Preserve the requested behavior\n\n## Problem Description\nThe requested outcome
+            needs verification.\n\n## Non Goals\nUnrelated changes.\n\n## What we are planning to do\nImplement
+            the request and verify its acceptance checks.\n\n## Compat/Upgrade\nKeep existing interfaces.\n\
+            \n## Key challenges/design questions & answers\n| Question | Answer |\n| --- | --- |\n| What proves
+            completion? | The approved test statements. |\n"
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: shape
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: valid
+    value: true
+  - type: cel_true
+    expr: calls.exists(c,c.op == "recipes.run") && calls.exists(c,c.cell == "storage" && has(c.artifacts)
+      && "handoff.md" in c.artifacts && c.artifacts["handoff.md"].contains("Storage bug"))
+  - type: cel_true
+    expr: reviews.size() == 1 && reviews[0].node_path ==
+      "build/workflow/adaptive2-workflow/run/adaptive2-develop/direction/sequence/review/adaptive2-review/request_human_review"
+  - type: cel_true
+    expr: calls.exists(c,c.op == "recipes.run" && c.inputs.recipes[0].name == "build" &&
+      c.inputs.recipes[0].cell_name == "storage")
+  - type: cel_true
+    expr: calls.exists(c,c.cell == "storage" &&
+      c.node_path.startsWith("build/workflow/adaptive2-workflow/") && has(c.artifacts) && "handoff.md" in
+      c.artifacts)
+  - type: cel_true
+    expr: '!calls.exists(c,c.node_path.contains("start_implementation_session") || c.op == "merge")'

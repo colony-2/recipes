@@ -1,0 +1,361 @@
+id: adaptive2-coordinate
+inputs:
+  requests: ${{ inputs.requests }}
+  phase: ${{ inputs.phase }}
+  root_cell: ${{ inputs.root_cell }}
+  root_ref: ${{ inputs.root_ref }}
+  consultation_recipe: ${{ inputs.consultation_recipe }}
+  build_recipe: ${{ inputs.build_recipe }}
+  create_recipe: ${{ inputs.create_recipe }}
+  session: ${{ inputs.session }}
+  documents: ${{ inputs.documents }}
+  prefix: ${{ inputs.prefix }}
+  history: ${{ inputs.?history.orValue([]) }}
+  annotations: ${{ inputs.?annotations.orValue([]) }}
+state:
+  initial: validate
+  states:
+    validate:
+      sequence: []
+      transitions:
+      - to: invalid
+        when: (!nonempty(inputs.create_recipe) || !nonempty(inputs.root_cell)) &&
+          inputs.requests.exists(r,r.?kind.orValue('') == 'create')
+      - to: invalid
+        when: "size(inputs.requests) == 0 || inputs.requests.exists(r, r.action == 'consult' ? !nonempty(r.?request.orValue(''))
+          || (!nonempty(r.?cell.orValue('')) && r.?kind.orValue('feature') == 'feature') : r.action == 'execute' ? inputs.phase
+          != 'implement' || !nonempty(r.?cell.orValue('')) || !nonempty(r.?handoff.orValue('')) : r.action != 'await'
+          || !nonempty(r.?job.orValue('')))"
+      - to: invalid
+        when: inputs.requests.exists(r,r.action == 'consult' && nonempty(r.?handoff.orValue('')) &&
+          (!r.handoff.endsWith('/') || r.handoff.startsWith('/') || r.handoff.contains('\\') ||
+          r.handoff.matches('(^|/)[.][.]?(/|$)') || !(r.handoff + 'request.md' in inputs.documents)))
+        payload:
+          reason: A consultation document directory must be safe and contain request.md. A self-contained question
+            may omit it; the receiver authors any eventual execution handoff.
+      - to: invalid
+        when: inputs.requests.exists(r,r.action == 'execute' && nonempty(r.?replaces.orValue('')) &&
+          !inputs.history.exists(h,h.action == 'execute' && h.job_id == r.replaces && h.cell == r.cell))
+        payload:
+          reason: A replacement must identify a recorded execution job in the same cell.
+      - to: invalid
+        when: inputs.requests.exists(r,r.action == 'await' && !inputs.history.exists(h,h.action == 'execute' &&
+          h.?job_id.orValue('') == r.?job.orValue('')))
+      - to: await_requested
+        when: inputs.requests.all(r,r.action == 'await')
+      - to: pick
+        when: true
+    pick:
+      sequence: []
+      inputs:
+        index: ${{ transition.payload.?index.orValue(0) }}
+        requests: ${{ inputs.requests }}
+        prefix: ${{ inputs.prefix }}
+      outputs:
+        index: ${{ inputs.index }}
+        request: ${{ inputs.requests[inputs.index] }}
+        reference: ${{ inputs.prefix + '-' + string(inputs.index) }}
+      transitions:
+      - to: route
+        when: outputs.request.action == 'consult'
+      - to: execution
+        when: outputs.request.action == 'execute'
+      - to: await
+        when: true
+    route:
+      include: ./route-target.yaml
+      inputs:
+        request: "${{ jq([{'kind':'feature','cell':'','ref':'main','role':'Owning cell: agree scope and acceptance outcomes'},states.pick.outputs.request],
+          'add') }}"
+        root_cell: ${{ inputs.root_cell }}
+        root_ref: ${{ inputs.root_ref }}
+        create_recipe: ${{ inputs.create_recipe }}
+        documents: ${{
+          jq({'directory':states.pick.outputs.request.?handoff.orValue(''),'documents':state_output('record','documents',inputs.documents)},
+          '. as $v | if $v.directory == "" then {} else .documents | with_entries(select(.key |
+          startswith($v.directory)) | .key = (.key | ltrimstr($v.directory)) | .value.name = .key) end') }}
+      transitions:
+      - to: invalid
+        when: '!outputs.valid'
+        payload:
+          reason: ${{ outputs.target.?detail.orValue('Unable to resolve the requested cell or ref.') }}
+      - to: creation_result
+        when: "!outputs.ready || states.pick.outputs.request.?kind.orValue('feature') == 'create'"
+      - to: consult_fresh
+        when: inputs.consultation_recipe ==
+          'git+https://github.com/colony-2/recipes.git//recipes/adaptive2/consultation.yaml@main'
+      - to: launch_consultation
+        when: true
+    consult_fresh:
+      include: ./consultation.yaml
+      inputs:
+        thread: ${{ states.pick.outputs.reference }}
+        request: ${{ states.pick.outputs.request.request }}
+        consultant_cell: ${{ states.route.outputs.target.cell }}
+        consultant_ref: ${{ states.route.outputs.target.ref }}
+        consultant_role: "${{ states.pick.outputs.request.?role.orValue('Owning cell: agree scope and acceptance outcomes')
+          }}"
+        documents: ${{ states.route.outputs.documents }}
+        annotations: ${{ state_output('record','annotations',inputs.annotations) }}
+      transitions:
+      - to: consulted
+        when: true
+        payload:
+          result: ${{ outputs }}
+    launch_consultation:
+      id: launch_consultation
+      op: recipes.run
+      inputs:
+        recipes:
+        - cell_name: ${{ context.workspace.cell }}
+          git:
+            base_repo: ${{ context.git.repo }}
+            base_ref: ${{ context.git.ref }}
+            base_hash: ${{ context.git.resolved_hash }}
+          name: ${{ inputs.consultation_recipe }}
+          inputs: "${{ {'thread':states.pick.outputs.reference,'request':states.pick.outputs.request.request,'consultant_cell':states.route.outputs.target.cell,'consultant_ref':states.route.outputs.target.ref,'consultant_role':states.pick.outputs.request.?role.orValue('Owning
+            cell: agree scope and acceptance outcomes'),'documents':states.route.outputs.documents,'annotations':state_output('record','annotations',inputs.annotations)}
+            }}"
+        wait:
+          on: job
+          condition: complete
+      transitions:
+      - to: await_consultation
+        when: true
+    await_consultation:
+      include: ../adaptive/await-child.yaml
+      inputs:
+        job: ${{ states.launch_consultation.outputs.job_ids[0] }}
+      transitions:
+      - to: consulted
+        when: outputs.result.status == 'completed'
+        payload:
+          result: ${{ outputs.result.outputs }}
+      - to: invalid
+        when: true
+        payload:
+          reason: ${{ outputs.result.?failure_message.orValue('The consultation job did not return a usable
+            result.') }}
+    consulted:
+      sequence: []
+      inputs:
+        result: ${{ transition.payload.result }}
+      outputs:
+        result: ${{ inputs.result }}
+      transitions:
+      - to: record
+        when: true
+        payload:
+          record: ${{
+            {'action':'consult','reference':states.pick.outputs.reference,'request':jq([{'kind':'feature','ref':'main'},states.pick.outputs.request],'add'),'target':states.route.outputs.target,'result':outputs.result,'creation':states.route.outputs.creation}
+            }}
+          documents: ${{ outputs.result.final_artifacts }}
+          session: ${{ inputs.session }}
+          annotations: ${{ outputs.result.?annotations.orValue([]) }}
+    creation_result:
+      sequence: []
+      transitions:
+      - to: record
+        when: true
+        payload:
+          record: ${{
+            {'action':'create','reference':states.pick.outputs.reference,'request':states.pick.outputs.request,'ready':states.route.outputs.ready,'result':states.route.outputs.creation}
+            }}
+          documents: ${{ states.route.outputs.documents }}
+    execution:
+      inputs:
+        directory: ${{ states.pick.outputs.request.handoff }}
+        documents: ${{ state_output('record','documents',inputs.documents) }}
+        existing: "${{ (inputs.history + (state_exists('record') ? states.record.runs.map(r,r.outputs.record) + [states.record.outputs.record]
+          : [])).filter(h,h.action == 'execute' && (nonempty(states.pick.outputs.request.?replaces.orValue('')) ? (h.job_id
+          == states.pick.outputs.request.replaces || h.?replaces.orValue('') == states.pick.outputs.request.replaces)
+          : h.cell == states.pick.outputs.request.cell && h.?ref.orValue('main') == states.pick.outputs.request.?ref.orValue('main')
+          && h.?handoff.orValue('') == states.pick.outputs.request.handoff)) }}"
+        receiver_agreements: |-
+          ${{ jq((inputs.history + (state_exists('record') ? states.record.runs.map(r,r.outputs.record) + [states.record.outputs.record] : [])).filter(h,h.action == 'consult').map(h, [{'cell':h.target.cell,'result':h.result}] + h.result.?agreements.orValue([]).map(a,{'cell':a.target.cell,'result':a.result})), 'add // []') }}
+        cell: ${{ states.pick.outputs.request.cell }}
+      sequence:
+      - id: handoff
+        include: ../adaptive/handoff.yaml
+        inputs:
+          directory: ${{ inputs.directory }}
+          documents: ${{ inputs.documents }}
+      outputs:
+        documents: ${{ sequence.handoff.outputs.documents }}
+        valid: ${{ sequence.handoff.outputs.valid }}
+        existing: ${{ inputs.existing }}
+        received: |-
+          ${{ inputs.receiver_agreements.filter(a,a.cell == inputs.cell && a.result.?outcome.orValue('') == 'agreed' && a.result.?work_kind.orValue('') in ['feature','bug','explanation','oversight'] && nonempty(a.result.?handoff.orValue('')) && (a.result.handoff + 'handoff.md') in a.result.final_artifacts && ('handoff.md' in sequence.handoff.outputs.documents) && sequence.handoff.outputs.documents.all(k, k.startsWith('recovery/') || k.startsWith('feedback/') || ((a.result.handoff + k) in a.result.final_artifacts && jq(sequence.handoff.outputs.documents[k], 'del(.name)') == jq(a.result.final_artifacts[a.result.handoff + k], 'del(.name)')))) }}
+      transitions:
+      - to: invalid
+        when: '!outputs.valid'
+        payload:
+          reason: Execution requires a safe handoff directory containing handoff.md among the selected files.
+            Publish it and list all necessary files before requesting execution.
+      - to: invalid
+        when: size(outputs.received) == 0
+        payload:
+          reason: Execution requires the agreed receiving cell's typed handoff and original selected artifact
+            references. Ask that cell to write or revise the assignment; do not substitute requester-authored
+            files.
+      - to: inspect_execution
+        when: size(outputs.existing)>0
+      - to: execution_target
+        when: true
+    submit:
+      workspace:
+        cell: ${{ states.pick.outputs.request.cell }}
+        ref: ${{ states.pick.outputs.request.?ref.orValue('main') }}
+      inputs:
+        root_cell: ${{ inputs.root_cell }}
+        root_ref: ${{ inputs.root_ref }}
+        build_recipe: ${{ inputs.build_recipe }}
+        previous: "${{ size(states.execution.outputs.existing) > 0 ? states.execution.outputs.existing[size(states.execution.outputs.existing)-1].job_id
+          : '' }}"
+        documents: ${{ states.execution.outputs.documents }}
+      sequence:
+      - id: prompts
+        include: ./prompts.yaml
+        inputs: {}
+      - id: launch_prerequisite_build
+        op: recipes.run
+        inputs:
+          recipes:
+          - cell_name: ${{ context.workspace.cell }}
+            git:
+              base_repo: ${{ context.git.repo }}
+              base_ref: ${{ context.git.ref }}
+              base_hash: ${{ context.git.resolved_hash }}
+            name: ${{ inputs.build_recipe }}
+            inputs:
+              prompt: ${{ sequence.prompts.outputs.children.prerequisite }}
+              documents: ${{ inputs.documents }}
+              annotations: []
+              root_cell: ${{ inputs.root_cell }}
+              root_ref: ${{ inputs.root_ref }}
+          wait:
+            on: job
+            condition: complete
+      outputs:
+        job_id: ${{ sequence.launch_prerequisite_build.outputs.job_ids[0] }}
+        replaces: ${{ inputs.previous }}
+      transitions:
+      - to: record
+        when: true
+        payload:
+          record: ${{
+            {'action':'execute','handoff':states.pick.outputs.request.handoff,'job_id':outputs.job_id,'replaces':outputs.replaces,'cell':states.pick.outputs.request.cell,'ref':states.pick.outputs.request.?ref.orValue('main')}
+            }}
+    await:
+      include: ../adaptive/await-child.yaml
+      inputs:
+        job: "${{ states.pick.outputs.request.action == 'await' ? states.pick.outputs.request.job : states.execution.outputs.existing[size(states.execution.outputs.existing)-1].job_id
+          }}"
+      transitions:
+      - to: record
+        when: true
+        payload:
+          record: ${{ {'action':'await','job_id':outputs.result.job_id,'result':outputs.result} }}
+          documents: ${{
+            jq([outputs.result.?outputs.orValue({}).?final_artifacts.orValue(outputs.result.?outputs.orValue({}).?artifact_refs.orValue({})),outputs.errors],'add')
+            }}
+          annotations: ${{ outputs.result.?outputs.orValue({}).?annotations.orValue([]) }}
+    record:
+      inputs:
+        record: ${{ transition.payload.record }}
+        documents: ${{ transition.payload.?documents.orValue({}) }}
+        session: ${{ transition.payload.?session.orValue(state_output('record','session',inputs.session)) }}
+        annotations: ${{ transition.payload.?annotations.orValue([]) }}
+        previous_documents: ${{ state_output('record','documents',inputs.documents) }}
+        previous_annotations: ${{ state_output('record','annotations',inputs.annotations) }}
+      sequence:
+      - id: bind
+        include: ../adaptive/document-bindings.yaml
+        inputs:
+          documents: ${{ jq(inputs.documents,'with_entries(select(.key | startswith("error/") | not))') }}
+          prefix: ${{ 'coordination/' + inputs.record.?reference.orValue(inputs.record.?job_id.orValue('creation'))
+            + '/artifacts/' }}
+          annotations: ${{ inputs.annotations }}
+      - id: status
+        include: ../adaptive/document-bindings.yaml
+        inputs:
+          documents: ${{ jq({'record':inputs.record}, vars.status_documents) }}
+          prefix: ${{ 'coordination/' + inputs.record.?reference.orValue(inputs.record.?job_id.orValue('creation'))
+            + '/' }}
+      outputs:
+        record: ${{ inputs.record }}
+        session: ${{ inputs.session }}
+        annotations: ${{ inputs.previous_annotations + sequence.bind.outputs.annotations }}
+        documents: ${{
+          jq([inputs.previous_documents,sequence.bind.outputs.documents,sequence.status.outputs.documents,jq({'documents':inputs.documents,'job':inputs.record.?job_id.orValue(inputs.record.?reference.orValue('creation'))},
+          ' . as $v | .documents | with_entries(select(.key | startswith("error/")) | .key = ("error/children/" +
+          $v.job + "/" + (.key|ltrimstr("error/"))) | .value.name = .key)')], 'add') }}
+      transitions:
+      - to: pick
+        when: states.pick.outputs.index + 1 < size(inputs.requests)
+        payload:
+          index: ${{ states.pick.outputs.index + 1 }}
+    invalid:
+      sequence: []
+      inputs:
+        reason: ${{ transition.payload.?reason.orValue('Return a consultation question or an implementation request
+          with explicit cell and a selected handoff directory. Execution requires the implementation phase.') }}
+      outputs:
+        reason: ${{ inputs.reason }}
+    inspect_execution:
+      include: ../adaptive/await-child.yaml
+      inputs:
+        job: ${{ states.execution.outputs.existing[size(states.execution.outputs.existing)-1].job_id }}
+        return_when: current_status
+      transitions:
+      - to: execution_target
+        when: nonempty(states.pick.outputs.request.?replaces.orValue('')) && (outputs.result.status in
+          ['failed','timed_out','cancelled'] || (outputs.result.status == 'completed' &&
+          !(outputs.result.?outputs.orValue({}).?merged.orValue(false) ||
+          outputs.result.?outputs.orValue({}).?disposition.orValue('') in ['unchanged','delegated'])))
+      - to: await
+        when: true
+    await_requested:
+      include: ../adaptive/child-results.yaml
+      inputs:
+        jobs: ${{ {'job_ids':inputs.requests.map(r,r.job)} }}
+        allowed: true
+    execution_target:
+      include: ../adaptive/resolve-target.yaml
+      inputs:
+        cell: ${{ states.pick.outputs.request.cell }}
+        ref: ${{ states.pick.outputs.request.?ref.orValue('main') }}
+      transitions:
+      - to: invalid
+        when: outputs.target.state != 'ready'
+        payload:
+          reason: ${{ outputs.target.detail }}
+      - to: submit
+        when: true
+outputs:
+  valid: ${{ !state_exists('invalid') }}
+  records: "${{ state_exists('await_requested') ? states.await_requested.outputs.results.map(r,{'action':'await','job_id':r.job_id,'result':r})
+    : jq((state_exists('record') ? states.record.runs.map(r,r.outputs.record) + [states.record.outputs.record] : []),
+    vars.records) }}"
+  session: ${{ inputs.session }}
+  documents: "${{ state_exists('await_requested') ? jq([inputs.documents,states.await_requested.outputs.documents],'add')
+    : state_output('record','documents',inputs.documents) }}"
+  annotations: ${{ state_output('record','annotations',inputs.annotations) }}
+  issues: "${{ state_exists('invalid') ? [states.invalid.outputs.reason] : [] }}"
+vars:
+  status_documents: |
+    . as $v | .record as $r |
+    {"status.md": {kind:"value", name:"status.md", format:"text", value:
+      (if $r.action == "consult" then
+         "Consultation: " + $r.reference + "\nOwner: " + $r.target.cell + "\nOutcome: " + $r.result.outcome + "\n" + ($r.result.summary // "") +
+             (($r.result.agreements // []) | to_entries | map("\nAccepted scope in " + .value.target.cell + ": " + .value.request.request) | join("")) +
+             (($r.result.execution_requests // []) | map("\nImplementation requested in " + .cell + " @ " + (.ref // "main") + ": " + .request) | join(""))
+       elif $r.action == "execute" then "Child job: " + $r.job_id + (if ($r.replaces // "") != "" then "\nReplaces: " + $r.replaces else "" end)
+       elif $r.action == "await" then "Child job: " + $r.job_id + "\nStatus: " + $r.result.status + "\n" + (($r.result.failure_message // "")[:2000]) +
+         ([$r.result.outputs.disposition // $r.result.outputs.status // (if $r.result.outputs.ok == false then "failed" else "" end), $r.result.outputs.assistant_summary // $r.result.outputs.summary // ""] |
+          if .[0] != "" or .[1] != "" then "\nAssignment outcome: " + (.[0] | tostring) + "\n" + (.[1] | tostring | .[:2000]) else "" end)
+       else "Creation completed: " + ($r.ready | tostring) end)}}
+  records: |
+    map(. as $record | [$record] +
+      (($record.result.agreements // []) | to_entries | map(.value +
+        {action:"consult",reference:($record.reference + "/advice-" + (.key|tostring))}))) | add // []

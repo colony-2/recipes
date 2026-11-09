@@ -1,0 +1,81 @@
+id: adaptive2-specialists
+inputs:
+  request: ${{ inputs.request }}
+  documents: ${{ inputs.documents }}
+  annotations: ${{ inputs.?annotations.orValue([]) }}
+  consultations: ${{ inputs.?consultations.orValue([]) }}
+  guidance: ${{ inputs.?guidance.orValue('') }}
+  checkpoint: ${{ inputs.checkpoint }}
+state:
+  initial: start
+  states:
+    start:
+      sequence: []
+      outputs:
+        items: ${{ inputs.consultations.filter(c,c.checkpoint == inputs.checkpoint) }}
+      transitions:
+      - to: pick
+        when: true
+      inputs:
+        checkpoint: ${{ inputs.checkpoint }}
+        consultations: ${{ inputs.consultations }}
+    pick:
+      inputs:
+        index: ${{ transition.payload.?index.orValue(0) }}
+        documents: ${{ state_output('consult','documents',inputs.documents) }}
+        annotations: ${{ state_output('consult','annotations',inputs.annotations) }}
+      sequence: []
+      outputs:
+        index: ${{ inputs.index }}
+        documents: ${{ inputs.documents }}
+        annotations: ${{ inputs.annotations }}
+      transitions:
+      - to: consult
+        when: outputs.index < size(states.start.outputs.items)
+      - to: done
+        when: true
+    consult:
+      inputs:
+        item: ${{ states.start.outputs.items[states.pick.outputs.index] }}
+        request: ${{ inputs.request }}
+        guidance: ${{ inputs.guidance }}
+        documents: ${{ states.pick.outputs.documents }}
+        annotations: ${{ states.pick.outputs.annotations }}
+      sequence:
+      - id: prompts
+        include: ./prompts.yaml
+        inputs:
+          checkpoint: ${{ inputs.item.checkpoint }}
+          specialist_role: ${{ inputs.item.role }}
+          request: ${{ inputs.item.request }}
+      - id: expert
+        include: ./inspect.yaml
+        inputs:
+          role: assessment
+          request: ${{ inputs.request }}
+          documents: ${{ inputs.documents }}
+          assignment: '${{ sequence.prompts.outputs.inspect.specialist }}'
+          guidance: ${{ inputs.guidance }}
+      - id: evidence
+        include: ../adaptive/document-bindings.yaml
+        inputs:
+          annotations: ${{ sequence.expert.outputs.annotations }}
+          prefix: ${{ 'specialists/' + inputs.item.key + '/' }}
+          documents: ${{ sequence.expert.outputs.artifact_refs }}
+      outputs:
+        documents: ${{ jq([inputs.documents, sequence.evidence.outputs.documents], 'add') }}
+        annotations: ${{ inputs.annotations + sequence.evidence.outputs.annotations }}
+        passed: ${{ !inputs.item.required || sequence.expert.outputs.approved }}
+      transitions:
+      - to: done
+        when: '!outputs.passed'
+      - to: pick
+        when: true
+        payload:
+          index: ${{ states.pick.outputs.index + 1 }}
+    done:
+      sequence: []
+outputs:
+  documents: ${{ state_output('consult','documents',inputs.documents) }}
+  annotations: ${{ state_output('consult','annotations',inputs.annotations) }}
+  passed: ${{ state_output('consult','passed',true) }}

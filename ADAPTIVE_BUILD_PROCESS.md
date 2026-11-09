@@ -1,7 +1,7 @@
 # Adaptive build process
 
 Current flow selected by [build.yaml](build.yaml), implemented in
-[recipes/adaptive](recipes/adaptive/README.md). Like the [original diagram](BUILD_PROCESS.md),
+[recipes/adaptive2](recipes/adaptive2/README.md). Like the [original diagram](BUILD_PROCESS.md),
 boxes group work and diamonds show decisions. Agents determine how to do the work;
 the recipe controls phase transitions, prerequisite coordination, validation gates,
 review, and publication. Authorized implementation agents can also submit bounded
@@ -11,78 +11,69 @@ validation jobs; the recipe returns their results and failures to the parent aut
 
 ```mermaid
 flowchart TD
-    Start([Build request]) --> Config[Configure hook: guidance and specialist checkpoints]
-    Config --> Entry{Complete execution handoff and no required design policy?}
-    Entry -->|Yes| Work
-    Entry -->|No| Decide{Jev: design needed?}
-    Decide -->|Yes, uncertain, or required by configuration| Context[Before-design hook and configured specialists]
-    Decide -->|No| Tests[Define test-statements.md and execution handoff.md]
-    Context --> Design[Conceptualize and design: ownership, outcomes, alternatives, interfaces, compatibility]
-    Design --> DesignDoc[Publish design.md and accepted scope]
-    DesignDoc --> Tests
-    Tests --> Plan[Run configured plan specialists]
-    Plan --> PlanOK{Required findings resolved?}
-    PlanOK -->|No| Context
-    PlanOK -->|Yes| Work[Implement, run bounded validation, and coordinate agreed child work]
-    Work -->|Scope needs redesign| Context
-    Work -->|Explicit product question| Direction{Specific human decision}
-    Work -->|Child failure or unexplained blocker| Recover[Parent diagnoses; repairs locally or requests a fresh child]
+    Start([Build request]) --> Config[Configure hook: guidance and specialists]
+    Config --> Frame[Frame the request: feature, bug, explanation, or oversight]
+    Frame --> Answer{A complete explanation?}
+    Answer -->|Yes| Explained([Return answer and evidence])
+    Answer -->|No| OnePager[Write one-pager; consult owners and show mockups when useful]
+    OnePager --> Direction{Human direction review}
+    Direction -->|Request changes| Frame
+    Direction -->|Stop| Cancelled([Complete: cancelled])
+    Direction -->|Approve| Plan[Detailed design, formal test statements, and implementation handoff]
+    Plan --> PlanReview[Configured plan specialists]
+    PlanReview -->|Findings need changes| Frame
+    PlanReview --> Work[Fresh implementation session; coordinate agreed child work]
+    Work -->|Material scope change| Frame
+    Work -->|Failed child or missing capability| Recover[Diagnose; recover selected work; request corrected attempt or tools]
     Recover --> Work
-    Recover -->|Three unchanged repairs or explicit cap| Operational[Preserve work and report the concrete unmet need]
-    Work -->|Explicit fail response| Operational
-    Work -->|Missing development tools| Packages[Authorize packages; validate separate child job; adopt config]
-    Packages --> Work
-    Direction -->|Answer or request changes| Work
-    Direction -->|Cancel| Cancelled
+    Recover -->|Unresolved after bounded recovery| Failed([Return concrete failure and retained evidence])
     Work -->|Ready; required children succeeded| Rebase[Native rebase onto current target]
-    Rebase -->|Structured conflict| Recovery[Conflict recovery: see below]
-    Recovery --> Work
-    Rebase -->|Success| Prepare[Prepare hook; record candidate]
-    Prepare --> Prepared{Preparation passed or skipped?}
-    Prepared -->|No| Work
-    Prepared -->|Yes| Specialists[Run configured outcome specialists]
-    Specialists --> SpecialistOK{Required findings resolved?}
-    SpecialistOK -->|No| Work
-    SpecialistOK -->|Yes| Verify[Run verify hook; retain result and evidence]
-    Verify --> Verified{Verification permits completion?}
-    Verified -->|Failure or required skip| Work
-    Verified -->|Yes| Prior{Latest human decision accepted this unchanged work?}
+    Rebase -->|Repairable conflict| Recover
+    Rebase -->|Success| Prepare[Prepare hook; configured outcome specialists]
+    Prepare -->|Passed or skipped| Verify[Verify hook]
+    Prepare -->|Repair or required findings| Work
+    Verify -->|Failure or required verification missing| Work
+    Verify -->|Passed or optional skip| Prior{Human already accepted this unchanged work?}
     Prior -->|Yes| Changes
-    Prior -->|No| Assess[Independent candidate assessment]
-    Assess --> Assessed{Assessment outcome?}
-    Assessed -->|Repair or missing validation| Work
-    Assessed -->|Actionable capability finding| Work
-    Assessed -->|Still unapproved; unchanged candidate| Recover
-    Assessed -->|Approved| Summary[Prepare one decision brief with outcomes, evidence, limitations, and supporting links]
-    Summary --> SummaryOK{Evidence and accounting sufficient?}
-    SummaryOK -->|No| Work
-    SummaryOK -->|Yes| Review{Human outcome review}
-    Review -->|Request changes or upload annotations| Work
-    Review -->|Cancel| Cancelled([Complete: cancelled])
-    Review -->|Accept without edits| Changes{Local changes remain?}
-    Changes -->|No| Unchanged([Complete: unchanged])
-    Changes -->|Yes| Merge[Squash reviewed candidate; native merge]
-    Merge -->|Upstream advanced| Chase[Bounded upstream chase: see below]
-    Merge -->|Other error| Failed([Job fails with diagnostics])
+    Prior -->|No| Assess[Independent assessment; write outcome summary]
+    Assess -->|Repair needed| Work
+    Assess -->|Ready| Review{Human outcome review}
+    Review -->|Request changes or upload edits| Work
+    Review -->|Stop| Cancelled
+    Review -->|Accept| Changes{Local changes remain?}
+    Changes -->|No| Unchanged([Complete: unchanged or delegated])
+    Changes -->|Yes| Merge[Native squash and merge]
+    Merge -->|Upstream advanced| Rebase
+    Merge -->|Other error| Failed
     Merge -->|Success| Publish[Publish hook against merged commit]
-    Publish --> Published{Publication passed or skipped?}
-    Published -->|Yes| Done([Complete: implemented])
-    Published -->|No| PublishFailed([Job fails; merge already happened])
+    Publish -->|Passed or skipped| Done([Complete: implemented])
+    Publish -->|Failure| PublishFailed([Job fails; merge already happened])
 
     classDef human fill:#fff3cd,stroke:#9a6700,color:#24292f
-    classDef artifact fill:#ddf4ff,stroke:#0969da,color:#24292f
-    class Review,Direction human
-    class DesignDoc,Tests,Summary artifact
+    class Direction,Review human
 ```
 
-- **Review:** normally one human outcome review; design has no routine approval gate.
-  Specific unresolved decisions can request earlier direction with a current brief.
-  Revision needs feedback or uploaded edits; acceptance with edits returns to work.
+- **Framing:** the first agent identifies a feature, bug, explanation, or oversight
+  assignment. Oversight coordinates work owned by other cells. A completed explanation
+  can return `answer.md` directly; delivery starts with a one-pager even when the
+  request already includes an execution handoff. No separate design classifier runs.
+- **Direction review:** `one-pager.md` covers Problem Description, Non Goals,
+  What we are planning to do, Compat/Upgrade, and key design questions and answers.
+  Keep the prose short without cutting important questions. The form names the cell
+  and proposed change. Approval retains the exact document under
+  `approved-direction/one-pager.md`; feedback returns to framing. An unanswered
+  review cannot advance to detailed planning or implementation.
+- **Outcome review:** after implementation and verification, the primary brief
+  explains what changed, what others did, tests, omissions, interface changes, and
+  differences from the approved direction. Supporting evidence stays linked.
+  Acceptance with edits returns to work. Material scope changes return to framing;
+  unchanged rebases reuse the existing outcome approval as described below.
 - **Recovery:** ordinary debugging belongs to the working agent. Failed children,
   invalid target refs, preparation errors, and unexplained blockers return to the
   parent with their available diagnostics. A corrected execution request submits a
   fresh job in the explicit destination cell, starting from its normal target ref.
-  It receives a corrected handoff and selected files. The parent can inspect intermediate
+  It receives the agreed receiver-authored handoff and selected files. If the assignment
+  changes, the receiver revises it through consultation. The parent can inspect intermediate
   outputs and export a snapshot, then include a reviewed patch for the next writable task
   to apply and retest. Sessions and execution history are not inherited. Cancellation stays distinct and never triggers an automatic retry.
   `next: fail` immediately ends an unsuccessful attempt with its reason and selected
@@ -131,9 +122,9 @@ flowchart TD
     Settled -->|No| Owner{Existing owner or new cell?}
     Owner -->|Existing cell| Serving[Consult the serving cell on the unresolved question]
     Owner -->|New cell| Root[Root-owned creation and approval]
-    Serving --> Handoff[Generate an execution handoff and select supporting files]
+    Serving --> Handoff[Receiver writes agreed execution handoff and selects supporting files]
     Root --> Handoff
-    Settled -->|Yes| Handoff
+    Settled -->|Yes; accepted receiver handoff exists| Handoff
     Handoff --> Phase{Implementation phase?}
     Phase -->|No| Record[Retain settled decisions; continue planning]
     Phase -->|Yes| Known{Execution job already recorded?}
@@ -148,18 +139,30 @@ flowchart TD
     Success -->|Yes| Resume[Resume parent with durable outcome and evidence]
 ```
 
-The parent synthesizes settled consultation and planning outcomes into an execution
-assignment. It requests `action: execute`, explicit `cell`/`ref`, and `handoff:
-work/<assignment>/`. That directory must contain `handoff.md`; only selected files
-beneath it are bound at the child's inbox root. Formal statements and exact supporting
-contracts belong there when needed. The execution owner can differ from the consultant;
-referrals do not require another acknowledgment consultation.
+The requesting cell explains its problem and proposed requirements. The receiving
+cell checks existing capabilities, recommends changes, and writes the agreed
+`handoff.md` as a feature, bug, explanation, or oversight assignment. Public replies
+and their selected documents remain accessible through `conversation.md`; the
+receiver's summary explains its recommendation and differences from the request.
+
+For execution, the parent returns `action: execute`, an explicit `cell`/`ref`, and
+`handoff: work/<assignment>/`. That directory must contain the receiver's original
+`handoff.md`; the coordinator checks it against the accepted consultation. It
+passes only selected files beneath that directory to the child. Recovery may add
+selected evidence, but a changed assignment requires the receiver to revise it.
+A referral to a different delivery owner needs that owner's agreed assignment.
+
+Children use the normal named `build` selector, preserving local build overrides;
+the shared public build now selects adaptive2. Each delivery child currently has
+its own direction review. Reusing a parent's approval for an unchanged child brief
+and executing approved prerequisites during planning remain future work. Creation
+continues through the existing root-owned creation workflow.
 
 Agents use native job IDs for `replaces` when requesting a corrected attempt. The
 coordinator retains submission records for durable replay, follows active or successful
 attempts instead of duplicating them, and never automatically retries cancellation.
-The parent interprets cancellation feedback: a correction can lead to a revised handoff
-and an explicit replacement; an instruction to stop the broader work is respected.
+The parent interprets cancellation feedback: a correction can lead to an explicit replacement with selected
+recovery evidence, or a receiver-revised handoff when scope changes; an instruction to stop the broader work is respected.
 Design, test planning, and implementation start separate sessions. Consultation gets
 its own requester and consultant checkpoints; returning advice preserves the original
 working session and unpublished managed candidate. Creation retains root-owned approval
@@ -261,7 +264,7 @@ an agent-maintained approval record.
 ## Agent instructions, files, and recipe data
 
 Authored prompts and human-review wording live in
-[prompts.yaml](recipes/adaptive/prompts.yaml), an empty-sequence include that adds
+[prompts.yaml](recipes/adaptive2/prompts.yaml), an empty-sequence include that adds
 no worker tasks. Named inputs render ordinary templates. Standing instructions
 are supplied when a new session starts; resumed turns receive the current task
 and artifact-directory paths. Agents use `c2j self` at task start and recheck after
@@ -294,7 +297,7 @@ enforces their declared output contracts. Existing hook interfaces may still
 receive their declared `build-settings.json`, while the main loop uses the
 configure outputs it needs. Log text is evidence, not the source of gate decisions.
 
-Public build, creation, and adaptive consultation contracts use schema v2.
+Public build, creation, and adaptive2 consultation contracts use schema v2.
 Annotations cross includes and child jobs as native arrays with typed artifact
 references; sessions use `checkpoint`. No annotation JSON strings or transport
 sidecars are needed. Internal helpers without declared input schemas remain
@@ -302,11 +305,13 @@ unversioned and already pass native values directly. See the
 [schema v2 migration](guides/IMPLEMENTATION_RECIPE_SCHEMA_V2.md) and
 [shared prompt notes](guides/IMPLEMENTATION_SHARED_PROMPTS.md).
 
-The adaptive entry and its local helpers do not include kernel recipes. Serving
+The adaptive2 entry and its shared adaptive helpers do not include kernel recipes. Serving
 agreement asks humans only for explicit decisions; failures return to the parent
 for correction before an exhausted recovery becomes a concrete handoff. Every review uses a current brief plus its cited and
 required evidence, excluding stale briefs and unrelated history. External child
 build and root-creation jobs remain explicit integration boundaries.
 
-See the [implementation assessment](guides/ASSESSMENT_AGENT_AUTONOMY_AND_PARENT_RECOVERY.md)
-for verified paths, runtime limitations, and differences from the approved plan.
+See the [default-build rollout](guides/adaptive2/ROLLOUT.md),
+[initial assessment](guides/adaptive2/IMPLEMENTATION.md), and
+[recovery assessment](guides/ASSESSMENT_AGENT_AUTONOMY_AND_PARENT_RECOVERY.md)
+for verified paths and remaining limitations.

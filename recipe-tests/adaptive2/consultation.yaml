@@ -1,0 +1,51 @@
+id: adaptive2-consultation-probe
+sequence:
+- id: consult
+  include: ../../recipes/adaptive2/consultation.yaml
+  inputs:
+    thread: draft-conflicts
+    request: ${{ inputs.request }}
+    consultant_cell: storage
+    consultant_role: Own draft persistence; check the current API and propose only necessary work.
+    documents: ${{ inputs.documents }}
+- id: read_documents
+  op: command_execution
+  const: true
+  artifacts:
+    ./: ${{ sequence.consult.outputs.final_artifacts }}
+  inputs:
+    env:
+      INBOX: ${{ context.environment.op.inbox }}
+    run: |
+      test -s "$INBOX/conversation.md"
+      test -s "$INBOX/summary.md"
+      cat "$INBOX/conversation.md"
+      python3 - <<'PYLINK'
+      import os,re
+      from pathlib import Path
+      inbox=Path(os.environ['INBOX'])
+      for name in ['conversation.md','summary.md']:
+          for target in re.findall(r'\]\(([^)]+)\)',(inbox/name).read_text()):
+              assert (inbox/target).is_file(), (name,target)
+      PYLINK
+  execution_needs:
+    packages:
+    - nix:github:NixOS/nixpkgs/e7439b6b14ad3cc35d05608ebca9bce01a25f5f8#python3
+outputs:
+  outcome: ${{ sequence.consult.outputs.outcome }}
+  work_kind: ${{ sequence.consult.outputs.work_kind }}
+  handoff: ${{ sequence.consult.outputs.handoff }}
+  transcript: ${{ sequence.read_documents.outputs.stdout }}
+  documents: ${{ sequence.consult.outputs.final_artifacts }}
+  artifact_refs: ${{ sequence.consult.outputs.final_artifacts }}
+schema_version: 2
+input_schema:
+  request:
+    type: string
+    default_value: Keep both tabs' text when saving a draft.
+  documents:
+    type: artifact_map
+    default_value: {}
+inputs:
+  request: ${{ inputs.request }}
+  documents: ${{ inputs.documents }}

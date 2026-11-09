@@ -1,0 +1,161 @@
+id: adaptive2-agent-turn
+version: 0.1.0
+inputs:
+  prompt: ${{ inputs.prompt }}
+  instructions: ${{ inputs.?instructions.orValue('') }}
+  schema: ${{ inputs.schema }}
+  session: ${{ inputs.?session.orValue({}) }}
+  documents: ${{ inputs.?documents.orValue({}) }}
+  read_only: ${{ inputs.?read_only.orValue(true) }}
+  retained_artifacts: ${{ inputs.?retained_artifacts.orValue({}) }}
+  artifact_fields: ${{ inputs.?artifact_fields.orValue(['files.*.path']) }}
+  evidence_documents: ${{ inputs.?evidence_documents.orValue({}) }}
+state:
+  initial: prompts
+  states:
+    prompts:
+      include: ./prompts.yaml
+      transitions:
+      - to: resume_read_only_session
+        when: inputs.read_only && size(inputs.session) > 0
+      - to: start_read_only_session
+        when: inputs.read_only
+      - to: resume_implementation_session
+        when: size(inputs.session) > 0
+      - to: start_implementation_session
+        when: true
+    start_implementation_session:
+      id: start_implementation_session
+      op: nix:github:colony-2/c2ops/published#codex
+      # Bind once; original execution evidence takes precedence over returned copies.
+      artifacts:
+        ./: ${{ jq([inputs.documents, inputs.evidence_documents], 'add') }}
+      inputs:
+        api:
+          api_key: ${{ context.secrets.?codex_api_key.orValue(null) }}
+        prompt: |-
+          {{ inputs.prompt }}
+
+          {{ states.prompts.outputs.turn.directories }}
+          inbox: {{ context.environment.op.inbox }}
+          outbox: {{ context.environment.op.outbox }}
+          {{ states.prompts.outputs.turn.artifacts }}
+        instructions: |
+          {{ states.prompts.outputs.turn.instructions }}{{ inputs.instructions }}
+        output:
+          schema: ${{ inputs.schema }}
+      transitions:
+      - to: normalize
+        when: true
+    resume_implementation_session:
+      id: resume_implementation_session
+      op: nix:github:colony-2/c2ops/published#codex
+      artifacts:
+        ./: ${{ jq([inputs.documents, inputs.evidence_documents], 'add') }}
+      inputs:
+        api:
+          api_key: ${{ context.secrets.?codex_api_key.orValue(null) }}
+        prompt: |-
+          {{ inputs.prompt }}
+
+          {{ states.prompts.outputs.turn.directories }}
+          inbox: {{ context.environment.op.inbox }}
+          outbox: {{ context.environment.op.outbox }}
+          {{ states.prompts.outputs.turn.artifacts }}
+        session: ${{ inputs.session }}
+        output:
+          schema: ${{ inputs.schema }}
+      transitions:
+      - to: normalize
+        when: true
+    start_read_only_session:
+      id: start_read_only_session
+      op: nix:github:colony-2/c2ops/published#codex
+      const: true
+      artifacts:
+        ./: ${{ jq([inputs.documents, inputs.evidence_documents], 'add') }}
+      inputs:
+        api:
+          api_key: ${{ context.secrets.?codex_api_key.orValue(null) }}
+        prompt: |-
+          {{ inputs.prompt }}
+
+          {{ states.prompts.outputs.turn.directories }}
+          inbox: {{ context.environment.op.inbox }}
+          outbox: {{ context.environment.op.outbox }}
+          {{ states.prompts.outputs.turn.artifacts }}
+        instructions: |
+          {{ states.prompts.outputs.turn.instructions }}{{ inputs.instructions }}
+        output:
+          schema: ${{ inputs.schema }}
+      transitions:
+      - to: normalize
+        when: true
+      perms:
+        inherit: true
+        jobdb:
+          jobs:
+            submit: false
+    resume_read_only_session:
+      id: resume_read_only_session
+      op: nix:github:colony-2/c2ops/published#codex
+      const: true
+      artifacts:
+        ./: ${{ jq([inputs.documents, inputs.evidence_documents], 'add') }}
+      inputs:
+        api:
+          api_key: ${{ context.secrets.?codex_api_key.orValue(null) }}
+        prompt: |-
+          {{ inputs.prompt }}
+
+          {{ states.prompts.outputs.turn.directories }}
+          inbox: {{ context.environment.op.inbox }}
+          outbox: {{ context.environment.op.outbox }}
+          {{ states.prompts.outputs.turn.artifacts }}
+        session: ${{ inputs.session }}
+        output:
+          schema: ${{ inputs.schema }}
+      transitions:
+      - to: normalize
+        when: true
+      perms:
+        inherit: true
+        jobdb:
+          jobs:
+            submit: false
+    normalize:
+      include: ../adaptive/artifact-result.yaml
+      inputs:
+        result: '${{ jq((inputs.read_only ? (size(inputs.session) > 0 ? states.resume_read_only_session : states.start_read_only_session)
+          : (size(inputs.session) > 0 ? states.resume_implementation_session : states.start_implementation_session)).outputs,
+          ''.response |= walk(if type == "object" then with_entries(select(.value != null)) else . end)'') }}'
+        artifacts: "${{ jq([inputs.retained_artifacts, (inputs.read_only ? (size(inputs.session) > 0 ? states.resume_read_only_session
+          : states.start_read_only_session) : (size(inputs.session) > 0 ? states.resume_implementation_session : states.start_implementation_session)).artifacts],
+          'add') }}"
+        fields: ${{ inputs.artifact_fields }}
+        bound_inputs: ${{ jq([inputs.documents, inputs.evidence_documents], 'add') }}
+outputs:
+  response_schema: ${{ inputs.schema }}
+  annotations: ${{ states.normalize.outputs.annotations }}
+  result: ${{ states.normalize.outputs.result }}
+  artifacts: ${{ states.normalize.outputs.artifacts }}
+  documents: ${{ states.normalize.outputs.documents }}
+  jobs: '${{ (inputs.read_only ? (size(inputs.session) > 0 ? states.resume_read_only_session : states.start_read_only_session)
+    : (size(inputs.session) > 0 ? states.resume_implementation_session : states.start_implementation_session)).?jobs.orValue({})
+    }}'
+  cell: ${{ context.workspace.cell }}
+  base_hash: ${{ context.git.resolved_hash }}
+  issues: ${{ states.normalize.outputs.issues }}
+  matches: ${{ states.normalize.outputs.matches }}
+  original_response: '${{ (inputs.read_only ? (size(inputs.session) > 0 ? states.resume_read_only_session : states.start_read_only_session)
+    : (size(inputs.session) > 0 ? states.resume_implementation_session : states.start_implementation_session)).outputs.?response.orValue({})
+    }}'
+  checkpoint: ${{ states.normalize.outputs.result.?session.orValue(inputs.session) }}
+  repair_documents: ${{ states.normalize.outputs.repair_documents }}
+catch:
+- when: failure.kind != 'cancellation'
+  fail:
+    code: AGENT_EXECUTION_RECOVERY_REQUIRED
+    message: ${{ 'Agent execution could not start or complete in job ' + context.workflow.job_id + '. The parent can use
+      the original diagnostic to correct the request or environment and submit a fresh job. ' + failure.message }}
+    cause: ${{ failure }}

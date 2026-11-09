@@ -1,0 +1,37 @@
+id: adaptive2-response-repair
+inputs:
+  turn: ${{ inputs.turn }}
+  issues: ${{ inputs.issues }}
+  documents: ${{ inputs.documents }}
+  session: ${{ inputs.?session.orValue({}) }}
+  attempts: ${{ int(inputs.?attempts.orValue(0)) }}
+state:
+  initial: prompts
+  states:
+    prompts:
+      include: ./prompts.yaml
+      transitions:
+      - to: automatic
+        when: inputs.attempts < 2 && size(inputs.turn.result.?session.orValue(inputs.session)) > 0 &&
+          size(inputs.turn.jobs.?job_ids.orValue([])) == 0
+      - to: recovery
+        when: true
+    automatic:
+      sequence: []
+    recovery:
+      include: ../adaptive/operational-failure.yaml
+      inputs:
+        reason: "${{ 'Response correction exhausted or has no safe checkpoint: ' + jq(inputs.issues,'join(\"; \")') }}"
+        documents: ${{
+          jq([inputs.documents,inputs.turn.documents,inputs.turn.?repair_documents.orValue({}),{'error/previous-response.json':{'kind':'value','name':'error/previous-response.json','format':'json','value':inputs.turn.result.?response.orValue({})}
+          }], 'add') }}
+outputs:
+  retry: true
+  attempts: ${{ inputs.attempts+1 }}
+  session: ${{ inputs.turn.result.?session.orValue(inputs.session) }}
+  artifacts: ${{ inputs.turn.artifacts }}
+  documents: >-
+    ${{ jq([inputs.documents,inputs.turn.documents,inputs.turn.?repair_documents.orValue({}),{'error/response-corrections.md':{'kind':'value','name':'error/response-corrections.md','format':'text','value':jq(inputs.issues,'join("\n")')},'error/previous-response.json':{'kind':'value','name':'error/previous-response.json','format':'json','value':inputs.turn.result.?response.orValue({})}
+    }],'add') }}
+  prompt: ${{ states.prompts.outputs.repair.prompt }}
+  base_hash: ${{ inputs.turn.?base_hash.orValue('') }}

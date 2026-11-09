@@ -1,0 +1,1 @@
+Our notebook text importer sometimes silently loses the final note. People report this with files edited by hand, but we do not know the cause. Please find the cause and fix it, preserving the existing behavior for blank lines and Unicode.

@@ -1,0 +1,75 @@
+recipe: live-review.yaml
+cases:
+- id: retain-all-selected-review-evidence
+  type: integration_case
+  inputs:
+    prompt: Save drafts while typing.
+  runtime:
+    cell: notebook
+    cells:
+      notebook:
+        files:
+          PURPOSE.md: Own a notebook application.
+          README.md: A small notebook.
+    responses:
+    - node_path:
+        adaptive2-live-review/build/adaptive2-build/workflow/adaptive2-workflow/run/adaptive2-develop/direction/sequence/review/adaptive2-review/request_human_review
+      fields:
+        decision: cancel
+  mocks:
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            work_kind: feature
+            summary: Keep unfinished notes when navigating away.
+            files:
+            - path: one-pager.md
+              description: Direction for saving unfinished notes
+              title: 'Approve 1p for notebook feature: save drafts while typing'
+              role: primary
+              order: 0
+              source_paths:
+              - request.md
+            - path: evidence/details.txt
+              description: Selected evidence
+            questions:
+            review_title: 'Approve 1p for notebook feature: save drafts while typing'
+            requests:
+            packages:
+        artifacts:
+          one-pager.md: "# Save drafts\n\n## Problem Description\nPeople lose text.\n\n## Key challenges/design
+            questions & answers\n| Question | Answer |\n| --- | --- |\n| Offline? | Excluded. |\n"
+          evidence/details.txt: "A selected source, retained byte for byte.\n"
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: shape
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: disposition
+    value: cancelled
+  - type: cel_true
+    expr: reviews.size() == 1 && calls.filter(c,c.op == "extension_execution").size() == 1
+  - type: cel_true
+    expr: '!calls.exists(c,c.node_path.contains("start_implementation_session") || c.op == "merge")'
+  - type: review_document_exists
+    node_path:
+      adaptive2-live-review/build/adaptive2-build/workflow/adaptive2-workflow/run/adaptive2-develop/direction/sequence/review/adaptive2-review/request_human_review
+    path: one-pager.md
+  - type: cel_true
+    expr: calls.exists(c,c.node_path.endsWith("/retain_review_packet") && has(c.artifacts) && "one-pager.md"
+      in c.artifacts && c.artifacts["evidence/details.txt"] == "A selected source, retained byte for byte.\n")

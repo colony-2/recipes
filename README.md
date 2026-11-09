@@ -6,10 +6,11 @@ describes this cell's responsibilities.
 
 ## Build
 
-[`build.yaml`](build.yaml) runs [`recipes/adaptive/`](recipes/adaptive/README.md).
-It classifies whether design is needed, writes formal test statements, implements
-and coordinates prerequisite work, verifies the candidate, and presents an outcome
-review before publication. Agent feedback returns to the appropriate working phase.
+[`build.yaml`](build.yaml) runs [`recipes/adaptive2/`](recipes/adaptive2/README.md).
+It frames the request as a feature, bug, explanation, or oversight assignment.
+Delivery starts with a human-approved one-pager, then detailed planning,
+implementation, verification, and an outcome review before publication.
+A straightforward explanation can return its answer directly. Agent feedback returns to the appropriate working phase.
 See [the process description and diagrams](ADAPTIVE_BUILD_PROCESS.md).
 
 ```sh
@@ -22,7 +23,7 @@ The cell encompasses the whole repository. Other inputs, including verification
 requirements, child recipe selectors, documents and checkpoints, are declared in
 the entrypoint's schema v2 contract.
 
-Prompts live in `recipes/adaptive/prompts.yaml`, included through an empty sequence
+Prompts live in `recipes/adaptive2/prompts.yaml`, included through an empty sequence
 that creates no worker task. Specific typed values carry orchestration state;
 files carry evidence, feedback, command diagnostics, and review documents.
 Standing context is supplied when a session starts. Agents can use `c2j self` to
@@ -30,11 +31,13 @@ inspect their execution context and capabilities, and `c2j job log`, `fields`,
 `artifacts`, and `snapshot` to retrieve selected work from jobs visible through existing
 JobDB read permissions, including producer jobs outside the direct child chain.
 
-Serving consultations resolve external scope. The working agent generates a focused
-`handoff.md` and selects supporting files for an explicit execution owner. The parent
+Serving consultations resolve external scope. The receiving cell writes the agreed
+`handoff.md`; public replies and selected documents remain in a readable conversation.
+The coordinator passes the receiver's original handoff to the execution owner. The parent
 follows the exact job and can submit a corrected fresh attempt after failure, carrying
 selected artifacts or a reviewed patch when useful. Sessions and execution history are
-not inherited. See [handoffs and recovery](guides/ASSESSMENT_HANDOFF_ROUTING_AND_RECOVERY.md).
+not inherited. See [the current workflow](recipes/adaptive2/README.md) and
+[rollout limitations](guides/adaptive2/ROLLOUT.md).
 
 Use the [documentation map](guides/README.md) and
 [general improvement guidance](guides/RECIPE_IMPROVEMENT_GUIDE.md) for recipe work.
@@ -61,7 +64,8 @@ See [creation behavior and failure handling](recipes/create/README.md).
 
 The helpers still needed by creation remain in [`recipes/kernel/`](recipes/kernel/README.md).
 The old heavy/light build, ticket/job workflows, superpowers family, and their
-exclusive helpers and tests have been removed. Adaptive is the sole build path.
+exclusive helpers and tests have been removed. Adaptive2 is the default build path. Unchanged helpers are shared with
+`recipes/adaptive/`, whose previous flow remains covered by separate regression tests.
 
 ## Tests
 
@@ -74,8 +78,9 @@ c2j test run --directory . --case-timeout 10m --out-dir .c2/test-results
 ```
 
 Deterministic suites mock model responses and declare human answers while exercising
-native artifacts, Git, reviews, child jobs and publication. Adaptive coverage lives
-in `recipe-tests/adaptive/`; retained creation and shared-helper coverage is in
+native artifacts, Git, reviews, child jobs and publication. Public build coverage
+lives in `recipe-tests/adaptive2/` and `recipe-tests/self-improvement/`. Previous
+adaptive and shared-helper regressions live in `recipe-tests/adaptive/`; creation coverage is in
 `recipe-tests/`. Documentation examples are also discovered. Live model/skill checks
 are opt-in with `--include-live` and require configured authentication.
 

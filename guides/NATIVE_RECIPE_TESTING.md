@@ -22,7 +22,7 @@ Runtime cases still resolve op manifests when model responses are mocked.
 ```sh
 c2j test validate --directory .
 c2j test run --directory . --case-timeout 10m --out-dir .c2/test-results
-c2j test run --file recipe-tests/adaptive/flow.test.yaml --case direct-no-change
+c2j test run --file recipe-tests/adaptive2/direction-review.test.yaml --case explanation-finishes-without-approval
 ```
 
 Discovery recursively finds `*.test.yaml`, `*.test.yml`, `*.test.json`, and

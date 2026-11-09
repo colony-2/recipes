@@ -1,0 +1,1 @@
+Our notebook text importer sometimes silently loses the final note. Users report this with files edited by hand, but we do not know the cause. Find a reproduction and propose a bounded fix. Preserve existing behavior for blank lines and Unicode. Prepare the direction review before implementing the fix.

@@ -1,0 +1,354 @@
+recipe: consultation.yaml
+cases:
+- id: receiver-authors-revised-handoff
+  type: integration_case
+  runtime:
+    cell: notebook
+    cells:
+      notebook:
+        files:
+          PURPOSE.md: Own notebook.
+      storage:
+        files:
+          PURPOSE.md: Own draft persistence.
+  mocks:
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: storage
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: continue
+            reply: We could reject stale writes.
+            work_kind:
+            handoff:
+            files:
+            - path: iter1/consultant/summary.md
+              description: Consultation evidence
+            requests:
+            review_title:
+        artifacts:
+          iter1/consultant/summary.md: "# Storage: prevent conflicting writes\nPreserve both drafts. The requester
+            questioned retry behavior.\n"
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                participant: consultant
+                iteration: 1
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: notebook
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: continue
+            reply: What happens when the response is lost?
+            work_kind:
+            handoff:
+            files:
+            - path: iter2/requester/summary.md
+              description: Consultation evidence
+            requests:
+            review_title:
+        artifacts:
+          iter2/requester/summary.md: "# Storage: prevent conflicting writes\nPreserve both drafts. The requester
+            questioned retry behavior.\n"
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                participant: requester
+                iteration: 2
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: storage
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: agreed
+            reply: Read and compare before retrying; this bug fix preserves the earlier draft.
+            work_kind: bug
+            handoff: iter2/consultant/work/
+            files:
+            - path: iter2/consultant/summary.md
+              description: Consultation evidence
+            - path: iter2/consultant/work/handoff.md
+              description: Consultation evidence
+            requests:
+            review_title:
+        artifacts:
+          iter2/consultant/summary.md: "# Storage: prevent conflicting writes\nPreserve both drafts. The requester
+            questioned retry behavior.\n"
+          iter2/consultant/work/handoff.md: "# Storage bug: reject stale draft writes\nWork type: bug.\nExpected:
+            stale writes fail. Observed: overwrite.\nAcceptance: preserve the earlier write and return a conflict.\n"
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                participant: consultant
+                iteration: 2
+    - &id001
+      match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: outcome
+    value: agreed
+  - type: output_equals
+    path: work_kind
+    value: bug
+  - type: output_equals
+    path: handoff
+    value: iter2/consultant/work/
+  - type: cel_true
+    expr: outputs.transcript.contains("What happens when the response is lost?") &&
+      outputs.transcript.contains("Read and compare") && outputs.transcript.contains("Keep both tabs")
+  - type: cel_true
+    expr: '"summary.md" in outputs.documents && "conversation.md" in outputs.documents'
+  - type: cel_true
+    expr: '"iter1/consultant/summary.md" in outputs.documents && "iter2/requester/summary.md" in outputs.documents
+      && "iter2/consultant/work/handoff.md" in outputs.documents'
+  - type: cel_true
+    expr: calls.exists(c,c.op == "extension_execution" && c.cell == "storage" &&
+      has(c.inputs.inputs.instructions) && c.inputs.inputs.instructions.contains("You own storage. You are
+      speaking with the owner of notebook.") && has(c.artifacts) && "request.md" in c.artifacts &&
+      c.artifacts["request.md"].contains("silently overwriting"))
+  - type: cel_true
+    expr: calls.exists(c,c.op == "extension_execution" && c.cell == "notebook" &&
+      has(c.inputs.inputs.instructions) && c.inputs.inputs.instructions.contains("You own notebook. You are
+      speaking with the owner of storage.") && has(c.artifacts) && "request.md" in c.artifacts &&
+      c.artifacts["request.md"].contains("silently overwriting"))
+  - type: cel_true
+    expr: outputs.transcript.contains("## notebook\n") && outputs.transcript.contains("## storage\n") &&
+      outputs.transcript.contains("What happens when the response is lost?")
+  inputs:
+    request: I'm notebook. Keep both tabs' text when saving a draft. Please read inbox/request.md and tell me
+      what you would change.
+    documents:
+      request.md:
+        kind: value
+        name: request.md
+        format: text
+        value: "# Feature request: preserve text in both tabs\nKeep either tab from silently overwriting the other.\n"
+- id: existing-api-needs-no-followup
+  type: integration_case
+  runtime:
+    cell: notebook
+    cells:
+      notebook:
+        files:
+          PURPOSE.md: Own notebook.
+      storage:
+        files:
+          PURPOSE.md: Own draft persistence.
+  mocks:
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: storage
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: answered
+            reply: Use the existing conditional write API.
+            work_kind:
+            handoff:
+            files:
+            - path: iter1/consultant/summary.md
+              description: Consultation evidence
+            requests:
+            review_title:
+        artifacts:
+          iter1/consultant/summary.md: "# Storage: prevent conflicting writes\nPreserve both drafts. The requester
+            questioned retry behavior.\n"
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                participant: consultant
+                iteration: 1
+    - *id001
+  assertions:
+  - type: output_equals
+    path: outcome
+    value: answered
+  - type: output_equals
+    path: handoff
+    value: ''
+  - type: cel_true
+    expr: '!calls.exists(c,c.op == "recipes.run") && outputs.transcript.contains("existing conditional write")'
+- id: receiver-directory-without-trailing-slash
+  type: integration_case
+  runtime:
+    cell: notebook
+    cells:
+      notebook:
+        files:
+          PURPOSE.md: Own notebook.
+      storage:
+        files:
+          PURPOSE.md: Own draft persistence.
+  mocks:
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: storage
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: agreed
+            reply: Read and compare before retrying; this bug fix preserves the earlier draft.
+            work_kind: bug
+            handoff: iter1/consultant/work
+            files:
+            - path: iter1/consultant/summary.md
+              description: Consultation evidence
+              title: Recommendation
+            - path: iter1/consultant/work/handoff.md
+              description: Consultation evidence
+              title: Preserve both drafts when saves collide
+            requests:
+            review_title:
+        artifacts:
+          iter1/consultant/summary.md: "I suggest rejecting stale writes while preserving both drafts.\n"
+          iter1/consultant/work/handoff.md: "# Storage bug: reject stale draft writes\nWork type: bug.\nExpected:
+            stale writes fail. Observed: overwrite.\nAcceptance: preserve the earlier write and return a conflict.\n"
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                participant: consultant
+                iteration: 2
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: outcome
+    value: agreed
+  - type: output_equals
+    path: handoff
+    value: iter1/consultant/work/
+  - type: cel_true
+    expr: calls.filter(c,c.op == "extension_execution").size() == 1 && !calls.exists(c,c.op == "input")
+  - type: cel_true
+    expr: calls.exists(c,c.node_path.endsWith("/read_documents") && has(c.artifacts) &&
+      c.artifacts["summary.md"].startsWith("# Preserve both drafts when saves collide\n"))
+- id: repair-reports-the-actual-missing-handoff
+  type: integration_case
+  runtime:
+    cell: notebook
+    cells:
+      notebook:
+        files:
+          PURPOSE.md: Own notebook.
+      storage:
+        files:
+          PURPOSE.md: Own draft persistence.
+  mocks:
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: storage
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: agreed
+            reply: Read and compare before retrying; this bug fix preserves the earlier draft.
+            work_kind: bug
+            handoff: iter1/consultant/work
+            files:
+            - path: iter1/consultant/summary.md
+              description: Consultation evidence
+            requests:
+            review_title:
+        artifacts:
+          iter1/consultant/summary.md: "# Storage: prevent conflicting writes\nPreserve both drafts. The requester
+            questioned retry behavior.\n"
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                participant: consultant
+                iteration: 2
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: storage
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: agreed
+            reply: Read and compare before retrying; this bug fix preserves the earlier draft.
+            work_kind: bug
+            handoff: iter1/consultant/work
+            files:
+            - path: iter1/consultant/summary.md
+              description: Consultation evidence
+            - path: iter1/consultant/work/handoff.md
+              description: Consultation evidence
+            requests:
+            review_title:
+        artifacts:
+          iter1/consultant/summary.md: "# Storage: prevent conflicting writes\nPreserve both drafts. The requester
+            questioned retry behavior.\n"
+          iter1/consultant/work/handoff.md: "# Storage bug: reject stale draft writes\nWork type: bug.\nExpected:
+            stale writes fail. Observed: overwrite.\nAcceptance: preserve the earlier write and return a conflict.\n"
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                participant: consultant
+                iteration: 2
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: outcome
+    value: agreed
+  - type: output_equals
+    path: handoff
+    value: iter1/consultant/work/
+  - type: cel_true
+    expr: calls.filter(c,c.op == "extension_execution").size() == 2 && !calls.exists(c,c.op == "input")
+  - type: cel_true
+    expr: calls.exists(c,c.op == "extension_execution" && has(c.artifacts) &&
+      c.artifacts.exists(k,k.startsWith("error/") && k.endsWith(".md") && c.artifacts[k].contains("Agreement
+      requires a receiver-authored") && !c.artifacts[k].contains("operation did not return a resumable")))

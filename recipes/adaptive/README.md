@@ -1,6 +1,9 @@
 # Adaptive build
 
-The root `build.yaml` selects this implementation. Execution, artifact, Git, and
+This is the previous adaptive flow. Root `build.yaml` now selects
+[adaptive2](../adaptive2/README.md), which shares unchanged helpers here.
+The flow described below remains covered by its own regression tests.
+Execution, artifact, Git, and
 serving-consultation helpers are owned here; there are no kernel recipe includes.
 One adaptive loop handles build work. The retired light/heavy workflows have been
 removed; creation's retained kernel helpers remain separate.
@@ -10,7 +13,7 @@ When supplied, the title precedes the request in classification and agent contex
 and is preserved in the build's `title` output. Omitting it keeps the request
 unchanged and returns an empty title.
 
-See [the process diagrams](../../ADAPTIVE_BUILD_PROCESS.md) for the main workflow,
+See [the current adaptive2 process](../../ADAPTIVE_BUILD_PROCESS.md) for the default workflow,
 focused execution handoffs, native rebase recovery, and approval reuse.
 
 ```mermaid
