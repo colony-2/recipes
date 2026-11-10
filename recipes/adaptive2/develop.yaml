@@ -193,25 +193,24 @@ state:
         session: ${{ states.dispatch.outputs.session }}
         assignment: ${{ states.dispatch.outputs.assignment }}
         base_documents: ${{ states.dispatch.outputs.base_documents }}
-        documents: ${{ states.work.outputs.documents }}
         annotations: ${{ states.dispatch.outputs.annotations }}
         phase: ${{ states.dispatch.outputs.phase }}
         coordination: "${{ (state_exists('coordinate') ? jq(states.coordinate.runs.map(r,r.outputs.records) + [states.coordinate.outputs.records],'add')
           : []) + (state_exists('work') ? jq(states.work.runs.map(r,r.outputs.child_results) + [states.work.outputs.child_results],'add').map(r,{'action':'await','job_id':r.job_id,'result':r})
           : []) + (state_exists('wait_children') ? jq(states.wait_children.runs.map(r,r.outputs.results) + [states.wait_children.outputs.results],'add').map(r,{'action':'await','job_id':r.job_id,'result':r})
           : []) }}"
-        child_documents: ${{ states.work.outputs.child_documents }}
         direct_pending: ${{ states.work.outputs.pending_jobs }}
-        original_request: ${{ states.start.outputs.documents['request.md'] }}
-        approved_direction: ${{ state_output('direction_approved','one_pager',null) }}
-      sequence: []
+      sequence:
+      - id: current_annotations
+        include: ./current-annotations.yaml
+        inputs:
+          documents: ${{ vars.documents }}
+          annotations: ${{ inputs.annotations + inputs.turn.?annotations.orValue([]) }}
       outputs:
         issues: ${{ vars.issues }}
         session: ${{ inputs.turn.result.?session.orValue(inputs.session) }}
-        documents: |-
-          ${{ jq([inputs.turn.result.?output_schema_valid.orValue(false) ? jq([jq(inputs.documents, 'with_entries(select(.key == "test-statements.md" or .key == "handoff.md" or .key == "request.md" or .key == "one-pager.md" or (.key | startswith("coordination/"))))'), inputs.turn.documents, inputs.child_documents], 'add') : inputs.documents,
-           {'request.md':inputs.original_request}, inputs.approved_direction != null ? {'approved-direction/one-pager.md':jq([inputs.approved_direction,{'name':'approved-direction/one-pager.md'}],'add')} : {}], 'add') }}
-        annotations: ${{ inputs.annotations + inputs.turn.?annotations.orValue([]) }}
+        documents: ${{ vars.documents }}
+        annotations: ${{ sequence.current_annotations.outputs.annotations }}
         pending_jobs: ${{ jq(inputs.coordination.filter(e,e.action == 'execute' &&
           !inputs.coordination.exists(n,n.action == 'execute' && n.?replaces.orValue('') ==
           e.job_id)).filter(e,!inputs.coordination.exists(a,a.action == 'await' && a.job_id ==
@@ -223,6 +222,9 @@ state:
           a.result.?outputs.orValue({}).?disposition.orValue('') in
           ['unchanged','delegated'])))).map(e,e.job_id) }}
       vars:
+        documents: |-
+          ${{ jq([states.work.outputs.turn.result.?output_schema_valid.orValue(false) ? jq([jq(states.work.outputs.documents, 'with_entries(select(.key == "test-statements.md" or .key == "handoff.md" or .key == "request.md" or .key == "one-pager.md" or (.key | startswith("coordination/"))))'), states.work.outputs.turn.documents, states.work.outputs.child_documents], 'add') : states.work.outputs.documents,
+           {'request.md':states.start.outputs.documents['request.md']}, state_output('direction_approved','one_pager',null) != null ? {'approved-direction/one-pager.md':jq([state_output('direction_approved','one_pager',null),{'name':'approved-direction/one-pager.md'}],'add')} : {}], 'add') }}
         issues: |-
           ${{ (size(states.work.outputs.turn.result.?response.orValue({}).?packages.orValue([])) > 0 && states.work.outputs.turn.result.response.next != 'blocked' ? ['Use next: blocked with a package request so the recipe can authorize and validate it before continuing.'] : []) + (states.work.outputs.turn.result.?response.orValue({}).?next.orValue('') == 'ask_user' ? [] : states.work.outputs.turn.?issues.orValue([]))
            + (states.work.outputs.turn.result.?status.orValue('failed') != 'completed' ? ['Agent did not complete: ' + states.work.outputs.turn.result.?errorMessage.orValue('No completed response.')] : [])
@@ -541,9 +543,10 @@ state:
           documents: ${{ jq([inputs.documents,sequence.prior_approval.outputs.documents],'add') }}
           evidence_documents: ${{ inputs.agent_artifacts }}
           guidance: ${{ inputs.guidance }}
+          annotations: ${{ inputs.annotations }}
       outputs:
         documents: ${{ sequence.assess.outputs.documents }}
-        annotations: ${{ inputs.annotations + sequence.assess.outputs.annotations }}
+        annotations: ${{ sequence.assess.outputs.annotations }}
         approved: ${{ sequence.assess.outputs.approved }}
         response: ${{ sequence.assess.outputs.response }}
         candidate: ${{ inputs.candidate }}
@@ -616,7 +619,7 @@ state:
       outputs:
         documents: ${{ jq([sequence.review.outputs.documents,sequence.prior_approval.outputs.documents],'add')
           }}
-        annotations: ${{ inputs.annotations + sequence.review.outputs.annotations }}
+        annotations: ${{ sequence.review.outputs.annotations }}
         approved: ${{ sequence.review.outputs.approved }}
         response: ${{ sequence.review.outputs.response }}
         commit_message: ${{

@@ -118,6 +118,13 @@ and final form assembly. They check images, documents and logs, including nested
 and reference-style links. Use plain code paths or external source URLs for code
 citations. Unrelated artifacts stay out of the review.
 
+Annotations describe the current documents. Working turns and inspections retain
+one descriptor per document ID, choosing the latest descriptor whose immutable
+artifact reference matches. Inspection returns that complete list; callers do
+not append the incoming list again. Final results include annotations only for
+exported documents. Original source references, producer identity and attachment
+lineage remain intact; earlier versions remain available in task history.
+
 To recover unchanged approved work, submit `resume_from: <previous-job-id>` with
 the receiver's settled `handoff.md`, `test-statements.md`, and selected recovery
 artifacts. Coordinating replacement submissions set this from `resume_from` or

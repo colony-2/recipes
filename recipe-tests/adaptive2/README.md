@@ -68,3 +68,11 @@ source cannot bypass comparison with a current receiver agreement.
 `recovery-status.test.yaml` runs the native recipe engine with scripted job-status
 responses to check waiting and unreadable-source correction; it does not simulate
 a worker restart or a prolonged human wait.
+
+`annotation-growth.test.yaml` runs four implementation/review rounds through the
+public build, with 24 separate evidence logs, three human revisions and a final
+merge. It checks current artifact identity, unique annotations and retained source
+links. The previous recipe exceeded JobDB's final-output limit on this fixture.
+`current-annotations.test.yaml` covers descriptor replacement, stale references,
+aliases and unchanged provenance. `review-packet.test.yaml` also checks annotation
+replacement across repeated report corrections and a human allowance increase.
