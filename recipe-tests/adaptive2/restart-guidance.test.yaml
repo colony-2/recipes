@@ -1,0 +1,208 @@
+recipe: ../../build.yaml
+cases:
+- id: restart-guidance-reaches-planning-and-implementation
+  type: integration_case
+  inputs:
+    prompt: Save drafts while typing.
+  runtime:
+    cell: notebook
+    cells:
+      notebook:
+        files:
+          PURPOSE.md: Own a notebook application.
+          README.md: A small notebook.
+    responses:
+    - node_path:
+        build/workflow/adaptive2-workflow/run/adaptive2-develop/direction/sequence/review/adaptive2-review/request_human_review
+      fields:
+        decision: accept
+    - node_path:
+        build/workflow/adaptive2-workflow/run/adaptive2-develop/accept/sequence/outcome_review/adaptive2-review/request_human_review
+      fields:
+        decision: accept
+  mocks:
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            work_kind: feature
+            summary: Keep unfinished notes when navigating away.
+            files:
+            - path: one-pager.md
+              description: Direction for saving unfinished notes
+              title: 'Approve 1p for notebook feature: save drafts while typing'
+              role: primary
+              order: 0
+              source_paths:
+              - request.md
+            questions:
+            review_title: 'Approve 1p for notebook feature: save drafts while typing'
+            requests:
+            packages:
+        artifacts:
+          one-pager.md: "# Save drafts\n\n## Problem Description\nPeople lose text.\n\n## Key challenges/design questions
+            & answers\n| Question | Answer |\n| --- | --- |\n| Offline? | Excluded. |\n"
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: shape
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: Complete bounded work.
+            files:
+            - path: test-statements.md
+              description: test-statements.md
+              title: test-statements.md
+              role: primary
+              order: 0
+            - path: handoff.md
+              description: Settled execution assignment
+              title: Execution handoff
+              role: supporting
+              order: 1
+              source_paths:
+            questions: []
+        artifacts:
+          test-statements.md: "# Expectations\n- T1 [Critical] [integration] [README.md] [Git] Existing behavior remains
+            available."
+          handoff.md: "# Execution assignment\nComplete the requested bounded work against test-statements.md. Use settled
+            decisions and preserve existing behavior."
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: review
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: Complete bounded work.
+            files:
+            - path: implementation.md
+              description: implementation.md
+              title: implementation.md
+              role: primary
+              order: 0
+            - path: test-results.md
+              description: test-results.md
+              title: test-results.md
+              role: primary
+              order: 1
+            - path: approved-direction/one-pager.md
+              description: Attempted replacement of approved direction
+            questions: []
+        artifacts:
+          implementation.md: "# Outcome\nAlready satisfied."
+          test-results.md: "# Results\nT1 passed; existing behavior inspected."
+          approved-direction/one-pager.md: '# This did not receive human approval'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: review
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            summary: Complete bounded work.
+            files:
+            - path: assessment.md
+              description: assessment.md
+              title: assessment.md
+              role: primary
+              order: 0
+            verdict: approve
+            subject: Improve candidate
+        artifacts:
+          assessment.md: "# Review\nEvidence checked."
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: review
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            summary: Complete bounded work.
+            files:
+            - path: merge-review.md
+              description: merge-review.md
+              title: merge-review.md
+              role: primary
+              order: 0
+            verdict: approve
+            subject: Improve candidate
+        artifacts:
+          merge-review.md: "# Review\nEvidence checked."
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: review
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: disposition
+    value: unchanged
+  - type: output_equals
+    path: work_kind
+    value: feature
+  - type: cel_true
+    expr: '"direction" in outputs.reviews && "outcome" in outputs.reviews && reviews.size() == 2'
+  - type: cel_true
+    expr: calls.filter(c,c.op == "extension_execution")[2].node_path.endsWith("start_implementation_session")
+  - type: cel_true
+    expr: calls.filter(c,c.op ==
+      "extension_execution")[2].artifacts["approved-direction/one-pager.md"].contains("People lose text")
+  - type: cel_true
+    expr: calls.filter(c,c.op ==
+      "extension_execution")[3].artifacts["approved-direction/one-pager.md"].contains("People lose text")
+  - type: cel_true
+    expr: "calls.filter(c,c.op == \"extension_execution\" && (c.node_path.endsWith(\"/start_read_only_session\") || c.node_path.endsWith(\"/start_implementation_session\"))).exists(c,c.node_path.endsWith(\"/start_read_only_session\")) && calls.filter(c,c.op == \"extension_execution\" && (c.node_path.endsWith(\"/start_read_only_session\") || c.node_path.endsWith(\"/start_implementation_session\"))).exists(c,c.node_path.endsWith(\"/start_implementation_session\"))"
+  - type: cel_true
+    expr: "calls.filter(c,c.op == \"extension_execution\" && (c.node_path.endsWith(\"/start_read_only_session\") || c.node_path.endsWith(\"/start_implementation_session\"))).all(c,c.inputs.inputs.instructions.contains(\"c2j job --help\"))"
+  - type: cel_true
+    expr: "calls.filter(c,c.op == \"extension_execution\" && (c.node_path.endsWith(\"/start_read_only_session\") || c.node_path.endsWith(\"/start_implementation_session\"))).all(c,c.inputs.inputs.instructions.contains(\"c2j restart --help\"))"
+  - type: cel_true
+    expr: "calls.filter(c,c.op == \"extension_execution\" && (c.node_path.endsWith(\"/start_read_only_session\") || c.node_path.endsWith(\"/start_implementation_session\"))).all(c,c.inputs.inputs.instructions.contains(\"c2j job restart-points --help\"))"
+  - type: cel_true
+    expr: "calls.filter(c,c.op == \"extension_execution\" && (c.node_path.endsWith(\"/start_read_only_session\") || c.node_path.endsWith(\"/start_implementation_session\"))).all(c,c.inputs.inputs.instructions.contains(\"c2j job restart-context --help\"))"
+  - type: cel_true
+    expr: "calls.filter(c,c.op == \"extension_execution\" && (c.node_path.endsWith(\"/start_read_only_session\") || c.node_path.endsWith(\"/start_implementation_session\"))).all(c,!c.inputs.inputs.instructions.contains(\"guides/JOB_INSPECTION_PLAYBOOK.md\") && !c.inputs.inputs.instructions.contains(\"complete restart_scopes\"))"
