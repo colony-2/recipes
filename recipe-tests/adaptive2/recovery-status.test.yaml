@@ -1,0 +1,47 @@
+recipe: recovery-status.yaml
+cases:
+- id: active-prior-attempt-is-awaited-without-replacement
+  type: integration_case
+  mocks:
+    ops:
+    - match:
+        op: recipe.await_result_soft
+      behavior:
+        mode: return
+        outputs:
+          job_id: prior-attempt
+          status: running
+          outputs: {}
+          artifacts: {}
+    - match:
+        op: recipe.await_result_soft
+      behavior:
+        mode: return
+        outputs:
+          job_id: prior-attempt
+          status: completed
+          outputs:
+            disposition: unchanged
+          artifacts: {}
+  assertions:
+  - type: cel_true
+    expr: outputs.valid && outputs.records[0].action == 'await' && outputs.records[0].job_id == 'prior-attempt'
+  - type: cel_true
+    expr: size(calls)==2 && calls[0].inputs.return_when=='current_status' && calls[1].inputs.return_when=='terminal'
+  runtime: {}
+- id: unreadable-prior-attempt-returns-correction
+  type: integration_case
+  mocks:
+    ops:
+    - match:
+        op: recipe.await_result_soft
+      behavior:
+        mode: fail
+        error:
+          message: Prior attempt is unavailable.
+  assertions:
+  - type: cel_true
+    expr: '!outputs.valid && outputs.issues[0].contains("Could not inspect the previous attempt")'
+  - type: cel_true
+    expr: '!calls.exists(c,c.op=="recipes.run")'
+  runtime: {}

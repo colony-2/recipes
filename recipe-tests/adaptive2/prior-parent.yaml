@@ -1,0 +1,52 @@
+schema_version: 2
+id: prior-parent
+input_schema:
+  finished_successfully:
+    type: boolean
+    default_value: false
+inputs:
+  finished_successfully: ${{ inputs.finished_successfully }}
+sequence:
+- id: agreement
+  workspace:
+    cell: storage
+    ref: main
+  op: recipes.run
+  inputs:
+    recipes:
+    - cell_name: storage
+      name: prior-owner
+      git:
+        base_repo: ${{ context.git.repo }}
+        base_ref: ${{ context.git.ref }}
+        base_hash: ${{ context.git.resolved_hash }}
+    wait:
+      on: job
+      condition: complete
+- id: read_agreement
+  op: recipe.await_result_soft
+  inputs:
+    target:
+      job: ${{ sequence.agreement.outputs.job_ids[0] }}
+- id: attempt
+  workspace:
+    cell: storage
+    ref: main
+  op: recipes.run
+  inputs:
+    recipes:
+    - cell_name: storage
+      name: prior-attempt
+      git:
+        base_repo: ${{ context.git.repo }}
+        base_ref: ${{ context.git.ref }}
+        base_hash: ${{ context.git.resolved_hash }}
+      inputs:
+        succeed: ${{ inputs.finished_successfully }}
+    wait:
+      on: job
+      condition: complete
+outputs:
+  approval_job: ${{ sequence.agreement.outputs.job_ids[0] }}
+  attempt_job: ${{ sequence.attempt.outputs.job_ids[0] }}
+  artifact_refs: ${{ sequence.read_agreement.outputs.artifacts }}

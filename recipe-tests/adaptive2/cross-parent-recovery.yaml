@@ -1,0 +1,77 @@
+schema_version: 2
+id: cross-parent-recovery
+input_schema:
+  finished_successfully:
+    type: boolean
+    default_value: false
+  recovery:
+    type: boolean
+    default_value: true
+  replace:
+    type: boolean
+    default_value: true
+inputs:
+  finished_successfully: ${{ inputs.finished_successfully }}
+  recovery: ${{ inputs.recovery }}
+  replace: ${{ inputs.replace }}
+sequence:
+- id: old_parent
+  op: recipes.run
+  inputs:
+    recipes:
+    - cell_name: notebook
+      name: prior-parent
+      inputs:
+        finished_successfully: ${{ inputs.finished_successfully }}
+    wait:
+      on: job
+      condition: complete
+- id: read_parent
+  include: ../../recipes/adaptive/await-child.yaml
+  inputs:
+    job: ${{ sequence.old_parent.outputs.job_ids[0] }}
+- id: request
+  sequence: []
+  inputs:
+    prior: ${{ sequence.read_parent.outputs.result }}
+    recovery: ${{ inputs.recovery }}
+    replace: ${{ inputs.replace }}
+  outputs:
+    requests: >-
+      ${{ [jq([{'action':'execute','cell':'storage','handoff':'work/storage/'},
+      inputs.recovery ? {'resume_from':inputs.prior.outputs.approval_job} : {},
+      inputs.recovery && inputs.replace ? {'replaces':inputs.prior.outputs.attempt_job} : {}], 'add')] }}
+    documents: >-
+      ${{ jq(inputs.prior.artifacts, 'with_entries(select(.key == "handoff.md" or .key == "test-statements.md" or .key == "recovery/provenance.md") | .key = ("work/storage/" + .key) | .value.name = .key)') }}
+- id: first
+  include: ../../recipes/adaptive2/coordinate.yaml
+  inputs:
+    requests: ${{ sequence.request.outputs.requests }}
+    phase: implement
+    root_cell: notebook
+    root_ref: main
+    consultation_recipe: consultation
+    build_recipe: build
+    create_recipe: create
+    session: {}
+    documents: ${{ sequence.request.outputs.documents }}
+    prefix: recovered
+    history: []
+- id: repeat
+  include: ../../recipes/adaptive2/coordinate.yaml
+  inputs:
+    requests: ${{ sequence.request.outputs.requests }}
+    phase: implement
+    root_cell: notebook
+    root_ref: main
+    consultation_recipe: consultation
+    build_recipe: build
+    create_recipe: create
+    session: {}
+    documents: ${{ sequence.first.outputs.documents }}
+    prefix: repeated
+    history: ${{ sequence.first.outputs.records }}
+outputs:
+  first: ${{ sequence.first.outputs }}
+  repeated: ${{ sequence.repeat.outputs }}
+  prior: ${{ sequence.read_parent.outputs.result.outputs }}

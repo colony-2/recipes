@@ -4,6 +4,7 @@ inputs:
   directory: ${{ inputs.directory }}
   documents: ${{ inputs.documents }}
   agreements: ${{ inputs.agreements }}
+  resume_from: ${{ inputs.?resume_from.orValue('') }}
 state:
   initial: select
   states:
@@ -39,6 +40,10 @@ state:
           && jq(inputs.documents['handoff.md'],'del(.name)') == jq(a.documents['handoff.md'],'del(.name)')) : inputs.candidates
           }}
       transitions:
+      # A previous parent's agreement is verified by the receiving build's
+      # existing approval inspection and scope assessment, not a copied history.
+      - to: recovery
+        when: size(outputs.candidates) == 0 && nonempty(inputs.resume_from)
       - to: missing
         when: size(outputs.candidates) == 0
       - to: ambiguous
@@ -93,13 +98,15 @@ state:
           PY
     missing:
       sequence: []
+    recovery:
+      sequence: []
     ambiguous:
       sequence: []
     unknown:
       sequence: []
 outputs:
-  valid: ${{ state_exists('prepare') && !state_exists('unknown') &&
-    size(json_parse(state_output('compare','stdout','[]'))) == 0 }}
+  valid: ${{ state_exists('recovery') || (state_exists('prepare') && !state_exists('unknown') &&
+    size(json_parse(state_output('compare','stdout','[]'))) == 0) }}
   documents: >-
     ${{ state_exists('prepare') ? jq({'selected':inputs.documents,'original':states.prepare.outputs.original}, '.
     as $v | .selected | with_entries(.key as $k | if ($v.original | has($k)) then .value = $v.original[$k] else

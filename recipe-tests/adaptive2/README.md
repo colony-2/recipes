@@ -58,3 +58,13 @@ waiting and terminal completion status. The harness answers pending forms prompt
 it cannot test a prolonged unanswered review, process-restart replay, or deadline
 expiry while waiting. Receipt replay tests exercise the recipe's idempotent
 accounting; they are not a substitute for those runtime lifecycle tests.
+
+`cross-parent-recovery.test.yaml` creates a previous parent and receiver jobs in
+two cells, then runs the production coordinator and receiving build with an empty
+coordination history. It checks recovery with separate approval/attempt IDs,
+recovery with only `resume_from`, selective artifacts, duplicate prevention, and
+reuse of completed work. `accepted-recovery.test.yaml` verifies that a recovery
+source cannot bypass comparison with a current receiver agreement.
+`recovery-status.test.yaml` runs the native recipe engine with scripted job-status
+responses to check waiting and unreadable-source correction; it does not simulate
+a worker restart or a prolonged human wait.

@@ -34,11 +34,6 @@ state:
           reason: A consultation document directory must be safe and contain request.md. A self-contained question
             may omit it; the receiver authors any eventual execution handoff.
       - to: invalid
-        when: inputs.requests.exists(r,r.action == 'execute' && nonempty(r.?replaces.orValue('')) &&
-          !inputs.history.exists(h,h.action == 'execute' && h.job_id == r.replaces && h.cell == r.cell))
-        payload:
-          reason: A replacement must identify a recorded execution job in the same cell.
-      - to: invalid
         when: inputs.requests.exists(r,r.action == 'await' && !inputs.history.exists(h,h.action == 'execute' &&
           h.?job_id.orValue('') == r.?job.orValue('')))
       - to: await_requested
@@ -174,6 +169,8 @@ state:
         receiver_agreements: |-
           ${{ jq((inputs.history + (state_exists('record') ? states.record.runs.map(r,r.outputs.record) + [states.record.outputs.record] : [])).filter(h,h.action == 'consult').map(h, [{'cell':h.target.cell,'directory':'coordination/' + h.?reference.orValue('') + '/artifacts/' + h.result.?handoff.orValue(''),'result':h.result}] + h.result.?agreements.orValue([]).map(a,{'cell':a.target.cell,'result':a.result})), 'add // []') }}
         cell: ${{ states.pick.outputs.request.cell }}
+        resume_from: "${{ nonempty(states.pick.outputs.request.?resume_from.orValue('')) ?
+          states.pick.outputs.request.resume_from : states.pick.outputs.request.?replaces.orValue('') }}"
       sequence:
       - id: handoff
         include: ../adaptive/handoff.yaml
@@ -187,6 +184,7 @@ state:
           directory: ${{ inputs.directory }}
           documents: ${{ sequence.handoff.outputs.documents }}
           agreements: '${{ sequence.handoff.outputs.valid ? inputs.receiver_agreements : [] }}'
+          resume_from: ${{ inputs.resume_from }}
       outputs:
         documents: ${{ sequence.accepted.outputs.documents }}
         valid: ${{ sequence.handoff.outputs.valid }}
@@ -206,7 +204,8 @@ state:
         payload:
           reason: ${{ outputs.reason }}
       - to: inspect_execution
-        when: size(outputs.existing)>0
+        when: size(outputs.existing)>0 || nonempty(states.pick.outputs.request.?replaces.orValue('')) ||
+          nonempty(states.pick.outputs.request.?resume_from.orValue(''))
       - to: execution_target
         when: true
     submit:
@@ -217,11 +216,13 @@ state:
         root_cell: ${{ inputs.root_cell }}
         root_ref: ${{ inputs.root_ref }}
         build_recipe: ${{ inputs.build_recipe }}
-        previous: "${{ size(states.execution.outputs.existing) > 0 ? states.execution.outputs.existing[size(states.execution.outputs.existing)-1].job_id
-          : '' }}"
+        previous: "${{ size(states.execution.outputs.existing)>0 ? states.execution.outputs.existing[size(states.execution.outputs.existing)-1].job_id :
+          nonempty(states.pick.outputs.request.?replaces.orValue('')) ? states.pick.outputs.request.replaces : states.pick.outputs.request.?resume_from.orValue('') }}"
         documents: ${{ states.execution.outputs.documents }}
-        resume_from: ${{
-          states.pick.outputs.request.?resume_from.orValue(states.pick.outputs.request.?replaces.orValue(''))
+        resume_from: >-
+          ${{
+          nonempty(states.pick.outputs.request.?resume_from.orValue('')) ? states.pick.outputs.request.resume_from :
+          states.pick.outputs.request.?replaces.orValue('')
           }}
       sequence:
       - id: prompts
@@ -255,7 +256,7 @@ state:
     await:
       include: ../adaptive/await-child.yaml
       inputs:
-        job: "${{ states.pick.outputs.request.action == 'await' ? states.pick.outputs.request.job : states.execution.outputs.existing[size(states.execution.outputs.existing)-1].job_id
+        job: "${{ states.pick.outputs.request.action == 'await' ? states.pick.outputs.request.job : states.inspect_execution.outputs.result.job_id
           }}"
       transitions:
       - to: record
@@ -311,11 +312,17 @@ state:
     inspect_execution:
       include: ../adaptive/await-child.yaml
       inputs:
-        job: ${{ states.execution.outputs.existing[size(states.execution.outputs.existing)-1].job_id }}
+        job: "${{ size(states.execution.outputs.existing)>0 ? states.execution.outputs.existing[size(states.execution.outputs.existing)-1].job_id :
+          nonempty(states.pick.outputs.request.?replaces.orValue('')) ? states.pick.outputs.request.replaces : states.pick.outputs.request.resume_from }}"
         return_when: current_status
+      catch:
+      - when: failure.kind != 'cancellation'
+        to: invalid
+        payload:
+          reason: '${{ "Could not inspect the previous attempt: " + failure.message }}'
       transitions:
       - to: execution_target
-        when: nonempty(states.pick.outputs.request.?replaces.orValue('')) && (outputs.result.status in
+        when: (nonempty(states.pick.outputs.request.?replaces.orValue('')) || nonempty(states.pick.outputs.request.?resume_from.orValue(''))) && (outputs.result.status in
           ['failed','timed_out','cancelled'] || (outputs.result.status == 'completed' &&
           !(outputs.result.?outputs.orValue({}).?merged.orValue(false) ||
           outputs.result.?outputs.orValue({}).?disposition.orValue('') in ['unchanged','delegated'])))

@@ -1,0 +1,239 @@
+recipe: cross-parent-recovery.yaml
+cases:
+- id: recovered-parent-continues-prior-receiver
+  type: integration_case
+  runtime: &id001
+    secrets: &id003
+      jev_api_key: synthetic
+      codex_api_key: synthetic
+    cells: &id004
+      notebook:
+        files:
+          README.md: Notebook parent.
+          .c2/recipes/prior-attempt.yaml: "schema_version: 2\nid: prior-attempt\ninput_schema:\n  succeed:\n\
+            \    type: boolean\n    default_value: false\ninputs:\n  succeed: ${{ inputs.succeed }}\nsequence:\n\
+            - id: attempt\n  op: command_execution\n  inputs:\n    env:\n      SUCCEED: ${{ string(inputs.succeed)\
+            \ }}\n    run: test \"$SUCCEED\" = true\noutputs:\n  disposition: unchanged\n"
+        file_sources:
+          .c2/recipes/prior-parent.yaml: prior-parent.yaml
+          .c2/recipes/build.yaml: ../../build.yaml
+          .c2/recipes/recipes/adaptive: ../../recipes/adaptive
+          .c2/recipes/recipes/adaptive2: ../../recipes/adaptive2
+          .c2/recipes/recipes/response-schemas.yaml: ../../recipes/response-schemas.yaml
+          .c2/recipes/prior-owner.yaml: prior-owner.yaml
+          .c2/recipes/approved-source.yaml: approved-source.yaml
+      storage:
+        files:
+          README.md: Own draft persistence.
+          PURPOSE.md: Own draft persistence.
+    responses:
+    - &id005
+      node_path: prior-owner/approval/prior-approved-work/direction/sequence/review
+      fields:
+        decision: accept
+    - node_path: build/workflow/adaptive2-workflow/run/adaptive2-develop/accept/sequence/outcome_review/adaptive2-review/request_human_review
+      fields:
+        decision: accept
+    observe_files: &id006
+    - candidate.txt
+    - seed.txt
+    cell: notebook
+  mocks: &id002
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: storage
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            summary: Approved scope and tests are unchanged; continue implementation.
+            files:
+            - path: assessment.md
+              description: assessment.md
+              title: assessment.md
+              role: primary
+              order: 0
+            verdict: approve
+            subject: Improve candidate
+        artifacts:
+          assessment.md: '# Review
+
+            Evidence checked.'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: review
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: storage
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: Complete bounded work.
+            files:
+            - path: implementation.md
+              description: implementation.md
+              title: implementation.md
+              role: primary
+              order: 0
+            - path: test-results.md
+              description: test-results.md
+              title: test-results.md
+              role: primary
+              order: 1
+            questions: []
+        artifacts:
+          implementation.md: '# Outcome
+
+            Already satisfied.'
+          test-results.md: '# Results
+
+            T1 passed; existing behavior inspected.'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: review
+          worktree:
+            candidate.txt: corrected
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: storage
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            summary: Complete bounded work.
+            files:
+            - path: assessment.md
+              description: assessment.md
+              title: assessment.md
+              role: primary
+              order: 0
+            verdict: approve
+            subject: Improve candidate
+        artifacts:
+          assessment.md: '# Review
+
+            Evidence checked.'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: review
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: storage
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            summary: Complete bounded work.
+            files:
+            - path: merge-review.md
+              description: merge-review.md
+              title: merge-review.md
+              role: primary
+              order: 0
+            verdict: approve
+            subject: Improve candidate
+        artifacts:
+          merge-review.md: '# Review
+
+            Evidence checked.'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: review
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.first.valid && outputs.repeated.valid && size(outputs.first.records.filter(r,r.action=="execute"))==1
+  - type: cel_true
+    expr: outputs.first.records[0].replaces == outputs.prior.attempt_job
+  - type: cel_true
+    expr: size(calls.filter(c,c.node_path.endsWith("/launch_prerequisite_build")))==1
+  - type: cel_true
+    expr: outputs.repeated.records[0].action=="await" && outputs.repeated.records[0].result.outputs.merged
+  - type: cel_true
+    expr: size(reviews)==2 && !calls.exists(c,c.node_path.contains("/direction/sequence/review/adaptive2-review/"))
+  - type: cel_true
+    expr: calls.filter(c,c.node_path.endsWith("/launch_prerequisite_build")).all(c,c.inputs.recipes[0].inputs.resume_from==outputs.prior.approval_job
+      && size(c.inputs.recipes[0].inputs.documents)==3 && "handoff.md" in c.inputs.recipes[0].inputs.documents
+      && "recovery/provenance.md" in c.inputs.recipes[0].inputs.documents && !("unrelated.md" in c.inputs.recipes[0].inputs.documents))
+- id: recovery-source-alone-continues-prior-receiver
+  type: integration_case
+  runtime: *id001
+  mocks: *id002
+  assertions:
+  - type: cel_true
+    expr: outputs.first.valid && outputs.repeated.valid && size(outputs.first.records.filter(r,r.action=="execute"))==1
+  - type: cel_true
+    expr: outputs.first.records[0].replaces == outputs.prior.approval_job
+  - type: cel_true
+    expr: size(calls.filter(c,c.node_path.endsWith("/launch_prerequisite_build")))==1
+  - type: cel_true
+    expr: outputs.repeated.records[0].action=="await" && outputs.repeated.records[0].result.outputs.merged
+  - type: cel_true
+    expr: size(reviews)==2 && !calls.exists(c,c.node_path.contains("/direction/sequence/review/adaptive2-review/"))
+  - type: cel_true
+    expr: calls.filter(c,c.node_path.endsWith("/launch_prerequisite_build")).all(c,c.inputs.recipes[0].inputs.resume_from==outputs.prior.approval_job
+      && size(c.inputs.recipes[0].inputs.documents)==3 && "handoff.md" in c.inputs.recipes[0].inputs.documents
+      && "recovery/provenance.md" in c.inputs.recipes[0].inputs.documents && !("unrelated.md" in c.inputs.recipes[0].inputs.documents))
+  inputs:
+    replace: false
+- id: completed-prior-attempt-is-not-duplicated
+  type: integration_case
+  runtime: &id007
+    secrets: *id003
+    cells: *id004
+    responses:
+    - *id005
+    observe_files: *id006
+    cell: notebook
+  mocks: &id008
+    ops:
+    - repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.first.valid && outputs.first.records[0].action=="await" && outputs.first.records[0].result.outputs.disposition=="unchanged"
+  - type: cel_true
+    expr: '!calls.exists(c,c.node_path.endsWith("/launch_prerequisite_build")) && size(reviews)==1'
+  inputs:
+    finished_successfully: true
+- id: new-assignment-still-needs-receiver-agreement
+  type: integration_case
+  runtime: *id007
+  mocks: *id008
+  assertions:
+  - type: cel_true
+    expr: '!outputs.first.valid && outputs.first.issues[0].contains("No accepted receiver-authored assignment")'
+  - type: cel_true
+    expr: '!calls.exists(c,c.node_path.endsWith("/launch_prerequisite_build"))'
+  inputs:
+    recovery: false

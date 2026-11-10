@@ -128,6 +128,17 @@ Only then does a fresh writable implementation session start. Missing approval,
 a different cell, or changed scope returns to ordinary direction review. Prior
 checks do not substitute for verification of the recovered candidate.
 
+A recovered parent can reference an attempt submitted by an earlier parent;
+it does not import that parent's coordinator history. The agent inspects the old
+job and selects the receiver's assignment and useful evidence. The coordinator
+checks the referenced attempt's status, waits for active work, and reuses a
+successful result. For another attempt, `replaces` identifies the unsuccessful
+job and `resume_from` can identify a different job holding the approved direction.
+Without a current consultation agreement, that selected handoff goes to the
+receiving build's ordinary approval inspection and scope assessment. With a current
+agreement, the existing document comparison still applies. Missing approval or
+changed scope still requires design review; no extra review stage is introduced.
+
 Inspection reads exact JSON files and follows task-history pagination, including
 large histories. A failed inspection or unreadable approved artifact stops with
 `ADAPTIVE_RECOVERY_INSPECTION_FAILED` and a retained command diagnostic. It does
