@@ -221,3 +221,37 @@ and null work_kind/handoff. Only recommended follow-up work needs a receiver-aut
 assignment. If advice conflicts with a user requirement to preserve all versions,
 the requester should explain the conflict and ask storage to revise its assignment.
 Public fields, outcomes, approvals, and dispatch remain unchanged.
+
+## Proposed and actual change size
+
+Delivery one-pagers estimate additions and removals for core code, tests and docs,
+including explicit zeros, scope and assumptions. The retained approved direction
+keeps those six estimates unchanged. Explanation-only answers keep their usual flow.
+
+Merge reviews compare those estimates with six actual totals from the exact local
+candidate base/head. `merge-candidate.json` adds `added`, `removed` and
+`count_status` to each existing file record. Git numstat uses NUL-delimited paths,
+no rename detection, no external diff and no text conversion. Uncountable files
+have null counts and remain visible separately. Moves can therefore appear as
+removals plus additions. Empty or mode-only text changes can have zero counts.
+Existing inventory fields, digests and approval equivalence remain unchanged.
+
+The review links per-file counts and classification: tests and fixtures are tests,
+documentation is docs, and remaining implementation, recipes, scripts and config
+are core code. Disclose ambiguous classifications. Count each text path once.
+Keep other cells' completed reviews separate from local totals.
+
+Keep the comparison in a compact Markdown table with signed percentage deltas
+`(actual - estimate) / estimate * 100` for nonzero estimates. Bold surprising
+actual/delta cells with a `⚠` marker and a brief legend; standard Markdown emphasis
+works without renderer-specific HTML background colors. Never rely on color alone.
+Zero estimates show the absolute delta and an unavailable percentage (zero baseline);
+legacy missing estimates stay unavailable. Ordinary comparisons need only one short
+sentence beside the table, with no extra heading or analysis section. Material differences
+need concise evidenced causes and consequences for outcome and risk, focused on
+substantial surprises rather than prose repeating every cell; there is no fixed
+threshold or size budget. Incomplete accounting or explanations return through
+report correction; scope changes return through direction revision. Legacy
+approved directions show unavailable estimates without retrospective invention or
+an extra approval. Follow-up reviews refresh full candidate actuals while retaining
+original estimates; approval-equivalent rebases keep existing approval reuse.

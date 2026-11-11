@@ -1,0 +1,41 @@
+recipe: change-size.yaml
+cases:
+- id: exact-counts-and-followup
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          core.py: "old\n"
+          tests/case.py: "test\n"
+          docs/guide.md: "old guide\nremoved\n"
+          old.txt: "move\n"
+          mode.sh: "echo ok\n"
+  mocks:
+    ops:
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: size(outputs.empty.files) == 0
+  - type: cel_true
+    expr: outputs.first.files.exists(f, f.path == 'core.py' && f.added == 2 && f.removed == 1 && f.count_status == 'text')
+  - type: cel_true
+    expr: outputs.first.files.exists(f, f.path == 'tests/case.py' && f.added == 2 && f.removed == 0)
+  - type: cel_true
+    expr: outputs.first.files.exists(f, f.path == 'docs/guide.md' && f.added == 1 && f.removed == 2)
+  - type: cel_true
+    expr: outputs.first.files.exists(f, f.path == 'image.bin' && f.added == null && f.removed == null && f.count_status == 'unavailable')
+  - type: cel_true
+    expr: outputs.first.files.exists(f, f.path == 'odd\tname\n.txt' && f.added == 1 && f.removed == 0)
+  - type: cel_true
+    expr: outputs.first.files.exists(f, f.path == 'empty.txt' && f.added == 0 && f.removed == 0)
+  - type: cel_true
+    expr: outputs.first.files.exists(f, f.path == 'mode.sh' && f.added == 0 && f.removed == 0)
+  - type: cel_true
+    expr: outputs.first.files.exists(f, f.path == 'old.txt' && f.change == 'D' && f.removed == 1) && outputs.first.files.exists(f, f.path == 'moved.txt' && f.change == 'A' && f.added == 1)
+  - type: cel_true
+    expr: outputs.second.files.exists(f, f.path == 'core.py' && f.added == 3 && f.removed == 1) && !outputs.second.approval_equivalent && outputs.first.base == outputs.second.base && outputs.first.head != outputs.second.head

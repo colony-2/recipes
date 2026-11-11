@@ -1,0 +1,584 @@
+recipe: ../../build.yaml
+cases:
+- id: ordinary-zero
+  type: integration_case
+  runtime: &id006
+    secrets:
+      jev_api_key: synthetic
+      codex_api_key: synthetic
+    cells:
+      root:
+        files:
+          README.md: A bounded application.
+    responses:
+    - node_path: build/workflow/adaptive2-workflow/run/adaptive2-develop/direction/sequence/review/adaptive2-review/request_human_review
+      fields: &id001
+        decision: accept
+    - node_path: build/workflow/adaptive2-workflow/run/adaptive2-develop/accept/sequence/outcome_review/adaptive2-review/request_human_review
+      fields: *id001
+    observe_files:
+    - candidate.txt
+  inputs: &id007
+    prompt: Add the requested candidate file; keep delegated work separate.
+  mocks:
+    ops:
+    - match: &id002
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs: &id008
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            work_kind: feature
+            summary: Agree on the requested outcome before implementation.
+            files:
+            - path: one-pager.md
+              description: Direction for saving unfinished notes
+              title: 'Approve 1p for root feature: preserve the requested behavior'
+              role: primary
+              order: 0
+              source_paths:
+              - request.md
+            questions: null
+            review_title: 'Approve 1p for root feature: preserve the requested behavior'
+            requests: null
+            packages: null
+        artifacts:
+          one-pager.md: '# Preserve the requested behavior
+
+
+            ## Problem Description
+
+            The requested outcome needs verification.
+
+
+            ## Non Goals
+
+            Unrelated changes.
+
+
+            ## What we are planning to do
+
+            Implement the request and verify its acceptance checks.
+
+
+            ## Compat/Upgrade
+
+            Keep existing interfaces.
+
+
+            ## Key challenges/design questions & answers
+
+            | Question | Answer |
+
+            | --- | --- |
+
+            | What proves completion? | The approved test statements. |
+
+
+            | Category | Added | Removed |
+
+            | --- | ---: | ---: |
+
+            | Core code | 1 | 0 |
+
+            | Tests | 0 | 0 |
+
+            | Docs | 0 | 0 |
+
+            Scope: final local diff. Assumes one new file.
+
+            '
+        effects: &id009
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: shape
+    - &id010
+      match: *id002
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: Complete bounded work.
+            files:
+            - path: test-statements.md
+              description: test-statements.md
+              title: test-statements.md
+              role: primary
+              order: 0
+            - path: handoff.md
+              description: Settled execution assignment
+              title: Execution handoff
+              role: supporting
+              order: 1
+              source_paths: null
+            questions: &id003 []
+        artifacts:
+          test-statements.md: '# Expectations
+
+            - T1 [Critical] [integration] [README.md] [Git] Existing behavior remains available.'
+          handoff.md: '# Execution assignment
+
+            Complete the requested bounded work against test-statements.md. Use settled decisions and preserve existing
+            behavior.'
+        effects: &id005
+          objects: &id004
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: review
+    - &id011
+      match: *id002
+      behavior:
+        mode: return
+        outputs: &id014
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: Complete bounded work.
+            files:
+            - path: implementation.md
+              description: implementation.md
+              title: implementation.md
+              role: primary
+              order: 0
+            - path: test-results.md
+              description: test-results.md
+              title: test-results.md
+              role: primary
+              order: 1
+            questions: *id003
+        artifacts:
+          implementation.md: '# Outcome
+
+            Already satisfied.'
+          test-results.md: '# Results
+
+            T1 passed; existing behavior inspected.'
+        effects: &id015
+          objects: *id004
+          worktree:
+            candidate.txt: corrected
+    - &id012
+      match: *id002
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            summary: Complete bounded work.
+            files:
+            - path: assessment.md
+              description: assessment.md
+              title: assessment.md
+              role: primary
+              order: 0
+            verdict: approve
+            subject: Improve candidate
+        artifacts:
+          assessment.md: '# Review
+
+            Evidence checked.'
+        effects: *id005
+    - match: *id002
+      behavior:
+        mode: return
+        outputs: &id016
+          status: completed
+          output_schema_valid: true
+          response:
+            summary: Complete bounded work.
+            files: &id013
+            - path: merge-review.md
+              description: merge-review.md
+              title: merge-review.md
+              role: primary
+              order: 0
+              source_paths:
+              - line-counts.md
+              - approved-direction/one-pager.md
+              - merge-candidate.json
+            - path: line-counts.md
+              description: Per-file classification
+            verdict: approve
+            subject: Improve candidate
+        artifacts:
+          merge-review.md: '# Merge requested file
+
+            | Category | Est. + | Actual + | Δ + | Est. - | Actual - | Δ - |
+
+            | --- | ---: | ---: | --- | ---: | ---: | --- |
+
+            | Core code | 1 | 1 | 0 (0%) | 0 | 0 | 0 (n/a) |
+
+            | Tests | 0 | 0 | 0 (n/a) | 0 | 0 | 0 (n/a) |
+
+            | Docs | 0 | 0 | 0 (n/a) | 0 | 0 | 0 (n/a) |
+
+            Δ shows lines (%); n/a means zero baseline. Counts match the approved plan.
+
+            [Counts](line-counts.md)
+
+            [Approved direction](approved-direction/one-pager.md)
+
+            [Candidate](merge-candidate.json)
+
+            Delegated work is unfinished and excluded from local counts.
+
+            '
+          line-counts.md: '| Path | Change | Category | Added | Removed |
+
+            | --- | --- | --- | ---: | ---: |
+
+            | candidate.txt | A | Core code | 1 | 0 |
+
+            No binary changes.
+
+            '
+        effects: *id005
+    - &id017
+      repeat: true
+      match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+  assertions:
+  - &id018
+    type: cel_true
+    expr: outputs.merged && outputs.disposition == "implemented"
+  - &id029
+    type: cel_true
+    expr: size(calls.filter(c, c.op == "rebase")) == 1 && size(calls.filter(c, c.op == "merge")) == 1
+  - &id019
+    type: cel_true
+    expr: repositories.root.files["candidate.txt"] == "corrected"
+  - &id020
+    type: cel_true
+    expr: size(reviews) == 2
+  - &id021
+    type: cel_true
+    expr: calls.filter(c, c.op == "squash")[0].inputs.commit_message.startsWith("Improve candidate\n\n")
+  - &id022
+    type: output_equals
+    path: process
+    value: adaptive2
+  - &id023
+    type: review_document_exists
+    node_path: build/workflow/adaptive2-workflow/run/adaptive2-develop/accept/sequence/outcome_review/adaptive2-review/request_human_review
+    path: line-counts.md
+  - &id024
+    type: review_document_exists
+    node_path: build/workflow/adaptive2-workflow/run/adaptive2-develop/accept/sequence/outcome_review/adaptive2-review/request_human_review
+    path: approved-direction/one-pager.md
+  - &id025
+    type: review_document_exists
+    node_path: build/workflow/adaptive2-workflow/run/adaptive2-develop/accept/sequence/outcome_review/adaptive2-review/request_human_review
+    path: merge-candidate.json
+  - type: cel_true
+    expr: 'calls.exists(c, c.op == "extension_execution" && c.inputs.inputs.prompt.contains("Prepare merge-review.md")
+      && "approved-direction/one-pager.md" in c.artifacts && c.artifacts["approved-direction/one-pager.md"] == "#
+      Preserve the requested behavior\n\n## Problem Description\nThe requested outcome needs verification.\n\n##
+      Non Goals\nUnrelated changes.\n\n## What we are planning to do\nImplement the request and verify its acceptance
+      checks.\n\n## Compat/Upgrade\nKeep existing interfaces.\n\n## Key challenges/design questions & answers\n|
+      Question | Answer |\n| --- | --- |\n| What proves completion? | The approved test statements. |\n\n| Category
+      | Added | Removed |\n| --- | ---: | ---: |\n| Core code | 1 | 0 |\n| Tests | 0 | 0 |\n| Docs | 0 | 0 |\nScope:
+      final local diff. Assumes one new file.\n")'
+  - &id026
+    type: cel_true
+    expr: calls.exists(c, c.op == "extension_execution" && c.inputs.inputs.prompt.contains("six explicit figures"))
+  - &id027
+    type: cel_true
+    expr: calls.exists(c, c.op == "extension_execution" && c.inputs.inputs.prompt.contains("Material differences
+      require causes") && c.inputs.inputs.prompt.contains("Legacy approved directions") && c.inputs.inputs.prompt.contains("Refresh
+      full local actuals"))
+  - &formatting_contract
+    type: cel_true
+    expr: calls.exists(c, c.op == "extension_execution" && c.inputs.inputs.prompt.contains("signed percentage deltas") && c.inputs.inputs.prompt.contains("Bold surprising actual/delta") && c.inputs.inputs.prompt.contains("zero baseline") && c.inputs.inputs.prompt.contains("no extra heading or analysis section") && c.inputs.inputs.prompt.contains("focused on substantial surprises"))
+  - &id028
+    type: cel_true
+    expr: calls.exists(c, c.op == "command_execution" && c.outputs.stdout.contains("count_status"))
+  - &id030
+    type: cel_true
+    expr: calls.filter(c, c.op == "extension_execution").size() == 5
+- id: material-correction
+  type: integration_case
+  runtime: *id006
+  inputs: *id007
+  mocks:
+    ops:
+    - match: *id002
+      behavior:
+        mode: return
+        outputs: *id008
+        artifacts:
+          one-pager.md: '# Preserve the requested behavior
+
+
+            ## Problem Description
+
+            The requested outcome needs verification.
+
+
+            ## Non Goals
+
+            Unrelated changes.
+
+
+            ## What we are planning to do
+
+            Implement the request and verify its acceptance checks.
+
+
+            ## Compat/Upgrade
+
+            Keep existing interfaces.
+
+
+            ## Key challenges/design questions & answers
+
+            | Question | Answer |
+
+            | --- | --- |
+
+            | What proves completion? | The approved test statements. |
+
+
+            | Category | Added | Removed |
+
+            | --- | ---: | ---: |
+
+            | Core code | 100 | 0 |
+
+            | Tests | 0 | 0 |
+
+            | Docs | 0 | 0 |
+
+            Scope: final local diff. Assumes one new file.
+
+            '
+        effects: *id009
+    - *id010
+    - *id011
+    - *id012
+    - match: *id002
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            summary: Explain material difference with evidence before human review.
+            files: *id013
+            verdict: revise
+            subject: Improve candidate
+            next: implementation
+        artifacts:
+          merge-review.md: '# Incomplete accounting
+
+            Missing material explanation.'
+          line-counts.md: '| Path | Change | Category | Added | Removed |
+
+            | --- | --- | --- | ---: | ---: |
+
+            | candidate.txt | A | Core code | 1 | 0 |
+
+            No binary changes.
+
+            '
+        effects: *id005
+    - match: *id002
+      behavior:
+        mode: return
+        outputs: *id014
+        artifacts:
+          implementation.md: '# Outcome
+
+            Report correction: candidate.txt contains one reused line; no scope change.'
+          test-results.md: '# Results
+
+            T1 passed; existing behavior inspected.'
+        effects: *id015
+    - *id012
+    - match: *id002
+      behavior:
+        mode: return
+        outputs: *id016
+        artifacts:
+          merge-review.md: '# Merge requested file
+
+            | Category | Est. + | Actual + | Δ + | Est. - | Actual - | Δ - |
+
+            | --- | ---: | ---: | --- | ---: | ---: | --- |
+
+            | Core code | 100 | **⚠ 1** | **⚠ -99 (-99%)** | 0 | 0 | 0 (n/a) |
+
+            | Tests | 0 | 0 | 0 (n/a) | 0 | 0 | 0 (n/a) |
+
+            | Docs | 0 | 0 | 0 (n/a) | 0 | 0 | 0 (n/a) |
+
+            Δ shows lines (%); n/a means zero baseline. ⚠ marks a substantial surprise: candidate.txt reuses existing behavior in one line rather than
+            the anticipated larger implementation. Outcome is unchanged; the smaller surface reduces review risk.
+
+            [Counts](line-counts.md)
+
+            [Approved direction](approved-direction/one-pager.md)
+
+            [Candidate](merge-candidate.json)
+
+            Delegated work is unfinished and excluded from local counts.
+
+            '
+          line-counts.md: '| Path | Change | Category | Added | Removed |
+
+            | --- | --- | --- | ---: | ---: |
+
+            | candidate.txt | A | Core code | 1 | 0 |
+
+            No binary changes.
+
+            '
+        effects: *id005
+    - *id017
+  assertions:
+  - *id018
+  - type: cel_true
+    expr: size(calls.filter(c, c.op == "rebase")) == 2 && size(calls.filter(c, c.op == "merge")) == 1
+  - *id019
+  - *id020
+  - *id021
+  - *id022
+  - *id023
+  - *id024
+  - *id025
+  - type: cel_true
+    expr: 'calls.exists(c, c.op == "extension_execution" && c.inputs.inputs.prompt.contains("Prepare merge-review.md")
+      && "approved-direction/one-pager.md" in c.artifacts && c.artifacts["approved-direction/one-pager.md"] == "#
+      Preserve the requested behavior\n\n## Problem Description\nThe requested outcome needs verification.\n\n##
+      Non Goals\nUnrelated changes.\n\n## What we are planning to do\nImplement the request and verify its acceptance
+      checks.\n\n## Compat/Upgrade\nKeep existing interfaces.\n\n## Key challenges/design questions & answers\n|
+      Question | Answer |\n| --- | --- |\n| What proves completion? | The approved test statements. |\n\n| Category
+      | Added | Removed |\n| --- | ---: | ---: |\n| Core code | 100 | 0 |\n| Tests | 0 | 0 |\n| Docs | 0 | 0 |\nScope:
+      final local diff. Assumes one new file.\n")'
+  - *id026
+  - *id027
+  - *formatting_contract
+  - *id028
+  - type: cel_true
+    expr: calls.filter(c, c.op == "extension_execution").size() == 8
+- id: legacy
+  type: integration_case
+  runtime: *id006
+  inputs: *id007
+  mocks:
+    ops:
+    - match: *id002
+      behavior:
+        mode: return
+        outputs: *id008
+        artifacts:
+          one-pager.md: '# Preserve the requested behavior
+
+
+            ## Problem Description
+
+            The requested outcome needs verification.
+
+
+            ## Non Goals
+
+            Unrelated changes.
+
+
+            ## What we are planning to do
+
+            Implement the request and verify its acceptance checks.
+
+
+            ## Compat/Upgrade
+
+            Keep existing interfaces.
+
+
+            ## Key challenges/design questions & answers
+
+            | Question | Answer |
+
+            | --- | --- |
+
+            | What proves completion? | The approved test statements. |
+
+            '
+        effects: *id009
+    - *id010
+    - *id011
+    - *id012
+    - match: *id002
+      behavior:
+        mode: return
+        outputs: *id016
+        artifacts:
+          merge-review.md: '# Merge requested file
+
+            | Category | Est. + | Actual + | Δ + | Est. - | Actual - | Δ - |
+
+            | --- | --- | ---: | --- | --- | ---: | --- |
+
+            | Core code | unavailable | 1 | unavailable | unavailable | 0 | unavailable |
+
+            | Tests | unavailable | 0 | unavailable | unavailable | 0 | unavailable |
+
+            | Docs | unavailable | 0 | unavailable | unavailable | 0 | unavailable |
+
+            Comparison unavailable: the approved legacy direction predates estimates; no retrospective estimate.
+
+            [Counts](line-counts.md)
+
+            [Approved direction](approved-direction/one-pager.md)
+
+            [Candidate](merge-candidate.json)
+
+            Delegated work is unfinished and excluded from local counts.
+
+            '
+          line-counts.md: '| Path | Change | Category | Added | Removed |
+
+            | --- | --- | --- | ---: | ---: |
+
+            | candidate.txt | A | Core code | 1 | 0 |
+
+            No binary changes.
+
+            '
+        effects: *id005
+    - *id017
+  assertions:
+  - *id018
+  - *id029
+  - *id019
+  - *id020
+  - *id021
+  - *id022
+  - *id023
+  - *id024
+  - *id025
+  - type: cel_true
+    expr: calls.exists(c, c.op == "extension_execution" && c.inputs.inputs.prompt.contains("Prepare merge-review.md")
+      && "approved-direction/one-pager.md" in c.artifacts && c.artifacts["approved-direction/one-pager.md"] == "#
+      Preserve the requested behavior\n\n## Problem Description\nThe requested outcome needs verification.\n\n##
+      Non Goals\nUnrelated changes.\n\n## What we are planning to do\nImplement the request and verify its acceptance
+      checks.\n\n## Compat/Upgrade\nKeep existing interfaces.\n\n## Key challenges/design questions & answers\n|
+      Question | Answer |\n| --- | --- |\n| What proves completion? | The approved test statements. |\n")
+  - *id026
+  - *id027
+  - *formatting_contract
+  - *id028
+  - *id030

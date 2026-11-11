@@ -21,8 +21,22 @@ sequence:
           return subprocess.check_output(['git', *args])
       base = os.environ['BASE']
       head = git('rev-parse', 'HEAD').decode().strip()
-      names = git('diff', '--name-status', '--no-renames', '-z', base, head).decode().split('\0')[:-1]
+      names = git('diff', '--name-status', '--no-renames', '-z', base, head).decode(errors='surrogateescape').split('\0')[:-1]
       files = [{'change': names[i], 'path': names[i + 1]} for i in range(0, len(names), 2)]
+      # NUL records preserve tabs/newlines in paths. No rename detection matches
+      # the inventory and patch; disable user diff drivers and text conversion.
+      stats = git('diff', '--numstat', '--no-renames', '--no-ext-diff', '--no-textconv', '-z', base, head)
+      counts = {}
+      for record in stats.split(b'\0')[:-1]:
+          added, removed, path = record.split(b'\t', 2)
+          path = os.fsdecode(path)
+          counts[path] = {'added': None if added == b'-' else int(added),
+                          'removed': None if removed == b'-' else int(removed),
+                          'count_status': 'unavailable' if b'-' in (added, removed) else 'text'}
+      if set(counts) != {f['path'] for f in files}:
+          raise ValueError('Candidate inventory and line-count paths differ')
+      for file in files:
+          file.update(counts[file['path']])
       job_url = 'https://jobs.colony2.com/{}/jobs/{}'.format(
           quote(os.environ['C2J_CURRENT_TENANT_ID'], safe=''),
           quote(os.environ['C2J_CURRENT_JOB_ID'], safe=''))
@@ -56,7 +70,7 @@ sequence:
       candidate = {'approval_equivalent': equivalent, 'approval_comparison': reason, 'base': base, 'head': head, 'files': files, 'job_url': job_url, 'change_digest': change_digest}
       outbox = pathlib.Path(os.environ['OUTBOX'])
       (outbox / 'merge-candidate.json').write_text(json.dumps(candidate, indent=2) + '\n')
-      (outbox / 'merge-candidate.diff').write_bytes(git('diff', '--binary', '--full-index', '--no-ext-diff', '--no-renames', base, head))
+      (outbox / 'merge-candidate.diff').write_bytes(git('diff', '--binary', '--full-index', '--no-ext-diff', '--no-textconv', '--no-renames', base, head))
       print(json.dumps(candidate))
       PY
   artifacts:
