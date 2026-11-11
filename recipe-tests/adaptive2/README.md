@@ -12,6 +12,11 @@ hooks and audit inputs. The previous `../adaptive/` flow suites intentionally us
 includes the retained adaptive implementation. Their helper coverage remains
 useful, but they do not prove the new direction flow.
 
+`../adaptive/hook-const.test.yaml` checks discarded read-only hook edits, nested
+`const` inheritance, persisted prepare edits, and floating branch advancement.
+`build-delivery.test.yaml` also completes the public build after configure attempts
+an edit. See the [hook expectations and validation](../adaptive/hook-const-statements.md).
+
 Run the normal native suite with the pinned c2j and packaged operations:
 
 ```sh

@@ -153,8 +153,11 @@ not treat that failure as missing approval or start another design review. An
 active source job also stops recovery to avoid duplicate work.
 
 Configure and run inherit the managed owner workspace. A recovered candidate is
-not replaced by an explicit selection of the cell's branch. The configure mutation
-guard and exact publication workspace remain in force.
+not replaced by an explicit selection of the cell's branch. Configure, design
+research, verification, and publication invoke hooks with inherited `const: true`;
+c2j discards their repository edits. Prepare may persist generated files. c2j's
+hook policy selects the hook source and permissions. Publication runs in the exact
+merged workspace.
 
 ## Decisions after automatic work pauses
 

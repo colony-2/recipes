@@ -1,0 +1,264 @@
+recipe: hook-const.yaml
+cases:
+- id: absent-at-entry
+  type: integration_case
+  inputs:
+    advance: false
+  runtime:
+    cells:
+      root:
+        files:
+          candidate.txt: original
+  mocks:
+    ops:
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.reports.all(r,r.status == "skipped")
+  - type: output_equals
+    path: after_read_only
+    value: original
+  - type: output_equals
+    path: after_prepare
+    value: original
+  - type: cel_true
+    expr: outputs.original_head == outputs.current_head
+- id: absent-after-branch-advance
+  type: integration_case
+  inputs:
+    advance: true
+  runtime:
+    cells:
+      root:
+        files:
+          candidate.txt: original
+  mocks:
+    ops:
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.reports.all(r,r.status == "skipped")
+  - type: output_equals
+    path: after_read_only
+    value: original
+  - type: output_equals
+    path: after_prepare
+    value: original
+  - type: cel_true
+    expr: outputs.original_head != outputs.current_head
+- id: present-at-entry
+  type: integration_case
+  inputs:
+    advance: false
+  runtime:
+    cells:
+      root:
+        files:
+          candidate.txt: original
+          .c2/recipes/hooks/build/configure.yaml: |
+            id: configure-hook
+            sequence:
+            - id: nested
+              const: false
+              include: ./edit.yaml
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: configure completed.
+              artifact_refs:
+                report.txt: ${{ sequence.nested.outputs.report }}
+              settings: {}
+          .c2/recipes/hooks/build/before_design.yaml: |
+            id: before_design-hook
+            sequence:
+            - id: nested
+              const: false
+              include: ./edit.yaml
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: before_design completed.
+              artifact_refs:
+                report.txt: ${{ sequence.nested.outputs.report }}
+          .c2/recipes/hooks/build/verify.yaml: |
+            id: verify-hook
+            sequence:
+            - id: nested
+              const: false
+              include: ./edit.yaml
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: verify completed.
+              artifact_refs:
+                report.txt: ${{ sequence.nested.outputs.report }}
+          .c2/recipes/hooks/build/publish.yaml: |
+            id: publish-hook
+            sequence:
+            - id: nested
+              const: false
+              include: ./edit.yaml
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: publish completed.
+              artifact_refs:
+                report.txt: ${{ sequence.nested.outputs.report }}
+          .c2/recipes/hooks/build/edit.yaml: |
+            id: nested-edit
+            sequence:
+            - id: edit
+              op: command_execution
+              const: false
+              inputs:
+                env:
+                  OUTBOX: ${{ context.environment.op.outbox }}
+                run: |
+                  printf changed > candidate.txt
+                  printf 'kept evidence' > "$OUTBOX/report.txt"
+            outputs:
+              report: ${{ sequence.edit.artifacts['report.txt'] }}
+          .c2/recipes/hooks/build/prepare.yaml: |
+            id: prepare-hook
+            sequence:
+            - id: generate
+              op: command_execution
+              inputs:
+                run: printf prepared > candidate.txt
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: Generated files.
+              artifact_refs: {}
+  mocks:
+    ops:
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.reports.all(r,r.status == "passed")
+  - type: output_equals
+    path: after_read_only
+    value: original
+  - type: output_equals
+    path: after_prepare
+    value: prepared
+  - type: cel_true
+    expr: outputs.original_head == outputs.current_head
+  - type: cel_true
+    expr: outputs.reports.all(r,"report.txt" in r.artifact_refs)
+- id: present-after-branch-advance
+  type: integration_case
+  inputs:
+    advance: true
+  runtime:
+    cells:
+      root:
+        files:
+          candidate.txt: original
+          .c2/recipes/hooks/build/configure.yaml: |
+            id: configure-hook
+            sequence:
+            - id: nested
+              const: false
+              include: ./edit.yaml
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: configure completed.
+              artifact_refs:
+                report.txt: ${{ sequence.nested.outputs.report }}
+              settings: {}
+          .c2/recipes/hooks/build/before_design.yaml: |
+            id: before_design-hook
+            sequence:
+            - id: nested
+              const: false
+              include: ./edit.yaml
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: before_design completed.
+              artifact_refs:
+                report.txt: ${{ sequence.nested.outputs.report }}
+          .c2/recipes/hooks/build/verify.yaml: |
+            id: verify-hook
+            sequence:
+            - id: nested
+              const: false
+              include: ./edit.yaml
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: verify completed.
+              artifact_refs:
+                report.txt: ${{ sequence.nested.outputs.report }}
+          .c2/recipes/hooks/build/publish.yaml: |
+            id: publish-hook
+            sequence:
+            - id: nested
+              const: false
+              include: ./edit.yaml
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: publish completed.
+              artifact_refs:
+                report.txt: ${{ sequence.nested.outputs.report }}
+          .c2/recipes/hooks/build/edit.yaml: |
+            id: nested-edit
+            sequence:
+            - id: edit
+              op: command_execution
+              const: false
+              inputs:
+                env:
+                  OUTBOX: ${{ context.environment.op.outbox }}
+                run: |
+                  printf changed > candidate.txt
+                  printf 'kept evidence' > "$OUTBOX/report.txt"
+            outputs:
+              report: ${{ sequence.edit.artifacts['report.txt'] }}
+          .c2/recipes/hooks/build/prepare.yaml: |
+            id: prepare-hook
+            sequence:
+            - id: generate
+              op: command_execution
+              inputs:
+                run: printf prepared > candidate.txt
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: Generated files.
+              artifact_refs: {}
+  mocks:
+    ops:
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.reports.all(r,r.status == "passed")
+  - type: output_equals
+    path: after_read_only
+    value: original
+  - type: output_equals
+    path: after_prepare
+    value: prepared
+  - type: cel_true
+    expr: outputs.original_head != outputs.current_head
+  - type: cel_true
+    expr: outputs.reports.all(r,"report.txt" in r.artifact_refs)

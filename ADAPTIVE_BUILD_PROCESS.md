@@ -97,7 +97,7 @@ flowchart TD
   diagnostics remain available without turning the whole inbox into a review bundle.
   The overview explains the user-visible outcome, decision needed now, and what
   changed since prior approval. Detailed hashes and file accounting are supporting material.
-- **Failures:** verification execution, output, evidence, or mutation failures return
+- **Failures:** verification execution, output, or evidence failures return
   to implementation. Cancellation remains cancellation. Other fatal errors can stop
   any phase; the chart omits repetitive error edges.
 

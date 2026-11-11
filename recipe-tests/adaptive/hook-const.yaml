@@ -1,0 +1,64 @@
+schema_version: 2
+id: hook-workspace-fixture
+input_schema:
+  advance:
+    type: boolean
+    default_value: false
+inputs:
+  advance: ${{ inputs.advance }}
+sequence:
+- id: observe
+  op: command_execution
+  const: true
+  inputs:
+    env:
+      ADVANCE: ${{ string(inputs.advance) }}
+    run: |
+      set -eu
+      git rev-parse HEAD
+      if [ "$ADVANCE" = true ]; then
+        writer=$(mktemp -d)
+        trap 'rm -rf "$writer"' EXIT
+        git clone -q "$(git remote get-url origin)" "$writer"
+        git -C "$writer" config user.name 'Concurrent writer'
+        git -C "$writer" config user.email writer@example.test
+        printf 'upstream advancement' > "$writer/upstream.txt"
+        git -C "$writer" add upstream.txt
+        git -C "$writer" commit -qm 'Advance upstream'
+        git -C "$writer" push -q origin HEAD:main
+      fi
+- id: configure
+  include: ../../recipes/adaptive/hook-configure.yaml
+- id: design
+  include: ../../recipes/adaptive/hook-before_design.yaml
+- id: verify
+  include: ../../recipes/adaptive/hook-verify.yaml
+- id: publish
+  include: ../../recipes/adaptive/hook-publish.yaml
+  inputs:
+    merged_hash: ${{ context.git.hash }}
+    target_branch: main
+    base: ${{ context.git.execution.base_hash }}
+- id: after_read_only
+  op: command_execution
+  const: true
+  inputs:
+    run: cat candidate.txt
+- id: current_head
+  op: command_execution
+  const: true
+  inputs:
+    run: git rev-parse HEAD
+- id: prepare
+  include: ../../recipes/adaptive/hook-prepare.yaml
+- id: after_prepare
+  op: command_execution
+  const: true
+  inputs:
+    run: cat candidate.txt
+outputs:
+  reports: ${{ [sequence.configure.outputs.result, sequence.design.outputs.result, sequence.verify.outputs.result, sequence.publish.outputs.result] }}
+  original_head: ${{ sequence.observe.outputs.stdout }}
+  current_head: ${{ sequence.current_head.outputs.stdout }}
+  after_read_only: ${{ sequence.after_read_only.outputs.stdout }}
+  after_prepare: ${{ sequence.after_prepare.outputs.stdout }}
