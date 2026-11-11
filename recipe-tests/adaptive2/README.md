@@ -69,7 +69,11 @@ two cells, then runs the production coordinator and receiving build with an empt
 coordination history. It checks recovery with separate approval/attempt IDs,
 recovery with only `resume_from`, selective artifacts, duplicate prevention, and
 reuse of completed work. `accepted-recovery.test.yaml` verifies that a recovery
-source cannot bypass comparison with a current receiver agreement.
+source cannot bypass comparison with a current receiver assignment, while supporting
+files can change independently. `handoff-documents.test.yaml` exercises the public
+build and receiving child with new evidence, moved and omitted files after correction,
+and consultation history retained outside subsequent inboxes. These regressions
+check actual materialized child artifacts, not just the returned filename list.
 `recovery-status.test.yaml` runs the native recipe engine with scripted job-status
 responses to check waiting and unreadable-source correction; it does not simulate
 a worker restart or a prolonged human wait.

@@ -19,7 +19,7 @@ omissions, interface changes, and differences from the approved plan.
 Consultations run inline in the receiving cell's managed workspace. The receiver
 checks existing alternatives, summarizes the exchange, and authors any follow-up
 `handoff.md` as one of the four assignment types. The requester can challenge it;
-the coordinator forwards the receiver's accepted documents for execution.
+the coordinator forwards that assignment with the currently selected evidence.
 `conversation.md` preserves public replies and links their selected documents.
 
 The fork changes framing, review transitions, consultation presentation, and
@@ -91,13 +91,19 @@ their native input response receipts, so the calling build can recognize it.
 Keep each original receipt's request and submission identifiers; do not generate
 replacement identifiers or reconstruct receipts from model output.
 
-Execution forwards the receiver's accepted handoff references. If a parent
-republishes a selected file, the recipe compares its bytes with the agreed file.
-An identical copy uses the original. A changed copy returns a file-specific error,
-restores the agreed inbox document, and preserves the proposed edit under
-`error/rejected-handoff/`. Additional recovery and feedback files remain selected
-explicitly. Multiple possible agreements require the original consultation's
-handoff directory; the recipe does not guess which scope to execute.
+Execution uses the agent's current file selection under the requested directory.
+The recipe checks only the receiver's `handoff.md` against the accepted assignment.
+An identical copy uses the original reference. A changed assignment returns an
+error, restores the original, and preserves the proposed edit under
+`error/rejected-handoff/`. Supporting evidence can be added, updated, moved, or
+omitted without another agreement. Multiple possible assignments require the
+original consultation's handoff directory; the recipe does not guess the scope.
+
+Consultation records and their original artifacts remain inspectable. They are
+not implicitly copied into later inboxes: select unchanged inbox files directly
+when needed, or retrieve older ones with c2j job inspection. Only the recipe's
+request, direction, execution assignment, and formal test baseline persist without
+reselection. See [the document contract and regression plan](../../guides/adaptive2/HANDOFF_DOCUMENTS.md).
 
 See the [incident and plan](../../guides/adaptive2/PROPOSAL_AUTONOMOUS_TURN_LIMITS.md)
 and [implementation assessment](../../guides/adaptive2/turn-limits/implementation.md).

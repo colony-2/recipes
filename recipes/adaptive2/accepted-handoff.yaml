@@ -20,9 +20,8 @@ state:
           ${{ jq(inputs.agreements.filter(a,a.cell == inputs.cell && a.result.?outcome.orValue('') == 'agreed' &&
           a.result.?work_kind.orValue('') in ['feature','bug','explanation','oversight'] && nonempty(a.result.?handoff.orValue(''))
           && (a.result.handoff + 'handoff.md') in a.result.final_artifacts).map(a, {'directory':a.?directory.orValue(''),
-          'documents':jq({'directory':a.result.handoff,'documents':a.result.final_artifacts}, '. as $v | .documents
-          | with_entries(select(.key | startswith($v.directory)) | .key |= ltrimstr($v.directory) | .value.name
-          = .key)')}), 'unique_by(.documents)') }}
+          'documents':{'handoff.md':jq(a.result.final_artifacts[a.result.handoff + 'handoff.md'],
+          '.name = "handoff.md"')} }), 'unique_by(.documents)') }}
       transitions:
       - to: choose
         when: true
@@ -56,14 +55,12 @@ state:
         original: ${{ states.choose.outputs.candidates[0].documents }}
         documents: ${{ inputs.documents }}
       outputs:
+        # Agreement covers the receiver-authored assignment. Supporting evidence
+        # is selected by the caller; its names and contents are not frozen here.
         original: ${{ inputs.original }}
-        unknown: ${{ inputs.documents.filter(k, !(k in inputs.original) && !k.startsWith('recovery/') &&
-          !k.startsWith('feedback/')) }}
         different: ${{ inputs.documents.filter(k,k in inputs.original && jq(inputs.documents[k],'del(.name)')
           != jq(inputs.original[k],'del(.name)')) }}
       transitions:
-      - to: unknown
-        when: size(outputs.unknown) > 0
       - to: compare
         when: size(outputs.different) > 0
     compare:
@@ -102,10 +99,8 @@ state:
       sequence: []
     ambiguous:
       sequence: []
-    unknown:
-      sequence: []
 outputs:
-  valid: ${{ state_exists('recovery') || (state_exists('prepare') && !state_exists('unknown') &&
+  valid: ${{ state_exists('recovery') || (state_exists('prepare') &&
     size(json_parse(state_output('compare','stdout','[]'))) == 0) }}
   documents: >-
     ${{ state_exists('prepare') ? jq({'selected':inputs.documents,'original':states.prepare.outputs.original}, '.
@@ -122,9 +117,7 @@ outputs:
   reason: >-
     ${{ state_exists('missing') ? 'No accepted receiver-authored assignment is recorded for ' + inputs.cell + '.
     Consult that owner before requesting execution.' : state_exists('ambiguous') ? 'Several accepted assignments
-    exist for ' + inputs.cell + '. Select the original consultation handoff directory.' : state_exists('unknown')
-    ? 'These selected files are not in the accepted assignment: ' + jq(states.prepare.outputs.unknown,'join(", ")')
-    + '. Select agreed files; put additional recovery evidence in recovery/ or feedback/.' : size(json_parse(state_output('compare','stdout','[]')))
+    exist for ' + inputs.cell + '. Select the original consultation handoff directory.' : size(json_parse(state_output('compare','stdout','[]')))
     > 0 ? 'The accepted ' + inputs.cell + ' assignment was changed: ' + jq(json_parse(states.compare.outputs.stdout),'join(",
     ")') + '. The original has been restored in the inbox; proposed changes are in error/rejected-handoff/. Ask
     the receiver to revise the assignment if those changes are needed.' : '' }}

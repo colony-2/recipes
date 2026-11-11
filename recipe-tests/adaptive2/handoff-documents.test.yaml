@@ -1,0 +1,588 @@
+recipe: ../../build.yaml
+cases:
+- id: supporting-evidence-needs-no-new-agreement
+  type: integration_case
+  inputs:
+    prompt: Save drafts while typing.
+    build_recipe: child
+  runtime: &id001
+    cell: notebook
+    cells:
+      notebook:
+        files:
+          PURPOSE.md: Own notebook.
+          .c2/recipes/child.yaml: |
+            id: receiver-child
+            sequence:
+            - id: consume
+              op: command_execution
+              artifacts:
+                ./: ${{ inputs.documents }}
+              inputs:
+                run: cat "$INBOX/handoff.md"
+                env:
+                  INBOX: ${{ context.environment.op.inbox }}
+            outputs:
+              disposition: unchanged
+              summary: ${{ sequence.consume.outputs.stdout }}
+            schema_version: 2
+            input_schema:
+              prompt:
+                type: string
+                default_value: ''
+              root_cell:
+                type: string
+                default_value: ''
+              root_ref:
+                type: string
+                default_value: ''
+              documents:
+                type: artifact_map
+                default_value: {}
+              annotations:
+                type: array
+                default_value: []
+                items:
+                  type: object
+            inputs:
+              documents: ${{ inputs.documents }}
+          README.md: A notebook.
+      storage:
+        files:
+          PURPOSE.md: Own draft persistence.
+    responses:
+    - node_path: build/workflow/adaptive2-workflow/run/adaptive2-develop/direction/sequence/review/adaptive2-review/request_human_review
+      fields:
+        decision: accept
+    - node_path: build/workflow/adaptive2-workflow/run/adaptive2-develop/accept/sequence/outcome_review/adaptive2-review/request_human_review
+      fields:
+        decision: accept
+  mocks:
+    ops:
+    - &id002
+      match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: notebook
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: coordinate
+            work_kind: feature
+            summary: Ask storage to reject conflicting writes.
+            files: []
+            requests:
+            - action: consult
+              kind: bug
+              cell: storage
+              ref: main
+              request: Reject conflicting writes without losing either draft.
+        artifacts: {}
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: coordinate
+    - &id003
+      match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: storage
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: agreed
+            reply: Fix stale writes in storage.
+            work_kind: bug
+            handoff: iter1/consultant/work/
+            files:
+            - path: iter1/consultant/summary.md
+              description: Consultation evidence
+            - path: iter1/consultant/work/handoff.md
+              description: Consultation evidence
+            requests: null
+            review_title: null
+        artifacts:
+          iter1/consultant/summary.md: |
+            # Storage: prevent conflicting writes
+            Preserve both drafts. The requester questioned retry behavior.
+          iter1/consultant/work/handoff.md: |
+            # Storage bug: reject stale draft writes
+            Work type: bug.
+            Expected: stale writes fail. Observed: overwrite.
+            Acceptance: preserve the earlier write and return a conflict.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                participant: consultant
+                iteration: 1
+    - &id004
+      match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: notebook
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            work_kind: feature
+            summary: Keep unfinished notes when navigating away.
+            files:
+            - path: one-pager.md
+              description: Direction for saving unfinished notes
+              title: 'Approve 1p for notebook feature: save drafts while typing'
+              role: primary
+              order: 0
+              source_paths:
+              - request.md
+            questions: null
+            review_title: 'Approve 1p for notebook feature: save drafts while typing'
+            requests: null
+            packages: null
+        artifacts:
+          one-pager.md: |
+            # Save drafts
+
+            ## Problem Description
+            People lose text.
+
+            ## Key challenges/design questions & answers
+            | Question | Answer |
+            | --- | --- |
+            | Offline? | Excluded. |
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: shape
+    - &id005
+      match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: notebook
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: Complete bounded work.
+            files:
+            - path: test-statements.md
+              description: test-statements.md
+              title: test-statements.md
+              role: primary
+              order: 0
+            - path: handoff.md
+              description: Settled execution assignment
+              title: Execution handoff
+              role: supporting
+              order: 1
+              source_paths: null
+            questions: []
+        artifacts:
+          test-statements.md: |-
+            # Expectations
+            - T1 [Critical] [integration] [README.md] [Git] Existing behavior remains available.
+          handoff.md: |-
+            # Execution assignment
+            Complete the requested bounded work against test-statements.md. Use settled decisions and preserve existing behavior.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: review
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: notebook
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: coordinate
+            summary: Start the accepted storage fix.
+            files:
+            - path: coordination/request-0-0/artifacts/iter1/consultant/work/handoff.md
+              description: Agreed storage assignment
+            - path: coordination/request-0-0/artifacts/iter1/consultant/work/native-source-preservation.log
+              description: Supporting evidence
+            requests:
+            - action: execute
+              cell: storage
+              ref: main
+              handoff: coordination/request-0-0/artifacts/iter1/consultant/work/
+        artifacts:
+          coordination/request-0-0/artifacts/iter1/consultant/work/handoff.md: |
+            # Storage bug: reject stale draft writes
+            Work type: bug.
+            Expected: stale writes fail. Observed: overwrite.
+            Acceptance: preserve the earlier write and return a conflict.
+          coordination/request-0-0/artifacts/iter1/consultant/work/native-source-preservation.log: original/7 changed
+            to fresh/0
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: coordinate
+    - &id006
+      match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: notebook
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: wait
+            summary: Wait for the storage fix.
+            files: []
+        artifacts: {}
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: review
+    - &id007
+      match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: notebook
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: review
+            summary: Complete bounded work.
+            files:
+            - path: implementation.md
+              description: implementation.md
+              title: implementation.md
+              role: primary
+              order: 0
+            - path: test-results.md
+              description: test-results.md
+              title: test-results.md
+              role: primary
+              order: 1
+            questions: []
+        artifacts:
+          implementation.md: |-
+            # Outcome
+            Already satisfied.
+          test-results.md: |-
+            # Results
+            T1 passed; existing behavior inspected.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: review
+    - &id008
+      match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: notebook
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            summary: Complete bounded work.
+            files:
+            - path: assessment.md
+              description: assessment.md
+              title: assessment.md
+              role: primary
+              order: 0
+            verdict: approve
+            subject: Improve candidate
+        artifacts:
+          assessment.md: |-
+            # Review
+            Evidence checked.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: review
+    - &id009
+      match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: notebook
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            summary: Complete bounded work.
+            files:
+            - path: merge-review.md
+              description: merge-review.md
+              title: merge-review.md
+              role: primary
+              order: 0
+            verdict: approve
+            subject: Improve candidate
+        artifacts:
+          merge-review.md: |-
+            # Review
+            Evidence checked.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: review
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: disposition
+    value: unchanged
+  - type: cel_true
+    expr: calls.filter(c,c.op == "recipes.run").size() == 1
+  - &id010
+    type: cel_true
+    expr: calls.filter(c,c.op == "recipes.run")[0].inputs.recipes[0].inputs.documents["handoff.md"].stored.key.name
+      == "iter1/consultant/work/handoff.md"
+  - type: cel_true
+    expr: calls.exists(c,c.cell == "storage" && has(c.artifacts) && "native-source-preservation.log" in c.artifacts
+      && c.artifacts["native-source-preservation.log"].contains("original/7"))
+  - type: cel_true
+    expr: calls.filter(c,c.op == "extension_execution" && c.cell == "storage").size() == 1
+  - type: cel_true
+    expr: '!calls.exists(c,c.node_path.contains("response_repair_exhausted"))'
+- id: corrected-selection-drops-old-evidence-paths
+  type: integration_case
+  inputs:
+    prompt: Save drafts while typing.
+    build_recipe: child
+  runtime: *id001
+  mocks:
+    ops:
+    - *id002
+    - *id003
+    - *id004
+    - *id005
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: notebook
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: coordinate
+            summary: Start the accepted storage fix.
+            files:
+            - path: coordination/request-0-0/artifacts/iter1/consultant/work/handoff.md
+              description: Agreed storage assignment
+            - path: coordination/request-0-0/artifacts/iter1/consultant/work/native-source-preservation.log
+              description: Supporting evidence
+            - path: coordination/request-0-0/artifacts/iter1/consultant/work/obsolete.txt
+              description: Supporting evidence
+            requests:
+            - action: execute
+              cell: storage
+              ref: main
+              handoff: coordination/request-0-0/artifacts/iter1/consultant/work/
+        artifacts:
+          coordination/request-0-0/artifacts/iter1/consultant/work/handoff.md: Requester changed the scope.
+          coordination/request-0-0/artifacts/iter1/consultant/work/native-source-preservation.log: Original failure
+            log
+          coordination/request-0-0/artifacts/iter1/consultant/work/obsolete.txt: Not useful to the next task
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: coordinate
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: notebook
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: coordinate
+            summary: Start the accepted storage fix.
+            files:
+            - path: coordination/request-0-0/artifacts/iter1/consultant/work/handoff.md
+              description: Agreed storage assignment
+            - path: coordination/request-0-0/artifacts/iter1/consultant/work/feedback/native-source-preservation.log
+              description: Supporting evidence
+            requests:
+            - action: execute
+              cell: storage
+              ref: main
+              handoff: coordination/request-0-0/artifacts/iter1/consultant/work/
+        artifacts:
+          coordination/request-0-0/artifacts/iter1/consultant/work/feedback/native-source-preservation.log: Original
+            failure log
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: coordinate
+    - *id006
+    - *id007
+    - *id008
+    - *id009
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: disposition
+    value: unchanged
+  - type: cel_true
+    expr: calls.filter(c,c.op == "recipes.run").size() == 1
+  - *id010
+  - type: cel_true
+    expr: calls.filter(c,c.op == "extension_execution" && c.node_path.contains("/work/"))[4].artifacts["coordination/request-0-0/artifacts/iter1/consultant/work/handoff.md"].contains("Storage
+      bug") && calls.filter(c,c.op == "extension_execution" && c.node_path.contains("/work/"))[4].artifacts["error/rejected-handoff/handoff.md"].contains("Requester
+      changed")
+  - type: cel_true
+    expr: calls.exists(c,c.cell == "storage" && has(c.artifacts) && "handoff.md" in c.artifacts && "feedback/native-source-preservation.log"
+      in c.artifacts && !("native-source-preservation.log" in c.artifacts) && !("obsolete.txt" in c.artifacts))
+  - type: cel_true
+    expr: '!calls.exists(c,c.node_path.contains("response_repair_exhausted"))'
+- id: history-is-retained-without-implicit-inbox-copies
+  type: integration_case
+  inputs:
+    prompt: Save drafts while typing.
+    build_recipe: child
+  runtime: *id001
+  mocks:
+    ops:
+    - *id002
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: storage
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: agreed
+            reply: Fix stale writes in storage.
+            work_kind: bug
+            handoff: iter1/consultant/work/
+            files:
+            - path: iter1/consultant/summary.md
+              description: Consultation evidence
+            - path: iter1/consultant/work/handoff.md
+              description: Consultation evidence
+            - path: iter1/consultant/work/old-evidence.txt
+              description: Supporting evidence
+            requests: null
+            review_title: null
+        artifacts:
+          iter1/consultant/summary.md: |
+            # Storage: prevent conflicting writes
+            Preserve both drafts. The requester questioned retry behavior.
+          iter1/consultant/work/handoff.md: |
+            # Storage bug: reject stale draft writes
+            Work type: bug.
+            Expected: stale writes fail. Observed: overwrite.
+            Acceptance: preserve the earlier write and return a conflict.
+          iter1/consultant/work/old-evidence.txt: Historical supporting evidence
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                participant: consultant
+                iteration: 1
+    - *id004
+    - *id005
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: notebook
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: coordinate
+            summary: Start the accepted storage fix.
+            files:
+            - path: coordination/request-0-0/artifacts/iter1/consultant/work/handoff.md
+              description: Agreed storage assignment
+            requests:
+            - action: execute
+              cell: storage
+              ref: main
+              handoff: coordination/request-0-0/artifacts/iter1/consultant/work/
+        artifacts:
+          coordination/request-0-0/artifacts/iter1/consultant/work/handoff.md: |
+            # Storage bug: reject stale draft writes
+            Work type: bug.
+            Expected: stale writes fail. Observed: overwrite.
+            Acceptance: preserve the earlier write and return a conflict.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: coordinate
+    - *id006
+    - *id007
+    - *id008
+    - *id009
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: disposition
+    value: unchanged
+  - type: cel_true
+    expr: calls.filter(c,c.op == "recipes.run").size() == 1
+  - *id010
+  - type: cel_true
+    expr: calls.filter(c,c.op == "extension_execution" && c.node_path.contains("/work/"))[1].artifacts["coordination/request-0-0/artifacts/iter1/consultant/work/old-evidence.txt"].contains("Historical")
+  - type: cel_true
+    expr: '!("coordination/request-0-0/artifacts/iter1/consultant/work/old-evidence.txt" in calls.filter(c,c.op
+      == "extension_execution" && c.node_path.contains("/work/"))[2].artifacts)'
+  - type: cel_true
+    expr: outputs.coordination.exists(c,c.action == "consult" && "iter1/consultant/work/old-evidence.txt" in c.result.final_artifacts
+      && "conversation.md" in c.result.final_artifacts)
+  - type: cel_true
+    expr: '!("coordination/request-0-0/artifacts/iter1/consultant/work/old-evidence.txt" in outputs.artifact_refs)'
+  - type: cel_true
+    expr: calls.exists(c,c.cell == "storage" && has(c.artifacts) && "handoff.md" in c.artifacts && !("old-evidence.txt"
+      in c.artifacts))

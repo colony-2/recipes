@@ -150,9 +150,11 @@ receiver's summary explains its recommendation and differences from the request.
 
 For execution, the parent returns `action: execute`, an explicit `cell`/`ref`, and
 `handoff: work/<assignment>/`. That directory must contain the receiver's original
-`handoff.md`; the coordinator checks it against the accepted consultation. It
-passes only selected files beneath that directory to the child. Recovery may add
-selected evidence, but a changed assignment requires the receiver to revise it.
+`handoff.md`; the coordinator checks that assignment against the accepted consultation.
+It passes only currently selected files beneath that directory to the child.
+Supporting evidence may be added, updated, moved, or omitted without another
+agreement. A changed assignment requires the receiver to revise it; supporting
+files cannot silently expand its scope.
 A referral to a different delivery owner needs that owner's agreed assignment.
 
 Children use the normal named `build` selector, preserving local build overrides;
@@ -174,7 +176,11 @@ and readiness requirements and does not implement the original feature request.
 A self-contained consultation question needs no attached documents. For supporting
 contracts, use an optional handoff directory for that question. Historical artifacts
 remain on their producing tasks. Subsequent progression turns receive the agent's
-selected current files, with the current handoff and formal baseline retained explicitly.
+selected current files, with the main request, approved direction, current handoff,
+and formal baseline retained explicitly. This also applies to `coordination/`:
+consultation history remains in job records, not an accumulating inbox. Agents may
+select unchanged inbox files without republishing them or retrieve older files
+through c2j job inspection.
 
 ### Agent-submitted validation
 
