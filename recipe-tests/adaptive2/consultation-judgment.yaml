@@ -1,0 +1,74 @@
+schema_version: 2
+id: consultation-judgment-probe
+input_schema:
+  participant:
+    type: string
+    default_value: consultant
+  own_cell:
+    type: string
+    default_value: storage
+  other_cell:
+    type: string
+    default_value: notebook
+  message:
+    type: string
+  parent:
+    type: boolean
+    default_value: false
+  api_base_url:
+    type: string
+    default_value: ''
+  api_key_env:
+    type: string
+    default_value: ''
+inputs:
+  api_base_url: ${{ inputs.api_base_url }}
+  api_key_env: ${{ inputs.api_key_env }}
+  participant: ${{ inputs.participant }}
+  own_cell: ${{ inputs.own_cell }}
+  other_cell: ${{ inputs.other_cell }}
+  message: ${{ inputs.message }}
+  parent: ${{ inputs.parent }}
+sequence:
+- id: prompts
+  include: ../../recipes/adaptive2/prompts.yaml
+  inputs:
+    participant: ${{ inputs.participant }}
+    own_cell: ${{ inputs.own_cell }}
+    other_cell: ${{ inputs.other_cell }}
+    request: ${{ inputs.message }}
+    message: ${{ inputs.message }}
+    reply_directory: reply/
+- id: schemas
+  include: ../../recipes/adaptive2/response-schemas.yaml
+  inputs:
+    participant: ${{ inputs.participant }}
+- id: example
+  op: nix:github:colony-2/c2ops/published#codex
+  const: true
+  perms:
+    inherit: true
+    jobdb:
+      jobs:
+        submit: false
+  inputs:
+    api:
+      base_url: >-
+        ${{ inputs.api_base_url != '' ? inputs.api_base_url : null }}
+      api_key_env: ${{ inputs.api_key_env }}
+      api_key: ${{ context.secrets.?codex_api_key.orValue(null) }}
+    prompt: >-
+      {{ if inputs.parent }}{{ inputs.message }}{{ else }}{{ sequence.prompts.outputs.consultation.task }}{{ end }}
+
+      inbox: {{ context.environment.op.inbox }}
+      outbox: {{ context.environment.op.outbox }}
+      {{ sequence.prompts.outputs.turn.artifacts }}
+    instructions: >-
+      ${{ sequence.prompts.outputs.turn.instructions + '\n' + (inputs.parent ? sequence.prompts.outputs.agent.instructions :
+      sequence.prompts.outputs.consultation.instructions + '\n' + sequence.prompts.outputs.consultation.setup) }}
+    output:
+      schema: >-
+        ${{ inputs.parent ? sequence.schemas.outputs.agent : sequence.schemas.outputs.consultation }}
+outputs:
+  response: ${{ sequence.example.outputs.response }}
+  artifact_refs: ${{ sequence.example.artifacts }}

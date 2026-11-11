@@ -198,3 +198,26 @@ the focused review. Modes and binary contents remain significant.
 
 See the [November 9 implementation assessment](../../guides/audits/2026-11-09/implementation.md)
 and [test results](../../guides/audits/2026-11-09/test-results.md).
+
+### Independent consultation judgment
+
+Both owners assess the other cell team's attributed proposal against local code,
+responsibilities, alternatives, and the user's constraints. Correct mistaken
+assumptions and explain consequential differences; justified agreement is useful
+and needs no invented objection. The parent also assesses terminal advice in its
+existing planning account, without requiring another exchange.
+
+Before requesting other-cell work, inspect available source, contracts, and retained
+results. State the user outcome, grounded need or unmet requirement, owning cell,
+and bounded result. A feature needs no reproduced defect. General reassurance
+alone does not justify a job; these are judgment instructions, not keyword gates.
+A bounded explanation is appropriate when a named unknown cannot be answered
+locally and changes a concrete decision. For example, unknown version retention
+may determine whether to reuse storage or request new history support.
+
+If storage already persists drafts, its owner should correct an assumption that
+saving is memory-only. An existing API may settle the request with `answered`
+and null work_kind/handoff. Only recommended follow-up work needs a receiver-authored
+assignment. If advice conflicts with a user requirement to preserve all versions,
+the requester should explain the conflict and ask storage to revise its assignment.
+Public fields, outcomes, approvals, and dispatch remain unchanged.
