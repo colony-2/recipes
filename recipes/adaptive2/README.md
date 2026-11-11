@@ -255,3 +255,16 @@ report correction; scope changes return through direction revision. Legacy
 approved directions show unavailable estimates without retrospective invention or
 an extra approval. Follow-up reviews refresh full candidate actuals while retaining
 original estimates; approval-equivalent rebases keep existing approval reuse.
+
+### Child descriptions
+
+Coordination requests may supply a nullable `title`: a few plain-language words
+describing the outcome, such as “Preserve earlier note versions.” Missing or blank
+values use purpose-and-target fallbacks. This is separate from the full request,
+receiver handoff, review heading and artifact titles. Inline advice stays inline.
+
+Build, custom consultation, creation and package-validation children submit
+metadata-only titles alongside their unchanged inputs. This requires c2j's
+additive child title contract; the existing CLI `--title` and build `title` input
+retain their input-based behavior. The repository runtime pin must only move
+after validation of a release containing that contract.

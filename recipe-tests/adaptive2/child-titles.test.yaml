@@ -1,0 +1,177 @@
+recipe: child-title-build.yaml
+cases:
+- id: build-title-explicit
+  type: integration_case
+  inputs:
+    request_fields:
+      title: Preserve earlier note versions
+  runtime: &id001
+    cell: notebook
+    cells:
+      notebook:
+        files:
+          PURPOSE.md: Own notebook.
+          .c2/recipes/child.yaml: "id: receiver-child\nsequence:\n- id: consume\n  op: command_execution\n  artifacts:\n\
+            \    ./: ${{ inputs.documents }}\n  inputs:\n    run: cat \"$INBOX/handoff.md\"\n    env:\n      INBOX:\
+            \ ${{ context.environment.op.inbox }}\noutputs:\n  disposition: unchanged\n  summary: ${{ sequence.consume.outputs.stdout\
+            \ }}\nschema_version: 2\ninput_schema:\n  prompt:\n    type: string\n    default_value: ''\n  root_cell:\n\
+            \    type: string\n    default_value: ''\n  root_ref:\n    type: string\n    default_value: ''\n  documents:\n\
+            \    type: artifact_map\n    default_value: {}\n  annotations:\n    type: array\n    default_value:\
+            \ []\n    items:\n      type: object\ninputs:\n  documents: ${{ inputs.documents }}\n"
+      storage:
+        files:
+          PURPOSE.md: Own draft persistence.
+  mocks: &id002
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: storage
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: agreed
+            reply: Fix stale writes in storage.
+            work_kind: bug
+            handoff: iter1/consultant/work/
+            files:
+            - path: iter1/consultant/summary.md
+              description: Consultation evidence
+            - path: iter1/consultant/work/handoff.md
+              description: Consultation evidence
+            requests: null
+            review_title: null
+        artifacts:
+          iter1/consultant/summary.md: '# Storage: prevent conflicting writes
+
+            Preserve both drafts. The requester questioned retry behavior.
+
+            '
+          iter1/consultant/work/handoff.md: '# Storage bug: reject stale draft writes
+
+            Work type: bug.
+
+            Expected: stale writes fail. Observed: overwrite.
+
+            Acceptance: preserve the earlier write and return a conflict.
+
+            '
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                participant: consultant
+                iteration: 1
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: valid
+    value: true
+  - type: cel_true
+    expr: calls.exists(c,c.op == "recipes.run") && calls.exists(c,c.cell == "storage" && has(c.artifacts) && "handoff.md"
+      in c.artifacts && c.artifacts["handoff.md"].contains("Storage bug"))
+  - type: cel_true
+    expr: calls.exists(c,c.op == "recipes.run" && c.cell == "storage" && c.inputs.recipes[0].title == "Preserve
+      earlier note versions" && !("title" in c.inputs.recipes[0].inputs) && c.inputs.recipes[0].inputs.root_cell
+      == "root" && c.inputs.recipes[0].inputs.root_ref == "main" && "handoff.md" in c.inputs.recipes[0].inputs.documents)
+  - type: cel_true
+    expr: outputs.child.status == "completed" && outputs.child.outputs.summary.contains("Storage bug")
+- id: build-title-omitted
+  type: integration_case
+  inputs:
+    request_fields: {}
+  runtime: *id001
+  mocks: *id002
+  assertions:
+  - type: output_equals
+    path: valid
+    value: true
+  - type: cel_true
+    expr: calls.exists(c,c.op == "recipes.run") && calls.exists(c,c.cell == "storage" && has(c.artifacts) && "handoff.md"
+      in c.artifacts && c.artifacts["handoff.md"].contains("Storage bug"))
+  - type: cel_true
+    expr: calls.exists(c,c.op == "recipes.run" && c.cell == "storage" && c.inputs.recipes[0].title == "Complete
+      delegated work in storage" && !("title" in c.inputs.recipes[0].inputs) && c.inputs.recipes[0].inputs.root_cell
+      == "root" && c.inputs.recipes[0].inputs.root_ref == "main" && "handoff.md" in c.inputs.recipes[0].inputs.documents)
+  - type: cel_true
+    expr: outputs.child.status == "completed" && outputs.child.outputs.summary.contains("Storage bug")
+- id: build-title-null
+  type: integration_case
+  inputs:
+    request_fields:
+      title: null
+  runtime: *id001
+  mocks: *id002
+  assertions:
+  - type: output_equals
+    path: valid
+    value: true
+  - type: cel_true
+    expr: calls.exists(c,c.op == "recipes.run") && calls.exists(c,c.cell == "storage" && has(c.artifacts) && "handoff.md"
+      in c.artifacts && c.artifacts["handoff.md"].contains("Storage bug"))
+  - type: cel_true
+    expr: calls.exists(c,c.op == "recipes.run" && c.cell == "storage" && c.inputs.recipes[0].title == "Complete
+      delegated work in storage" && !("title" in c.inputs.recipes[0].inputs) && c.inputs.recipes[0].inputs.root_cell
+      == "root" && c.inputs.recipes[0].inputs.root_ref == "main" && "handoff.md" in c.inputs.recipes[0].inputs.documents)
+  - type: cel_true
+    expr: outputs.child.status == "completed" && outputs.child.outputs.summary.contains("Storage bug")
+- id: build-title-blank
+  type: integration_case
+  inputs:
+    request_fields:
+      title: " \n\t "
+  runtime: *id001
+  mocks: *id002
+  assertions:
+  - type: output_equals
+    path: valid
+    value: true
+  - type: cel_true
+    expr: calls.exists(c,c.op == "recipes.run") && calls.exists(c,c.cell == "storage" && has(c.artifacts) && "handoff.md"
+      in c.artifacts && c.artifacts["handoff.md"].contains("Storage bug"))
+  - type: cel_true
+    expr: calls.exists(c,c.op == "recipes.run" && c.cell == "storage" && c.inputs.recipes[0].title == "Complete
+      delegated work in storage" && !("title" in c.inputs.recipes[0].inputs) && c.inputs.recipes[0].inputs.root_cell
+      == "root" && c.inputs.recipes[0].inputs.root_ref == "main" && "handoff.md" in c.inputs.recipes[0].inputs.documents)
+  - type: cel_true
+    expr: outputs.child.status == "completed" && outputs.child.outputs.summary.contains("Storage bug")
+- id: title-cannot-bypass-tampered-handoff
+  type: integration_case
+  inputs:
+    request_fields:
+      title: Preserve earlier note versions
+    tamper: true
+  runtime: *id001
+  mocks: *id002
+  assertions:
+  - type: cel_true
+    expr: '!outputs.valid && !calls.exists(c,c.op == "recipes.run")'
+- id: title-cannot-bypass-unsafe-handoff
+  type: integration_case
+  inputs:
+    request_fields:
+      title: Preserve earlier note versions
+    directory: ../work/
+  runtime: *id001
+  mocks: *id002
+  assertions:
+  - type: cel_true
+    expr: '!outputs.valid && !calls.exists(c,c.op == "recipes.run")'
+- id: title-cannot-bypass-missing-handoff
+  type: integration_case
+  inputs:
+    request_fields:
+      title: Preserve earlier note versions
+    omit_handoff: true
+  runtime: *id001
+  mocks: *id002
+  assertions:
+  - type: cel_true
+    expr: '!outputs.valid && !calls.exists(c,c.op == "recipes.run")'

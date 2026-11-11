@@ -1,0 +1,52 @@
+recipe: child-title-packages.yaml
+cases:
+- id: package-validation-title-keeps-config-and-probes
+  type: integration_case
+  inputs:
+    packages:
+    - reference: uv:ruff==0.11.2
+      check:
+      - ruff
+      - --version
+  runtime:
+    cells:
+      root:
+        files:
+          .c2/config.yaml: '# Keep this operator note
+
+            some_existing_setting: retained
+
+            packages: []
+
+            '
+        file_sources:
+          .c2/recipes/package-check.yaml: ../../recipes/adaptive/package-check.yaml
+          .c2/recipes/package-tools.yaml: ../../recipes/adaptive/package-tools.yaml
+    responses:
+    - node_path: packages-fixture/packages/adaptive2-packages/approval/approval/adaptive2-review/request_human_review
+      fields:
+        decision: approve
+    observe_files:
+    - .c2/config.yaml
+  assertions:
+  - type: cel_true
+    expr: outputs.adopted && outputs.job_id != ""
+  - type: cel_true
+    expr: size(reviews) == 1
+  - type: cel_true
+    expr: calls.exists(c,c.op == "recipe.await_result_soft" && c.inputs.wait.on == "job")
+  - type: cel_true
+    expr: outputs.config.contains("uv:ruff==0.11.2") && outputs.config.contains("retained")
+  - type: cel_true
+    expr: outputs.config.contains("# Keep this operator note")
+  - type: cel_true
+    expr: 'calls.exists(c,c.op == "recipes.run" && c.inputs.recipes[0].title == "Validate requested worker packages"
+      && !("title" in c.inputs.recipes[0].inputs) && size(c.inputs.recipes[0].inputs) == 2 && "config" in c.inputs.recipes[0].inputs
+      && "probes" in c.inputs.recipes[0].inputs) '
+  mocks:
+    ops:
+    - match:
+        op: command_execution
+      behavior:
+        mode: passthrough
+      repeat: true

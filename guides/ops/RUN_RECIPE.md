@@ -25,6 +25,7 @@ lifecycle control, or explicit status routing with `recipe.await_result_soft`.
 
 ```
 name: child-recipe-name            # required
+title: Preserve earlier note versions # optional metadata-only description
 inputs:                            # inputs passed to the child recipe
   key: value
 artifacts: []                       # optional list of artifact keys to pass to the child job
@@ -267,3 +268,14 @@ Run a child recipe, pass an artifact into it, then consume a child artifact and 
 outputs:
   child_name: "{{ sequence.child.outputs.outputs.name }}"
 ```
+
+## Child job titles
+
+The optional child `title` is a sibling of `inputs`; it describes the intended
+outcome without adding an input to strict custom recipes. It requires a c2j
+runtime implementing metadata-only `SingleRecipe.title` support. Do not adopt
+these call sites on an older runtime. A safe nonblank explicit title takes
+precedence over the existing `inputs.title` metadata fallback.
+
+The CLI `c2j submit --title` still inserts `inputs.title`; use it only with a
+recipe declaring that input. Existing build title inputs remain supported.
