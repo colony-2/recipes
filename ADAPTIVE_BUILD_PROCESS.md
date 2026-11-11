@@ -59,7 +59,10 @@ flowchart TD
   request already includes an execution handoff. No separate design classifier runs.
 - **Direction review:** `one-pager.md` covers Problem Description, Non Goals,
   What we are planning to do, Compat/Upgrade, and key design questions and answers.
-  Keep the prose short without cutting important questions. The form names the cell
+  Select consequential choices a reviewer could challenge or redirect, explaining recommendations,
+  credible alternatives, and tradeoffs. Retain unresolved choices that could change direction with
+  their impact and the decision or evidence needed. Avoid routine confirmations and invented dilemmas.
+  The form names the cell
   and proposed change. Approval retains the exact document under
   `approved-direction/one-pager.md`; feedback returns to framing. An unanswered
   review cannot advance to detailed planning or implementation.
