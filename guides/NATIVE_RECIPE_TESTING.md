@@ -121,3 +121,22 @@ restart a worker. Native failed-child cases confirm that the attempt's goal stay
 open. Mocked goal status cases cover recipe branching; they do not
 exercise an open goal's replacement/wakeup lifecycle. These checks need
 additional native fixture controls.
+
+## Child report recovery ordering checks
+
+`recipe-tests/adaptive2/report-child-ordering.pending.yaml` exercises real terminal
+children before report return and an input-held active child across two report
+corrections. Run it explicitly with a CLI containing c2j commit
+`9de8bc5328b944e4cbd580bb3b7d32bfd9ffd407` (validated using development
+commit `a2116fdbc5df`):
+
+```sh
+c2j test run --file recipe-tests/adaptive2/report-child-ordering.pending.yaml --case-timeout 3m
+```
+
+These cases require `effects.children[].await: terminal`, response `after_call`
+gates, and ordered runtime events. Release 0.0.124 does not support these
+controls. The file intentionally stays outside automatic discovery while CI
+uses that release. Once a published supporting release is verified, adopt its
+pin, run the checks above and the pin-adoption cases, and rename this suite to
+`.test.yaml`. The ordinary child recovery suite already runs in discovery.

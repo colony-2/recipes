@@ -23,7 +23,8 @@ cases:
         action: increase
   assertions:
   - type: cel_true
-    expr: outputs.result.retry && outputs.result.allowance == 4 && outputs.result.limit == 6 && size(outputs.result.review_receipts) == 1
+    expr: outputs.result.retry && outputs.result.allowance == 4 && outputs.result.limit == 6 && size(outputs.result.review_receipts)
+      == 1
 - id: missing-checkpoint-rebuilds-report
   type: integration_case
   inputs:
@@ -45,14 +46,42 @@ cases:
   inputs:
     submitted_children: true
     attempts: 2
-  runtime: {}
+  runtime:
+    responses:
+    - node_path: response-repair-probe/correction/correction/adaptive2-response-repair/decision/decision/adaptive2-limit-decision/ask/sequence/review/adaptive2-review/request_human_review
+      fields:
+        action: fresh
+  mocks:
+    ops:
+    - *id001
+  assertions:
+  - type: cel_true
+    expr: outputs.result.retry && size(outputs.result.session) == 0 && size(reviews)==1 && size(calls.filter(c,c.op
+      == 'submit')) == 0
+- id: synthetic-recorded-child-requires-resolution-before-allowance
+  type: integration_case
+  inputs:
+    submitted_children: true
+    attempts: 0
+  runtime:
+    responses:
+    - node_path: response-repair-probe/correction/correction/adaptive2-response-repair/decision/decision/adaptive2-limit-decision/ask/sequence/review/adaptive2-review/request_human_review
+      fields:
+        action: fresh
   mocks:
     ops:
     - match:
-        op: command_execution
-      repeat: true
+        selector: nix:github:colony-2/c2ops/published#codex
       behavior:
-        mode: passthrough
+        mode: return
+        outputs:
+          status: failed
+          output_schema_valid: false
+          errorMessage: Explanation unavailable
   assertions:
   - type: cel_true
-    expr: outputs.result.failed && outputs.result.code=="ADAPTIVE_RESPONSE_REPAIR_UNAVAILABLE" && size(reviews)==0
+    expr: outputs.result.retry && size(outputs.result.session) == 0 && size(reviews)==1 && size(calls.filter(c,c.op
+      == 'submit')) == 0
+  - type: cel_true
+    expr: '"error/submitted-jobs.json" in outputs.result.documents && calls.exists(c,c.op == "extension_execution"
+      && "error/submitted-jobs.json" in c.artifacts && c.artifacts["error/submitted-jobs.json"].contains("already-submitted"))'

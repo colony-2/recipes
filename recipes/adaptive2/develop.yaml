@@ -128,7 +128,7 @@ state:
           ${{ jq([states.dispatch.outputs.documents, state_exists('direction_approved') ? {'approved-direction/one-pager.md':jq([states.direction_approved.outputs.one_pager,{'name':'approved-direction/one-pager.md'}],'add')} : {}], 'add') }}
         evidence_documents: ${{ states.dispatch.outputs.evidence_documents }}
         retained_artifacts: ${{ states.dispatch.outputs.retained_artifacts }}
-        pending_jobs: "${{ jq(state_output('work','pending_jobs',[]) + state_output('record','pending_jobs',[]),'unique').filter(j,!((state_exists('coordinate')
+        pending_jobs: "${{ jq((state_exists('work') ? jq(states.work.runs.map(r,r.outputs.pending_jobs) + [states.work.outputs.pending_jobs],'add') : []) + state_output('record','pending_jobs',[]),'unique').filter(j,!((state_exists('coordinate')
           ? jq(states.coordinate.runs.map(r,r.outputs.records) + [states.coordinate.outputs.records],'add') : [])
           + (state_exists('work') ? jq(states.work.runs.map(r,r.outputs.child_results) + [states.work.outputs.child_results],'add').map(r,{'action':'await','job_id':r.job_id,'result':r})
           : []) + (state_exists('wait_children') ? jq(states.wait_children.runs.map(r,r.outputs.results) + [states.wait_children.outputs.results],'add').map(r,{'action':'await','job_id':r.job_id,'result':r})
@@ -152,7 +152,7 @@ state:
         include: ../adaptive/child-results.yaml
         inputs:
           jobs: ${{ sequence.agent.outputs.turn.jobs }}
-          allowed: ${{ inputs.phase == 'implement' && inputs.assignment != 'repair' }}
+          allowed: true
           pending: ${{ inputs.pending_jobs }}
           wait: false
       - id: expectations
@@ -225,7 +225,9 @@ state:
         # Current selections are working context, not a cumulative archive.
         # Consultation records retain history independently of these inbox files.
         documents: |-
-          ${{ jq([states.work.outputs.turn.result.?output_schema_valid.orValue(false) ? jq([jq(states.work.outputs.documents, 'with_entries(select(.key == "test-statements.md" or .key == "handoff.md" or .key == "request.md" or .key == "one-pager.md"))'), states.work.outputs.turn.documents, states.work.outputs.child_documents], 'add') : states.work.outputs.documents,
+          ${{ jq([states.work.outputs.turn.result.?output_schema_valid.orValue(false) ? jq([jq(states.work.outputs.documents, 'with_entries(select(.key == "test-statements.md" or .key == "handoff.md" or .key == "request.md" or .key == "one-pager.md"))'), states.work.outputs.turn.documents,
+             jq(states.work.runs.map(r,r.outputs.child_documents) + [states.work.outputs.child_documents],'add'),
+             state_exists('wait_children') ? jq(states.wait_children.runs.map(r,r.outputs.documents) + [states.wait_children.outputs.documents],'add | with_entries(select(.key | startswith("results/") or startswith("error/children/")))') : {}], 'add') : states.work.outputs.documents,
            {'request.md':states.start.outputs.documents['request.md']}, state_output('direction_approved','one_pager',null) != null ? {'approved-direction/one-pager.md':jq([state_output('direction_approved','one_pager',null),{'name':'approved-direction/one-pager.md'}],'add')} : {}], 'add') }}
         issues: |-
           ${{ (size(states.work.outputs.turn.result.?response.orValue({}).?packages.orValue([])) > 0 && states.work.outputs.turn.result.response.next != 'blocked' ? ['Use next: blocked with a package request so the recipe can authorize and validate it before continuing.'] : []) + (states.work.outputs.turn.result.?response.orValue({}).?next.orValue('') == 'ask_user' ? [] : states.work.outputs.turn.?issues.orValue([]))
@@ -240,11 +242,6 @@ state:
             + (states.work.outputs.turn.result.response.next == 'ask_user' && (!nonempty(states.work.outputs.turn.result.response.?review_title.orValue('')) || size(states.work.outputs.turn.result.response.?questions.orValue([])) == 0 || states.work.outputs.turn.result.response.?questions.orValue([]).exists(q, q.id == 'annotations')) ? ['ask_user requires review_title naming the decision and focused questions; annotations is a reserved question id.'] : [])
            : []) + (states.work.outputs.turn.result.?response.orValue({}).?next.orValue('') == 'coordinate' && size(states.work.outputs.turn.result.response.?requests.orValue([])) == 0 ? ['Return at least one consultation or execution request.'] : []) + (states.dispatch.outputs.phase == 'implement' && states.work.outputs.turn.result.?response.orValue({}).?next.orValue('') == 'review' && !states.work.outputs.turn.result.response.?files.orValue([]).exists(f, f.path == 'test-results.md') ? ['Publish test-results.md mapping statement IDs to results and evidence.'] : []) + (states.work.outputs.expectations_changed && states.work.outputs.turn.result.response.next != 'redesign' ? ['Formal expectations are fixed before implementation. Return redesign to update their plan with preserved expectations and any required deprecation.'] : []) + (states.dispatch.outputs.phase == 'test-plan' && states.work.outputs.turn.result.?response.orValue({}).?next.orValue('') == 'review' && !('handoff.md' in states.work.outputs.turn.documents) ? ['Publish handoff.md synthesized from the settled design and consultation outcomes for the new implementation session.'] : []) + (states.dispatch.outputs.phase == 'design' && states.work.outputs.turn.result.response.next == 'review' && (!(states.work.outputs.turn.result.response.?work_kind.orValue('') in ['feature','bug','explanation','oversight']) || !nonempty(states.work.outputs.turn.result.response.?review_title.orValue(''))) ? ['Name the work kind and a descriptive review_title identifying the cell and intended outcome.'] : []) }}
       transitions:
-      - to: reject_invalid_build_request
-        when: size(outputs.issues) > 0 && (states.work.outputs.turn.result.?status.orValue('failed') !=
-          'completed' || size(states.work.outputs.turn.jobs.?job_ids.orValue([])) > 0)
-        payload:
-          reason: ${{ jq(outputs.issues,'join("; ")') }}
       - to: repair
         when: size(outputs.issues) > 0
         payload:
@@ -258,7 +255,7 @@ state:
           reason: ${{ states.work.outputs.turn.result.response.summary }}
           documents: ${{ outputs.documents }}
       - to: recover_work
-        when: states.work.outputs.children_failed
+        when: states.work.outputs.children_failed && states.work.outputs.turn.result.response.next != 'coordinate'
         payload:
           reason: A child finished unsuccessfully. Read error/ and results/, diagnose the problem, and choose
             a correction or a fresh attempt.
@@ -1141,6 +1138,7 @@ state:
         issues: ${{ transition.payload.issues }}
         session: ${{ states.dispatch.outputs.session }}
         assignment: ${{ states.dispatch.outputs.assignment }}
+        phase: ${{ states.dispatch.outputs.phase }}
         base_documents: ${{ states.dispatch.outputs.base_documents }}
         repair_attempts: ${{ states.dispatch.outputs.repair_attempts }}
         repair_limit: ${{ states.dispatch.outputs.repair_limit }}
@@ -1154,19 +1152,20 @@ state:
       outputs:
         session: ${{ inputs.turn.result.?session.orValue(inputs.session) }}
         documents: ${{
-          jq([inputs.documents,inputs.turn.documents,inputs.turn.?repair_documents.orValue({}),{'error/previous-response.json':{'kind':'value','name':'error/previous-response.json','format':'json','value':inputs.turn.result.?response.orValue({})}
+          jq([inputs.documents,inputs.turn.documents,inputs.turn.?repair_documents.orValue({}),{'error/previous-response.json':{'kind':'value','name':'error/previous-response.json','format':'json','value':inputs.turn.result.?response.orValue({})}, 'error/submitted-jobs.json':{'kind':'value','name':'error/submitted-jobs.json','format':'json','value':inputs.turn.?jobs.orValue({})}
           }], 'add') }}
         base_documents: "${{ inputs.assignment == 'repair' ? inputs.base_documents : inputs.documents }}"
         error_documents: ${{ sequence.errors.outputs.documents }}
         retained_artifacts: ${{ inputs.turn.artifacts }}
         attempts: ${{ inputs.repair_attempts + 1 }}
+        needs_decision: ${{ size(inputs.turn.jobs.?job_ids.orValue([])) > 0 && (inputs.assignment == 'repair' || inputs.phase != 'implement') }}
         annotations: ${{ inputs.annotations }}
         issues: ${{ inputs.issues }}
         repair_limit: ${{ inputs.repair_limit }}
         repair_allowance: ${{ inputs.repair_allowance }}
       transitions:
       - to: response_repair_exhausted
-        when: outputs.attempts > outputs.repair_limit
+        when: outputs.attempts > outputs.repair_limit || outputs.session == null || size(outputs.session) == 0 || outputs.needs_decision
         payload:
           assignment: repair
           session: ${{ outputs.session }}
@@ -1536,7 +1535,7 @@ state:
           used: ${{ inputs.used }}
           pending_jobs: ${{ inputs.pending_jobs }}
           kind: correction
-          can_resume: ${{ size(inputs.session) > 0 }}
+          can_resume: ${{ inputs.session != null && size(inputs.session) > 0 }}
           can_fresh: true
           allow_scope: false
       outputs:
