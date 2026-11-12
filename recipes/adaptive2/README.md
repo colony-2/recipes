@@ -71,9 +71,10 @@ session with an explicit instruction to update the one-pager and affected owner
 assignments before requesting review again. The original request remains available
 as history; the normal direction approval checkpoint still applies.
 
-Human questions and review rounds have no recipe turn limit. A new collected
-human response renews the automatic allowance; asking the question, presenting
-the review, and processing the reply do not spend it. This includes direction,
+Human questions and review rounds have no recipe turn limit. An explicit resolver
+resolution renews its bounded allowance; respond only keeps the caller paused.
+Elsewhere, a new collected human response renews the automatic allowance; asking
+the question, presenting the review, and processing the reply do not spend it. This includes direction,
 outcome, consultation, and package decisions. Reusing a saved response or an
 automatic package-policy decision does not renew it.
 
@@ -82,8 +83,38 @@ automatic implementation work. Reaching it asks for direction. Response correcti
 starts with two retries and then asks for direction;
 unchanged operational blockers allow three correction turns. Consultations retain
 their per-round automatic limit. New human direction in nested advice also renews
-the suspended caller's round. Native Git retries remain bounded, with a new human
-response starting a fresh allowance. Runtime execution/time budgets remain separate.
+the suspended caller's round only after a resolver resolution. Native Git retries
+remain bounded, with a new human response starting a fresh allowance. Runtime execution/time budgets remain separate.
+
+At an automatic-work pause, **respond only** is the first choice. Confirm a
+nonempty question through the existing feedback Back/OK interaction to get an
+answer, then decide again. Even a question asking to implement authorizes only
+an answer. A separate read-only session answers from retained evidence, advice
+and earlier discussion; it cannot renew attempts or resume the working session.
+Blank questions and answer failures leave the resolver pending with an explanation.
+
+Eligible resolutions follow in their existing order with **[Resolve]** labels
+naming the paused work or proposal. Continue grants N new attempts, increase
+grants 2N, and custom requires a whole number above N, at most 999999999.
+Fresh uses retained work in a new session; scope returns through planning and
+agreement. Only trusted caller capabilities and concrete proposals enable them.
+When no resolution is eligible, discussion remains available and the advice
+explains missing prerequisites. These decisions do not waive required checks.
+
+New resolver forms omit stop. Use the existing **Cancel job** control to cancel;
+that differs from the historical stop outcome, which ended an attempt as
+incomplete while retaining its results. Other reviews keep their own choices.
+Historical stop routing stays supported. Existing forms and their original
+recipe bindings must stay frozen: do not replace executing YAML beneath a waiting
+form. This change does not migrate pending jobs. Use a supported explicit restart
+or new review if a pending job needs revised choices, preserving its old history.
+
+Each confirmed question and answer (or failure explanation) is retained in
+`resolver-discussion.json`, together with the original review receipt and review
+documents. Earlier answers remain visible across repeated questions, clarification
+and custom-number detours. All collected review receipts remain associated with
+their original requests and submissions. Discussion is consumed inside the
+resolver and never returned as permission to its callers.
 
 The recipe uses existing input receipts and task history. Custom consultation
 recipes that collect human direction should return `review_receipts`, an array of

@@ -23,8 +23,7 @@ cases:
         action: increase
   assertions:
   - type: cel_true
-    expr: outputs.result.retry && outputs.result.allowance == 4 && outputs.result.limit == 6 && size(outputs.result.review_receipts)
-      == 1
+    expr: outputs.result.retry && outputs.result.allowance == 4 && outputs.result.limit == 6 && size(outputs.result.review_receipts) == 1
 - id: missing-checkpoint-rebuilds-report
   type: integration_case
   inputs:
@@ -56,8 +55,7 @@ cases:
     - *id001
   assertions:
   - type: cel_true
-    expr: outputs.result.retry && size(outputs.result.session) == 0 && size(reviews)==1 && size(calls.filter(c,c.op
-      == 'submit')) == 0
+    expr: outputs.result.retry && size(outputs.result.session) == 0 && size(reviews)==1 && size(calls.filter(c,c.op == 'submit')) == 0
 - id: synthetic-recorded-child-requires-resolution-before-allowance
   type: integration_case
   inputs:
@@ -80,8 +78,79 @@ cases:
           errorMessage: Explanation unavailable
   assertions:
   - type: cel_true
-    expr: outputs.result.retry && size(outputs.result.session) == 0 && size(reviews)==1 && size(calls.filter(c,c.op
-      == 'submit')) == 0
+    expr: outputs.result.retry && size(outputs.result.session) == 0 && size(reviews)==1 && size(calls.filter(c,c.op == 'submit')) == 0
   - type: cel_true
-    expr: '"error/submitted-jobs.json" in outputs.result.documents && calls.exists(c,c.op == "extension_execution"
-      && "error/submitted-jobs.json" in c.artifacts && c.artifacts["error/submitted-jobs.json"].contains("already-submitted"))'
+    expr: '"error/submitted-jobs.json" in outputs.result.documents && calls.exists(c,c.op == "extension_execution" && "error/submitted-jobs.json" in c.artifacts &&
+      c.artifacts["error/submitted-jobs.json"].contains("already-submitted"))'
+- id: discussion-before-correction-grant
+  type: integration_case
+  inputs:
+    attempts: 2
+    checkpoint: true
+  mocks:
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: failed
+          output_schema_valid: false
+          errorMessage: Explanation unavailable
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            answer: The saved work stays paused until you explicitly resolve this decision.
+  runtime:
+    responses:
+    - node_path: response-repair-probe/correction/correction/adaptive2-response-repair/decision/decision/adaptive2-limit-decision/ask/sequence/review/adaptive2-review/request_human_review
+      fields:
+        action: answer
+        feedback: Why not implement now?
+    - node_path: response-repair-probe/correction/correction/adaptive2-response-repair/decision/decision/adaptive2-limit-decision/ask/sequence/review/adaptive2-review/request_human_review
+      fields:
+        action: increase
+  assertions:
+  - type: cel_true
+    expr: outputs.result.retry && outputs.result.allowance == 4 && outputs.result.limit == 6 && outputs.result.session.task_id == "fixture-checkpoint" && size(outputs.result.review_receipts)==2
+  - type: cel_true
+    expr: calls.filter(c,c.op == "extension_execution").all(c,c.node_path.endsWith("/start_read_only_session") && !has(c.inputs.inputs.session))
+- id: discussion-does-not-return-to-correction-caller
+  type: integration_case
+  inputs:
+    attempts: 2
+    checkpoint: true
+  mocks:
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: failed
+          output_schema_valid: false
+          errorMessage: Explanation unavailable
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            answer: The saved work stays paused until you explicitly resolve this decision.
+  runtime:
+    responses:
+    - node_path: response-repair-probe/correction/correction/adaptive2-response-repair/decision/decision/adaptive2-limit-decision/ask/sequence/review/adaptive2-review/request_human_review
+      fields:
+        action: answer
+        feedback: Please resume now?
+    expect_error: no input response fixture for response-repair-probe/correction/correction/adaptive2-response-repair/decision/decision/adaptive2-limit-decision/ask/sequence/review/adaptive2-review/request_human_review
+  assertions:
+  - type: cel_true
+    expr: calls.filter(c,c.op == "extension_execution").size()==2 && calls.filter(c,c.op == "input").size()==2 && !calls.exists(c,c.node_path.contains("resume_"))

@@ -33,7 +33,9 @@ cases:
             - path: evidence/phone.png
               description: Phone screenshot
         artifacts:
-          merge-review.md: "# Phone view\n[Images](screenshots.md)"
+          merge-review.md: '# Phone view
+
+            [Images](screenshots.md)'
           screenshots.md: '![Phone](evidence/phone.png)'
           evidence/phone.png: image bytes
         effects:
@@ -67,7 +69,9 @@ cases:
             - path: evidence/phone.png
               description: Phone screenshot
         artifacts:
-          merge-review.md: "# Phone view\n[Images](screenshots.md)"
+          merge-review.md: '# Phone view
+
+            [Images](screenshots.md)'
           screenshots.md: '![Phone](evidence/phone.png)'
           evidence/phone.png: image bytes
         effects:
@@ -85,7 +89,8 @@ cases:
   - type: cel_true
     expr: size(reviews) == 1 && calls.filter(c,c.op == "extension_execution").size() == 2
   - type: cel_true
-    expr: size(outputs.annotations) == 3 && outputs.annotations.all(a, a.id in outputs.documents && a.ref.kind == outputs.documents[a.id].kind && a.ref.stored == outputs.documents[a.id].stored)
+    expr: size(outputs.annotations) == 3 && outputs.annotations.all(a, a.id in outputs.documents && a.ref.kind == outputs.documents[a.id].kind && a.ref.stored ==
+      outputs.documents[a.id].stored)
   - type: cel_true
     expr: outputs.annotations.filter(a, a.id == "merge-review.md")[0].sources.map(s, s.id) == ["screenshots.md", "evidence/phone.png"]
   - type: review_document_exists
@@ -128,7 +133,9 @@ cases:
             - path: evidence/phone.png
               description: Phone screenshot
         artifacts:
-          merge-review.md: "# Phone view\n[Images](screenshots.md)"
+          merge-review.md: '# Phone view
+
+            [Images](screenshots.md)'
           screenshots.md: '![Phone](evidence/phone.png)'
           evidence/phone.png: image bytes
         effects:
@@ -175,7 +182,9 @@ cases:
             - path: evidence/phone.png
               description: Phone screenshot
         artifacts:
-          merge-review.md: "# Phone view\n[Images](screenshots.md)"
+          merge-review.md: '# Phone view
+
+            [Images](screenshots.md)'
           screenshots.md: '![Phone](evidence/phone.png)'
           evidence/phone.png: image bytes
         effects:
@@ -193,9 +202,188 @@ cases:
   - type: cel_true
     expr: size(reviews) == 2 && calls.filter(c,c.op == "extension_execution").size() == 8
   - type: cel_true
-    expr: size(outputs.annotations) == 3 && outputs.annotations.all(a, a.id in outputs.documents && a.ref.kind == outputs.documents[a.id].kind && a.ref.stored == outputs.documents[a.id].stored)
+    expr: size(outputs.annotations) == 3 && outputs.annotations.all(a, a.id in outputs.documents && a.ref.kind == outputs.documents[a.id].kind && a.ref.stored ==
+      outputs.documents[a.id].stored)
   - type: cel_true
     expr: outputs.annotations.filter(a, a.id == "merge-review.md")[0].sources.map(s, s.id) == ["screenshots.md", "evidence/phone.png"]
   - type: review_document_exists
     node_path: review-packet/review/adaptive2-review/request_human_review
     path: evidence/phone.png
+- id: inspection-discussion-stays-paused
+  type: integration_case
+  runtime:
+    responses:
+    - node_path: review-packet/inspect/adaptive2-inspect/escalate/escalate/adaptive2-limit-decision/ask/sequence/review/adaptive2-review/request_human_review
+      fields:
+        action: answer
+        feedback: Please fix it now?
+    expect_error: no input response fixture for review-packet/inspect/adaptive2-inspect/escalate/escalate/adaptive2-limit-decision/ask/sequence/review/adaptive2-review/request_human_review
+  mocks:
+    ops:
+    - &id002
+      match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            verdict: approve
+            next: complete
+            summary: The phone view matches the request.
+            subject: Improve phone view
+            files:
+            - path: merge-review.md
+              description: Review
+              source_paths:
+              - screenshots.md
+            - path: screenshots.md
+              description: Gallery
+              source_paths:
+              - evidence/phone.png
+            - path: evidence/phone.png
+              description: Phone screenshot
+        artifacts:
+          merge-review.md: '# Phone view
+
+            [Images](screenshots.md)'
+          screenshots.md: '![Phone](evidence/phone.png)'
+          evidence/phone.png: image bytes
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: summary
+    - *id002
+    - *id002
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: failed
+          output_schema_valid: false
+          errorMessage: Explanation unavailable
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            answer: The saved work stays paused until you explicitly resolve this decision.
+  assertions:
+  - type: cel_true
+    expr: calls.filter(c,c.op == "extension_execution").size()==5 && calls.filter(c,c.node_path.contains("/evaluate/") && c.op == "extension_execution").size()==3
+      && calls.filter(c,c.op == "input").size()==2
+  - type: cel_true
+    expr: calls.filter(c,c.node_path.contains("/discuss/") && c.op == "extension_execution").all(c,c.node_path.endsWith("/start_read_only_session") && !has(c.inputs.inputs.session))
+- id: fresh-inspection-keeps-evidence-and-starts-new-session
+  type: integration_case
+  runtime:
+    responses:
+    - node_path: review-packet/inspect/adaptive2-inspect/escalate/escalate/adaptive2-limit-decision/ask/sequence/review/adaptive2-review/request_human_review
+      fields:
+        action: fresh
+    - node_path: review-packet/review/adaptive2-review/request_human_review
+      fields:
+        decision: accept
+  mocks:
+    ops:
+    - &id003
+      match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            verdict: approve
+            next: complete
+            summary: The phone view matches the request.
+            subject: Improve phone view
+            files:
+            - path: merge-review.md
+              description: Review
+              source_paths:
+              - screenshots.md
+            - path: screenshots.md
+              description: Gallery
+              source_paths:
+              - evidence/phone.png
+            - path: evidence/phone.png
+              description: Phone screenshot
+        artifacts:
+          merge-review.md: '# Phone view
+
+            [Images](screenshots.md)'
+          screenshots.md: '![Phone](evidence/phone.png)'
+          evidence/phone.png: image bytes
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: summary
+    - *id003
+    - *id003
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: failed
+          output_schema_valid: false
+          errorMessage: Explanation unavailable
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            verdict: approve
+            next: complete
+            summary: The phone view matches the request.
+            subject: Improve phone view
+            files:
+            - path: merge-review.md
+              description: Review
+              source_paths:
+              - screenshots.md
+              - evidence/phone.png
+            - path: screenshots.md
+              description: Gallery
+              source_paths:
+              - evidence/phone.png
+            - path: evidence/phone.png
+              description: Phone screenshot
+        artifacts:
+          merge-review.md: '# Phone view
+
+            [Images](screenshots.md)'
+          screenshots.md: '![Phone](evidence/phone.png)'
+          evidence/phone.png: image bytes
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: summary
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: calls.filter(c,c.node_path.contains("/evaluate/") && c.op == "extension_execution")[3].node_path.endsWith("/start_read_only_session") && !has(calls.filter(c,c.node_path.contains("/evaluate/")
+      && c.op == "extension_execution")[3].inputs.inputs.session)
+  - type: cel_true
+    expr: calls.filter(c,c.node_path.contains("/evaluate/") && c.op == "extension_execution")[3].artifacts["merge-review.md"].contains("Phone view") && calls.filter(c,c.node_path.contains("/evaluate/")
+      && c.op == "extension_execution")[3].artifacts["evidence/phone.png"] == "image bytes" && size(reviews)==2

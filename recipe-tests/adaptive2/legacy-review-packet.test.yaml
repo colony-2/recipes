@@ -1,0 +1,66 @@
+recipe: legacy-review-packet.yaml
+cases:
+- id: legacy-stop-remains-incomplete-in-caller
+  type: integration_case
+  runtime:
+    responses:
+    - node_path: review-packet/inspect/adaptive2-inspect/escalate/escalate/adaptive2-limit-decision/ask/sequence/review/adaptive2-review/request_human_review
+      fields:
+        action: stop
+    expect_error: The human stopped this attempt
+  mocks:
+    ops:
+    - &id001
+      match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            verdict: approve
+            next: complete
+            summary: The phone view matches the request.
+            subject: Improve phone view
+            files:
+            - path: merge-review.md
+              description: Review
+              source_paths:
+              - screenshots.md
+            - path: screenshots.md
+              description: Gallery
+              source_paths:
+              - evidence/phone.png
+            - path: evidence/phone.png
+              description: Phone screenshot
+        artifacts:
+          merge-review.md: '# Phone view
+
+            [Images](screenshots.md)'
+          screenshots.md: '![Phone](evidence/phone.png)'
+          evidence/phone.png: image bytes
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: summary
+    - *id001
+    - *id001
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: failed
+          output_schema_valid: false
+          errorMessage: Explanation unavailable
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: calls.filter(c,c.node_path.contains("/evaluate/") && c.op == "extension_execution").size()==3 && !calls.exists(c,c.op in ["merge","squash","recipes.run"])

@@ -12,16 +12,26 @@ inputs:
   allow_scope: ${{ inputs.?allow_scope.orValue(false) }}
   pending_jobs: ${{ inputs.?pending_jobs.orValue([]) }}
 vars:
-  fallback: |
-    def prose: tostring;
+  fallback: 'def prose: tostring;
+
     . as $v |
+
     "## Your goal\n\n" + ($v.request|prose) + "\n\n## Last recorded progress\n\n" + ($v.summary|prose) +
-    "\n\n## Why we paused\n\n" + (if $v.used < $v.allowance then "The saved session cannot be resumed safely. The normal allowance is " else "We reached the allowance of " end) + ($v.allowance|tostring) + " automatic " +
+
+    "\n\n## Why we paused\n\n" + (if $v.used < $v.allowance then "The saved session cannot be resumed safely. The normal allowance is " else "We reached the allowance
+    of " end) + ($v.allowance|tostring) + " automatic " +
+
     (if $v.kind == "implementation" then "work passes" else "report corrections" end) +
+
     ". Completed attempts in this round: " + ($v.used|tostring) + ".\n\n## Unresolved issue\n\n" +
+
     (if ($v.issues|length)>0 then ($v.issues|map(prose)|join("\n\n")) else "The work has not reached its required outcome within this allowance." end) +
+
     "\n\n## Saved work\n\nThe managed checkout and selected reports remain retained. Separately running work is not stopped by this question." +
+
     (if ($v.pending_jobs|length)>0 then "\n\nRecorded pending child jobs: " + ($v.pending_jobs|join(", ")) else "" end)
+
+    '
 state:
   initial: prepare
   states:
@@ -56,7 +66,8 @@ state:
           allow_scope: ${{ inputs.allow_scope }}
           pending_jobs: ${{ inputs.pending_jobs }}
         outputs:
-          brief: ${{ jq({'request':inputs.request,'summary':inputs.summary,'allowance':inputs.allowance,'kind':inputs.kind,'used':inputs.used,'issues':inputs.issues,'pending_jobs':inputs.pending_jobs},vars.fallback) }}
+          brief: ${{ jq({'request':inputs.request,'summary':inputs.summary,'allowance':inputs.allowance,'kind':inputs.kind,'used':inputs.used,'issues':inputs.issues,'pending_jobs':inputs.pending_jobs},vars.fallback)
+            }}
       - id: explain
         include: ./agent-turn.yaml
         inputs:
@@ -87,7 +98,6 @@ state:
                 - increase
                 - fresh
                 - scope
-                - stop
               approach:
                 type: string
                 maxLength: 1000
@@ -95,7 +105,8 @@ state:
                 type: string
                 maxLength: 1000
           read_only: true
-          documents: ${{ jq([inputs.documents, {'request.md':{'kind':'value','name':'request.md','format':'text','value':inputs.request},'error/limit.md':{'kind':'value','name':'error/limit.md','format':'text','value':sequence.facts.outputs.brief} }], 'add') }}
+          documents: ${{ jq([inputs.documents, {'request.md':{'kind':'value','name':'request.md','format':'text','value':inputs.request},'error/limit.md':{'kind':'value','name':'error/limit.md','format':'text','value':sequence.facts.outputs.brief}
+            }], 'add') }}
         catch:
         - when: failure.kind != 'cancellation'
           continue:
@@ -105,17 +116,38 @@ state:
               jobs: {}
       outputs:
         fallback: ${{ sequence.facts.outputs.brief }}
-        proposal: "${{ sequence.explain.outputs.result.?status.orValue('failed') == 'completed' && sequence.explain.outputs.result.?output_schema_valid.orValue(false) && size(sequence.explain.outputs.jobs.?job_ids.orValue([])) == 0 ? sequence.explain.outputs.result.response : {} }}"
-        approach: "${{ sequence.explain.outputs.result.?status.orValue('failed') == 'completed' && sequence.explain.outputs.result.?output_schema_valid.orValue(false) && size(sequence.explain.outputs.jobs.?job_ids.orValue([])) == 0 ? sequence.explain.outputs.result.response.approach : (inputs.kind == 'correction' ? 'Rebuild the report in a fresh read-only session using the retained response, artifacts, and correction requests.' : '') }}"
+        proposal: '${{ sequence.explain.outputs.result.?status.orValue(''failed'') == ''completed'' && sequence.explain.outputs.result.?output_schema_valid.orValue(false)
+          && size(sequence.explain.outputs.jobs.?job_ids.orValue([])) == 0 ? sequence.explain.outputs.result.response : {} }}'
+        approach: '${{ sequence.explain.outputs.result.?status.orValue(''failed'') == ''completed'' && sequence.explain.outputs.result.?output_schema_valid.orValue(false)
+          && size(sequence.explain.outputs.jobs.?job_ids.orValue([])) == 0 ? sequence.explain.outputs.result.response.approach : (inputs.kind == ''correction'' ?
+          ''Rebuild the report in a fresh read-only session using the retained response, artifacts, and correction requests.'' : '''') }}'
       transitions:
       - to: ask
         when: 'true'
     ask:
       inputs:
-        options: "${{ (inputs.can_resume ? [{'value':'continue','label':'Continue for ' + string(inputs.allowance) + ' more attempts'},{'value':'increase','label':'Increase from ' + string(inputs.allowance) + ' to ' + string(inputs.allowance*2) + ' new attempts'},{'value':'custom','label':'Choose a larger allowance'}] : []) + (inputs.can_fresh && nonempty(states.prepare.outputs.approach) ? [{'value':'fresh','label':'Try the alternative approach in a fresh session'}] : []) + (inputs.allow_scope && nonempty(states.prepare.outputs.proposal.?scope_change.orValue('')) ? [{'value':'scope','label':'Revise the proposed scope before implementation'}] : []) + [{'value':'stop','label':'Stop this attempt and keep the results'}] }}"
-        title: "${{ states.prepare.outputs.proposal.?title.orValue('Direction needed: ' + jq(inputs.request,'split(\"\\n\")[0][:90]')) }}"
-        body: "${{ jq(states.prepare.outputs.proposal.?brief.orValue('') + '\\n\\n' + states.prepare.outputs.fallback + '\\n\\nSuggested next step: ' + (states.prepare.outputs.proposal.?recommendation.orValue('') == 'fresh' && nonempty(states.prepare.outputs.approach) ? 'Try the alternative described below.' : states.prepare.outputs.proposal.?recommendation.orValue('') == 'scope' && inputs.allow_scope && nonempty(states.prepare.outputs.proposal.?scope_change.orValue('')) ? 'Review the proposed scope change below.' : states.prepare.outputs.proposal.?recommendation.orValue('') == 'increase' && inputs.can_resume ? 'Increase the allowance for this round.' : states.prepare.outputs.proposal.?recommendation.orValue('') == 'stop' ? 'Stop this attempt and retain the results.' : inputs.can_resume ? 'Continue for one bounded round if the saved progress warrants it.' : 'Rebuild the report from retained evidence in a fresh read-only session, or stop.') + '\\n\\n## Choices and tradeoffs\\n\\nContinue renews the current allowance; increase grants the displayed number of NEW attempts, not a lifetime total. Both may spend more resources without resolving the issue. An alternative starts a fresh session over retained work and may repeat investigation. A scope change returns through planning and agreement. Stop ends this attempt as incomplete and retains its results; separately running children may continue. No choice waives required checks.\\n\\nAlternative approach: ' + states.prepare.outputs.approach + (nonempty(states.prepare.outputs.proposal.?scope_change.orValue('')) ? '\\n\\nProposed scope change: ' + states.prepare.outputs.proposal.scope_change : '') + '\\n\\n' + transition.payload.?clarification.orValue(''), 'gsub(\"<\";\"&lt;\") | split(\"[\") | join(([92,91]|implode))') }}"
+        options: '${{ [{''value'':''answer'',''label'':''respond only''}] + (inputs.can_resume ? [{''value'':''continue'',''label'':''[Resolve] Continue '' + inputs.request
+          + '' for '' + string(inputs.allowance) + '' more attempts''},{''value'':''increase'',''label'':''[Resolve] Give '' + inputs.request + '' '' + string(inputs.allowance*2)
+          + '' new attempts''},{''value'':''custom'',''label'':''[Resolve] Choose a larger attempt allowance for '' + inputs.request}] : []) + (inputs.can_fresh &&
+          nonempty(states.prepare.outputs.approach) ? [{''value'':''fresh'',''label'':''[Resolve] '' + states.prepare.outputs.approach}] : []) + (inputs.allow_scope
+          && nonempty(states.prepare.outputs.proposal.?scope_change.orValue('''')) ? [{''value'':''scope'',''label'':''[Resolve] Replan '' + states.prepare.outputs.proposal.scope_change}]
+          : []) }}'
+        title: '${{ states.prepare.outputs.proposal.?title.orValue(''Direction needed: '' + jq(inputs.request,''split("\n")[0][:90]'')) }}'
+        body: '${{ jq(states.prepare.outputs.proposal.?brief.orValue('''') + ''\n\n'' + states.prepare.outputs.fallback + ''\n\nSuggested next step: '' + (states.prepare.outputs.proposal.?recommendation.orValue('''')
+          == ''fresh'' && nonempty(states.prepare.outputs.approach) ? ''Try the alternative described below.'' : states.prepare.outputs.proposal.?recommendation.orValue('''')
+          == ''scope'' && inputs.allow_scope && nonempty(states.prepare.outputs.proposal.?scope_change.orValue('''')) ? ''Review the proposed scope change below.''
+          : states.prepare.outputs.proposal.?recommendation.orValue('''') == ''increase'' && inputs.can_resume ? ''Increase the allowance for this round.'' : inputs.can_resume
+          ? ''Continue for one bounded round if the saved progress warrants it.'' : ''Review the available proposals or ask a question. Resuming requires a safe saved
+          session; alternatives require trusted support and a concrete proposal.'') + ''\n\n## Choices and tradeoffs\n\nContinue renews the current allowance; increase
+          grants the displayed number of NEW attempts, not a lifetime total. Both may spend more resources without resolving the issue. An alternative starts a fresh
+          session over retained work and may repeat investigation. A scope change returns through planning and agreement. Respond only answers your required question
+          without authorizing work. To cancel, use the existing Cancel job control; cancellation differs from ending an attempt as incomplete. Separately running
+          children may continue. No choice waives required checks.\n\nAlternative approach: '' + states.prepare.outputs.approach + (nonempty(states.prepare.outputs.proposal.?scope_change.orValue(''''))
+          ? ''\n\nProposed scope change: '' + states.prepare.outputs.proposal.scope_change : '''') + ''\n\n'' + jq((state_exists(''discuss'') ? states.discuss.outputs.history
+          : []), ''map("Question: " + .question + "\n\nAnswer: " + .answer) | join("\n\n")'') + transition.payload.?clarification.orValue(''''), ''gsub("<";"&lt;")
+          | split("[") | join(([92,91]|implode))'') }}'
         summary: ${{ inputs.summary }}
+        history: '${{ state_exists(''discuss'') ? states.discuss.outputs.history : [] }}'
       sequence:
       - id: review
         include: ./review.yaml
@@ -133,24 +165,32 @@ state:
             options: ${{ inputs.options }}
           - id: feedback
             type: paragraph_text
-            question: Additional direction, if needed
+            question: Your question (required for respond only), or direction for the selected resolution
             required: false
       outputs:
         response: ${{ sequence.review.outputs.response }}
         options: ${{ inputs.options }}
         documents: ${{ sequence.review.outputs.documents }}
+        history: ${{ inputs.history }}
       transitions:
       - to: clarify
-        when: "!outputs.options.exists(o,o.value == outputs.response.fields.?action.orValue(''))"
+        when: '!outputs.options.exists(o,o.value == outputs.response.fields.?action.orValue(''''))'
         payload:
           reason: Choose one of the displayed actions before work continues.
+      - to: clarify
+        when: outputs.response.fields.?action.orValue('') == 'answer' && !nonempty(jq(outputs.response.fields.?feedback.orValue(''), 'gsub("^[[:space:]]+|[[:space:]]+$";"")'))
+        payload:
+          reason: Enter a nonempty question for respond only. No work has been authorized.
+      - to: discuss
+        when: outputs.response.fields.?action.orValue('') == 'answer'
       - to: check_message
         when: nonempty(outputs.response.fields.?feedback.orValue(''))
       - to: route
         when: 'true'
     check_message:
       inputs:
-        decision: ${{ {'action':states.ask.outputs.response.fields.action,'message':states.ask.outputs.response.fields.feedback,'proposal':states.prepare.outputs.proposal} }}
+        decision: ${{ {'action':states.ask.outputs.response.fields.action,'message':states.ask.outputs.response.fields.feedback,'proposal':states.prepare.outputs.proposal}
+          }}
       sequence:
       - id: prompts
         include: ./prompts.yaml
@@ -179,8 +219,10 @@ state:
               result:
                 status: failed
       outputs:
-        consistent: ${{ sequence.check.outputs.result.?status.orValue('failed') == 'completed' && sequence.check.outputs.result.?output_schema_valid.orValue(false) && sequence.check.outputs.result.?response.orValue({}).?consistent.orValue(false) }}
-        explanation: ${{ sequence.check.outputs.result.?response.orValue({}).?explanation.orValue('Please confirm a displayed action with compatible direction before work resumes.') }}
+        consistent: ${{ sequence.check.outputs.result.?status.orValue('failed') == 'completed' && sequence.check.outputs.result.?output_schema_valid.orValue(false)
+          && sequence.check.outputs.result.?response.orValue({}).?consistent.orValue(false) }}
+        explanation: ${{ sequence.check.outputs.result.?response.orValue({}).?explanation.orValue('Please confirm a displayed action with compatible direction before
+          work resumes.') }}
       transitions:
       - to: clarify
         when: '!outputs.consistent'
@@ -217,7 +259,8 @@ state:
         inputs:
           title: Choose the next attempt allowance
           overview: allowance.md
-          summary: ${{ 'Enter the total number of new attempts for this round, greater than ' + string(inputs.allowance) + '. This does not change future defaults or validation requirements.' }}
+          summary: ${{ 'Enter the total number of new attempts for this round, greater than ' + string(inputs.allowance) + '. This does not change future defaults
+            or validation requirements.' }}
           documents: {}
           fields:
           - id: allowance
@@ -229,7 +272,7 @@ state:
         value: ${{ sequence.review.outputs.response.fields.?allowance.orValue('') }}
       transitions:
       - to: clarify
-        when: "!outputs.value.matches('^[1-9][0-9]{0,8}$') || int(outputs.value) <= inputs.allowance"
+        when: '!outputs.value.matches(''^[1-9][0-9]{0,8}$'') || int(outputs.value) <= inputs.allowance'
         payload:
           reason: The larger allowance must be a finite whole number above the current allowance (at most 999999999). Choose an action again.
       - to: done
@@ -238,9 +281,61 @@ state:
       sequence: []
     done:
       sequence: []
+    discuss:
+      inputs:
+        history: ${{ states.ask.outputs.history }}
+        question: ${{ jq(states.ask.outputs.response.fields.feedback, 'gsub("^[[:space:]]+|[[:space:]]+$";"")') }}
+        receipt: ${{ states.ask.outputs.response.receipt }}
+        review_documents: ${{ states.ask.outputs.documents }}
+        documents: ${{ jq([inputs.documents, states.ask.outputs.documents, {'request.md':{'kind':'value','name':'request.md','format':'text','value':inputs.request},
+          'resolver-context.json':{'kind':'value','name':'resolver-context.json','format':'json','value':{'advice':states.prepare.outputs.proposal,'facts':states.prepare.outputs.fallback,'history':states.ask.outputs.history,'question':states.ask.outputs.response.fields.feedback,'receipt':states.ask.outputs.response.receipt}
+          } }], 'add') }}
+      sequence:
+      - id: prompts
+        include: ./prompts.yaml
+      - id: answer
+        include: ./agent-turn.yaml
+        inputs:
+          prompt: ${{ sequence.prompts.outputs.limit.answer }}
+          instructions: ${{ sequence.prompts.outputs.limit.instructions }}
+          read_only: true
+          documents: ${{ inputs.documents }}
+          schema:
+            type: object
+            additionalProperties: false
+            required:
+            - answer
+            properties:
+              answer:
+                type: string
+                minLength: 1
+                maxLength: 12000
+        catch:
+        - when: failure.kind != 'cancellation'
+          continue:
+            outputs:
+              result:
+                status: failed
+              jobs: {}
+      outputs:
+        history: '${{ inputs.history + [{''question'':inputs.question,''receipt'':inputs.receipt,''review_documents'':inputs.review_documents,''answer'':sequence.answer.outputs.result.?status.orValue(''failed'')
+          == ''completed'' && sequence.answer.outputs.result.?output_schema_valid.orValue(false) && size(sequence.answer.outputs.jobs.?job_ids.orValue([])) == 0 &&
+          nonempty(sequence.answer.outputs.result.?response.orValue({}).?answer.orValue('''')) ? sequence.answer.outputs.result.response.answer : ''The answer service
+          could not produce a valid read-only answer. No work was authorized. Please ask again or select a resolution.''}] }}'
+      transitions:
+      - to: ask
+        when: 'true'
 outputs:
-  action: "${{ states.ask.outputs.response.fields.action == 'custom' ? 'increase' : states.ask.outputs.response.fields.action }}"
-  allowance: "${{ states.ask.outputs.response.fields.action == 'custom' ? int(states.custom.outputs.value) : states.ask.outputs.response.fields.action == 'increase' ? inputs.allowance*2 : inputs.allowance }}"
-  direction: "${{ (states.ask.outputs.response.fields.action == 'stop' ? 'Human decision: stop this attempt and retain the unfinished work.' : 'Human decision: ' + states.ask.outputs.response.fields.action + '. New round allowance: ' + string(states.ask.outputs.response.fields.action == 'custom' ? int(states.custom.outputs.value) : states.ask.outputs.response.fields.action == 'increase' ? inputs.allowance*2 : inputs.allowance) + '.') + '\\n' + states.ask.outputs.response.fields.?feedback.orValue('') + '\\n' + (states.ask.outputs.response.fields.action == 'fresh' ? states.prepare.outputs.approach : states.ask.outputs.response.fields.action == 'scope' ? states.prepare.outputs.proposal.scope_change : '') }}"
-  receipts: "${{ jq((states.ask.runs.map(r,r.outputs.response.receipt) + [states.ask.outputs.response.receipt]) + (state_exists('custom') ? states.custom.runs.map(r,r.outputs.response.receipt) + [states.custom.outputs.response.receipt] : []), 'unique_by(.request_id,.submission_id)') }}"
-  documents: ${{ jq([inputs.documents,states.ask.outputs.documents],'add') }}
+  action: '${{ states.ask.outputs.response.fields.action == ''custom'' ? ''increase'' : states.ask.outputs.response.fields.action }}'
+  allowance: '${{ states.ask.outputs.response.fields.action == ''custom'' ? int(states.custom.outputs.value) : states.ask.outputs.response.fields.action == ''increase''
+    ? inputs.allowance*2 : inputs.allowance }}'
+  direction: '${{ (states.ask.outputs.response.fields.action == ''stop'' ? ''Human decision: stop this attempt and retain the unfinished work.'' : ''Human decision:
+    '' + states.ask.outputs.response.fields.action + ''. New round allowance: '' + string(states.ask.outputs.response.fields.action == ''custom'' ? int(states.custom.outputs.value)
+    : states.ask.outputs.response.fields.action == ''increase'' ? inputs.allowance*2 : inputs.allowance) + ''.'') + ''\n'' + states.ask.outputs.response.fields.?feedback.orValue('''')
+    + ''\n'' + (states.ask.outputs.response.fields.action == ''fresh'' ? states.prepare.outputs.approach : states.ask.outputs.response.fields.action == ''scope''
+    ? states.prepare.outputs.proposal.scope_change : '''') }}'
+  receipts: '${{ jq((states.ask.runs.map(r,r.outputs.response.receipt) + [states.ask.outputs.response.receipt]) + (state_exists(''custom'') ? states.custom.runs.map(r,r.outputs.response.receipt)
+    + [states.custom.outputs.response.receipt] : []), ''unique_by(.request_id,.submission_id)'') }}'
+  documents: ${{ jq([inputs.documents,states.ask.outputs.documents, {'resolver-discussion.json':{'kind':'value','name':'resolver-discussion.json','format':'json','value':states.ask.outputs.history}
+    }],'add') }}
+  discussion: ${{ states.ask.outputs.history }}
