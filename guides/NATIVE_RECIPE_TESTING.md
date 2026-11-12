@@ -1,17 +1,23 @@
 # Native recipe testing
 
-Install the repository's pinned c2j release (CI uses Node.js 24):
+Install the repository's pinned c2j runtime (source pins require Go 1.26.8;
+release pins use Node.js 24):
 
 ```sh
-npm install --global "@colony2/c2j@$(cat .c2j-version)"
+bash scripts/install-c2j.sh /tmp/recipes-c2j
+export PATH="/tmp/recipes-c2j/bin:$PATH"
 c2j version
 ```
 
-The package installs the appropriate release binary for your platform. Ensure
-the installed command is first on `PATH`, including for recipes that invoke
-`c2j` themselves. CI records the CLI, npm package, c2j source commit, and recipes
-commit alongside its reports. Update `.c2j-version` when selecting a new runtime;
-test that exact release locally before changing the pin.
+`.c2j-version` accepts an npm release or `source:<full Git commit ID>`.
+The current pin selects the public c2j commit containing native child bindings,
+terminal ordering and response gates needed by dependency regressions. The
+installer fetches that exact commit, checks its identity and builds with readonly
+module resolution. It labels the CLI as a source build; it does not manufacture
+a release number or require deployment. CI uses the same installer and records
+the pin, CLI identity and Recipes commit. Keep this binary first on `PATH`,
+including for recipes that invoke `c2j` themselves. Validate the exact selected
+runtime when updating the pin.
 Run `recipe-tests/create.test.yaml` and
 `recipe-tests/create-handoff.test.yaml` for its review, publication, and handoff
 coverage; these use disposable repositories and do not create GitHub repositories.
@@ -131,19 +137,18 @@ additional native fixture controls.
 
 ## Child report recovery ordering checks
 
-`recipe-tests/adaptive2/report-child-ordering.pending.yaml` exercises real terminal
-children before report return and an input-held active child across two report
-corrections. Run it explicitly with a CLI containing c2j commit
-`9de8bc5328b944e4cbd580bb3b7d32bfd9ffd407` (validated using development
-commit `a2116fdbc5df`):
+`recipe-tests/adaptive2/report-child-ordering.test.yaml` exercises terminal
+ordering and an input-held child across report correction. Run it explicitly:
 
 ```sh
-c2j test run --file recipe-tests/adaptive2/report-child-ordering.pending.yaml --case-timeout 3m
+c2j test run --file recipe-tests/adaptive2/report-child-ordering.test.yaml --case-timeout 3m
 ```
 
-These cases require `effects.children[].await: terminal`, response `after_call`
-gates, and ordered runtime events. Release 0.0.124 does not support these
-controls. The file intentionally stays outside automatic discovery while CI
-uses that release. Once a published supporting release is verified, adopt its
-pin, run the checks above and the pin-adoption cases, and rename this suite to
-`.test.yaml`. The ordinary child recovery suite already runs in discovery.
+The pinned public source runtime supports `effects.children[].await: terminal`,
+response `after_call` gates and ordered native events. The public-build dependency
+suite uses `bind` and `outputs_expr` to name actual generated child IDs in scripted
+agent decisions. It covers reassignment, required failures, active work, completed
+continuation reuse, human resolution of ambiguity, current verification and withheld
+outcome approval. Focused dependency tests bind IDs through ordinary recipe inputs.
+These controls exercise orchestration; scripted choices do not evaluate model
+interpretation. The older npm 0.0.124 release lacks these fixture capabilities.

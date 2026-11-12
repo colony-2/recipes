@@ -1,0 +1,44 @@
+id: dependency-current-verification
+input_schema:
+  api_version:
+    type: string
+    required: true
+  request:
+    type: string
+    required: true
+  target_directory:
+    type: string
+    required: true
+  candidate:
+    type: string
+    required: true
+  base:
+    type: string
+    required: true
+  documents:
+    type: artifact_map
+    default_value: {}
+  settings:
+    type: artifact
+    required: false
+inputs:
+  documents: ${{ inputs.documents }}
+sequence:
+- id: check
+  op: command_execution
+  const: true
+  artifacts:
+    ./: ${{ inputs.documents }}
+  inputs:
+    env:
+      INBOX: ${{ context.environment.op.inbox }}
+      OUTBOX: ${{ context.environment.op.outbox }}
+    run: "set -eu\ndiagnostic=$(find \"$INBOX\" -type f -name diagnostic.txt -print -quit)\nif test \"$(cat candidate.txt)\"\
+      \ = corrected && test -n \"$diagnostic\" && test \"$(cat \"$diagnostic\")\" = 'native successful diagnostic\
+      \ artifact'; then\n  cp \"$diagnostic\" \"$OUTBOX/reused-diagnostic.txt\"\n  cat \"$diagnostic\"\n  printf\
+      \ passed\nelse\n  printf failed\nfi\n"
+outputs:
+  api_version: c2.build-hook/v1
+  status: '${{ sequence.check.outputs.stdout.endsWith(''\npassed'') ? ''passed'' : ''failed'' }}'
+  summary: ${{ sequence.check.outputs.stdout }}
+  artifact_refs: ${{ {'reused-diagnostic.txt':sequence.check.artifacts['reused-diagnostic.txt']} }}

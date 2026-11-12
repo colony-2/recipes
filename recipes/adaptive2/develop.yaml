@@ -70,7 +70,7 @@ state:
         base_documents: ${{ transition.payload.?base_documents.orValue(transition.payload.documents) }}
         repair_attempts: ${{ transition.payload.?repair_attempts.orValue(0) }}
         request_prefix: "${{ 'request-' + string(state_exists('work') ? size(states.work.runs) + 1 : 0) }}"
-        receipts: "${{ (state_exists('questions') ? states.questions.runs.map(r,r.outputs.response.receipt) + [states.questions.outputs.response.receipt] : []) + (state_exists('accept') ? states.accept.runs.map(r,r.outputs.response.receipt) + [states.accept.outputs.response.receipt] : []) + (state_exists('packages') ? states.packages.runs.map(r,r.outputs.review_receipts) + [states.packages.outputs.review_receipts] : []) + (state_exists('coordinate') ? states.coordinate.runs.map(r,r.outputs.review_receipts) + [states.coordinate.outputs.review_receipts] : []) + (state_exists('direction') ? states.direction.runs.map(r,r.outputs.response.receipt) + [states.direction.outputs.response.receipt] : []) + (state_exists('autonomous_limit') ? states.autonomous_limit.runs.map(r,r.outputs.review_receipts) + [states.autonomous_limit.outputs.review_receipts] : []) + (state_exists('response_repair_exhausted') ? states.response_repair_exhausted.runs.map(r,r.outputs.review_receipts) + [states.response_repair_exhausted.outputs.review_receipts] : []) + (state_exists('assessment') ? states.assessment.runs.map(r,r.outputs.review_receipts) + [states.assessment.outputs.review_receipts] : []) + (state_exists('accounting') ? states.accounting.runs.map(r,r.outputs.review_receipts) + [states.accounting.outputs.review_receipts] : []) }}"
+        receipts: "${{ (state_exists('questions') ? states.questions.runs.map(r,r.outputs.response.receipt) + [states.questions.outputs.response.receipt] : []) + (state_exists('dependency_question') ? states.dependency_question.runs.map(r,r.outputs.response.receipt) + [states.dependency_question.outputs.response.receipt] : []) + (state_exists('accept') ? states.accept.runs.map(r,r.outputs.response.receipt) + [states.accept.outputs.response.receipt] : []) + (state_exists('packages') ? states.packages.runs.map(r,r.outputs.review_receipts) + [states.packages.outputs.review_receipts] : []) + (state_exists('coordinate') ? states.coordinate.runs.map(r,r.outputs.review_receipts) + [states.coordinate.outputs.review_receipts] : []) + (state_exists('direction') ? states.direction.runs.map(r,r.outputs.response.receipt) + [states.direction.outputs.response.receipt] : []) + (state_exists('autonomous_limit') ? states.autonomous_limit.runs.map(r,r.outputs.review_receipts) + [states.autonomous_limit.outputs.review_receipts] : []) + (state_exists('response_repair_exhausted') ? states.response_repair_exhausted.runs.map(r,r.outputs.review_receipts) + [states.response_repair_exhausted.outputs.review_receipts] : []) + (state_exists('assessment') ? states.assessment.runs.map(r,r.outputs.review_receipts) + [states.assessment.outputs.review_receipts] : []) + (state_exists('accounting') ? states.accounting.runs.map(r,r.outputs.review_receipts) + [states.accounting.outputs.review_receipts] : []) }}"
         work: "${{ state_exists('work') ? (states.work.runs.map(r,r.outputs) + [states.work.outputs]).map(w, {'phase':w.phase,'assignment':w.assignment,'next':w.next,'human_round':w.human_round,'human_reply':w.human_reply}) : [] }}"
         limit: ${{ inputs.max_iterations }}
         override_allowance: ${{ state_output('autonomous_limit','allowance',0) }}
@@ -196,7 +196,7 @@ state:
         annotations: ${{ states.dispatch.outputs.annotations }}
         phase: ${{ states.dispatch.outputs.phase }}
         coordination: "${{ (state_exists('coordinate') ? jq(states.coordinate.runs.map(r,r.outputs.records) + [states.coordinate.outputs.records],'add')
-          : []) + (state_exists('work') ? jq(states.work.runs.map(r,r.outputs.child_results) + [states.work.outputs.child_results],'add').map(r,{'action':'await','job_id':r.job_id,'result':r})
+          : []) + (state_exists('work') ? jq(states.work.runs.map(r,r.outputs.turn.jobs.?job_ids.orValue([])) + [states.work.outputs.turn.jobs.?job_ids.orValue([])],'add | unique').map(j,{'action':'execute','job_id':j,'cell':'','ref':'main','handoff':'','source':'direct'}) : []) + (state_exists('work') ? jq(states.work.runs.map(r,r.outputs.child_results) + [states.work.outputs.child_results],'add').map(r,{'action':'await','job_id':r.job_id,'result':r})
           : []) + (state_exists('wait_children') ? jq(states.wait_children.runs.map(r,r.outputs.results) + [states.wait_children.outputs.results],'add').map(r,{'action':'await','job_id':r.job_id,'result':r})
           : []) }}"
         issues: |-
@@ -225,32 +225,34 @@ state:
           child_documents: ${{ inputs.child_documents }}
           request_document: ${{ inputs.request_document }}
           approved_one_pager: ${{ inputs.approved_one_pager }}
+          reconciliation_references: ${{ inputs.coordination.filter(h,h.action == 'reconcile').map(h,h.reference) }}
         sequence: []
         outputs:
           # Keep correction inputs until a valid report selects its next packet.
           documents: >-
-            ${{ jq([inputs.turn.result.?output_schema_valid.orValue(false) && size(inputs.issues) == 0 ? jq([jq(inputs.documents, 'with_entries(select(.key == "test-statements.md" or .key == "handoff.md" or .key == "request.md" or .key == "one-pager.md"))'), inputs.turn.documents, inputs.child_documents], 'add') : inputs.documents,
+            ${{ jq([inputs.turn.result.?output_schema_valid.orValue(false) && size(inputs.issues) == 0 ? jq([jq(inputs.documents, 'with_entries(select(.key == "test-statements.md" or .key == "handoff.md" or .key == "request.md" or .key == "one-pager.md"))'), jq({'documents':inputs.documents,'references':inputs.reconciliation_references}, '. as $v | .documents | with_entries(.key as $key | select(any($v.references[]; . as $ref | $key | startswith("coordination/" + $ref + "/"))))'), inputs.turn.documents, inputs.child_documents], 'add') : inputs.documents,
               {'request.md':inputs.request_document}, inputs.approved_one_pager != null ? {'approved-direction/one-pager.md':jq([inputs.approved_one_pager,{'name':'approved-direction/one-pager.md'}],'add')} : {}], 'add') }}
       - id: current_annotations
         include: ./current-annotations.yaml
         inputs:
           documents: ${{ sequence.select_documents.outputs.documents }}
           annotations: ${{ inputs.annotations + inputs.turn.?annotations.orValue([]) }}
+      - id: dependencies
+        include: ./dependency-requirements.yaml
+        inputs:
+          history: ${{ inputs.coordination }}
+          pending: ${{ inputs.direct_pending }}
       outputs:
         issues: ${{ inputs.issues }}
         session: ${{ inputs.turn.result.?session.orValue(inputs.session) }}
         documents: ${{ sequence.select_documents.outputs.documents }}
         annotations: ${{ sequence.current_annotations.outputs.annotations }}
-        pending_jobs: ${{ jq(inputs.coordination.filter(e,e.action == 'execute' &&
-          !inputs.coordination.exists(n,n.action == 'execute' && n.?replaces.orValue('') ==
-          e.job_id)).filter(e,!inputs.coordination.exists(a,a.action == 'await' && a.job_id ==
-          e.job_id)).map(e,e.job_id) + inputs.direct_pending, 'unique') }}
-        failed_jobs: ${{ inputs.coordination.filter(e,e.action == 'execute' &&
-          !inputs.coordination.exists(n,n.action == 'execute' && n.?replaces.orValue('') ==
-          e.job_id)).filter(e,inputs.coordination.exists(a,a.action == 'await' && a.job_id == e.job_id &&
-          (a.result.status != 'completed' || !(a.result.?outputs.orValue({}).?merged.orValue(false) ||
-          a.result.?outputs.orValue({}).?disposition.orValue('') in
-          ['unchanged','delegated'])))).map(e,e.job_id) }}
+        pending_jobs: ${{ sequence.dependencies.outputs.pending }}
+        required_pending_jobs: ${{ sequence.dependencies.outputs.required_pending }}
+        failed_jobs: ${{ sequence.dependencies.outputs.failed }}
+        ambiguous: ${{ sequence.dependencies.outputs.ambiguous }}
+        coordination: ${{ inputs.coordination }}
+        satisfied_jobs: ${{ sequence.dependencies.outputs.satisfied }}
       transitions:
       - to: repair
         when: size(outputs.issues) > 0
@@ -259,13 +261,19 @@ state:
           issues: ${{ outputs.issues }}
           documents: ${{ outputs.documents }}
           annotations: ${{ outputs.annotations }}
+      - to: dependency_question
+        when: size(outputs.ambiguous) > 0 && states.work.outputs.turn.result.response.next == 'fail'
+        payload:
+          dependencies: ${{ outputs.ambiguous }}
+          documents: ${{ outputs.documents }}
+          annotations: ${{ outputs.annotations }}
       - to: operational_failure
         when: states.work.outputs.turn.result.response.next == 'fail'
         payload:
           reason: ${{ states.work.outputs.turn.result.response.summary }}
           documents: ${{ outputs.documents }}
       - to: recover_work
-        when: states.work.outputs.children_failed && states.work.outputs.turn.result.response.next != 'coordinate'
+        when: states.work.outputs.children_failed && !(states.work.outputs.turn.result.response.next in ['coordinate','ask_user','redesign']) && size(outputs.failed_jobs) > 0
         payload:
           reason: A child finished unsuccessfully. Read error/ and results/, diagnose the problem, and choose
             a correction or a fresh attempt.
@@ -293,19 +301,27 @@ state:
           requests: ${{ states.work.outputs.turn.result.response.requests }}
           documents: ${{ outputs.documents }}
           annotations: ${{ outputs.annotations }}
+      - to: dependency_question
+        when: size(outputs.ambiguous) > 0 && states.work.outputs.turn.result.response.next in ['review','outside','blocked','wait']
+        payload:
+          dependencies: ${{ outputs.ambiguous }}
+          documents: ${{ outputs.documents }}
+          annotations: ${{ outputs.annotations }}
       - to: wait_children
-        when: states.work.outputs.turn.result.response.next in ['review','outside','blocked','wait'] &&
-          size(outputs.pending_jobs)>0
+        when: >-
+          states.work.outputs.turn.result.response.next in ['review','outside','blocked','wait'] &&
+          size(states.work.outputs.turn.result.response.next == 'wait' ? outputs.pending_jobs : outputs.required_pending_jobs)>0
         payload:
           documents: ${{ outputs.documents }}
           annotations: ${{ outputs.annotations }}
-          jobs: ${{ outputs.pending_jobs }}
+          jobs: >-
+            ${{ states.work.outputs.turn.result.response.next == 'wait' ? outputs.pending_jobs : outputs.required_pending_jobs }}
       - to: recover_work
         when: states.work.outputs.turn.result.response.next in ['review','outside'] &&
           size(outputs.failed_jobs) > 0
         payload:
-          reason: "${{ 'Required child work is incomplete. Read coordination/ and error/; request a fresh execution
-            with corrected instructions for the failed assignment. Jobs: ' + jq(outputs.failed_jobs,'join(\", \"\
+          reason: "${{ 'Required child work is incomplete. Inspect coordination/, results/, child inventories and continuations.
+            Reconcile applicability against current direction or address the still-required outcome; planning may reconcile but cannot execute. Jobs: ' + jq(outputs.failed_jobs,'join(\", \"\
             )') }}"
           documents: ${{ outputs.documents }}
           annotations: ${{ outputs.annotations }}
@@ -422,7 +438,7 @@ state:
         root_cell: ${{ states.start.outputs.root_cell }}
         root_ref: ${{ states.start.outputs.root_ref }}
         history: "${{ (state_exists('coordinate') ? jq(states.coordinate.runs.map(r,r.outputs.records) + [states.coordinate.outputs.records],'add')
-          : []) + (state_exists('work') ? jq(states.work.runs.map(r,r.outputs.child_results) + [states.work.outputs.child_results],'add').map(r,{'action':'await','job_id':r.job_id,'result':r})
+          : []) + (state_exists('work') ? jq(states.work.runs.map(r,r.outputs.turn.jobs.?job_ids.orValue([])) + [states.work.outputs.turn.jobs.?job_ids.orValue([])],'add | unique').map(j,{'action':'execute','job_id':j,'cell':'','ref':'main','handoff':'','source':'direct'}) : []) + (state_exists('work') ? jq(states.work.runs.map(r,r.outputs.child_results) + [states.work.outputs.child_results],'add').map(r,{'action':'await','job_id':r.job_id,'result':r})
           : []) + (state_exists('wait_children') ? jq(states.wait_children.runs.map(r,r.outputs.results) + [states.wait_children.outputs.results],'add').map(r,{'action':'await','job_id':r.job_id,'result':r})
           : []) }}"
         prefix: ${{ states.dispatch.outputs.request_prefix }}
@@ -442,7 +458,12 @@ state:
           requests: ${{ inputs.requests }}
           history: ${{ inputs.history }}
           prefix: ${{ inputs.prefix }}
+      - id: dependencies
+        include: ./dependency-requirements.yaml
+        inputs:
+          history: ${{ inputs.history + sequence.coordinate.outputs.records }}
       outputs:
+        failed_jobs: ${{ sequence.dependencies.outputs.failed }}
         valid: ${{ sequence.coordinate.outputs.valid }}
         session: ${{ sequence.coordinate.outputs.session }}
         documents: ${{
@@ -466,12 +487,16 @@ state:
           documents: ${{ outputs.documents }}
           annotations: ${{ outputs.annotations }}
       - to: recover_work
-        when: "outputs.records.exists(r,r.action == 'create' ? !r.ready : r.action == 'await' && (r.result.status
-          != 'completed' || !(r.result.?outputs.orValue({}).?merged.orValue(false) || r.result.?outputs.orValue({}).?disposition.orValue('')
-          in ['unchanged','delegated'])))"
+        when: outputs.records.exists(r,r.action == 'create' && !r.ready) || size(outputs.failed_jobs) > 0 && outputs.records.exists(r,r.action == 'await' && r.job_id in outputs.failed_jobs)
         payload:
           reason: A child did not complete its agreed work. Read coordination/ and error/ for the failure;
             choose a correction and request a fresh execution when useful.
+          documents: ${{ outputs.documents }}
+          annotations: ${{ outputs.annotations }}
+      - to: dependency_question
+        when: outputs.records.exists(r,r.action == 'reconcile' && r.dependency.decision == 'ambiguous')
+        payload:
+          dependencies: ${{ outputs.records.filter(r,r.action == 'reconcile' && r.dependency.decision == 'ambiguous') }}
           documents: ${{ outputs.documents }}
           annotations: ${{ outputs.annotations }}
       - to: stopped
@@ -484,6 +509,18 @@ state:
         when: true
         payload:
           session: ${{ outputs.session }}
+          documents: ${{ outputs.documents }}
+          annotations: ${{ outputs.annotations }}
+    dependency_question:
+      inputs:
+        dependencies: ${{ transition.payload.dependencies }}
+        documents: ${{ transition.payload.documents }}
+        annotations: ${{ transition.payload.annotations }}
+      include: ./dependency-discussion.yaml
+      transitions:
+      - to: dispatch
+        when: true
+        payload:
           documents: ${{ outputs.documents }}
           annotations: ${{ outputs.annotations }}
     questions:
@@ -537,7 +574,7 @@ state:
         previous_candidate: ${{ state_output('assessment','candidate.head','') }}
         agent_artifacts: ${{ states.verify.outputs.agent_artifacts }}
         candidate: ${{ states.prepare.outputs.candidate }}
-        human_round: "${{ size(jq((state_exists('questions') ? states.questions.runs.map(r,r.outputs.response.receipt) + [states.questions.outputs.response.receipt] : []) + (state_exists('direction') ? states.direction.runs.map(r,r.outputs.response.receipt) + [states.direction.outputs.response.receipt] : []) + (state_exists('accept') ? states.accept.runs.map(r,r.outputs.response.receipt) + [states.accept.outputs.response.receipt] : []) + (state_exists('packages') ? states.packages.runs.map(r,r.outputs.review_receipts) + [states.packages.outputs.review_receipts] : []) + (state_exists('coordinate') ? states.coordinate.runs.map(r,r.outputs.review_receipts) + [states.coordinate.outputs.review_receipts] : []) + (state_exists('autonomous_limit') ? states.autonomous_limit.runs.map(r,r.outputs.review_receipts) + [states.autonomous_limit.outputs.review_receipts] : []) + (state_exists('response_repair_exhausted') ? states.response_repair_exhausted.runs.map(r,r.outputs.review_receipts) + [states.response_repair_exhausted.outputs.review_receipts] : []) + (state_exists('assessment') ? states.assessment.runs.map(r,r.outputs.review_receipts) + [states.assessment.outputs.review_receipts] : []) + (state_exists('accounting') ? states.accounting.runs.map(r,r.outputs.review_receipts) + [states.accounting.outputs.review_receipts] : []), 'flatten | map(select(.submission_id? != null)) | unique_by(.request_id, .submission_id)')) }}"
+        human_round: "${{ size(jq((state_exists('questions') ? states.questions.runs.map(r,r.outputs.response.receipt) + [states.questions.outputs.response.receipt] : []) + (state_exists('dependency_question') ? states.dependency_question.runs.map(r,r.outputs.response.receipt) + [states.dependency_question.outputs.response.receipt] : []) + (state_exists('direction') ? states.direction.runs.map(r,r.outputs.response.receipt) + [states.direction.outputs.response.receipt] : []) + (state_exists('accept') ? states.accept.runs.map(r,r.outputs.response.receipt) + [states.accept.outputs.response.receipt] : []) + (state_exists('packages') ? states.packages.runs.map(r,r.outputs.review_receipts) + [states.packages.outputs.review_receipts] : []) + (state_exists('coordinate') ? states.coordinate.runs.map(r,r.outputs.review_receipts) + [states.coordinate.outputs.review_receipts] : []) + (state_exists('autonomous_limit') ? states.autonomous_limit.runs.map(r,r.outputs.review_receipts) + [states.autonomous_limit.outputs.review_receipts] : []) + (state_exists('response_repair_exhausted') ? states.response_repair_exhausted.runs.map(r,r.outputs.review_receipts) + [states.response_repair_exhausted.outputs.review_receipts] : []) + (state_exists('assessment') ? states.assessment.runs.map(r,r.outputs.review_receipts) + [states.assessment.outputs.review_receipts] : []) + (state_exists('accounting') ? states.accounting.runs.map(r,r.outputs.review_receipts) + [states.accounting.outputs.review_receipts] : []), 'flatten | map(select(.submission_id? != null)) | unique_by(.request_id, .submission_id)')) }}"
         previous_human_round: ${{ state_output('assessment','human_round',-1) }}
       sequence:
       - id: prior_approval
@@ -662,8 +699,8 @@ state:
       inputs:
         documents: ${{ transition.payload.documents }}
         annotations: ${{ transition.payload.annotations }}
-        merge_chases: "${{ (size(jq((state_exists('questions') ? states.questions.runs.map(r,r.outputs.response.receipt) + [states.questions.outputs.response.receipt] : []) + (state_exists('direction') ? states.direction.runs.map(r,r.outputs.response.receipt) + [states.direction.outputs.response.receipt] : []) + (state_exists('accept') ? states.accept.runs.map(r,r.outputs.response.receipt) + [states.accept.outputs.response.receipt] : []) + (state_exists('packages') ? states.packages.runs.map(r,r.outputs.review_receipts) + [states.packages.outputs.review_receipts] : []) + (state_exists('coordinate') ? states.coordinate.runs.map(r,r.outputs.review_receipts) + [states.coordinate.outputs.review_receipts] : []) + (state_exists('autonomous_limit') ? states.autonomous_limit.runs.map(r,r.outputs.review_receipts) + [states.autonomous_limit.outputs.review_receipts] : []) + (state_exists('response_repair_exhausted') ? states.response_repair_exhausted.runs.map(r,r.outputs.review_receipts) + [states.response_repair_exhausted.outputs.review_receipts] : []) + (state_exists('assessment') ? states.assessment.runs.map(r,r.outputs.review_receipts) + [states.assessment.outputs.review_receipts] : []) + (state_exists('accounting') ? states.accounting.runs.map(r,r.outputs.review_receipts) + [states.accounting.outputs.review_receipts] : []), 'flatten | map(select(.submission_id? != null)) | unique_by(.request_id, .submission_id)')) == state_output('rebase','human_round',0) ? state_output('rebase','merge_chases',inputs.prior_merge_chases) : 0) + (transition.from == 'merge' ? 1 : 0) }}"
-        human_round: "${{ size(jq((state_exists('questions') ? states.questions.runs.map(r,r.outputs.response.receipt) + [states.questions.outputs.response.receipt] : []) + (state_exists('direction') ? states.direction.runs.map(r,r.outputs.response.receipt) + [states.direction.outputs.response.receipt] : []) + (state_exists('accept') ? states.accept.runs.map(r,r.outputs.response.receipt) + [states.accept.outputs.response.receipt] : []) + (state_exists('packages') ? states.packages.runs.map(r,r.outputs.review_receipts) + [states.packages.outputs.review_receipts] : []) + (state_exists('coordinate') ? states.coordinate.runs.map(r,r.outputs.review_receipts) + [states.coordinate.outputs.review_receipts] : []) + (state_exists('autonomous_limit') ? states.autonomous_limit.runs.map(r,r.outputs.review_receipts) + [states.autonomous_limit.outputs.review_receipts] : []) + (state_exists('response_repair_exhausted') ? states.response_repair_exhausted.runs.map(r,r.outputs.review_receipts) + [states.response_repair_exhausted.outputs.review_receipts] : []) + (state_exists('assessment') ? states.assessment.runs.map(r,r.outputs.review_receipts) + [states.assessment.outputs.review_receipts] : []) + (state_exists('accounting') ? states.accounting.runs.map(r,r.outputs.review_receipts) + [states.accounting.outputs.review_receipts] : []), 'flatten | map(select(.submission_id? != null)) | unique_by(.request_id, .submission_id)')) }}"
+        merge_chases: "${{ (size(jq((state_exists('questions') ? states.questions.runs.map(r,r.outputs.response.receipt) + [states.questions.outputs.response.receipt] : []) + (state_exists('dependency_question') ? states.dependency_question.runs.map(r,r.outputs.response.receipt) + [states.dependency_question.outputs.response.receipt] : []) + (state_exists('direction') ? states.direction.runs.map(r,r.outputs.response.receipt) + [states.direction.outputs.response.receipt] : []) + (state_exists('accept') ? states.accept.runs.map(r,r.outputs.response.receipt) + [states.accept.outputs.response.receipt] : []) + (state_exists('packages') ? states.packages.runs.map(r,r.outputs.review_receipts) + [states.packages.outputs.review_receipts] : []) + (state_exists('coordinate') ? states.coordinate.runs.map(r,r.outputs.review_receipts) + [states.coordinate.outputs.review_receipts] : []) + (state_exists('autonomous_limit') ? states.autonomous_limit.runs.map(r,r.outputs.review_receipts) + [states.autonomous_limit.outputs.review_receipts] : []) + (state_exists('response_repair_exhausted') ? states.response_repair_exhausted.runs.map(r,r.outputs.review_receipts) + [states.response_repair_exhausted.outputs.review_receipts] : []) + (state_exists('assessment') ? states.assessment.runs.map(r,r.outputs.review_receipts) + [states.assessment.outputs.review_receipts] : []) + (state_exists('accounting') ? states.accounting.runs.map(r,r.outputs.review_receipts) + [states.accounting.outputs.review_receipts] : []), 'flatten | map(select(.submission_id? != null)) | unique_by(.request_id, .submission_id)')) == state_output('rebase','human_round',0) ? state_output('rebase','merge_chases',inputs.prior_merge_chases) : 0) + (transition.from == 'merge' ? 1 : 0) }}"
+        human_round: "${{ size(jq((state_exists('questions') ? states.questions.runs.map(r,r.outputs.response.receipt) + [states.questions.outputs.response.receipt] : []) + (state_exists('dependency_question') ? states.dependency_question.runs.map(r,r.outputs.response.receipt) + [states.dependency_question.outputs.response.receipt] : []) + (state_exists('direction') ? states.direction.runs.map(r,r.outputs.response.receipt) + [states.direction.outputs.response.receipt] : []) + (state_exists('accept') ? states.accept.runs.map(r,r.outputs.response.receipt) + [states.accept.outputs.response.receipt] : []) + (state_exists('packages') ? states.packages.runs.map(r,r.outputs.review_receipts) + [states.packages.outputs.review_receipts] : []) + (state_exists('coordinate') ? states.coordinate.runs.map(r,r.outputs.review_receipts) + [states.coordinate.outputs.review_receipts] : []) + (state_exists('autonomous_limit') ? states.autonomous_limit.runs.map(r,r.outputs.review_receipts) + [states.autonomous_limit.outputs.review_receipts] : []) + (state_exists('response_repair_exhausted') ? states.response_repair_exhausted.runs.map(r,r.outputs.review_receipts) + [states.response_repair_exhausted.outputs.review_receipts] : []) + (state_exists('assessment') ? states.assessment.runs.map(r,r.outputs.review_receipts) + [states.assessment.outputs.review_receipts] : []) + (state_exists('accounting') ? states.accounting.runs.map(r,r.outputs.review_receipts) + [states.accounting.outputs.review_receipts] : []), 'flatten | map(select(.submission_id? != null)) | unique_by(.request_id, .submission_id)')) }}"
       sequence:
       - id: resolve_upstream_head
         op: command_execution
@@ -694,7 +731,7 @@ state:
         maximum_attempts: 1
       catch:
       - id: repair_restored_rebase_conflict
-        when: "(state_exists('rebase_repair') ? size((states.rebase_repair.runs.map(r,r.outputs) + [states.rebase_repair.outputs]).filter(r,r.human_round == size(jq((state_exists('questions') ? states.questions.runs.map(r,r.outputs.response.receipt) + [states.questions.outputs.response.receipt] : []) + (state_exists('direction') ? states.direction.runs.map(r,r.outputs.response.receipt) + [states.direction.outputs.response.receipt] : []) + (state_exists('accept') ? states.accept.runs.map(r,r.outputs.response.receipt) + [states.accept.outputs.response.receipt] : []) + (state_exists('packages') ? states.packages.runs.map(r,r.outputs.review_receipts) + [states.packages.outputs.review_receipts] : []) + (state_exists('coordinate') ? states.coordinate.runs.map(r,r.outputs.review_receipts) + [states.coordinate.outputs.review_receipts] : []) + (state_exists('autonomous_limit') ? states.autonomous_limit.runs.map(r,r.outputs.review_receipts) + [states.autonomous_limit.outputs.review_receipts] : []) + (state_exists('response_repair_exhausted') ? states.response_repair_exhausted.runs.map(r,r.outputs.review_receipts) + [states.response_repair_exhausted.outputs.review_receipts] : []) + (state_exists('assessment') ? states.assessment.runs.map(r,r.outputs.review_receipts) + [states.assessment.outputs.review_receipts] : []) + (state_exists('accounting') ? states.accounting.runs.map(r,r.outputs.review_receipts) + [states.accounting.outputs.review_receipts] : []), 'flatten | map(select(.submission_id? != null)) | unique_by(.request_id, .submission_id)')))) : 0) + (size(jq((state_exists('questions') ? states.questions.runs.map(r,r.outputs.response.receipt) + [states.questions.outputs.response.receipt] : []) + (state_exists('direction') ? states.direction.runs.map(r,r.outputs.response.receipt) + [states.direction.outputs.response.receipt] : []) + (state_exists('accept') ? states.accept.runs.map(r,r.outputs.response.receipt) + [states.accept.outputs.response.receipt] : []) + (state_exists('packages') ? states.packages.runs.map(r,r.outputs.review_receipts) + [states.packages.outputs.review_receipts] : []) + (state_exists('coordinate') ? states.coordinate.runs.map(r,r.outputs.review_receipts) + [states.coordinate.outputs.review_receipts] : []) + (state_exists('autonomous_limit') ? states.autonomous_limit.runs.map(r,r.outputs.review_receipts) + [states.autonomous_limit.outputs.review_receipts] : []) + (state_exists('response_repair_exhausted') ? states.response_repair_exhausted.runs.map(r,r.outputs.review_receipts) + [states.response_repair_exhausted.outputs.review_receipts] : []) + (state_exists('assessment') ? states.assessment.runs.map(r,r.outputs.review_receipts) + [states.assessment.outputs.review_receipts] : []) + (state_exists('accounting') ? states.accounting.runs.map(r,r.outputs.review_receipts) + [states.accounting.outputs.review_receipts] : []), 'flatten | map(select(.submission_id? != null)) | unique_by(.request_id, .submission_id)')) == 0 ? inputs.prior_rebase_repairs : 0) < 2 && jq(json_parse(json_stringify(failure)),states.start.outputs.rebase_policy)"
+        when: "(state_exists('rebase_repair') ? size((states.rebase_repair.runs.map(r,r.outputs) + [states.rebase_repair.outputs]).filter(r,r.human_round == size(jq((state_exists('questions') ? states.questions.runs.map(r,r.outputs.response.receipt) + [states.questions.outputs.response.receipt] : []) + (state_exists('dependency_question') ? states.dependency_question.runs.map(r,r.outputs.response.receipt) + [states.dependency_question.outputs.response.receipt] : []) + (state_exists('direction') ? states.direction.runs.map(r,r.outputs.response.receipt) + [states.direction.outputs.response.receipt] : []) + (state_exists('accept') ? states.accept.runs.map(r,r.outputs.response.receipt) + [states.accept.outputs.response.receipt] : []) + (state_exists('packages') ? states.packages.runs.map(r,r.outputs.review_receipts) + [states.packages.outputs.review_receipts] : []) + (state_exists('coordinate') ? states.coordinate.runs.map(r,r.outputs.review_receipts) + [states.coordinate.outputs.review_receipts] : []) + (state_exists('autonomous_limit') ? states.autonomous_limit.runs.map(r,r.outputs.review_receipts) + [states.autonomous_limit.outputs.review_receipts] : []) + (state_exists('response_repair_exhausted') ? states.response_repair_exhausted.runs.map(r,r.outputs.review_receipts) + [states.response_repair_exhausted.outputs.review_receipts] : []) + (state_exists('assessment') ? states.assessment.runs.map(r,r.outputs.review_receipts) + [states.assessment.outputs.review_receipts] : []) + (state_exists('accounting') ? states.accounting.runs.map(r,r.outputs.review_receipts) + [states.accounting.outputs.review_receipts] : []), 'flatten | map(select(.submission_id? != null)) | unique_by(.request_id, .submission_id)')))) : 0) + (size(jq((state_exists('questions') ? states.questions.runs.map(r,r.outputs.response.receipt) + [states.questions.outputs.response.receipt] : []) + (state_exists('dependency_question') ? states.dependency_question.runs.map(r,r.outputs.response.receipt) + [states.dependency_question.outputs.response.receipt] : []) + (state_exists('direction') ? states.direction.runs.map(r,r.outputs.response.receipt) + [states.direction.outputs.response.receipt] : []) + (state_exists('accept') ? states.accept.runs.map(r,r.outputs.response.receipt) + [states.accept.outputs.response.receipt] : []) + (state_exists('packages') ? states.packages.runs.map(r,r.outputs.review_receipts) + [states.packages.outputs.review_receipts] : []) + (state_exists('coordinate') ? states.coordinate.runs.map(r,r.outputs.review_receipts) + [states.coordinate.outputs.review_receipts] : []) + (state_exists('autonomous_limit') ? states.autonomous_limit.runs.map(r,r.outputs.review_receipts) + [states.autonomous_limit.outputs.review_receipts] : []) + (state_exists('response_repair_exhausted') ? states.response_repair_exhausted.runs.map(r,r.outputs.review_receipts) + [states.response_repair_exhausted.outputs.review_receipts] : []) + (state_exists('assessment') ? states.assessment.runs.map(r,r.outputs.review_receipts) + [states.assessment.outputs.review_receipts] : []) + (state_exists('accounting') ? states.accounting.runs.map(r,r.outputs.review_receipts) + [states.accounting.outputs.review_receipts] : []), 'flatten | map(select(.submission_id? != null)) | unique_by(.request_id, .submission_id)')) == 0 ? inputs.prior_rebase_repairs : 0) < 2 && jq(json_parse(json_stringify(failure)),states.start.outputs.rebase_policy)"
         to: rebase_repair
         payload:
           documents: ${{ transition.payload.documents }}
@@ -704,7 +741,7 @@ state:
         documents: ${{ transition.payload.documents }}
         annotations: ${{ transition.payload.annotations }}
         failure: ${{ transition.failure }}
-        human_round: "${{ size(jq((state_exists('questions') ? states.questions.runs.map(r,r.outputs.response.receipt) + [states.questions.outputs.response.receipt] : []) + (state_exists('direction') ? states.direction.runs.map(r,r.outputs.response.receipt) + [states.direction.outputs.response.receipt] : []) + (state_exists('accept') ? states.accept.runs.map(r,r.outputs.response.receipt) + [states.accept.outputs.response.receipt] : []) + (state_exists('packages') ? states.packages.runs.map(r,r.outputs.review_receipts) + [states.packages.outputs.review_receipts] : []) + (state_exists('coordinate') ? states.coordinate.runs.map(r,r.outputs.review_receipts) + [states.coordinate.outputs.review_receipts] : []) + (state_exists('autonomous_limit') ? states.autonomous_limit.runs.map(r,r.outputs.review_receipts) + [states.autonomous_limit.outputs.review_receipts] : []) + (state_exists('response_repair_exhausted') ? states.response_repair_exhausted.runs.map(r,r.outputs.review_receipts) + [states.response_repair_exhausted.outputs.review_receipts] : []) + (state_exists('assessment') ? states.assessment.runs.map(r,r.outputs.review_receipts) + [states.assessment.outputs.review_receipts] : []) + (state_exists('accounting') ? states.accounting.runs.map(r,r.outputs.review_receipts) + [states.accounting.outputs.review_receipts] : []), 'flatten | map(select(.submission_id? != null)) | unique_by(.request_id, .submission_id)')) }}"
+        human_round: "${{ size(jq((state_exists('questions') ? states.questions.runs.map(r,r.outputs.response.receipt) + [states.questions.outputs.response.receipt] : []) + (state_exists('dependency_question') ? states.dependency_question.runs.map(r,r.outputs.response.receipt) + [states.dependency_question.outputs.response.receipt] : []) + (state_exists('direction') ? states.direction.runs.map(r,r.outputs.response.receipt) + [states.direction.outputs.response.receipt] : []) + (state_exists('accept') ? states.accept.runs.map(r,r.outputs.response.receipt) + [states.accept.outputs.response.receipt] : []) + (state_exists('packages') ? states.packages.runs.map(r,r.outputs.review_receipts) + [states.packages.outputs.review_receipts] : []) + (state_exists('coordinate') ? states.coordinate.runs.map(r,r.outputs.review_receipts) + [states.coordinate.outputs.review_receipts] : []) + (state_exists('autonomous_limit') ? states.autonomous_limit.runs.map(r,r.outputs.review_receipts) + [states.autonomous_limit.outputs.review_receipts] : []) + (state_exists('response_repair_exhausted') ? states.response_repair_exhausted.runs.map(r,r.outputs.review_receipts) + [states.response_repair_exhausted.outputs.review_receipts] : []) + (state_exists('assessment') ? states.assessment.runs.map(r,r.outputs.review_receipts) + [states.assessment.outputs.review_receipts] : []) + (state_exists('accounting') ? states.accounting.runs.map(r,r.outputs.review_receipts) + [states.accounting.outputs.review_receipts] : []), 'flatten | map(select(.submission_id? != null)) | unique_by(.request_id, .submission_id)')) }}"
       sequence:
       - id: recovery
         include: ../adaptive/rebase-recovery.yaml
@@ -917,8 +954,7 @@ state:
       - to: stopped
         when: outputs.reusable && size(outputs.candidate.files) == 0
         payload:
-          disposition: "${{ (state_exists('coordinate') ? jq(states.coordinate.runs.map(r,r.outputs.records) + [states.coordinate.outputs.records],
-            'add') : []).exists(r,r.action == 'execute') ? 'delegated':'unchanged' }}"
+          disposition: "${{ size(state_output('record','satisfied_jobs',[])) > 0 ? 'delegated':'unchanged' }}"
           documents: ${{ outputs.documents }}
           annotations: ${{ outputs.annotations }}
       - to: merge
@@ -1115,7 +1151,7 @@ state:
         maximum_attempts: 1
       catch:
       - id: chase_advanced_upstream
-        when: "failure.kind == 'task_error' && failure.code == 'MERGE_UPSTREAM_ADVANCED' && failure.node.op == 'merge' && failure.node.id == 'merge_reviewed_candidate' && (size(jq((state_exists('questions') ? states.questions.runs.map(r,r.outputs.response.receipt) + [states.questions.outputs.response.receipt] : []) + (state_exists('direction') ? states.direction.runs.map(r,r.outputs.response.receipt) + [states.direction.outputs.response.receipt] : []) + (state_exists('accept') ? states.accept.runs.map(r,r.outputs.response.receipt) + [states.accept.outputs.response.receipt] : []) + (state_exists('packages') ? states.packages.runs.map(r,r.outputs.review_receipts) + [states.packages.outputs.review_receipts] : []) + (state_exists('coordinate') ? states.coordinate.runs.map(r,r.outputs.review_receipts) + [states.coordinate.outputs.review_receipts] : []) + (state_exists('autonomous_limit') ? states.autonomous_limit.runs.map(r,r.outputs.review_receipts) + [states.autonomous_limit.outputs.review_receipts] : []) + (state_exists('response_repair_exhausted') ? states.response_repair_exhausted.runs.map(r,r.outputs.review_receipts) + [states.response_repair_exhausted.outputs.review_receipts] : []) + (state_exists('assessment') ? states.assessment.runs.map(r,r.outputs.review_receipts) + [states.assessment.outputs.review_receipts] : []) + (state_exists('accounting') ? states.accounting.runs.map(r,r.outputs.review_receipts) + [states.accounting.outputs.review_receipts] : []), 'flatten | map(select(.submission_id? != null)) | unique_by(.request_id, .submission_id)')) > state_output('rebase','human_round',0) || state_output('rebase','merge_chases',inputs.prior_merge_chases) < 3)"
+        when: "failure.kind == 'task_error' && failure.code == 'MERGE_UPSTREAM_ADVANCED' && failure.node.op == 'merge' && failure.node.id == 'merge_reviewed_candidate' && (size(jq((state_exists('questions') ? states.questions.runs.map(r,r.outputs.response.receipt) + [states.questions.outputs.response.receipt] : []) + (state_exists('dependency_question') ? states.dependency_question.runs.map(r,r.outputs.response.receipt) + [states.dependency_question.outputs.response.receipt] : []) + (state_exists('direction') ? states.direction.runs.map(r,r.outputs.response.receipt) + [states.direction.outputs.response.receipt] : []) + (state_exists('accept') ? states.accept.runs.map(r,r.outputs.response.receipt) + [states.accept.outputs.response.receipt] : []) + (state_exists('packages') ? states.packages.runs.map(r,r.outputs.review_receipts) + [states.packages.outputs.review_receipts] : []) + (state_exists('coordinate') ? states.coordinate.runs.map(r,r.outputs.review_receipts) + [states.coordinate.outputs.review_receipts] : []) + (state_exists('autonomous_limit') ? states.autonomous_limit.runs.map(r,r.outputs.review_receipts) + [states.autonomous_limit.outputs.review_receipts] : []) + (state_exists('response_repair_exhausted') ? states.response_repair_exhausted.runs.map(r,r.outputs.review_receipts) + [states.response_repair_exhausted.outputs.review_receipts] : []) + (state_exists('assessment') ? states.assessment.runs.map(r,r.outputs.review_receipts) + [states.assessment.outputs.review_receipts] : []) + (state_exists('accounting') ? states.accounting.runs.map(r,r.outputs.review_receipts) + [states.accounting.outputs.review_receipts] : []), 'flatten | map(select(.submission_id? != null)) | unique_by(.request_id, .submission_id)')) > state_output('rebase','human_round',0) || state_output('rebase','merge_chases',inputs.prior_merge_chases) < 3)"
         to: rebase
         payload:
           documents: ${{ transition.payload.documents }}
@@ -1261,7 +1297,7 @@ state:
         previous_attempts: ${{ state_output('recover_work','attempts',0) }}
         work_turn: "${{ state_exists('work') ? size(states.work.runs)+1 : 0 }}"
         previous_work_turn: ${{ state_output('recover_work','work_turn',-1) }}
-        human_round: "${{ size(jq((state_exists('questions') ? states.questions.runs.map(r,r.outputs.response.receipt) + [states.questions.outputs.response.receipt] : []) + (state_exists('direction') ? states.direction.runs.map(r,r.outputs.response.receipt) + [states.direction.outputs.response.receipt] : []) + (state_exists('accept') ? states.accept.runs.map(r,r.outputs.response.receipt) + [states.accept.outputs.response.receipt] : []) + (state_exists('packages') ? states.packages.runs.map(r,r.outputs.review_receipts) + [states.packages.outputs.review_receipts] : []) + (state_exists('coordinate') ? states.coordinate.runs.map(r,r.outputs.review_receipts) + [states.coordinate.outputs.review_receipts] : []) + (state_exists('autonomous_limit') ? states.autonomous_limit.runs.map(r,r.outputs.review_receipts) + [states.autonomous_limit.outputs.review_receipts] : []) + (state_exists('response_repair_exhausted') ? states.response_repair_exhausted.runs.map(r,r.outputs.review_receipts) + [states.response_repair_exhausted.outputs.review_receipts] : []) + (state_exists('assessment') ? states.assessment.runs.map(r,r.outputs.review_receipts) + [states.assessment.outputs.review_receipts] : []) + (state_exists('accounting') ? states.accounting.runs.map(r,r.outputs.review_receipts) + [states.accounting.outputs.review_receipts] : []), 'flatten | map(select(.submission_id? != null)) | unique_by(.request_id, .submission_id)')) }}"
+        human_round: "${{ size(jq((state_exists('questions') ? states.questions.runs.map(r,r.outputs.response.receipt) + [states.questions.outputs.response.receipt] : []) + (state_exists('dependency_question') ? states.dependency_question.runs.map(r,r.outputs.response.receipt) + [states.dependency_question.outputs.response.receipt] : []) + (state_exists('direction') ? states.direction.runs.map(r,r.outputs.response.receipt) + [states.direction.outputs.response.receipt] : []) + (state_exists('accept') ? states.accept.runs.map(r,r.outputs.response.receipt) + [states.accept.outputs.response.receipt] : []) + (state_exists('packages') ? states.packages.runs.map(r,r.outputs.review_receipts) + [states.packages.outputs.review_receipts] : []) + (state_exists('coordinate') ? states.coordinate.runs.map(r,r.outputs.review_receipts) + [states.coordinate.outputs.review_receipts] : []) + (state_exists('autonomous_limit') ? states.autonomous_limit.runs.map(r,r.outputs.review_receipts) + [states.autonomous_limit.outputs.review_receipts] : []) + (state_exists('response_repair_exhausted') ? states.response_repair_exhausted.runs.map(r,r.outputs.review_receipts) + [states.response_repair_exhausted.outputs.review_receipts] : []) + (state_exists('assessment') ? states.assessment.runs.map(r,r.outputs.review_receipts) + [states.assessment.outputs.review_receipts] : []) + (state_exists('accounting') ? states.accounting.runs.map(r,r.outputs.review_receipts) + [states.accounting.outputs.review_receipts] : []), 'flatten | map(select(.submission_id? != null)) | unique_by(.request_id, .submission_id)')) }}"
         previous_human_round: ${{ state_output('recover_work','human_round',-1) }}
       sequence:
       - id: errors
@@ -1335,6 +1371,7 @@ state:
         documents: ${{ transition.payload.documents }}
         annotations: ${{ transition.payload.annotations }}
         jobs: ${{ transition.payload.jobs }}
+        history: ${{ states.record.outputs.coordination }}
       sequence:
       - id: children
         include: ../adaptive/child-results.yaml
@@ -1342,12 +1379,14 @@ state:
           jobs: ${{ {'job_ids':inputs.jobs} }}
           allowed: true
           wait: true
+      - id: dependencies
+        include: ./dependency-requirements.yaml
+        inputs:
+          history: ${{ inputs.history + sequence.children.outputs.results.map(r,{'action':'await','job_id':r.job_id,'result':r}) }}
       outputs:
         results: ${{ sequence.children.outputs.results }}
         pending: ${{ sequence.children.outputs.pending }}
-        failed: ${{ sequence.children.outputs.failed ||
-          sequence.children.outputs.results.exists(r,r.?outputs.orValue({}).?disposition.orValue('') in
-          ['incomplete','blocked']) }}
+        failed: ${{ size(sequence.dependencies.outputs.failed) > 0 }}
         documents: ${{ jq([inputs.documents,sequence.children.outputs.documents],'add') }}
         annotations: ${{ inputs.annotations }}
       transitions:
@@ -1652,8 +1691,8 @@ outputs:
     + 1 : 0) }}"
   coordination: >-
     ${{ jq((state_exists('coordinate') ? jq(states.coordinate.runs.map(r,r.outputs.records) + [states.coordinate.outputs.records],'add')
-    : []) + (state_exists('work') ? jq(states.work.runs.map(r,r.outputs.child_results) + [states.work.outputs.child_results],'add').map(r,{'action':'await','job_id':r.job_id,'result':r})
+    : []) + (state_exists('work') ? jq(states.work.runs.map(r,r.outputs.turn.jobs.?job_ids.orValue([])) + [states.work.outputs.turn.jobs.?job_ids.orValue([])],'add | unique').map(j,{'action':'execute','job_id':j,'cell':'','ref':'main','handoff':'','source':'direct'}) : []) + (state_exists('work') ? jq(states.work.runs.map(r,r.outputs.child_results) + [states.work.outputs.child_results],'add').map(r,{'action':'await','job_id':r.job_id,'result':r})
     : []) + (state_exists('wait_children') ? jq(states.wait_children.runs.map(r,r.outputs.results) + [states.wait_children.outputs.results],'add').map(r,{'action':'await','job_id':r.job_id,'result':r})
-    : []), 'map(if .action == "consult" then {action, reference, target, result:(.result | {outcome,summary,work_kind,failure_code})} elif .action == "await" then {action,job_id,result:(.result | {job_id,status,failure_message,failure,outputs:(.outputs // {} | with_entries(select(.key as $k | ["merged","disposition","status","ok","assistant_summary","summary"] | index($k))))})} else {action,job_id,cell,ref,handoff,replaces,ready} end)') }}
+    : []), 'map(if .action == "consult" then {action, reference, target, result:(.result | {outcome,summary,work_kind,failure_code})} elif .action == "reconcile" then . elif .action == "await" then {action,job_id,result:(.result | {job_id,status,failure_message,failure,outputs:(.outputs // {} | with_entries(select(.key as $k | ["merged","disposition","status","ok","assistant_summary","summary","artifact_refs"] | index($k))))})} else {action,job_id,cell,ref,handoff,replaces,ready} end)') }}
   work_kind: ${{
     state_output('direction_approved','work_kind',state_output('work','turn.result.response.work_kind','')) }}

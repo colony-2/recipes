@@ -1,0 +1,40 @@
+id: adaptive2-dependency-requirements
+inputs:
+  history: ${{ inputs.history }}
+  pending: ${{ inputs.?pending.orValue([]) }}
+sequence: []
+outputs:
+  # A projection of coordination history, not another persisted child status table.
+  pending: ${{ jq(inputs.pending + inputs.history.filter(h,h.action == 'execute' && !inputs.history.exists(a,a.action == 'await' && a.job_id == h.job_id)).map(h,h.job_id), 'unique') }}
+  required_pending: ${{ jq({'history':inputs.history,'pending':inputs.pending}, vars.pending) }}
+  failed: ${{ jq(inputs.history, vars.failed) }}
+  ambiguous: ${{ jq(inputs.history, vars.ambiguous) }}
+  satisfied: ${{ jq(inputs.history, vars.satisfied) }}
+vars:
+  pending: |
+    .history as $h |
+    def decision($id): [$h[] | select(.action == "reconcile" and .job_id == $id) | .dependency.decision] | last // "required";
+    [(.pending[]), ($h[] | select(.action == "execute") | .job_id as $id |
+      select(any($h[]; .action == "await" and .job_id == $id) | not) | $id)] | unique |
+    map(select(decision(.) == "required"))
+  # A retired replacement does not implicitly retire its still-required predecessor.
+  failed: |
+    . as $h |
+    def decision($id): [$h[] | select(.action == "reconcile" and .job_id == $id) | .dependency.decision] | last // "required";
+    [$h[] | select(.action == "await") | .job_id] | unique |
+    map(. as $id | select(decision($id) == "required") |
+      select(any($h[]; .action == "execute" and .replaces == $id and decision(.job_id) == "required") | not) |
+      ([$h[] | select(.action == "await" and .job_id == $id) | .result] | last) as $r |
+      select($r.status != "completed" or
+        (($r.outputs.merged // false) or ((["unchanged","delegated"] | index($r.outputs.disposition // "")) != null)) == false))
+  ambiguous: |
+    [.[] | select(.action == "reconcile")] | group_by(.job_id) |
+    map(last | select(.dependency.decision == "ambiguous"))
+  satisfied: |
+    . as $h |
+    def decision($id): [$h[] | select(.action == "reconcile" and .job_id == $id) | .dependency.decision] | last // "required";
+    [$h[] | select(.action == "await") | .job_id] | unique |
+    map(. as $id | select(decision($id) == "required") |
+      ([$h[] | select(.action == "await" and .job_id == $id) | .result] | last) as $r |
+      select($r.status == "completed" and
+        (($r.outputs.merged // false) or ((["unchanged","delegated"] | index($r.outputs.disposition // "")) != null))))

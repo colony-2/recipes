@@ -33,7 +33,7 @@ and observable contracts without substituting an execution engine.
 c2j test run --directory . --case-timeout 3m --out-dir .c2/test-results
 ```
 
-Use the release in `.c2j-version`. See [the cleanup assessment](ASSESSMENT_LEGACY_WORKFLOW_REMOVAL.md)
+Use the runtime in `.c2j-version`. See [the cleanup assessment](ASSESSMENT_LEGACY_WORKFLOW_REMOVAL.md)
 for current results and [retirement expectations](../recipe-tests/retirement-statements.md)
 for what this removal must preserve. Earlier 107/111-case migration results describe
 an obsolete workflow revision and are available in Git history.

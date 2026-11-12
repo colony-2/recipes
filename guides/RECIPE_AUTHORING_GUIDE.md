@@ -182,7 +182,7 @@ Write recipes with these rules:
 
 For c2ops `codex`, use `nix:github:colony-2/c2ops/published#codex`.
 The skill entrypoint is `nix:github:colony-2/c2ops/published#skill-run`.
-Use the c2j release selected in `.c2j-version` and configure Nix with the trusted `colony2` cache;
+Use the c2j runtime selected in `.c2j-version` and configure Nix with the trusted `colony2` cache;
 `published` advances after CI verifies the uploaded packages. c2j records each
 invocation's exact package identity. The manifest supplies these op-visible
 path defaults automatically; omit them unless intentionally overriding a path:

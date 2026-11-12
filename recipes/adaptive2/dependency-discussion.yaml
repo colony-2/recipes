@@ -1,0 +1,43 @@
+id: adaptive2-dependency-discussion
+inputs:
+  dependencies: ${{ inputs.dependencies }}
+  documents: ${{ inputs.documents }}
+  annotations: ${{ inputs.?annotations.orValue([]) }}
+sequence:
+- id: review
+  include: ./review.yaml
+  inputs:
+    title: Decide ownership of remaining child work
+    documents: ${{ inputs.documents }}
+    annotations: ${{ inputs.annotations }}
+    summary: >-
+      ${{ jq(inputs.dependencies, 'map(.job_id + ": " + .dependency.outcome + "\nUncertainty: " + .dependency.rationale) | join("\n\n")') }}
+    fields: ${{ jq(inputs.dependencies, vars.fields) }}
+    overview: review.md
+    required_documents: ${{ jq({'dependencies':inputs.dependencies,'documents':inputs.documents}, vars.evidence) }}
+- id: feedback
+  include: ../adaptive/feedback-documents.yaml
+  inputs:
+    fields: ${{ sequence.review.outputs.response.fields }}
+    documents: ${{ sequence.review.outputs.response.?artifact_refs.orValue({}) }}
+outputs:
+  documents: ${{ jq([inputs.documents,sequence.review.outputs.response.?artifact_refs.orValue({}),sequence.feedback.outputs.documents],'add') }}
+  annotations: ${{ inputs.annotations }}
+  response: ${{ sequence.review.outputs.response }}
+vars:
+  fields: |
+    (to_entries | map({id:("dependency-" + (.key|tostring)),type:"multiple_choice",required:true,
+      question:("What remains required for " + .value.dependency.outcome + " (child " + .value.job_id + ")?"),
+      options:[
+        {value:"required",label:"Keep this child outcome required"},
+        {value:"local",label:"Assign remaining work to this cell"},
+        {value:"superseded",label:"Use a successor assignment"},
+        {value:"unnecessary",label:"This outcome is no longer needed"}]})) +
+    [{id:"feedback",type:"paragraph_text",required:false,
+      question:"Identify the current or successor assignment, or explain any remaining uncertainty. Local work must still pass current acceptance and verification."}]
+  evidence: |
+    . as $v |
+    ([.dependencies[] | . as $r | .dependency.evidence[] |
+      [., ("coordination/" + $r.reference + "/artifacts/" + .)]] | flatten) +
+    ["handoff.md","test-statements.md","approved-direction/one-pager.md"] |
+    unique | map(select(. as $p | $v.documents | has($p)))

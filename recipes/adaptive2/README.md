@@ -299,3 +299,39 @@ metadata-only titles alongside their unchanged inputs. This requires c2j's
 additive child title contract; the existing CLI `--title` and build `title` input
 retain their input-based behavior. The repository runtime pin must only move
 after validation of a release containing that contract.
+
+### Revising a child requirement
+
+A failed attempt remains failed even when its outcome no longer belongs to the
+current assignment. Return `next: coordinate` with an `action: reconcile` request
+and a `dependency` object containing:
+
+- `job`: the known native child ID.
+- `outcome`, `decision`, `rationale`: the represented outcome, its applicability
+  (`required`, `local`, `superseded`, `unnecessary`, or `ambiguous`), and why.
+- `evidence`: selected document paths supporting the decision.
+- `assignment`: the selected current assignment for `local`, or successor
+  assignment for `superseded`; otherwise null.
+- `acceptance`: the current expectations covering local work; otherwise null.
+- `continuations`: inspected continuation IDs, or an empty list when none were
+  found. Record the inventory searched and access limits in the evidence.
+
+Coordination validates the known identity and selected documents, appends the
+record and binds its evidence. The latest explicit decision applies; unmentioned
+requirements remain required. Reconciliation does not certify child success,
+verification or merge. A later `required` decision restores the requirement.
+Planning can reconcile requirements without gaining permission to execute work.
+Local assignments still pass normal formal expectations, verification, outcome
+review and publication. An unrelated redesign cannot retire another requirement.
+
+An `ambiguous` decision opens a recoverable scope discussion with the outcome and
+rationale. Apply the answer in a new reconciliation decision. Settled human
+direction needs no extra acknowledgment. Active children stay visible independently
+of applicability; explicit waiting still works, and scope changes neither cancel
+nor duplicate them. Inspect coordination history, actual results, visible children
+and successful continuations before deciding a replacement is needed.
+
+The focused `dependency-requirements.test.yaml` suite uses native failed and
+successful children, human input and receiver assignment artifacts. It tests the
+coordination contract and blocker projection; it is not the public-build incident
+regression and does not establish model scope judgment or active-child ordering.

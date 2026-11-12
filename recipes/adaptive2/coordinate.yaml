@@ -24,7 +24,7 @@ state:
       - to: invalid
         when: "size(inputs.requests) == 0 || inputs.requests.exists(r, r.action == 'consult' ? !nonempty(r.?request.orValue(''))
           || (!nonempty(r.?cell.orValue('')) && r.?kind.orValue('feature') == 'feature') : r.action == 'execute' ? inputs.phase
-          != 'implement' || !nonempty(r.?cell.orValue('')) || !nonempty(r.?handoff.orValue('')) : r.action != 'await'
+          != 'implement' || !nonempty(r.?cell.orValue('')) || !nonempty(r.?handoff.orValue('')) : r.action == 'reconcile' ? !has(r.dependency) : r.action != 'await'
           || !nonempty(r.?job.orValue('')))"
       - to: invalid
         when: inputs.requests.exists(r,r.action == 'consult' && nonempty(r.?handoff.orValue('')) &&
@@ -36,6 +36,25 @@ state:
       - to: invalid
         when: inputs.requests.exists(r,r.action == 'await' && !inputs.history.exists(h,h.action == 'execute' &&
           h.?job_id.orValue('') == r.?job.orValue('')))
+      - to: invalid
+        when: >-
+          inputs.requests.exists(r,r.action == 'reconcile' &&
+            (!inputs.history.exists(h,h.action in ['execute','await'] && h.?job_id.orValue('') == r.dependency.?job.orValue('')) ||
+             !(r.dependency.?decision.orValue('') in ['required','superseded','local','unnecessary','ambiguous']) ||
+             !nonempty(r.dependency.?outcome.orValue('')) || !nonempty(r.dependency.?rationale.orValue('')) ||
+             size(r.dependency.?evidence.orValue([])) == 0 ||
+             r.dependency.?evidence.orValue([]).exists(p,!(p in inputs.documents)) ||
+             (r.dependency.?decision.orValue('') in ['local','superseded'] &&
+               !(r.dependency.?assignment.orValue('') in inputs.documents)) ||
+             (r.dependency.?decision.orValue('') == 'local' && !nonempty(r.dependency.?acceptance.orValue('')))))
+        payload:
+          reason: Reconciliation needs a known child, a valid applicability decision, outcome, rationale and selected evidence. Local work also needs its selected assignment and current acceptance; superseded work needs its successor assignment. Child results remain unchanged.
+      - to: invalid
+        when: >-
+          inputs.requests.exists(r,r.action == 'reconcile' && inputs.requests.exists(n,
+            n.action == 'reconcile' && n != r && n.dependency.job == r.dependency.job))
+        payload:
+          reason: Return one applicability decision per child in a coordination turn; conflicting decisions must be resolved first.
       - to: await_requested
         when: inputs.requests.all(r,r.action == 'await')
       - to: pick
@@ -55,8 +74,23 @@ state:
         when: outputs.request.action == 'consult'
       - to: execution
         when: outputs.request.action == 'execute'
+      - to: reconcile
+        when: outputs.request.action == 'reconcile'
       - to: await
         when: true
+    reconcile:
+      sequence: []
+      transitions:
+      - to: record
+        when: true
+        payload:
+          record: ${{ {'action':'reconcile','reference':states.pick.outputs.reference,'job_id':states.pick.outputs.request.dependency.job,'dependency':states.pick.outputs.request.dependency} }}
+          # The selected assignment is durable provenance even when direction
+          # evidence names different documents. Bind both under this decision.
+          documents: >-
+            ${{ jq({'documents':inputs.documents,'paths':states.pick.outputs.request.dependency.evidence +
+              (states.pick.outputs.request.dependency.decision in ['local','superseded'] ? [states.pick.outputs.request.dependency.assignment] : [])},
+              '. as $v | .documents | with_entries(select(.key as $k | $v.paths | index($k)))') }}
     route:
       include: ./route-target.yaml
       inputs:
@@ -393,6 +427,7 @@ vars:
          "Consultation: " + $r.reference + "\nOwner: " + $r.target.cell + "\nOutcome: " + $r.result.outcome + "\n" + ($r.result.summary // "") +
              (($r.result.agreements // []) | to_entries | map("\nAccepted scope in " + .value.target.cell + ": " + .value.request.request) | join("")) +
              (($r.result.execution_requests // []) | map("\nImplementation requested in " + .cell + " @ " + (.ref // "main") + ": " + .request) | join(""))
+       elif $r.action == "reconcile" then "Child outcome applicability: " + $r.job_id + "\nDecision: " + $r.dependency.decision + "\nOutcome: " + $r.dependency.outcome + "\nReason: " + $r.dependency.rationale + "\nAssignment: " + ($r.dependency.assignment // "") + "\nCurrent acceptance: " + ($r.dependency.acceptance // "") + "\nInspected continuations: " + (($r.dependency.continuations // []) | join(", ")) + "\nEvidence: " + ($r.dependency.evidence | join(", ")) + "\nThis decision does not change child execution results or certify verification or merge."
        elif $r.action == "execute" then "Child job: " + $r.job_id + (if ($r.replaces // "") != "" then "\nReplaces: " + $r.replaces else "" end)
        elif $r.action == "await" then "Child job: " + $r.job_id + "\nStatus: " + $r.result.status + "\n" + (($r.result.failure_message // "")[:2000]) +
          ([$r.result.outputs.disposition // $r.result.outputs.status // (if $r.result.outputs.ok == false then "failed" else "" end), $r.result.outputs.assistant_summary // $r.result.outputs.summary // ""] |
@@ -410,4 +445,4 @@ vars:
     . as $r | accepted | .agreements = [($r.agreements // [])[] | .result |= accepted]
   child_result: |
     {job_id, status, failure_message, failure, outputs: (.outputs // {} |
-      with_entries(select(.key as $k | ["merged","disposition","status","ok","assistant_summary","summary"] | index($k))))}
+      with_entries(select(.key as $k | ["merged","disposition","status","ok","assistant_summary","summary","artifact_refs"] | index($k))))}

@@ -1,0 +1,165 @@
+schema_version: 2
+id: native-dependency-reconciliation
+input_schema:
+  options:
+    type: object
+    default_value: {}
+inputs:
+  options: ${{ inputs.options }}
+sequence:
+- id: launch
+  op: recipes.run
+  inputs:
+    recipes:
+    - cell_name: root
+      name: diagnostic
+      inputs:
+        fail: ${{ inputs.options.?fail.orValue(true) }}
+- id: collected
+  include: ../../recipes/adaptive/await-child.yaml
+  inputs:
+    job: ${{ sequence.launch.outputs.job_ids[0] }}
+- id: direction
+  inputs:
+    title: Decide current ownership of the diagnostic outcome
+    documents: {}
+    overview: review.md
+    fields:
+    - id: ownership
+      type: paragraph_text
+      question: Who owns the remaining work?
+      required: true
+  include: ../../recipes/adaptive2/review.yaml
+- id: assignment
+  op: recipes.run
+  inputs:
+    recipes:
+    - cell_name: root
+      name: assignment
+      inputs: {}
+- id: receiver
+  include: ../../recipes/adaptive/await-child.yaml
+  inputs:
+    job: ${{ sequence.assignment.outputs.job_ids[0] }}
+- id: other
+  include: optional-dependency.yaml
+  inputs:
+    enabled: ${{ inputs.options.?other.orValue(false) }}
+    fail: ${{ inputs.options.?other_fail.orValue(true) }}
+- id: history
+  sequence: []
+  outputs:
+    records: ${{ inputs.records }}
+    documents: ${{ inputs.documents }}
+  inputs:
+    records: '${{ [{''action'':''execute'',''job_id'':sequence.launch.outputs.job_ids[0],''cell'':''root'',''handoff'':''work/diagnostic/''},
+      {''action'':''await'',''job_id'':sequence.collected.outputs.result.job_id,''result'':sequence.collected.outputs.result}]
+      + (inputs.options.?other.orValue(false) ? [{''action'':''execute'',''job_id'':sequence.other.outputs.result.job_id,''cell'':''root'',''handoff'':''work/other/'',''replaces'':inputs.options.?replacement.orValue(false)
+      ? sequence.collected.outputs.result.job_id : ''''}, {''action'':''await'',''job_id'':sequence.other.outputs.result.job_id,''result'':sequence.other.outputs.result}]
+      : []) }}'
+    documents: ${{ jq([sequence.receiver.outputs.result.outputs.artifact_refs, sequence.collected.outputs.errors, {'human-direction.json':{'kind':'value','name':'human-direction.json','format':'json','value':sequence.direction.outputs}
+      }],'add') }}
+- id: before
+  include: ../../recipes/adaptive2/dependency-requirements.yaml
+  inputs:
+    history: ${{ sequence.history.outputs.records }}
+- id: requests
+  sequence: []
+  inputs:
+    request:
+      action: ${{ inputs.options.?action.orValue('reconcile') }}
+      cell: root
+      handoff: work/diagnostic/
+      dependency:
+        job: '${{ inputs.options.?unknown.orValue(false) ? ''unknown-child'' : (inputs.options.?retire_replacement.orValue(false) ? sequence.other.outputs.result.job_id : sequence.launch.outputs.job_ids[0]) }}'
+        outcome: Preserve the bounded diagnostic outcome.
+        decision: ${{ inputs.options.?decision.orValue('local') }}
+        rationale: '${{ inputs.options.?missing_rationale.orValue(false) ? '''' : ''The recorded human direction assigns
+          remaining source work to this cell.'' }}'
+        evidence: '${{ inputs.options.?missing_evidence.orValue(false) ? [''missing.md''] : [''human-direction.json'',''handoff.md'']
+          }}'
+        assignment: '${{ inputs.options.?missing_assignment.orValue(false) ? ''missing-assignment.md'' : ''handoff.md''
+          }}'
+        acceptance: '${{ inputs.options.?missing_acceptance.orValue(false) ? '''' : ''T1: the local candidate must pass
+          current verification.'' }}'
+        continuations: []
+    conflict: ${{ inputs.options.?conflict.orValue(false) }}
+  outputs:
+    requests: '${{ [inputs.request] + (inputs.conflict ? [jq([inputs.request, {''dependency'':jq([inputs.request.dependency,
+      {''decision'':''required''}], ''add'')}], ''add'')] : []) }}'
+- id: decision
+  include: ../../recipes/adaptive2/coordinate.yaml
+  inputs:
+    phase: ${{ inputs.options.?phase.orValue('design') }}
+    root_cell: root
+    root_ref: main
+    consultation_recipe: unused
+    build_recipe: unused
+    create_recipe: unused
+    session: {}
+    prefix: reconcile
+    documents: ${{ sequence.history.outputs.documents }}
+    history: ${{ sequence.history.outputs.records }}
+    requests: ${{ sequence.requests.outputs.requests }}
+- id: discussion
+  include: optional-dependency-discussion.yaml
+  inputs:
+    enabled: ${{ inputs.options.?discuss.orValue(false) }}
+    dependencies: ${{ sequence.decision.outputs.records.filter(r,r.action == 'reconcile' && r.dependency.decision ==
+      'ambiguous') }}
+    documents: ${{ sequence.decision.outputs.documents }}
+- id: after
+  include: ../../recipes/adaptive2/dependency-requirements.yaml
+  inputs:
+    history: ${{ sequence.history.outputs.records + sequence.decision.outputs.records }}
+- id: restore
+  include: ../../recipes/adaptive2/coordinate.yaml
+  inputs:
+    phase: design
+    root_cell: root
+    root_ref: main
+    consultation_recipe: unused
+    build_recipe: unused
+    create_recipe: unused
+    session: {}
+    prefix: restore
+    documents: ${{ sequence.decision.outputs.documents }}
+    history: ${{ sequence.history.outputs.records + sequence.decision.outputs.records }}
+    requests:
+    - action: reconcile
+      dependency:
+        job: ${{ sequence.launch.outputs.job_ids[0] }}
+        outcome: Preserve the bounded diagnostic outcome.
+        decision: required
+        rationale: Later direction restores the required external outcome.
+        evidence:
+        - human-direction.json
+        continuations: []
+- id: restored
+  include: ../../recipes/adaptive2/dependency-requirements.yaml
+  inputs:
+    history: ${{ sequence.history.outputs.records + sequence.decision.outputs.records + sequence.restore.outputs.records
+      }}
+- id: inspect_evidence
+  op: command_execution
+  artifacts:
+    ./: ${{ sequence.decision.outputs.documents }}
+  inputs:
+    run: 'cat "$INBOX/handoff.md"
+
+      grep -R "native diagnostic failure evidence" "$INBOX" || true'
+    env:
+      INBOX: ${{ context.environment.op.inbox }}
+outputs:
+  valid: ${{ sequence.decision.outputs.valid }}
+  issues: ${{ sequence.decision.outputs.issues }}
+  records: ${{ sequence.history.outputs.records + sequence.decision.outputs.records + sequence.restore.outputs.records
+    }}
+  before: ${{ sequence.before.outputs }}
+  after: ${{ sequence.after.outputs }}
+  restored: ${{ sequence.restored.outputs }}
+  child: ${{ sequence.collected.outputs.result }}
+  documents: ${{ sequence.decision.outputs.documents }}
+  evidence: ${{ sequence.inspect_evidence.outputs.stdout }}
+  other: ${{ sequence.other.outputs.result }}
+  discussion: ${{ sequence.discussion.outputs }}

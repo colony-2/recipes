@@ -184,7 +184,7 @@ Per-turn guidance keeps scratch/downloaded trees out of outbox and favors an ind
 of individually accessible evidence over archives. See the
 [artifact selection fix](../../guides/FIX_REVIEW_ARTIFACT_SELECTION.md).
 This requires the version-2 [execution diagnostics](../../GUIDE-Command-Failure-Diagnostics.md)
-contract and self discovery. CI selects the exact npm release in
+contract and self discovery. CI selects the exact public runtime in
 [`../../.c2j-version`](../../.c2j-version) and records its source commit.
 Missing diagnostics produce an explicit error note; cancellation stops execution.
 
@@ -214,8 +214,7 @@ c2j `eb636a5` or later; see the [permission regression fix](../../guides/FIX_INH
 See [the direct-state implementation report](../../guides/IMPLEMENTATION_DIRECT_RECIPE_STATE.md)
 for the ownership of state values and validation results.
 
-Tests are in `../../recipe-tests/adaptive/`. Use the release in `.c2j-version`
-(currently 0.0.124), including its task inspection permissions:
+Tests are in `../../recipe-tests/adaptive/`. Use the runtime in `.c2j-version`, including its task inspection permissions:
 
 ```sh
 c2j test run --directory recipe-tests/adaptive --parallelism 2

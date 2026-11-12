@@ -69,9 +69,11 @@ exclusive helpers and tests have been removed. Adaptive2 is the default build pa
 
 ## Tests
 
-Use the c2j release pinned in [`.c2j-version`](.c2j-version), Nix with flakes,
+Use the c2j runtime pinned in [`.c2j-version`](.c2j-version), Nix with flakes,
 and the public `colony2` Cachix cache. [CI](.github/workflows/recipes.yml) installs
-these dependencies and records the exact runtime version.
+these dependencies and records the exact runtime version. Install the selected runtime
+with `bash scripts/install-c2j.sh /tmp/recipes-c2j` and put `/tmp/recipes-c2j/bin`
+first on `PATH`; see [native testing](guides/NATIVE_RECIPE_TESTING.md).
 
 ```sh
 c2j test run --directory . --case-timeout 10m --out-dir .c2/test-results
