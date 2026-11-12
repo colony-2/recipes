@@ -70,10 +70,24 @@ vars:
       type == "string" and length > 0 and length <= $limit and
       (test("[[:cntrl:]]") | not);
 
+    def title_text:
+      if type == "string" then
+        gsub("[[:cntrl:]\u0080-\u009f]"; "") |
+        if test("[^\\s\\p{Z}]") then . else null end
+      else null end;
+
+    def display_title($supplied; $mapped; $id):
+      (($supplied | title_text) // ($mapped | title_text) //
+       ($id | split("/")[-1] | sub("\\.[^.]*$"; "") | gsub("[-_]"; " ") |
+        title_text | if . == null then . else gsub("^[\\s\\p{Z}]+|[\\s\\p{Z}]+$"; "") end) //
+       "Attachment") |
+      # jq slices count Unicode code points; the ellipsis occupies the last one.
+      if length > 120 then .[:119] + "…" else . end;
+
     def descriptor:
       (if type == "object" then . else {} end) |
       with_entries(select(
-        (.key == "title" and (.value | safe_text(120))) or
+        (.key == "title") or
         (.key == "description" and (.value | safe_text(300))) or
         (.key == "role" and (.value | IN("primary", "supporting", "diagnostic"))) or
         (.key == "order" and (.value | type == "number" and . >= 0 and . <= 1000000 and . == floor))
@@ -109,7 +123,8 @@ vars:
        elif $id == "implementation.md" then {role: "supporting", order: 5}
        else {role: (if .[$id].role == "diagnostic" then "diagnostic" else "supporting" end)} end) as $priority |
       if $priority == null then . else
-        .[$id] = {title: ($context.titles[$id] // $id)} + (.[$id] // {}) + $priority
+        .[$id] = (.[$id] // {}) + $priority +
+          {title: display_title(.[$id].title; $context.titles[$id]; $id)}
       end
     )
   form_fields: |

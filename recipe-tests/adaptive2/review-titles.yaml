@@ -1,0 +1,107 @@
+schema_version: 2
+id: review-titles
+input_schema:
+  samples:
+    type: object
+    default_value: {}
+    additional_properties: true
+  mapped_title:
+    type: string
+    default_value: Acceptance expectations
+inputs:
+  samples: ${{ inputs.?samples.orValue({}) }}
+  mapped_title: ${{ inputs.?mapped_title.orValue('Acceptance expectations') }}
+sequence:
+- id: samples
+  inputs:
+    samples: ${{ inputs.samples }}
+  sequence: []
+  outputs:
+    values: ${{ jq([vars.samples, inputs.samples], 'add') }}
+- id: seed
+  inputs:
+    samples: ${{ sequence.samples.outputs.values }}
+  sequence: []
+  outputs:
+    documents: ${{ jq(inputs.samples, vars.documents) }}
+- id: store
+  op: command_execution
+  artifacts:
+    originals/: ${{ sequence.seed.outputs.documents }}
+  inputs:
+    env:
+      REVIEW_INBOX: ${{ context.environment.op.inbox }}
+      REVIEW_OUTBOX: ${{ context.environment.op.outbox }}
+    run: cp -R "$REVIEW_INBOX/originals/." "$REVIEW_OUTBOX/"
+- id: annotations
+  inputs:
+    documents: ${{ jq({'stored':sequence.store.artifacts,'original':sequence.seed.outputs.documents}, '. as $v | .stored | with_entries(select(.key as $id | $v.original | has($id)))') }}
+    samples: ${{ sequence.samples.outputs.values }}
+  sequence: []
+  outputs:
+    values: ${{ jq(inputs, vars.annotations) }}
+    documents: ${{ inputs.documents }}
+- id: review
+  include: ../../recipes/adaptive2/review.yaml
+  inputs:
+    title: Review attachment titles
+    overview: merge-review.md
+    brief: ${{ sequence.annotations.outputs.documents['merge-review.md'] }}
+    documents: ${{ sequence.annotations.outputs.documents }}
+    annotations: ${{ sequence.annotations.outputs.values }}
+    fields:
+    - id: decision
+      type: multiple_choice
+      question: Merge these changes?
+      required: true
+      options:
+      - value: accept
+        label: Merge
+      - value: revise
+        label: Revise
+- id: compare_bytes
+  op: command_execution
+  artifacts:
+    expected/: ${{ jq(sequence.seed.outputs.documents, 'del(."unselected.md")') }}
+    actual/: ${{ sequence.review.outputs.documents }}
+  inputs:
+    env:
+      REVIEW_INBOX: ${{ context.environment.op.inbox }}
+    run: |
+      set -eu
+      diff -r "$REVIEW_INBOX/expected" "$REVIEW_INBOX/actual"
+      echo 'All selected attachment paths and bytes are unchanged.'
+outputs:
+  response: ${{ sequence.review.outputs.response }}
+  documents: ${{ sequence.review.outputs.documents }}
+  original: ${{ sequence.annotations.outputs.documents }}
+  expected: ${{ jq(sequence.samples.outputs.values, 'map_values(.expected)') }}
+  mapped_title: ${{ inputs.mapped_title }}
+  changed: ${{ sequence.review.outputs.changed }}
+vars:
+  samples:
+    evidence/iter1/consultant/api-question/evidence/draft-conflict-evidence-023-preserve-original-write-and-review-accepted-retry-contract.md:
+      descriptor: {}
+      expected: draft conflict evidence 023 preserve original write and review accepted retry contract
+  documents: |
+    to_entries | map({key:.key,value:{kind:"value",name:.key,format:"text",
+      value:("# Original evidence\n\nUnicode bytes: café 日本語 🧪\n" + .key + "\n")}}) | from_entries |
+    . + {"source.md":{kind:"value",name:"source.md",format:"text",value:"Current source\n"},
+         "unselected.md":{kind:"value",name:"unselected.md",format:"text",value:"Unselected source\n"},
+         "test-statements.md":{kind:"value",name:"test-statements.md",format:"text",value:"Acceptance expectations\n"},
+         "merge-review.md":{kind:"value",name:"merge-review.md",format:"text",
+           value:"# Review attachment titles\n\n[Original evidence](evidence/iter1/consultant/api-question/evidence/draft-conflict-evidence-023-preserve-original-write-and-review-accepted-retry-contract.md)\n"}}
+  annotations: |
+    .documents as $docs | .samples as $samples |
+    ($samples | keys[0]) as $id |
+    # An earlier matching title loses to the last current descriptor.
+    [{id:$id,ref:$docs[$id],descriptor:{title:"Earlier title"}},
+     {id:"merge-review.md",ref:$docs["merge-review.md"],descriptor:{role:"diagnostic",order:99},
+      sources:([$docs | to_entries[] | select(.key != "merge-review.md" and .key != "unselected.md") |
+        {id:.key,ref:(.value + {name:"alias.md"})}] +
+        [{id:"unselected.md",ref:($docs["source.md"] + {name:"unselected.md"})}])}] +
+    [$samples | to_entries[] | {id:.key,ref:($docs[.key] + {name:"alias.md"}),
+      descriptor:({role:"diagnostic",order:17,description:"Original evidence description"} + .value.descriptor),
+      sources:[{id:"source.md",ref:($docs["source.md"] + {name:"alias.md"})},
+               {id:"test-statements.md",ref:($docs["unselected.md"] + {name:"test-statements.md"})}]}] +
+    [{id:$id,ref:($docs["unselected.md"] + {name:$id}),descriptor:{title:"Stale title",order:999}}]

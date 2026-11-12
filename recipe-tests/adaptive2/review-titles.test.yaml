@@ -1,0 +1,115 @@
+recipe: review-titles.yaml
+cases:
+- id: exact-path-without-title
+  type: integration_case
+  runtime: &runtime
+    responses:
+    - node_path: review-titles/review/adaptive2-review/request_human_review
+      fields:
+        decision: accept
+  mocks: &commands
+    ops:
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions: &accepted
+  - type: output_equals
+    path: response.fields.decision
+    value: accept
+  - type: cel_true
+    expr: size(reviews) == 1 && calls.filter(c,c.op == "input").size() == 1 && !outputs.changed
+  - type: cel_true
+    expr: calls.exists(c,c.node_path == "review-titles/compare_bytes") && !calls.exists(c,c.op == "extension_execution" || c.node_path.contains("repair"))
+  - type: cel_true
+    expr: outputs.expected.all(id, reviews[0].form.document_metadata[id].title == outputs.expected[id])
+  - type: cel_true
+    expr: reviews[0].form.document_metadata.all(id, size(reviews[0].form.document_metadata[id].title) <= 120)
+  - type: cel_true
+    expr: size(outputs.documents) == size(outputs.original) - 1 && !("unselected.md" in outputs.documents) && outputs.documents.all(id, outputs.documents[id] == outputs.original[id])
+  - type: cel_true
+    expr: reviews[0].form.documents == outputs.documents && outputs.documents.all(id, outputs.documents[id].kind == "stored" && outputs.documents[id].name == id)
+  - type: cel_true
+    expr: outputs.expected.all(id, reviews[0].form.document_metadata[id].role == "diagnostic" && reviews[0].form.document_metadata[id].order == 17 && reviews[0].form.document_metadata[id].description == "Original evidence description" && reviews[0].form.document_metadata[id].source_document_ids == ["source.md"])
+  - type: cel_true
+    expr: reviews[0].form.overview_document_id == "merge-review.md" && reviews[0].form.document_metadata["merge-review.md"].title == "Merge decision" && reviews[0].form.document_metadata["merge-review.md"].role == "primary" && reviews[0].form.document_metadata["merge-review.md"].order == 0
+  - type: cel_true
+    expr: reviews[0].form.document_metadata["test-statements.md"].title == outputs.mapped_title && reviews[0].form.document_metadata["test-statements.md"].role == "supporting" && reviews[0].form.document_metadata["test-statements.md"].order == 1
+  - type: cel_true
+    expr: reviews[0].form.fields == [{"id":"decision","type":"multiple_choice","question":"Merge these changes?","required":true,"options":[{"value":"accept","label":"Merge"},{"value":"revise","label":"Revise"}],"validation":{}}]
+- id: exact-path-with-explicit-title
+  type: integration_case
+  runtime: *runtime
+  mocks: *commands
+  inputs:
+    samples:
+      evidence/iter1/consultant/api-question/evidence/draft-conflict-evidence-023-preserve-original-write-and-review-accepted-retry-contract.md:
+        descriptor:
+          title: Preserve original write and accept retry
+        expected: Preserve original write and accept retry
+  assertions: *accepted
+- id: boundaries-and-unusable-labels
+  type: integration_case
+  runtime: *runtime
+  mocks: *commands
+  inputs:
+    samples:
+      "ascii-120.md":
+        descriptor: {title: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"}
+        expected: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+      "ascii-121.md":
+        descriptor: {title: "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"}
+        expected: "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB…"
+      "multibyte-120.md":
+        descriptor: {title: "日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪"}
+        expected: "日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪"
+      "multibyte-121.md":
+        descriptor: {title: "éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪"}
+        expected: "éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪…"
+      "controls.md":
+        descriptor: {title: "\u0000Readable\t title\n日本語🧪\u001f\u007f\u0085\u009f"}
+        expected: "Readable title日本語🧪"
+      "empty_title.md":
+        descriptor: {title: ""}
+        expected: "empty title"
+      "spaces_title.md":
+        descriptor: {title: " \t   "}
+        expected: "spaces title"
+      "control_title.md":
+        descriptor: {title: "\u0000\u001f\u007f\u0080\u009f"}
+        expected: "control title"
+      "object_title.md":
+        descriptor: {title: {"invalid":true}}
+        expected: "object title"
+      "array_title.md":
+        descriptor: {title: ["invalid"]}
+        expected: "array title"
+      "number_title.md":
+        descriptor: {title: 123}
+        expected: "number title"
+      "boolean_title.md":
+        descriptor: {title: false}
+        expected: "boolean title"
+      "null_title.md":
+        descriptor: {title: null}
+        expected: "null title"
+      "---___.md":
+        descriptor: {title: null}
+        expected: "Attachment"
+      "long-filename-filename-filename-filename-filename-filename-filename-filename-filename-filename-filename-filename-filename-filename-filename-filename-.md":
+        descriptor: {title: null}
+        expected: "long filename filename filename filename filename filename filename filename filename filename filename filename filena…"
+      "valid-spaces.md":
+        descriptor: {title: "  Preserve descriptive whitespace  "}
+        expected: "  Preserve descriptive whitespace  "
+      "evidence/control\u007f_file.md":
+        descriptor: {title: null}
+        expected: "control file"
+      "evidence/\u007f control_label \u007f.md":
+        descriptor: {title: null}
+        expected: "control label"
+      "evidence/\u007f.md":
+        descriptor: {title: null}
+        expected: "Attachment"
+  assertions: *accepted
