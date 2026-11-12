@@ -19,6 +19,7 @@ sequence:
     packages:
     - nix:github:NixOS/nixpkgs/e7439b6b14ad3cc35d05608ebca9bce01a25f5f8#python3
   artifacts:
+    bundle.json: ${{ sequence.content.outputs.bundle }}
     producer.py: ${{ sequence.content.outputs.program }}
   inputs:
     env:
@@ -103,13 +104,20 @@ sequence:
           render(prepared)
           assert (scope['outbox']/'brief.md').read_bytes()!=before
           checks+=7
-          # Expired total budgets never validate model prose or retry.
-          expired=copy.deepcopy(prepared);expired['started_at']=time.time()-131
+          # Supersedes expired-bundle rejection: age cannot reject valid prose or a corrective retry.
+          collected=json.loads((Path(os.environ['INBOX'])/'bundle.json').read_text())
+          aged=copy.deepcopy(collected);aged['started_at']=time.time()-200
           output=io.StringIO()
-          with contextlib.redirect_stdout(output):scope['check'](expired, {'response':base}, 1)
-          assert not json.loads(output.getvalue())['retry']
-          assert 'prose' not in json.loads((scope['outbox']/'bundle.json').read_text())
-          checks+=1
+          with contextlib.redirect_stdout(output):scope['check'](aged, {'response':covered}, 1)
+          assert json.loads(output.getvalue())['valid']
+          assert 'prose' in json.loads((scope['outbox']/'bundle.json').read_text())
+          for age in (0,70,200):
+              invalid=copy.deepcopy(collected);invalid['started_at']=time.time()-age
+              output=io.StringIO()
+              with contextlib.redirect_stdout(output):scope['check'](invalid, {'response':{}}, 1)
+              assert json.loads(output.getvalue())['retry']
+              assert 'prose' not in json.loads((scope['outbox']/'bundle.json').read_text())
+          checks+=4
       # Consultation final-reference identity establishes current scope, not historical text.
       with tempfile.TemporaryDirectory() as root:
           root=Path(root); scope['inbox']=root/'in';scope['outbox']=root/'out'

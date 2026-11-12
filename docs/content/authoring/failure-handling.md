@@ -3,27 +3,12 @@ title: "Failure Handling"
 weight: 38
 ---
 
-Recipe nodes can use `timeout`, `retry`, and `catch` to control failures.
-
-Timeout:
-
-```yaml
-- id: bounded
-  op: command_execution
-  timeout: 2m
-  inputs:
-    run: npm test
-```
-
-Op-specific command timeout:
-
-```yaml
-- id: bounded_command
-  op: command_execution
-  inputs:
-    timeout: 30s
-    run: npm test
-```
+Use `retry` and `catch` to handle failures. Recipes must not impose execution
+timeouts through node, sequence or state metadata, operation inputs, command
+flags, subprocess limits, or embedded elapsed-time checks. Omit optional timeout
+inputs using the operation's supported contract. Runtime defaults, authority
+bounds and cancellation still apply; omission does not promise unlimited runtime.
+CI and test-runner safety limits are separate from recipe execution policy.
 
 Catch clauses choose exactly one action:
 

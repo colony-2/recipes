@@ -54,7 +54,6 @@ secrets:
   GITHUB_TOKEN: "{{ inputs.github_token }}"
 backend: "local"
 runner_image: "ghcr.io/catthehacker/ubuntu:act-latest"
-timeout: "20m"
 continue_on_error: false
 remote:
   push_to: "origin"
@@ -69,7 +68,7 @@ Field notes:
 - `secrets`: workflow secrets. `secrets.GITHUB_TOKEN` is required for `backend: github`.
 - `backend`: `local` or `github`. Defaults to `local`.
 - `runner_image`: overrides the Docker image used by the local backend.
-- `timeout`: Go duration string such as `5m` or `30m`.
+- `timeout`: runtime-supported override; Recipes must omit it. Runtime defaults and cancellation remain.
 - `continue_on_error`: when `false`, a non-success workflow fails the activity. Failed structured output is still recorded with the activity failure.
 - `remote.push_to`: optional remote name or URL for `backend: github`. If omitted, the op derives `git@github.com:<base_repo>.git` from git context.
 - `remote.ref_prefix`: optional temp branch prefix for `backend: github`. Defaults to `c2/gha`.
@@ -166,7 +165,6 @@ Example:
 - id: checks
   op: nix:github:colony-2/c2ops/published#gha-many
   inputs:
-    timeout: "15m"
     continue_on_error: true
     workflows:
       - id: lint

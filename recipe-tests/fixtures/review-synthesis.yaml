@@ -13,6 +13,27 @@ sequence:
         kind: value
         format: text
         value: Use concise review content.
+- id: age_evidence
+  op: command_execution
+  execution_needs:
+    packages:
+    - nix:github:NixOS/nixpkgs/e7439b6b14ad3cc35d05608ebca9bce01a25f5f8#python3
+  artifacts:
+    bundle.json: ${{ sequence.content.outputs.bundle }}
+  inputs:
+    env:
+      INBOX: ${{ context.environment.op.inbox }}
+      OUTBOX: ${{ context.environment.op.outbox }}
+      AGE: ${{ string(inputs.age_seconds) }}
+    run: |-
+      python3 - <<'CHECK'
+      import json,os,time
+      from pathlib import Path
+      b=json.loads((Path(os.environ['INBOX'])/'bundle.json').read_text())
+      # Test-only clock shift. Keep all collected evidence and producer code unchanged.
+      b['started_at']=time.time()-float(os.environ['AGE'])
+      (Path(os.environ['OUTBOX'])/'bundle.json').write_text(json.dumps(b))
+      CHECK
 - id: synthesis
   include: ../../recipes/kernel/review-synthesis.yaml
   inputs:
@@ -20,12 +41,30 @@ sequence:
     provider: openai
     model: configured-test-model
     program: ${{ sequence.content.outputs.program }}
-    bundle_ref: ${{ sequence.content.outputs.bundle }}
+    bundle_ref: ${{ sequence.age_evidence.artifacts["bundle.json"] }}
     bundle: {}
+- id: render
+  op: ./recipes/kernel/render
+  execution_needs:
+    packages:
+    - nix:github:NixOS/nixpkgs/e7439b6b14ad3cc35d05608ebca9bce01a25f5f8#python3
+  artifacts:
+    producer.py: ${{ sequence.content.outputs.program }}
+    bundle.json: ${{ sequence.synthesis.outputs.bundle }}
+  inputs:
+    inbox: ${{ context.environment.op.inbox }}
+    outbox: ${{ context.environment.op.outbox }}
+- id: namespace
+  include: ../../recipes/kernel/artifact-namespace.yaml
+  inputs:
+    prefix: ${{ sequence.render.outputs.prefix }}
+    documents: '${{ {''brief.md'': sequence.render.artifacts[''brief.md''], ''review-provenance.json'': sequence.render.artifacts[''review-provenance.json'']}
+      }}'
 - id: inspect
   op: command_execution
   artifacts:
     bundle.json: ${{ sequence.synthesis.outputs.bundle }}
+    documents/: ${{ sequence.namespace.outputs.documents }}
   execution_needs:
     packages:
     - nix:github:NixOS/nixpkgs/e7439b6b14ad3cc35d05608ebca9bce01a25f5f8#python3
@@ -35,8 +74,23 @@ sequence:
     run: |-
       python3 - <<'CHECK'
       import json,os,pathlib
-      b=json.loads((pathlib.Path(os.environ['INBOX'])/'bundle.json').read_text())
+      root=pathlib.Path(os.environ['INBOX'])
+      b=json.loads((root/'bundle.json').read_text())
+      brief=next((root/'documents').rglob('brief.md')).read_text()
+      p=json.loads(next((root/'documents').rglob('review-provenance.json')).read_text())
+      assert p['manifest']==b['manifest'] and p['ledger']==b['ledger']
+      assert 'design.md' in brief and 'Use concise review content.' in brief
+      assert p['reason']==b['reason'] and p['attempts']==b['attempts']
+      assert 'prose' in b or 'deterministic fallback' in brief
       print(json.dumps({'attempts':b['attempts'],'valid':'prose' in b,'reason':b['reason']}))
       CHECK
 outputs:
   result: ${{ json_parse(sequence.inspect.outputs.stdout) }}
+  mode: ${{ sequence.render.outputs.mode }}
+  documents: ${{ sequence.namespace.outputs.documents }}
+input_schema:
+  age_seconds:
+    type: number
+    default_value: 0
+inputs:
+  age_seconds: ${{ inputs.age_seconds }}

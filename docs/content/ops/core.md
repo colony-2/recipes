@@ -18,7 +18,6 @@ shell: bash
 env:
   CI: "true"
 continue_on_error: false
-timeout: 5m
 ```
 
 Omit op sandbox configuration as c2j removes that support. See [Op-Visible Paths]({{% relref "/reference/op-visible-paths" %}}) for process path examples.

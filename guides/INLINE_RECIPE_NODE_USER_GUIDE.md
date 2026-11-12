@@ -80,7 +80,9 @@ The callsite uses normal node metadata:
 
 - `id`: output key in the parent `sequence` or `states` map.
 - `inputs`: raw inputs passed to the included recipe input schema.
-- `when`, `vars`, `timeout`, `retry`, `catch`, `const`: normal node behavior on the generated include boundary.
+- `when`, `vars`, `retry`, `catch`, `const`: normal node behavior on the generated include boundary.
+
+Recipes must omit execution timeouts on include boundaries as well as their children; runtime authority bounds and cancellation remain.
 
 Do not put `inputs` under `include`. The include object only identifies the recipe reference.
 

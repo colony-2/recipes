@@ -1,5 +1,11 @@
 # Bound autonomous build loops
 
+> Timing-policy update: the approved “Remove recipe-imposed timeouts” bug fix
+> requires supported timeout omission throughout shipped recipes and examples.
+> The enclosing-timeout alternative below is superseded; retain count-based controls.
+> See [current authoring policy](RECIPE_AUTHORING_GUIDE.md#execution-timeouts).
+
+
 Status: investigation and proposal; no loop guards implemented.
 
 The value-artifact migration was committed separately as `5274e14`. This work fits

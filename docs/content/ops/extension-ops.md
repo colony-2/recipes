@@ -29,7 +29,6 @@ description: Echo input back to the caller
 version: 1.0.0
 shell: bash
 run: python3 main.py
-timeout: 30s
 env:
   PYTHONUNBUFFERED: "1"
 input_schema:

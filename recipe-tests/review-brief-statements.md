@@ -20,10 +20,19 @@ Each table row is one test statement; its expected-outcome text has at most 30 w
 Dependency codes:
 
 - **N**: native c2j declarative runner, disposable Git repository, declared Nix helper packages; exact `nix:github:colony-2/c2ops/published#llm` selector mocked, helper and form/artifact path real.
-- **R**: N plus actual selected c2ops package, configured non-Codex provider/model, authorized credentials and worker deadline enforcement; required for runtime/model activation evidence.
+- **R**: N plus actual selected c2ops package, configured non-Codex provider/model, authorized credentials; required for runtime/model activation evidence.
 - **H**: R plus original evaluation corpus and human readability assessment.
 
-Do not substitute mocked model cases for real deadline or factual evaluation evidence. Native tests exercise production includes, exported artifact references, and resulting forms/routes, rather than a separate illustrative renderer.
+Do not substitute mocked model cases for real factual evaluation evidence. Native tests exercise production includes, exported artifact references, and resulting forms/routes, rather than a separate illustrative renderer.
+
+## Timing-policy supersession
+
+The approved “Remove recipe-imposed timeouts” bug fix supersedes B01's deadline
+prerequisite and B07's 60/130-second promise, together with the old five-second
+eligibility, 55-second retry and expired-bundle assertions. IDs remain traceable;
+RT05–RT10 in `recipe-timeout-statements.md` define their replacements. All independent
+content, citation, byte-size, two-attempt and H evaluation requirements remain.
+Production synthesis remains inactive. Elapsed time is provenance only.
 
 ## Checkpoint content and evidence
 
@@ -57,13 +66,13 @@ Do not substitute mocked model cases for real deadline or factual evaluation evi
 
 | ID | Priority | Level / dependencies | Filenames | Expected outcome |
 | --- | --- | --- | --- | --- |
-| B01 | Critical | Integration / N | `recipes/kernel/review.yaml` | Deterministic briefs remain available by default; missing credentials, provider configuration, or enforceable deadlines bypass inference immediately. |
+| B01 | Critical | Integration / N | `recipes/kernel/review.yaml` | Deterministic briefs remain available by default; missing credentials or provider configuration bypass inference immediately. |
 | B02 | Critical | Integration / R | `recipes/kernel/review.yaml`, `docs/data/op-catalog.yaml` | Enabled synthesis uses the existing published llm selector with configured non-Codex provider/model and response schema, without agent sessions or tool execution. |
 | B03 | Critical | Integration / N | `recipes/kernel/review.yaml` | Valid cited synthesis produces visibly generated prose while preserving immutable critical facts, exact keys, statuses, and candidate identity. |
 | B04 | Critical | Integration / N | `recipes/kernel/review.yaml` | Malformed JSON, missing required fields, extra fields, incorrect types, unknown citations, or missing mandatory references cannot become rendered model prose. |
 | B05 | Critical | Integration / N | `recipes/kernel/review.yaml` | Invented prerequisites, altered statuses, contradictory candidate identities, and uncited substantive claims trigger rejection and bounded recovery. |
 | B06 | Critical | Integration / N | `recipes/kernel/review.yaml` | Transport failures and invalid responses receive at most one corrective retry; nontransient errors immediately produce useful fallback. |
-| B07 | Critical | Integration / R | `recipes/kernel/review.yaml` | Each attempt ends within 60 seconds; total synthesis ends within 130 seconds including backoff and provider retries, then fallback reaches review. |
+| B07 | Critical | Integration / R | `recipes/kernel/review.yaml` | Superseded by RT05–RT10: evidence age never controls eligibility, retries or validity; two attempts and content validation remain required. |
 | B08 | Critical | Integration / N | `recipes/kernel/review.yaml` | Synthesis uses one selected source set without fanout, recursive summaries, nested retries, or agent repair loops. |
 | B09 | Critical | Integration / N | `recipes/kernel/review.yaml` | Source text exceeding 128 KiB UTF-8 bypasses inference, discloses omitted inference coverage, and preserves original attachments without silent truncation. |
 | B10 | Critical | Integration / N | `recipes/kernel/review.yaml` | Responses exceeding 32 KiB decoded, prose exceeding 8 KiB, arrays exceeding 32 entries, or item prose exceeding 2 KiB are rejected. |
@@ -101,4 +110,4 @@ Do not substitute mocked model cases for real deadline or factual evaluation evi
 
 The inbox supplies design, final agreement, and accepted production contract, but not the bodies of `mockups/examples.json` or the real source reviews. Retrieve those originals through artifact plumbing before E01–E03; synthetic stand-ins cannot establish those outcomes. No real-example evaluation or model activation is claimed now. Build settings add no consultations or specialist prompt requirements; no separate advisory findings were supplied.
 
-Implementation acceptance requires passing native production-path cases and existing affected lifecycle regressions, plus documented real runtime enforcement before enabling inference. Model-default activation additionally requires the complete H evaluation gate. A mock-only timeout test cannot establish worker enforcement. Missing model evaluation leaves deterministic production usable and explicitly records synthesis as unactivated.
+Implementation acceptance requires passing native production-path cases and existing affected lifecycle regressions, without recipe-imposed execution timeouts. Model-default activation additionally requires the complete H evaluation gate. Missing model evaluation leaves deterministic production usable and explicitly records synthesis as unactivated.

@@ -37,7 +37,6 @@ state:
       sequence:
       - id: synthesize_decision_content
         op: nix:github:colony-2/c2ops/published#llm
-        timeout: 60s
         inputs:
           provider: ${{ inputs.provider }}
           model: ${{ inputs.model }}
@@ -83,7 +82,6 @@ state:
             format: json
             value: ${{ inputs.response }}
         inputs:
-          timeout: 5s
           env:
             SYNTHESIS_ATTEMPT: ${{ string(inputs.attempt) }}
             INBOX: ${{ context.environment.op.inbox }}
@@ -119,21 +117,20 @@ state:
         artifacts:
           bundle.json: ${{ inputs.bundle_ref }}
         inputs:
-          timeout: 5s
           env:
             INBOX: ${{ context.environment.op.inbox }}
             OUTBOX: ${{ context.environment.op.outbox }}
           run: |-
             python3 - <<'PYCODE'
-            import copy,json,os,pathlib,time
+            import copy,json,os,pathlib
             b=json.loads((pathlib.Path(os.environ['INBOX'])/'bundle.json').read_text())
             payload=copy.deepcopy(b)
             # Do not transport overflow through runtime payloads. Originals remain artifacts.
             for source in payload['sources']:
                 source.pop('text',None)
-            eligible=b['source_bytes']<=131072 and len(json.dumps(payload).encode())<=131072 and time.time()-b['started_at']<5
+            eligible=b['source_bytes']<=131072 and len(json.dumps(payload).encode())<=131072
             if not eligible:
-                b['reason']='inference source/payload/time budget unavailable; no inference coverage'
+                b['reason']='inference source/payload size budget unavailable; no inference coverage'
             (pathlib.Path(os.environ['OUTBOX'])/'bundle.json').write_text(json.dumps(b))
             print(json.dumps({'eligible':eligible,'bundle':payload if eligible else {}}))
             PYCODE

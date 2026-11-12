@@ -1,5 +1,11 @@
 # Requirements: Live Codex Timeout Policy
 
+> Timing-policy update: the approved “Remove recipe-imposed timeouts” bug fix
+> requires supported timeout omission throughout shipped recipes and examples.
+> Recipe-authored limits below are superseded; test-runner safety limits remain separate.
+> See [current authoring policy](../RECIPE_AUTHORING_GUIDE.md#execution-timeouts).
+
+
 ## Status
 
 Required test/recipe authoring policy. This is not currently a confirmed c2ops

@@ -55,3 +55,7 @@ evidence collection, prioritization, and later observation. Historical examples
 in [BACKGROUND.md](self-improvement/BACKGROUND.md) explain earlier decisions;
 verify current source and deployed versions before treating an old report as a
 present defect. Keep routine changes scoped to their request.
+
+Recipes must not impose execution timeouts through metadata, operation inputs,
+command flags or embedded code. Use supported omission; runtime defaults, authority
+bounds and cancellation remain. See the [authoring policy](RECIPE_AUTHORING_GUIDE.md#execution-timeouts).

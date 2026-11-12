@@ -21,9 +21,16 @@ Commit `1b9846a` introduced the explicit activation gate described below. It was
 never completed; disabling this optional extra call is not a c2j restriction.
 The production include passes `activation: false` to `review-synthesis.yaml`. No provider credentials are read and no inference call occurs in that default path. Activation is a reviewed release change, not an instruction accepted from evidence documents.
 
-The optional synthesis recipe uses `nix:github:colony-2/c2ops/published#llm` with a closed response schema, at most two attempts, a 60-second invocation timeout per attempt, a source/serialized-request guard, and independent consistency checks. It rejects unknown citations, missing mandatory fact references, oversized output, and model-authored critical assertions. Retry is restricted to invalid output or recognized transient errors, with a conservative remaining-budget check; otherwise the original artifact bundle reaches deterministic rendering. No Codex synthesis, tools, fanout, or recursive summaries are introduced.
+The optional synthesis recipe uses `nix:github:colony-2/c2ops/published#llm` with a closed response schema, at most two attempts, a source/serialized-request guard, and independent consistency checks. It rejects unknown citations, missing mandatory fact references, oversized output, and model-authored critical assertions. Retry is restricted to invalid output or recognized transient errors; otherwise the original artifact bundle reaches deterministic rendering. No Codex synthesis, tools, fanout, or recursive summaries are introduced.
 
-Before activation, confirm the deployed package/worker bounds include setup and provider retries within the 130-second total budget. The inspected c2ops published revision `f30202d13d197beaed7ba0bd0b120b04443728eb` supports the selected provider/model/response_schema interface, but its `EXTENSION_OPS.md` explicitly places package setup outside invocation timeout. Catalog/schema support does not establish enforceable end-to-end timing. This inspection is not runtime validation and does not authorize activation.
+The approved “Remove recipe-imposed timeouts” bug fix supersedes the earlier
+60-second attempt, 130-second total, five-second eligibility and 55-second retry
+requirements, including B01's deadline prerequisite and B07 in
+[the original statements](../recipe-tests/review-brief-statements.md). Evidence age
+does not determine eligibility, retry or validity. Timestamps remain provenance.
+Production synthesis remains inactive; activation still requires the content-quality
+evaluation below. Supported timeout omission preserves runtime defaults, authority
+bounds and cancellation; it does not certify unlimited execution or provider behavior.
 
 Run both original review examples and adverse, contradictory, injected, incomplete, and overflow cases three times each with the deployment provider/model. Preserve every fixture-marked caveat, finding, current key/status, and valid source reference. No invented verification or approval is allowed. Record corpus, requested/returned configuration, provenance, per-run results, and limitations; obtain human readability assessment. Any violation or unavailable evidence blocks model-default activation. Passing mocked scenarios is not this gate.
 
@@ -35,7 +42,7 @@ Run the native suites with `c2j test run --file <suite>`:
 
 - `recipe-tests/review-brief.test.yaml`: real evidence/artifact/form integration, limits, consultations, injection, overflow, and feedback.
 - `recipe-tests/review-synthesis.test.yaml`: exact-selector mocks for valid output, corrective retry, invalid/citation failures, transport errors and timeout fallback.
-- `recipe-tests/review-validation.test.yaml`: production helper validation, UTF-8 and schema bounds, mandatory references, missing evidence, collisions, repeat rendering, revisions, and exhausted budgets.
+- `recipe-tests/review-validation.test.yaml`: production helper validation, UTF-8 and schema bounds, mandatory references, missing evidence, collisions, repeat rendering, revisions, and age-independent validation.
 
 Retain creation, shared-artifact and adaptive regression coverage. Retired
 heavy/light completion, stale-accounting and consultation suites are removed. The approved statements are preserved in `recipe-tests/review-brief-statements.md`; missing live/runtime evidence must be reported rather than marked passed.

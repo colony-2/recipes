@@ -84,7 +84,6 @@ version: 1.0.0
 
 shell: bash
 run: python3 main.py
-timeout: 30s
 
 env:
   PYTHONUNBUFFERED: "1"
@@ -115,7 +114,7 @@ output_schema:
 - `run`: shell command to execute.
 - `command`: argv form alternative to `run`.
 - `env`: extra environment variables added to the process.
-- `timeout`: Go duration string such as `30s` or `5m`.
+- `timeout`: runtime-supported override; Recipes must omit it, including in manifests.
 - `input_schema`: required JSON Schema-like input schema used for validation and defaults.
 - `output_schema`: required JSON Schema-like output schema used to validate stdout.
 

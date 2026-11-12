@@ -57,7 +57,6 @@ This repo uses c2ops selectors at `@main` so recipes automatically pick up c2ops
   "enable_tool_execution": false,
   "max_tool_rounds": 0,
   "continue_on_tool_error": false,
-  "tool_timeout": "30s",
   "metadata": {}
 }
 ```

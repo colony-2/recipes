@@ -24,9 +24,11 @@ A command's stdout preview is not a complete structured result and must not be
 parsed as one when it can exceed the preview limit.
 
 Model synthesis remains disabled by the production caller. This was an explicit
-choice in commit `1b9846a`, pending evaluation on the original reviews and a verified
-end-to-end execution deadline. It is not a c2j prohibition. The opt-in branch has
-mocked contract coverage, which does not establish those deployment results.
+choice in commit `1b9846a`, pending evaluation on the original reviews. The approved
+“Remove recipe-imposed timeouts” bug fix supersedes its former deadline prerequisite
+and all synthesis age cutoffs. Content-quality release gates remain. The opt-in
+branch has native contract coverage with scripted model responses, which does not
+establish model quality. Runtime defaults, authority bounds and cancellation still apply.
 Adaptive agents already author their own review summaries; this extra synthesis
 branch belongs to creation's retained review helper.
 See [review brief behavior and the activation history](../../guides/REVIEW_BRIEF_PRODUCTION.md).

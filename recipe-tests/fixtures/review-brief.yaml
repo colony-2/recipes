@@ -79,9 +79,12 @@ sequence:
     packages:
     - nix:github:NixOS/nixpkgs/e7439b6b14ad3cc35d05608ebca9bce01a25f5f8#python3
   artifacts:
+    design.md:
+      kind: value
+      format: text
+      value: '${{ inputs.overflow ? jq(131073, ''"x" * .'') : inputs.evidence }}'
     documents/: ${{ sequence.review.outputs.documents }}
   inputs:
-    timeout: 30s
     env:
       INBOX: ${{ context.environment.op.inbox }}
       OUTBOX: ${{ context.environment.op.outbox }}
@@ -90,7 +93,7 @@ sequence:
       ABSENT_NOTICE: ${{ inputs.absent_notice }}
     run: |-
       python3 - <<'CHECK'
-      import json, os
+      import hashlib, json, os
       from pathlib import Path
       p=Path(os.environ['INBOX'])/'documents'
       briefs=list(p.rglob('brief.md'))
@@ -100,6 +103,8 @@ sequence:
       assert os.environ['EXPECTED_QUESTION'] in brief
       assert 'OBSOLETE GENERATED SUMMARY' not in brief
       assert 'No repository before_design hook' not in brief
+      source=Path(os.environ['INBOX'])/'design.md'
+      assert provenance['manifest'][0]['sha256']==hashlib.sha256(source.read_bytes()).hexdigest()
       assert provenance['attempts']==0
       assert provenance['model_activation']=='inactive'
       assert 'design.md' in {s['id'] for s in provenance['manifest']}

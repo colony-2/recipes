@@ -1,0 +1,35 @@
+id: recipe-timeout-policy
+sequence:
+- id: check
+  op: command_execution
+  execution_needs:
+    packages:
+    - nix:github:NixOS/nixpkgs/e7439b6b14ad3cc35d05608ebca9bce01a25f5f8#python3
+  inputs:
+    run: |-
+      python3 - <<'CHECK'
+      from pathlib import Path
+      import importlib.util
+      import tempfile
+      spec=importlib.util.spec_from_file_location('policy','recipe-tests/checks/recipe_timeout_policy.py')
+      p=importlib.util.module_from_spec(spec);spec.loader.exec_module(p)
+      count=p.scan(Path.cwd())
+      assert count > 100, 'source inventory unexpectedly incomplete'
+      # Mutation controls prove the check rejects recipe policies and permits observations.
+      for source in ('timeout: 30s', '  timeout_seconds: 60', 'subprocess.run(argv, timeout=60)',
+                     'curl --max-time 30 URL', 'curl --connect-timeout 30 URL', 'timeout 30s command',
+                     'timeoutSeconds: 60', 'inputs: {tool_timeout: 30s}', 'signal.alarm(30)',
+                     "if time.time() - b['started_at'] > 130:", 'if elapsed_seconds > 55:'):
+          assert p.violations(source), source
+      assert not p.violations("started_at = time.time()\nelapsed_seconds = max(0, time.time() - started_at)\n")
+      # Exercise file selection, including a future state/sequence limit and optional workflow.
+      with tempfile.TemporaryDirectory() as temporary:
+          root=Path(temporary);f=root/'.c2/recipes/future.yaml';f.parent.mkdir(parents=True)
+          f.write_text('state:\n  timeout: 30s\n')
+          try: p.scan(root)
+          except ValueError as e: assert '.c2/recipes/future.yaml' in str(e)
+          else: raise AssertionError('injected recipe deadline passed')
+      print(f'Policy clean: {count} files; injected timeout controls rejected')
+      CHECK
+outputs:
+  result: ${{ sequence.check.outputs.stdout }}

@@ -112,7 +112,6 @@ sequence:
     inputs:
       job_id: '${{ sequence.start_dependency.outputs.job_ids[0] }}'
       return_when: terminal
-      timeout: 2h
       poll_interval: 30s
 
 outputs:

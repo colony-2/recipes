@@ -27,7 +27,6 @@ sequence:
       value: "${{ {'title': inputs.title, 'documents': inputs.documents, 'fields': inputs.fields, 'annotations': inputs.annotations, 'deployment': sequence.presentation_policy.outputs.deployment, 'checkpoint': inputs.checkpoint} }}"
     sources/: ${{ inputs.documents }}
   inputs:
-    timeout: 30s
     env:
       INBOX: ${{ context.environment.op.inbox }}
       OUTBOX: ${{ context.environment.op.outbox }}
@@ -59,7 +58,6 @@ sequence:
   inputs:
     inbox: ${{ context.environment.op.inbox }}
     outbox: ${{ context.environment.op.outbox }}
-  timeout: 30s
 - id: namespace_brief
   include: ./artifact-namespace.yaml
   inputs:
@@ -275,7 +273,7 @@ vars:
                   'documents': documents, 'annotations': data.get('annotations', []), 'deployment': data.get('deployment', {}),
                   'existing_ids': sorted(documents), 'attempts': 0, 'model': None,
                   'reason': 'deterministic default; model activation gate not passed'}
-        # Inactive until worker setup deadlines and deployment evaluations are established.
+        # Inactive until the content-quality activation requirements are satisfied.
         # Deliberately not controlled by untrusted checkpoint/source documents.
         bundle['eligible'] = False
         # Prior provenance supplies change metadata only, never current authoritative prose.
@@ -352,8 +350,6 @@ vars:
             bundle['attempts'] += 1
             bundle['model'] = output.get('model')
             try:
-                if time.time() - bundle['started_at'] > 130:
-                    raise ValueError('total synthesis budget exhausted')
                 prose = validate_response(bundle, output)
                 bundle['reason'] = 'validated synthesis'
             except (ValueError, TypeError, KeyError) as error:
@@ -442,8 +438,6 @@ vars:
         bundle['returned_provider'] = output.get('provider')
         retry = False
         try:
-            if time.time() - bundle['started_at'] > 130:
-                raise ValueError('total synthesis budget exhausted')
             if 'error' in output:
                 bundle['reason'] = str(output['error'])
                 retry = bool(re.search(r'timeout|timed out|429|503|rate.limit|temporar', bundle['reason'], re.I))
@@ -453,7 +447,7 @@ vars:
         except (ValueError, TypeError, KeyError) as error:
             bundle['reason'] = str(error)
             retry = True
-        retry = retry and bundle['attempts'] < 2 and time.time() - bundle['started_at'] < 55
+        retry = retry and bundle['attempts'] < 2
         write('bundle.json', bundle)
         print(encoded({'retry': retry, 'valid': 'prose' in bundle, 'reason': bundle['reason']}))
 

@@ -299,7 +299,6 @@ sequence:
   - id: load_cells
     op: command_execution
     inputs:
-      timeout: 30s
       run: c2j cells --json
     catch:
       - id: cell_list_unavailable
@@ -347,7 +346,6 @@ call_service:
   op: command_execution
   retry: 3
   inputs:
-    timeout: 30s
     run: ./scripts/call-service.sh
   catch:
     - id: validation_error_goes_to_review
@@ -505,7 +503,6 @@ run_ci:
   retry: 3
   inputs:
     workflow: ci.yml
-    timeout: 20m
   catch:
     - id: workflow_concluded_failure
       when: 'failure.kind == "task_error" && failure.task.status == "failure"'
@@ -625,7 +622,6 @@ sequence:
   - id: detect
     op: command_execution
     inputs:
-      timeout: 15m
       run: c2j cells --json
 
 catch:

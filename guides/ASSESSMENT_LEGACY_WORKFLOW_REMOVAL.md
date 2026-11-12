@@ -1,5 +1,11 @@
 # Legacy workflow removal and retained test repair
 
+> Timing-policy update: the approved “Remove recipe-imposed timeouts” bug fix
+> requires supported timeout omission throughout shipped recipes and examples.
+> The historical deadline prerequisite below is superseded; content-quality activation gates remain.
+> See [current authoring policy](RECIPE_AUTHORING_GUIDE.md#execution-timeouts).
+
+
 Scope: remove retired workflows, preserve adaptive, and investigate all remaining
 failures. This fits the recipes cell. Reusable runtime fixture features belong to
 c2j; that boundary is described separately below.

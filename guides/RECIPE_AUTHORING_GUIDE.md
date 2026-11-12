@@ -42,11 +42,26 @@ Keep these references open while authoring:
 - `RECIPE_ARTIFACTS_REFERENCE.md`
 - `TASK_EXECUTION_CONTEXT_REFERENCE.md`
 
+## Execution timeouts
+
+Recipes must not impose execution timeouts. This includes node, sequence and state
+metadata, operation inputs, command flags, subprocess limits, watchdogs and embedded
+elapsed-time eligibility, retry or rejection gates. Omit optional timeout inputs
+according to the operation contract; do not substitute zero, null or larger values.
+Runtime-owned defaults may apply on omission, and authority bounds and cancellation
+remain effective. Keep timestamps for provenance, ordinary retry counts and content
+or size controls. Run `python3 recipe-tests/checks/recipe_timeout_policy.py .` to scan every shipped
+workflow and executable example in the checkout. CI runs this complete scan, and
+the native policy suite checks current source fixtures and deliberate violations.
+The guard covers common spellings and clock comparisons; review embedded code for
+less direct time-based decisions too. Test-runner and CI safety limits are separate; isolated regressions
+may deliberately impose a timeout to test runtime failure handling.
+
 ## 2. Pick the Right Op
 
 Start with the smallest op that matches the job:
 
-- `command_execution`: bounded shell commands against the task worktree or inbox/outbox
+- `command_execution`: shell commands against the task worktree or inbox/outbox
 - c2ops `llm2` selector: schema-constrained model calls and lightweight tool/file reasoning
 - c2ops `codex` selector: multi-step agentic coding or review work
 - c2ops `gha` / `gha-many` selectors: reuse existing GitHub Actions workflows instead of rebuilding them in shell

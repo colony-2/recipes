@@ -96,3 +96,7 @@ c2j submit \
 ```
 
 That is the fastest way to validate the authored YAML against the runtime behavior of the selected ops.
+
+Recipes must not impose execution timeouts through metadata, operation inputs,
+command flags or embedded code. Use supported omission; runtime defaults, authority
+bounds and cancellation remain. See the [authoring policy](../RECIPE_AUTHORING_GUIDE.md#execution-timeouts).
