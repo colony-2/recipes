@@ -1,0 +1,74 @@
+# Supplemental restart probe for the suspended-parent transition shape.
+# Session markers establish routing only; production suites exercise Codex checkpoints.
+schema_version: 2
+id: native-state-boundary
+input_schema:
+  prompt:
+    type: string
+    default_value: ''
+  title:
+    type: string
+    default_value: ''
+state:
+  initial: expert_record
+  states:
+    expert_record:
+      sequence:
+      - id: record_human_document
+        op: command_execution
+        const: true
+        inputs:
+          env:
+            OUTBOX: ${{ context.environment.op.outbox }}
+          run: |
+            printf '# Human direction\n\nKeep validation opt in.\n' > "$OUTBOX/direction.md"
+      outputs:
+        document: ${{ sequence.record_human_document.artifacts['direction.md'] }}
+      transitions:
+      - to: advice
+        when: true
+        payload:
+          conversation: ${{ {'requester':'root','consultant':'B','direction':'Keep validation opt in.','requester_session':'requester-marker','consultant_session':'consultant-marker','documents':{'direction.md':outputs.document} } }}
+    advice:
+      inputs:
+        conversation: ${{ transition.payload.conversation }}
+      sequence: []
+      outputs:
+        conversation: ${{ inputs.conversation }}
+        parents: ${{ [{'conversation':inputs.conversation,'participant':'consultant','index':0}] }}
+      transitions:
+      - to: return_advice
+        when: true
+        payload:
+          frame: ${{ outputs.parents[0] }}
+          parents: []
+          result: Advice accepted.
+    return_advice:
+      inputs:
+        frame: ${{ transition.payload.frame }}
+        result: ${{ transition.payload.result }}
+      sequence:
+      - id: inspect_restored_parent
+        op: command_execution
+        const: true
+        artifacts:
+          direction.md: ${{ inputs.frame.conversation.documents['direction.md'] }}
+        inputs:
+          env:
+            INBOX: ${{ context.environment.op.inbox }}
+            DIRECTION: ${{ inputs.frame.conversation.direction }}
+            REQUESTER: ${{ inputs.frame.conversation.requester_session }}
+            CONSULTANT: ${{ inputs.frame.conversation.consultant_session }}
+          run: |
+            test "$DIRECTION" = 'Keep validation opt in.'
+            test "$REQUESTER" = requester-marker
+            test "$CONSULTANT" = consultant-marker
+            test -f "$INBOX/direction.md"
+      outputs:
+        outcome: agreed
+        direction: ${{ inputs.frame.conversation.direction }}
+        documents: ${{ inputs.frame.conversation.documents }}
+outputs:
+  outcome: ${{ states.return_advice.outputs.outcome }}
+  direction: ${{ states.return_advice.outputs.direction }}
+  documents: ${{ states.return_advice.outputs.documents }}

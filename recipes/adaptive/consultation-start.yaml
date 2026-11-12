@@ -6,8 +6,6 @@ inputs:
   requester_session: ${{ inputs.requester_session }}
   documents: ${{ inputs.documents }}
   max_iterations: ${{ inputs.max_iterations }}
-  continuation: ${{ inputs.continuation }}
-  direction: ${{ inputs.direction }}
   cell: ${{ inputs.cell }}
   topic: ${{ inputs.topic }}
   thread: ${{ inputs.thread }}
@@ -20,14 +18,9 @@ outputs:
         && inputs.documents.all(k, k == inputs.documents[k].name
              && !(k in ['conversation.json', '__git_state_thin_pack__',
                         'diff_from_parent.diff', 'diff_from_base.diff']))
-        && (size(inputs.continuation) == 0
-            ? nonempty(inputs.topic) && nonempty(inputs.request) && nonempty(inputs.consultant.?role.orValue(''))
-            : inputs.continuation.requester_cell == inputs.cell
-              && (inputs.direction == ''
-                  || inputs.continuation.outcome in ['needs_review', 'declined', 'redirected'])) }}
+        && nonempty(inputs.topic) && nonempty(inputs.request) && nonempty(inputs.consultant.?role.orValue('')) }}
   conversation: |-
-    ${{ size(inputs.continuation) == 0
-        ? {'exchange_number':0,'depth': inputs.depth, 'thread': inputs.thread,
+    ${{ {'exchange_number':0,'depth': inputs.depth, 'thread': inputs.thread,
            'request': inputs.request,
            'consultant': jq([{'cell': '', 'ref': 'main'}, inputs.consultant], 'add'),
            'requester_cell': inputs.cell, 'requester_ref': inputs.requester_ref,
@@ -40,18 +33,4 @@ outputs:
            'seen': {'requester': 0, 'consultant': 0},
            'annotations': inputs.annotations, 'documents': inputs.documents, 'final_artifacts': {},
            'transcript': [{'participant': 'requester', 'iteration': 1,
-             'thinking': inputs.request, 'files': inputs.documents}]}
-        : inputs.direction == ''
-          ? (inputs.continuation.outcome == 'failed' && inputs.continuation.?retryable.orValue(false)
-              ? jq([inputs.continuation, {'outcome': 'continue', 'error': ''}], 'add')
-              : inputs.continuation)
-        : jq([inputs.continuation,
-              {'requester_session': size(inputs.requester_session) > 0
-                  ? inputs.requester_session : inputs.continuation.requester_session,
-               'direction': inputs.direction,
-               'round': int(inputs.continuation.round) + 1,
-               'round_iterations': 0, 'max_iterations': int(inputs.max_iterations),
-               'next': 'requester', 'outcome': 'continue',
-               'annotations': inputs.continuation.?annotations.orValue([]) + inputs.annotations, 'documents': jq([inputs.continuation.documents, inputs.documents], 'add'),
-               'transcript': inputs.continuation.transcript + [
-                 {'participant': 'expert', 'thinking': inputs.direction, 'files': inputs.documents}]}], 'add') }}
+             'thinking': inputs.request, 'files': inputs.documents}]} }}

@@ -39,9 +39,9 @@ credentials or cache upload credentials are required. The
 `recipe-test-results` artifact retains the selected c2j release, complete log,
 and runner reports for 14 days, including failed runs. A manual workflow run uses
 the same pin. Before the full suites, CI requires a successful authored packaged
-agent smoke: nested adaptive advice followed by transcript export/import. Model
+agent smoke: nested adaptive advice returning through native state. Model
 responses are deterministic; package resolution, secrets, workspaces, checkpoints,
-artifact binding, and continuation I/O execute normally. Rewriting selectors or
+artifact binding, and nested parent restoration execute normally. Rewriting selectors or
 removing declared tool requirements is not equivalent to this smoke test.
 
 For executable examples, see the
@@ -116,8 +116,15 @@ and wrapped causes. Negative guard tests must satisfy unrelated guards, assert
 the actual rejection, and have a successful control; remove each guard in a
 temporary copy to confirm its corresponding test fails.
 
-Adaptive continuation cases cover export/import and session reuse; they do not
-restart a worker. Native failed-child cases confirm that the attempt's goal stays
+Adaptive consultation cases cover native feedback, nested advice and session
+reuse without a checkpoint-file API. The packaged smoke is
+`native-nested-advice-returns-once`. These cases do not restart a worker.
+The supplemental `native-state-boundary` probe checks suspended-parent payloads
+and selected document materialization with session markers; those markers do not
+prove Codex checkpoint restoration. A durable-continuation claim additionally
+requires a recorded restart and uninterrupted control, inspecting actual retained
+sessions, human direction, documents and routing. Inspect bindings and produced
+artifacts as well as final outputs to exclude state-file round trips. Native failed-child cases confirm that the attempt's goal stays
 open. Mocked goal status cases cover recipe branching; they do not
 exercise an open goal's replacement/wakeup lifecycle. These checks need
 additional native fixture controls.

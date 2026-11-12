@@ -1,0 +1,941 @@
+{
+  "recipe": "consultation-render.yaml",
+  "cases": [
+    {
+      "id": "empty-transcript",
+      "type": "integration_case",
+      "runtime": {},
+      "inputs": {
+        "conversation": {
+          "requester_cell": "notebook",
+          "consultant": {
+            "cell": "storage"
+          },
+          "transcript": [],
+          "message": "Use \"conditional writes\".\nKeep both drafts.",
+          "handoff": "",
+          "summary_file": ""
+        },
+        "documents": {},
+        "aliases": {}
+      },
+      "mocks": {
+        "ops": [
+          {
+            "match": {
+              "op": "command_execution"
+            },
+            "repeat": true,
+            "behavior": {
+              "mode": "passthrough"
+            }
+          }
+        ]
+      },
+      "assertions": [
+        {
+          "type": "cel_true",
+          "expr": "outputs.content[\"conversation.md\"].startsWith(\"# notebook and storage: Conversation\\n\\n\")"
+        },
+        {
+          "type": "cel_true",
+          "expr": "!(\"summary.md\" in outputs.content)"
+        },
+        {
+          "type": "cel_true",
+          "expr": "outputs.content[\"conversation.md\"] == \"# notebook and storage: Conversation\\n\\n\""
+        },
+        {
+          "type": "cel_true",
+          "expr": "calls.filter(c,c.node_path.contains(\"read_document_headings\")).size() == 0"
+        },
+        {
+          "type": "cel_true",
+          "expr": "!calls.exists(c,c.node_path.contains(\"read_document_headings\") && c.artifacts.exists(k,k.endsWith(\"conversation.json\")))"
+        },
+        {
+          "type": "cel_true",
+          "expr": "outputs.documents.all(k,outputs.documents[k].kind == \"value\" && outputs.documents[k].format == \"text\" && outputs.documents[k].name == k)"
+        },
+        {
+          "type": "cel_true",
+          "expr": "calls.filter(c,c.node_path.contains(\"/render/\")).all(c,c.node_path.contains(\"read_document_headings\"))"
+        }
+      ]
+    },
+    {
+      "id": "literal-text-participants-and-empty-reply",
+      "type": "integration_case",
+      "runtime": {},
+      "inputs": {
+        "conversation": {
+          "requester_cell": "notebook",
+          "consultant": {
+            "cell": ""
+          },
+          "transcript": [
+            {
+              "participant": "requester",
+              "reply": "A \"quote\"\n\nsecond paragraph\nLiteral ${{ inputs.secret }} and {{ untouched }}."
+            },
+            {
+              "participant": "consultant",
+              "thinking": "Fallback text"
+            },
+            {
+              "participant": "expert",
+              "reply": "",
+              "thinking": "MUST NOT APPEAR"
+            }
+          ],
+          "message": "Use \"conditional writes\".\nKeep both drafts.",
+          "handoff": "",
+          "summary_file": ""
+        },
+        "documents": {},
+        "aliases": {}
+      },
+      "mocks": {
+        "ops": [
+          {
+            "match": {
+              "op": "command_execution"
+            },
+            "repeat": true,
+            "behavior": {
+              "mode": "passthrough"
+            }
+          }
+        ]
+      },
+      "assertions": [
+        {
+          "type": "cel_true",
+          "expr": "outputs.content[\"conversation.md\"].contains(\"A \\\"quote\\\"\\n\\nsecond paragraph\\nLiteral ${{ inputs.secret }} and {{ untouched }}.\")"
+        },
+        {
+          "type": "cel_true",
+          "expr": "outputs.content[\"conversation.md\"].contains(\"## notebook\\n\\nFallback text\")"
+        },
+        {
+          "type": "cel_true",
+          "expr": "outputs.content[\"conversation.md\"].contains(\"## Human\\n\\n\")"
+        },
+        {
+          "type": "cel_true",
+          "expr": "!outputs.content[\"conversation.md\"].contains(\"MUST NOT APPEAR\")"
+        },
+        {
+          "type": "cel_true",
+          "expr": "calls.filter(c,c.node_path.contains(\"read_document_headings\")).size() == 0"
+        },
+        {
+          "type": "cel_true",
+          "expr": "!calls.exists(c,c.node_path.contains(\"read_document_headings\") && c.artifacts.exists(k,k.endsWith(\"conversation.json\")))"
+        },
+        {
+          "type": "cel_true",
+          "expr": "outputs.content[\"conversation.md\"] == \"# notebook and notebook: Conversation\\n\\n## notebook\\n\\nA \\\"quote\\\"\\n\\nsecond paragraph\\nLiteral ${{ inputs.secret }} and {{ untouched }}.\\n\\n\\n\\n## notebook\\n\\nFallback text\\n\\n\\n\\n## Human\\n\\n\\n\\n\\n\""
+        },
+        {
+          "type": "cel_true",
+          "expr": "outputs.documents.all(k,outputs.documents[k].kind == \"value\" && outputs.documents[k].format == \"text\" && outputs.documents[k].name == k)"
+        },
+        {
+          "type": "cel_true",
+          "expr": "calls.filter(c,c.node_path.contains(\"/render/\")).all(c,c.node_path.contains(\"read_document_headings\"))"
+        }
+      ]
+    },
+    {
+      "id": "latest-explicit-handoff-title",
+      "type": "integration_case",
+      "runtime": {},
+      "inputs": {
+        "conversation": {
+          "requester_cell": "notebook",
+          "consultant": {
+            "cell": "storage"
+          },
+          "transcript": [
+            {
+              "participant": "consultant",
+              "files": [
+                {
+                  "path": "work/handoff.md",
+                  "title": "Old"
+                },
+                {
+                  "path": "recommendation.md",
+                  "title": "Summary"
+                }
+              ]
+            },
+            {
+              "participant": "expert",
+              "files": {
+                "work/handoff.md": {
+                  "kind": "value",
+                  "name": "evidence.md",
+                  "format": "text",
+                  "value": "# Evidence\nproof"
+                }
+              },
+              "reply": "Direction"
+            },
+            {
+              "participant": "consultant",
+              "files": [
+                {
+                  "path": "work/handoff.md",
+                  "title": "Latest \"title\""
+                }
+              ],
+              "artifacts": {}
+            }
+          ],
+          "message": "Use \"conditional writes\".\nKeep both drafts.",
+          "handoff": "work/",
+          "summary_file": "recommendation.md"
+        },
+        "documents": {
+          "work/handoff.md": {
+            "kind": "value",
+            "name": "work/handoff.md",
+            "format": "text",
+            "value": "# Heading"
+          },
+          "recommendation.md": {
+            "kind": "value",
+            "name": "recommendation.md",
+            "format": "text",
+            "value": "# Rec"
+          }
+        },
+        "aliases": {}
+      },
+      "mocks": {
+        "ops": [
+          {
+            "match": {
+              "op": "command_execution"
+            },
+            "repeat": true,
+            "behavior": {
+              "mode": "passthrough"
+            }
+          }
+        ]
+      },
+      "assertions": [
+        {
+          "type": "cel_true",
+          "expr": "outputs.content[\"conversation.md\"].startsWith(\"# notebook and storage: Latest \\\"title\\\"\\n\")"
+        },
+        {
+          "type": "cel_true",
+          "expr": "outputs.content[\"summary.md\"].contains(\"Use \\\"conditional writes\\\".\\nKeep both drafts.\")"
+        },
+        {
+          "type": "cel_true",
+          "expr": "outputs.content[\"summary.md\"].contains(\"](recommendation.md) · [Conversation](conversation.md)\")"
+        },
+        {
+          "type": "cel_true",
+          "expr": "calls.filter(c,c.node_path.contains(\"read_document_headings\")).size() == 0"
+        },
+        {
+          "type": "cel_true",
+          "expr": "!calls.exists(c,c.node_path.contains(\"read_document_headings\") && c.artifacts.exists(k,k.endsWith(\"conversation.json\")))"
+        },
+        {
+          "type": "cel_true",
+          "expr": "outputs.documents.all(k,outputs.documents[k].kind == \"value\" && outputs.documents[k].format == \"text\" && outputs.documents[k].name == k)"
+        },
+        {
+          "type": "cel_true",
+          "expr": "calls.filter(c,c.node_path.contains(\"/render/\")).all(c,c.node_path.contains(\"read_document_headings\"))"
+        }
+      ]
+    },
+    {
+      "id": "handoff-heading-before-summary-metadata",
+      "type": "integration_case",
+      "runtime": {},
+      "inputs": {
+        "conversation": {
+          "requester_cell": "notebook",
+          "consultant": {
+            "cell": "storage"
+          },
+          "transcript": [
+            {
+              "participant": "consultant",
+              "files": [
+                {
+                  "path": "recommendation.md",
+                  "title": "Summary explicit"
+                }
+              ]
+            }
+          ],
+          "message": "Use \"conditional writes\".\nKeep both drafts.",
+          "handoff": "work/",
+          "summary_file": "recommendation.md"
+        },
+        "documents": {
+          "work/handoff.md": {
+            "kind": "value",
+            "name": "work/handoff.md",
+            "format": "text",
+            "value": "intro\n# Handoff heading\n# Second heading"
+          },
+          "recommendation.md": {
+            "kind": "value",
+            "name": "recommendation.md",
+            "format": "text",
+            "value": "# Summary heading"
+          }
+        },
+        "aliases": {}
+      },
+      "mocks": {
+        "ops": [
+          {
+            "match": {
+              "op": "command_execution"
+            },
+            "repeat": true,
+            "behavior": {
+              "mode": "passthrough"
+            }
+          }
+        ]
+      },
+      "assertions": [
+        {
+          "type": "cel_true",
+          "expr": "outputs.content[\"conversation.md\"].startsWith(\"# notebook and storage: Handoff heading\\n\")"
+        },
+        {
+          "type": "cel_true",
+          "expr": "calls.filter(c,c.node_path.contains(\"read_document_headings\")).all(c,size(c.artifacts) == 1 && \"source/work/handoff.md\" in c.artifacts)"
+        },
+        {
+          "type": "cel_true",
+          "expr": "calls.filter(c,c.node_path.contains(\"read_document_headings\")).size() == 1"
+        },
+        {
+          "type": "cel_true",
+          "expr": "!calls.exists(c,c.node_path.contains(\"read_document_headings\") && c.artifacts.exists(k,k.endsWith(\"conversation.json\")))"
+        },
+        {
+          "type": "cel_true",
+          "expr": "outputs.documents.all(k,outputs.documents[k].kind == \"value\" && outputs.documents[k].format == \"text\" && outputs.documents[k].name == k)"
+        },
+        {
+          "type": "cel_true",
+          "expr": "calls.filter(c,c.node_path.contains(\"/render/\")).all(c,c.node_path.contains(\"read_document_headings\"))"
+        }
+      ]
+    },
+    {
+      "id": "summary-metadata-after-empty-handoff-heading",
+      "type": "integration_case",
+      "runtime": {},
+      "inputs": {
+        "conversation": {
+          "requester_cell": "notebook",
+          "consultant": {
+            "cell": "storage"
+          },
+          "transcript": [
+            {
+              "participant": "consultant",
+              "files": [
+                {
+                  "path": "recommendation.md",
+                  "title": "Summary explicit"
+                }
+              ]
+            }
+          ],
+          "message": "Use \"conditional writes\".\nKeep both drafts.",
+          "handoff": "work/",
+          "summary_file": "recommendation.md"
+        },
+        "documents": {
+          "work/handoff.md": {
+            "kind": "value",
+            "name": "work/handoff.md",
+            "format": "text",
+            "value": "No heading here"
+          },
+          "recommendation.md": {
+            "kind": "value",
+            "name": "recommendation.md",
+            "format": "text",
+            "value": "# Summary heading"
+          }
+        },
+        "aliases": {}
+      },
+      "mocks": {
+        "ops": [
+          {
+            "match": {
+              "op": "command_execution"
+            },
+            "repeat": true,
+            "behavior": {
+              "mode": "passthrough"
+            }
+          }
+        ]
+      },
+      "assertions": [
+        {
+          "type": "cel_true",
+          "expr": "outputs.content[\"conversation.md\"].startsWith(\"# notebook and storage: Summary explicit\\n\")"
+        },
+        {
+          "type": "cel_true",
+          "expr": "calls.filter(c,c.node_path.contains(\"read_document_headings\")).size() == 1"
+        },
+        {
+          "type": "cel_true",
+          "expr": "!calls.exists(c,c.node_path.contains(\"read_document_headings\") && c.artifacts.exists(k,k.endsWith(\"conversation.json\")))"
+        },
+        {
+          "type": "cel_true",
+          "expr": "outputs.documents.all(k,outputs.documents[k].kind == \"value\" && outputs.documents[k].format == \"text\" && outputs.documents[k].name == k)"
+        },
+        {
+          "type": "cel_true",
+          "expr": "calls.filter(c,c.node_path.contains(\"/render/\")).all(c,c.node_path.contains(\"read_document_headings\"))"
+        }
+      ]
+    },
+    {
+      "id": "summary-heading-after-empty-handoff-heading",
+      "type": "integration_case",
+      "runtime": {},
+      "inputs": {
+        "conversation": {
+          "requester_cell": "notebook",
+          "consultant": {
+            "cell": "storage"
+          },
+          "transcript": [],
+          "message": "Use \"conditional writes\".\nKeep both drafts.",
+          "handoff": "work/",
+          "summary_file": "recommendation.md"
+        },
+        "documents": {
+          "work/handoff.md": {
+            "kind": "value",
+            "name": "work/handoff.md",
+            "format": "text",
+            "value": "No heading here"
+          },
+          "recommendation.md": {
+            "kind": "value",
+            "name": "recommendation.md",
+            "format": "text",
+            "value": "# Summary heading"
+          }
+        },
+        "aliases": {}
+      },
+      "mocks": {
+        "ops": [
+          {
+            "match": {
+              "op": "command_execution"
+            },
+            "repeat": true,
+            "behavior": {
+              "mode": "passthrough"
+            }
+          }
+        ]
+      },
+      "assertions": [
+        {
+          "type": "cel_true",
+          "expr": "outputs.content[\"conversation.md\"].startsWith(\"# notebook and storage: Summary heading\\n\")"
+        },
+        {
+          "type": "cel_true",
+          "expr": "calls.filter(c,c.node_path.contains(\"read_document_headings\")).size() == 1"
+        },
+        {
+          "type": "cel_true",
+          "expr": "!calls.exists(c,c.node_path.contains(\"read_document_headings\") && c.artifacts.exists(k,k.endsWith(\"conversation.json\")))"
+        },
+        {
+          "type": "cel_true",
+          "expr": "outputs.documents.all(k,outputs.documents[k].kind == \"value\" && outputs.documents[k].format == \"text\" && outputs.documents[k].name == k)"
+        },
+        {
+          "type": "cel_true",
+          "expr": "calls.filter(c,c.node_path.contains(\"/render/\")).all(c,c.node_path.contains(\"read_document_headings\"))"
+        }
+      ]
+    },
+    {
+      "id": "missing-title-evidence",
+      "type": "integration_case",
+      "runtime": {},
+      "inputs": {
+        "conversation": {
+          "requester_cell": "notebook",
+          "consultant": {
+            "cell": "storage"
+          },
+          "transcript": [],
+          "message": "Use \"conditional writes\".\nKeep both drafts.",
+          "handoff": "missing/",
+          "summary_file": ""
+        },
+        "documents": {},
+        "aliases": {}
+      },
+      "mocks": {
+        "ops": [
+          {
+            "match": {
+              "op": "command_execution"
+            },
+            "repeat": true,
+            "behavior": {
+              "mode": "passthrough"
+            }
+          }
+        ]
+      },
+      "assertions": [
+        {
+          "type": "cel_true",
+          "expr": "outputs.content[\"conversation.md\"].startsWith(\"# notebook and storage: Conversation\\n\")"
+        },
+        {
+          "type": "cel_true",
+          "expr": "calls.filter(c,c.node_path.contains(\"read_document_headings\")).size() == 0"
+        },
+        {
+          "type": "cel_true",
+          "expr": "!calls.exists(c,c.node_path.contains(\"read_document_headings\") && c.artifacts.exists(k,k.endsWith(\"conversation.json\")))"
+        },
+        {
+          "type": "cel_true",
+          "expr": "outputs.documents.all(k,outputs.documents[k].kind == \"value\" && outputs.documents[k].format == \"text\" && outputs.documents[k].name == k)"
+        },
+        {
+          "type": "cel_true",
+          "expr": "calls.filter(c,c.node_path.contains(\"/render/\")).all(c,c.node_path.contains(\"read_document_headings\"))"
+        }
+      ]
+    },
+    {
+      "id": "document-without-heading",
+      "type": "integration_case",
+      "runtime": {},
+      "inputs": {
+        "conversation": {
+          "requester_cell": "notebook",
+          "consultant": {
+            "cell": "storage"
+          },
+          "transcript": [],
+          "message": "Use \"conditional writes\".\nKeep both drafts.",
+          "handoff": "work/",
+          "summary_file": ""
+        },
+        "documents": {
+          "work/handoff.md": {
+            "kind": "value",
+            "name": "work/handoff.md",
+            "format": "text",
+            "value": "plain text"
+          }
+        },
+        "aliases": {}
+      },
+      "mocks": {
+        "ops": [
+          {
+            "match": {
+              "op": "command_execution"
+            },
+            "repeat": true,
+            "behavior": {
+              "mode": "passthrough"
+            }
+          }
+        ]
+      },
+      "assertions": [
+        {
+          "type": "cel_true",
+          "expr": "outputs.content[\"conversation.md\"].startsWith(\"# notebook and storage: Conversation\\n\")"
+        },
+        {
+          "type": "cel_true",
+          "expr": "calls.filter(c,c.node_path.contains(\"read_document_headings\")).size() == 1"
+        },
+        {
+          "type": "cel_true",
+          "expr": "!calls.exists(c,c.node_path.contains(\"read_document_headings\") && c.artifacts.exists(k,k.endsWith(\"conversation.json\")))"
+        },
+        {
+          "type": "cel_true",
+          "expr": "outputs.documents.all(k,outputs.documents[k].kind == \"value\" && outputs.documents[k].format == \"text\" && outputs.documents[k].name == k)"
+        },
+        {
+          "type": "cel_true",
+          "expr": "calls.filter(c,c.node_path.contains(\"/render/\")).all(c,c.node_path.contains(\"read_document_headings\"))"
+        }
+      ]
+    },
+    {
+      "id": "selected-human-and-replaced-evidence",
+      "type": "integration_case",
+      "runtime": {},
+      "inputs": {
+        "conversation": {
+          "requester_cell": "notebook",
+          "consultant": {
+            "cell": "storage"
+          },
+          "transcript": [
+            {
+              "participant": "consultant",
+              "reply": "Earlier",
+              "artifacts": {
+                "omitted.md": {
+                  "kind": "value",
+                  "name": "evidence.md",
+                  "format": "text",
+                  "value": "# Evidence\nproof"
+                },
+                "same.md": {
+                  "kind": "value",
+                  "name": "same.md",
+                  "format": "text",
+                  "value": "Old bytes"
+                },
+                "evidence.md": {
+                  "kind": "value",
+                  "name": "evidence.md",
+                  "format": "text",
+                  "value": "# Evidence\nproof"
+                }
+              }
+            },
+            {
+              "participant": "expert",
+              "reply": "Human direction",
+              "files": {
+                "human.md": {
+                  "kind": "value",
+                  "name": "human.md",
+                  "format": "text",
+                  "value": "Human attachment"
+                },
+                "omitted-human.md": {
+                  "kind": "value",
+                  "name": "evidence.md",
+                  "format": "text",
+                  "value": "# Evidence\nproof"
+                }
+              }
+            }
+          ],
+          "message": "Use \"conditional writes\".\nKeep both drafts.",
+          "handoff": "",
+          "summary_file": ""
+        },
+        "documents": {
+          "evidence.md": {
+            "kind": "value",
+            "name": "evidence.md",
+            "format": "text",
+            "value": "# Evidence\nproof"
+          },
+          "same.md": {
+            "kind": "value",
+            "name": "same.md",
+            "format": "text",
+            "value": "New bytes"
+          },
+          "human.md": {
+            "kind": "value",
+            "name": "human.md",
+            "format": "text",
+            "value": "Human attachment"
+          }
+        },
+        "aliases": {}
+      },
+      "mocks": {
+        "ops": [
+          {
+            "match": {
+              "op": "command_execution"
+            },
+            "repeat": true,
+            "behavior": {
+              "mode": "passthrough"
+            }
+          }
+        ]
+      },
+      "assertions": [
+        {
+          "type": "cel_true",
+          "expr": "outputs.content[\"conversation.md\"].contains(\"[evidence.md](evidence.md)\")"
+        },
+        {
+          "type": "cel_true",
+          "expr": "outputs.content[\"conversation.md\"].contains(\"[human.md](human.md)\")"
+        },
+        {
+          "type": "cel_true",
+          "expr": "outputs.content[\"conversation.md\"].contains(\"- omitted.md\")"
+        },
+        {
+          "type": "cel_true",
+          "expr": "outputs.content[\"conversation.md\"].contains(\"- same.md\")"
+        },
+        {
+          "type": "cel_true",
+          "expr": "!outputs.content[\"conversation.md\"].contains(\"](same.md)\")"
+        },
+        {
+          "type": "cel_true",
+          "expr": "!outputs.content[\"conversation.md\"].contains(\"](omitted-human.md)\")"
+        },
+        {
+          "type": "cel_true",
+          "expr": "calls.filter(c,c.node_path.contains(\"read_document_headings\")).size() == 0"
+        },
+        {
+          "type": "cel_true",
+          "expr": "!calls.exists(c,c.node_path.contains(\"read_document_headings\") && c.artifacts.exists(k,k.endsWith(\"conversation.json\")))"
+        },
+        {
+          "type": "cel_true",
+          "expr": "outputs.documents.all(k,outputs.documents[k].kind == \"value\" && outputs.documents[k].format == \"text\" && outputs.documents[k].name == k)"
+        },
+        {
+          "type": "cel_true",
+          "expr": "calls.filter(c,c.node_path.contains(\"/render/\")).all(c,c.node_path.contains(\"read_document_headings\"))"
+        }
+      ]
+    },
+    {
+      "id": "renamed-evidence-reserves-wrapper-name",
+      "type": "integration_case",
+      "runtime": {},
+      "inputs": {
+        "conversation": {
+          "requester_cell": "notebook",
+          "consultant": {
+            "cell": "storage"
+          },
+          "transcript": [
+            {
+              "participant": "consultant",
+              "reply": "Advice",
+              "artifacts": {
+                "summary.md": {
+                  "kind": "value",
+                  "name": "summary.md",
+                  "format": "text",
+                  "value": "# Aliased recommendation\nEvidence"
+                }
+              }
+            }
+          ],
+          "message": "Use \"conditional writes\".\nKeep both drafts.",
+          "handoff": "",
+          "summary_file": "summary.md"
+        },
+        "documents": {
+          "summary.md": {
+            "kind": "value",
+            "name": "summary.md",
+            "format": "text",
+            "value": "# Aliased recommendation\nEvidence"
+          }
+        },
+        "aliases": {},
+        "prefix": "evidence/"
+      },
+      "mocks": {
+        "ops": [
+          {
+            "match": {
+              "op": "command_execution"
+            },
+            "repeat": true,
+            "behavior": {
+              "mode": "passthrough"
+            }
+          }
+        ]
+      },
+      "assertions": [
+        {
+          "type": "cel_true",
+          "expr": "outputs.content[\"conversation.md\"].startsWith(\"# notebook and storage: Aliased recommendation\\n\")"
+        },
+        {
+          "type": "cel_true",
+          "expr": "outputs.content[\"conversation.md\"].contains(\"[summary.md](evidence/summary.md)\")"
+        },
+        {
+          "type": "cel_true",
+          "expr": "outputs.content[\"summary.md\"].contains(\"](evidence/summary.md)\")"
+        },
+        {
+          "type": "cel_true",
+          "expr": "calls.filter(c,c.node_path.contains(\"read_document_headings\")).size() == 1"
+        },
+        {
+          "type": "cel_true",
+          "expr": "!calls.exists(c,c.node_path.contains(\"read_document_headings\") && c.artifacts.exists(k,k.endsWith(\"conversation.json\")))"
+        },
+        {
+          "type": "cel_true",
+          "expr": "outputs.documents.all(k,outputs.documents[k].kind == \"value\" && outputs.documents[k].format == \"text\" && outputs.documents[k].name == k)"
+        },
+        {
+          "type": "cel_true",
+          "expr": "calls.filter(c,c.node_path.contains(\"/render/\")).all(c,c.node_path.contains(\"read_document_headings\"))"
+        }
+      ]
+    },
+    {
+      "id": "summary-metadata-needs-no-file-read",
+      "type": "integration_case",
+      "runtime": {},
+      "inputs": {
+        "conversation": {
+          "requester_cell": "notebook",
+          "consultant": {
+            "cell": "storage"
+          },
+          "transcript": [
+            {
+              "participant": "consultant",
+              "files": [
+                {
+                  "path": "work/handoff.md",
+                  "title": "Old"
+                },
+                {
+                  "path": "recommendation.md",
+                  "title": "Summary"
+                }
+              ]
+            },
+            {
+              "participant": "expert",
+              "files": {
+                "work/handoff.md": {
+                  "kind": "value",
+                  "name": "evidence.md",
+                  "format": "text",
+                  "value": "# Evidence\nproof"
+                }
+              },
+              "reply": "Direction"
+            },
+            {
+              "participant": "consultant",
+              "files": [
+                {
+                  "path": "work/handoff.md",
+                  "title": "Latest \"title\""
+                }
+              ],
+              "artifacts": {}
+            },
+            {
+              "participant": "consultant",
+              "files": [
+                {
+                  "path": "recommendation.md",
+                  "title": ""
+                }
+              ]
+            }
+          ],
+          "message": "Use \"conditional writes\".\nKeep both drafts.",
+          "handoff": "",
+          "summary_file": "recommendation.md"
+        },
+        "documents": {
+          "work/handoff.md": {
+            "kind": "value",
+            "name": "work/handoff.md",
+            "format": "text",
+            "value": "# Heading"
+          },
+          "recommendation.md": {
+            "kind": "value",
+            "name": "recommendation.md",
+            "format": "text",
+            "value": "# Rec"
+          }
+        },
+        "aliases": {}
+      },
+      "mocks": {
+        "ops": [
+          {
+            "match": {
+              "op": "command_execution"
+            },
+            "repeat": true,
+            "behavior": {
+              "mode": "passthrough"
+            }
+          }
+        ]
+      },
+      "assertions": [
+        {
+          "type": "cel_true",
+          "expr": "outputs.content[\"conversation.md\"].startsWith(\"# notebook and storage: Summary\\n\")"
+        },
+        {
+          "type": "cel_true",
+          "expr": "outputs.content[\"summary.md\"].contains(\"Use \\\"conditional writes\\\".\\nKeep both drafts.\")"
+        },
+        {
+          "type": "cel_true",
+          "expr": "outputs.content[\"summary.md\"].contains(\"](recommendation.md) · [Conversation](conversation.md)\")"
+        },
+        {
+          "type": "cel_true",
+          "expr": "calls.filter(c,c.node_path.contains(\"read_document_headings\")).size() == 0"
+        },
+        {
+          "type": "cel_true",
+          "expr": "!calls.exists(c,c.node_path.contains(\"read_document_headings\") && c.artifacts.exists(k,k.endsWith(\"conversation.json\")))"
+        },
+        {
+          "type": "cel_true",
+          "expr": "outputs.documents.all(k,outputs.documents[k].kind == \"value\" && outputs.documents[k].format == \"text\" && outputs.documents[k].name == k)"
+        },
+        {
+          "type": "cel_true",
+          "expr": "calls.filter(c,c.node_path.contains(\"/render/\")).all(c,c.node_path.contains(\"read_document_headings\"))"
+        }
+      ]
+    }
+  ]
+}

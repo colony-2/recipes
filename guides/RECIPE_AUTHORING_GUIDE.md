@@ -59,6 +59,24 @@ Use `ops/README.md` as the entrypoint to the per-op guides.
 
 ## 3. Default Authoring Loop: `c2j submit --run --embed`
 
+### Use expressions for values, operations for evidence
+
+Use small CEL expressions and templates to select, filter, join, or format values
+the recipe already has. Name intermediate values through ordinary recipe inputs
+and outputs when that improves readability. Forward structured maps and lists
+directly; do not serialize them to a file merely to read them in another task.
+For generated documents, use named `kind: value`, `format: text` artifacts and
+explicit artifact exports (see [artifact reference](RECIPE_ARTIFACTS_REFERENCE.md)).
+Preserve literal user text and materialize the selected evidence behind relative
+links; test the actual recipe include with quotes, newlines, and empty collections.
+
+Keep real operations for file-content reads, CLI inspection, artifact retrieval,
+byte comparisons, command execution, and complex bounded validation. For example,
+choosing an attachment's declared title is a value transformation; reading its
+first Markdown heading requires file access. Do not translate a large validator
+into an opaque CEL expression or replace Python with shell JSON plumbing. Remove
+interpreter provisioning only when no remaining execution in that operation needs it.
+
 ### Confirm cell resolution
 
 `c2j submit` targets the current cell by default. That works when the repo has a usable `.c2/config.yaml`.
@@ -78,11 +96,11 @@ If the current directory does not resolve cleanly as a cell, either:
 
 ### Submit the recipe file directly
 
-For day-to-day authoring, prefer `--recipe-file` over named recipe indirection:
+For day-to-day authoring, prefer `--advanced-recipe-file` over named recipe indirection:
 
 ```bash
 c2j submit \
-  --recipe-file ./recipes/my-recipe.yaml \
+  --advanced-recipe-file ./recipes/my-recipe.yaml \
   --run \
   --embed
 ```
@@ -91,7 +109,7 @@ If the recipe needs inputs:
 
 ```bash
 c2j submit \
-  --recipe-file ./recipes/my-recipe.yaml \
+  --advanced-recipe-file ./recipes/my-recipe.yaml \
   --inputs-file ./recipes/test-inputs.yaml \
   --run \
   --embed
@@ -172,7 +190,7 @@ do not replace the parent's working state.
 
 Use the fastest tool that answers the question you have:
 
-1. `c2j submit --recipe-file ... --run --embed`
+1. `c2j submit --advanced-recipe-file ... --run --embed`
    Use this first. It is the default manual validation path for recipe authoring.
 2. `c2j run one --embed --job-id ...`
    Use this when continuing an existing blocked or partially completed run.
@@ -230,3 +248,24 @@ Its selected artifacts must include `handoff.md`; only that directory reaches th
 child's inbox. Do not reintroduce agreement keys or copy consultation instructions
 into an execution prompt. Planning mocks must produce a handoff with their formal
 statements. Phase changes start fresh sessions; within-phase corrections may resume.
+
+## Keep workflow progress in native state
+
+Carry consultation progress through state outputs and transition payloads. Use
+`sequence.<id>.outputs` and `states.<id>.outputs` across their documented scope
+boundaries; explicitly export values an enclosing scope needs. Keep suspended
+parent conversations internal to the state machine. Do not publish or reload a
+JSON checkpoint of these values, or export the whole internal conversation as a
+public result. Runtime Codex session checkpoints remain typed runtime objects.
+
+Publish actual work documents and readable conversations as artifacts. Render
+from native presentation values with text value descriptors; read source files
+only when their content is needed. A conversation document is evidence for people,
+not an input for restoring orchestration. Return outcomes, selected handoffs and
+necessary session references to callers.
+
+For prior work, inspect retained task outputs and artifacts using `c2j job log`,
+`fields`, `artifacts` and `artifact`. For durable continuation, discover an actual
+boundary using `c2j job restart-points`, inspect `restart-context`, and use
+`c2j restart`. Restart uses the retained recipe and context; later tasks and side
+effects may repeat. It is not a new invocation seeded from an exported state file.

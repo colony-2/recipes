@@ -1,0 +1,21 @@
+# Native consultation state expectations
+
+Each expectation is at most 30 words; metadata identifies implementation and test targets. Native cases use actual artifact storage and deterministic model responses.
+
+| ID | Expectation | Files | Priority | Level / dependencies |
+| --- | --- | --- | --- | --- |
+| NS-01 | Fresh consultations return their agreed outcome and required sessions without exposing a serialized continuation or full internal state. | `recipes/adaptive/consultation.yaml`, `recipes/adaptive2/consultation.yaml` | Critical | Integration / c2j, packaged c2ops |
+| NS-02 | Human feedback continues the ongoing consultation with preserved participant sessions, direction and prior documents. | `recipe-tests/adaptive/consultation.test.yaml`, `recipe-tests/adaptive2/consultation-turns.test.yaml` | Critical | Integration / c2j, native human input |
+| NS-03 | Nested advice returns to its suspended caller with the correct participants and documents, once per uninterrupted execution. | `recipe-tests/adaptive/consultation.test.yaml`, `recipe-tests/adaptive2/consultation-turns.test.yaml` | Critical | Integration / c2j, native sessions |
+| NS-04 | Restart from a recorded consultation boundary preserves human direction, sessions, selected documents and parent routing through completion. | `recipe-tests/adaptive/consultation-continuation.test.yaml`, `recipe-tests/adaptive2/consultation-turns.test.yaml` | Critical | Integration / c2j restart and inspection |
+| NS-05 | Consultation execution neither publishes nor loads an internal-state artifact, including during rendering and nested return. | `recipes/adaptive/consultation.yaml`, `recipes/adaptive2/consultation.yaml` | Critical | Integration / c2j task and artifact inspection |
+| NS-06 | Human conversations retain attributed exchanges and resolvable document links, including after feedback and nested advice. | `recipe-tests/adaptive2/consultation.yaml`, `recipe-tests/adaptive2/consultation.test.yaml` | High | Integration / native artifact storage |
+| NS-07 | Conversation titles preserve descriptor precedence and source-heading fallback; absent titles and summaries render safely. | `recipes/adaptive2/consultation.yaml`, `recipe-tests/adaptive2/consultation.test.yaml` | High | Integration / c2j, source documents |
+| NS-08 | Execution receives the selected handoff and supporting files without checkpoint references or unrelated consultation documents. | `recipe-tests/adaptive/build-coordination.test.yaml`, `recipe-tests/adaptive2/consultation.test.yaml` | Critical | Integration / c2j native handoff |
+| NS-09 | Invalid consultation requests fail clearly without importing saved state or losing available human evidence. | `recipes/adaptive/consultation-start.yaml`, `recipe-tests/adaptive/consultation.test.yaml` | High | Integration / c2j |
+| NS-10 | Kernel synthesis retries preserve evidence and validation limits without reloading retry control from a checkpoint artifact. | `recipes/kernel/review-synthesis.yaml`, `recipes/kernel/review-content.yaml` | High | Integration / c2j, checker tools |
+| NS-11 | Invalid or exhausted synthesis retains deterministic review fallback and never exceeds the existing retry allowance. | `recipes/kernel/review-synthesis.yaml`, `recipes/kernel/review-content.yaml` | High | Integration / c2j, scripted inference |
+| NS-12 | CI smoke verifies native nested consultation and selected documents through packaged operations without an export/import checkpoint round trip. | `.github/workflows/recipes.yml`, `recipe-tests/adaptive/consultation-continuation.test.yaml` | High | Integration / CI Nix and cache |
+| NS-13 | Authoring contracts explain native progress, human documents and retained-work retrieval without recommending recipe checkpoint files. | `guides/RECIPE_AUTHORING_GUIDE.md`, `guides/NATIVE_RECIPE_TESTING.md` | Medium | Review / repository source |
+
+NS-04 requires a recorded native restart, not a second invocation seeded with exported state. A missing runtime/test capability must be documented with a minimal reproduction; it does not count as a pass. NS-05 includes inspecting operation bindings, produced artifact names and public outputs, not just searching filenames. Runtime-owned session objects and genuine content artifacts remain valid.

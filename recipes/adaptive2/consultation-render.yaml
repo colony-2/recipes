@@ -1,0 +1,169 @@
+# Presentation only: the caller chooses evidence; this helper never recovers history.
+id: adaptive2-consultation-render
+inputs:
+  conversation: >-
+    ${{ inputs.conversation }}
+  selected_documents: >-
+    ${{ inputs.selected_documents }}
+  attachment_map: >-
+    ${{ inputs.?attachment_map.orValue({}) }}
+vars:
+  requester: >-
+    ${{ inputs.conversation.requester_cell }}
+  receiver: >-
+    ${{ nonempty(inputs.conversation.consultant.cell) ? inputs.conversation.consultant.cell : inputs.conversation.requester_cell }}
+  handoff: >-
+    ${{ nonempty(inputs.conversation.?handoff.orValue('')) ? inputs.conversation.handoff + 'handoff.md' : '' }}
+  summary: >-
+    ${{ inputs.conversation.?summary_file.orValue('') }}
+sequence:
+- id: title_candidates
+  inputs:
+    transcript: >-
+      ${{ inputs.conversation.transcript }}
+    handoff: >-
+      ${{ vars.handoff }}
+    summary: >-
+      ${{ vars.summary }}
+  vars:
+    descriptors: >-
+      ${{ jq(inputs.transcript.map(t,type(t.?files.orValue([])) == list ? t.?files.orValue([]) : []), 'flatten') }}
+  sequence: []
+  outputs:
+    handoff: >-
+      ${{ vars.descriptors.filter(f,f.path == inputs.handoff && nonempty(f.?title.orValue(''))) }}
+    summary: >-
+      ${{ vars.descriptors.filter(f,f.path == inputs.summary && nonempty(f.?title.orValue(''))) }}
+- id: titles
+  inputs:
+    handoff: >-
+      ${{ sequence.title_candidates.outputs.handoff }}
+    summary: >-
+      ${{ sequence.title_candidates.outputs.summary }}
+    handoff_path: >-
+      ${{ vars.handoff }}
+    summary_path: >-
+      ${{ vars.summary }}
+    aliases: >-
+      ${{ inputs.attachment_map }}
+  sequence: []
+  outputs:
+    handoff: >-
+      ${{ size(inputs.handoff) > 0 ? inputs.handoff[size(inputs.handoff)-1].title : '' }}
+    summary: >-
+      ${{ size(inputs.summary) > 0 ? inputs.summary[size(inputs.summary)-1].title : '' }}
+    handoff_target: >-
+      ${{ inputs.aliases[?inputs.handoff_path].orValue(inputs.handoff_path) }}
+    summary_target: >-
+      ${{ inputs.aliases[?inputs.summary_path].orValue(inputs.summary_path) }}
+- id: headings
+  inputs:
+    candidates: >-
+      ${{ jq({'documents':inputs.selected_documents, 'paths':inputs.selected_documents.filter(k,sequence.titles.outputs.handoff == '' &&
+        ((k == sequence.titles.outputs.handoff_target && vars.handoff != '') ||
+         (k == sequence.titles.outputs.summary_target && vars.summary != '' && sequence.titles.outputs.summary == '')))},
+        '. as $v | .documents | with_entries(select(.key as $k | $v.paths | index($k)))') }}
+    handoff: >-
+      ${{ sequence.titles.outputs.handoff_target }}
+    summary: >-
+      ${{ sequence.titles.outputs.summary_target }}
+  state:
+    initial:
+    - to: read_document_headings
+      when: size(inputs.candidates) > 0
+    - to: absent
+      when: true
+    states:
+      read_document_headings:
+        id: read_document_headings
+        op: command_execution
+        const: true
+        execution_needs:
+          packages:
+          - nix:github:NixOS/nixpkgs/e7439b6b14ad3cc35d05608ebca9bce01a25f5f8#python3
+        artifacts:
+          source/: ${{ inputs.candidates }}
+        inputs:
+          env:
+            INBOX: >-
+              ${{ context.environment.op.inbox }}
+            HANDOFF: >-
+              ${{ inputs.handoff }}
+            SUMMARY: >-
+              ${{ inputs.summary }}
+          run: |
+            python3 - <<'PY'
+            import json, os
+            from pathlib import Path
+            root = Path(os.environ['INBOX']) / 'source'
+            def heading(name):
+                if not name or not (root / name).is_file():
+                    return ''
+                # Decode the complete file, retaining the previous read-failure behavior.
+                return next((line[2:] for line in (root / name).read_text().splitlines() if line.startswith('# ')), '')
+            handoff = heading(os.environ['HANDOFF'])
+            print(json.dumps({'handoff': handoff, 'summary': '' if handoff else heading(os.environ['SUMMARY'])}))
+            PY
+      absent:
+        sequence: []
+  outputs:
+    handoff: >-
+      ${{ json_parse(state_output('read_document_headings','stdout','{"handoff":"","summary":""}')).handoff }}
+    summary: >-
+      ${{ json_parse(state_output('read_document_headings','stdout','{"handoff":"","summary":""}')).summary }}
+- id: paragraphs
+  inputs:
+    transcript: >-
+      ${{ inputs.conversation.transcript }}
+    selected: >-
+      ${{ inputs.selected_documents }}
+    aliases: >-
+      ${{ inputs.attachment_map }}
+    requester: >-
+      ${{ vars.requester }}
+    receiver: >-
+      ${{ vars.receiver }}
+  vars:
+    turns: >-
+      ${{ inputs.transcript.map(t, {'owner': t.participant == 'consultant' ? inputs.receiver : t.participant == 'requester' ? inputs.requester : 'Human',
+        'reply': t.?reply.orValue(t.?thinking.orValue('')),
+        'evidence': size(t.?artifacts.orValue({})) > 0 ? t.artifacts : type(t.?files.orValue([])) == map ? t.files : {} }) }}
+  sequence: []
+  outputs:
+    sections: >-
+      ${{ vars.turns.map(t, '## ' + t.owner + '\n\n' + t.reply + '\n\n' +
+        jq(t.evidence.map(n,
+          inputs.aliases[?n].orValue(n) in inputs.selected &&
+          jq(t.evidence[n],'del(.name)') == jq(inputs.selected[inputs.aliases[?n].orValue(n)],'del(.name)')
+          ? '- [' + n + '](' + inputs.aliases[?n].orValue(n) + ')' :  '- ' + n), 'join("\\n")') + '\n') }}
+- id: format
+  inputs:
+    title: >-
+      ${{ sequence.titles.outputs.handoff != '' ? sequence.titles.outputs.handoff
+        : sequence.headings.outputs.handoff != '' ? sequence.headings.outputs.handoff
+        : sequence.titles.outputs.summary != '' ? sequence.titles.outputs.summary
+        : sequence.headings.outputs.summary != '' ? sequence.headings.outputs.summary : 'Conversation' }}
+    requester: >-
+      ${{ vars.requester }}
+    receiver: >-
+      ${{ vars.receiver }}
+    summary: >-
+      ${{ vars.summary }}
+    summary_target: >-
+      ${{ sequence.titles.outputs.summary_target }}
+    message: >-
+      ${{ inputs.conversation.message }}
+    sections: >-
+      ${{ sequence.paragraphs.outputs.sections }}
+  vars:
+    conversation: >-
+      ${{ '# ' + inputs.requester + ' and ' + inputs.receiver + ': ' + inputs.title + '\n\n' + jq(inputs.sections, 'join("\\n")') }}
+  sequence: []
+  outputs:
+    documents: >-
+      ${{ jq([{'conversation.md': {'kind':'value','name':'conversation.md','format':'text','value':vars.conversation} },
+        inputs.summary != '' ? {'summary.md': {'kind':'value','name':'summary.md','format':'text',
+          'value':'# ' + inputs.title + '\n\n' + inputs.message + '\n\n[Full recommendation and open questions](' + inputs.summary_target + ') · [Conversation](conversation.md)\n'} } : {}], 'add') }}
+outputs:
+  documents: >-
+    ${{ sequence.format.outputs.documents }}

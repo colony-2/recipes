@@ -27,13 +27,6 @@ input_schema:
   max_iterations:
     type: number
     default_value: 4
-  continuation:
-    type: artifact
-    required: false
-  direction:
-    type: string
-    default_value: ''
-    description: Explicit expert direction authorizing a new bounded round of a saved unresolved thread.
   annotations:
     type: array
     default_value: []
@@ -68,30 +61,12 @@ inputs:
   requester_session: ${{ inputs.?requester_session.orValue({}) }}
   documents: ${{ inputs.documents }}
   max_iterations: ${{ inputs.max_iterations }}
-  continuation: ${{ inputs.?continuation.orValue(null) }}
-  direction: ${{ inputs.direction }}
   depth: ${{ inputs.depth }}
 state:
   initial: prompts
   states:
     prompts:
       include: ./prompts.yaml
-      transitions:
-      - to: restore_consultation_transcript
-        when: inputs.continuation != null
-      - to: start
-        when: true
-    restore_consultation_transcript:
-      id: restore_consultation_transcript
-      op: command_execution
-      const: true
-      artifacts:
-        conversation.json: ${{ inputs.continuation }}
-      inputs:
-        env:
-          INBOX: ${{ context.environment.op.inbox }}
-        run: |
-          cat "$INBOX/conversation.json"
       transitions:
       - to: start
         when: true
@@ -103,8 +78,6 @@ state:
         requester_session: ${{ inputs.requester_session }}
         documents: ${{ inputs.documents }}
         max_iterations: ${{ inputs.max_iterations }}
-        continuation: ${{ json_parse(state_output('restore_consultation_transcript', 'stdout', '{}')) }}
-        direction: ${{ inputs.direction }}
         cell: ${{ context.workspace.cell }}
         topic: ${{ inputs.thread }}
         thread: ${{ context.workflow.job_id + '/' + inputs.thread }}
@@ -134,7 +107,7 @@ state:
         when: outputs.conversation.outcome == 'recovery'
       - to: turn
         when: outputs.conversation.outcome == 'continue'
-      - to: publish
+      - to: finalize
         when: true
         payload:
           conversation: ${{ outputs.conversation }}
@@ -395,48 +368,32 @@ state:
            'error': inputs.turn.?repair_cancelled.orValue(false) ? 'Result correction cancelled by the reviewer; no agreement accepted.' : inputs.turn.result.?errorMessage.orValue('Consultation turn did not complete; no agreement accepted.')
            }], 'add') }}
       transitions:
-      - to: publish
+      - to: finalize
         when: true
         payload:
           conversation: ${{ outputs.conversation }}
     invalid:
       inputs:
         previous: |-
-          ${{ inputs.continuation == null ? states.start.outputs.conversation
-              : json_parse(states.restore_consultation_transcript.outputs.stdout) }}
+          ${{ states.start.outputs.conversation }}
       sequence: []
       outputs:
         conversation: |-
           ${{ jq([inputs.previous, {'outcome': 'failed', 'retryable': false,
-                 'error': 'Invalid request, documents, iteration limit, requester workspace, or expert-directed continuation.'}], 'add') }}
+                 'message': 'Invalid request, documents, or iteration limit.',
+                 'error': 'Invalid request, documents, or iteration limit.'}], 'add') }}
       transitions:
-      - to: publish
+      - to: finalize
         when: true
         payload:
           conversation: ${{ outputs.conversation }}
-    publish:
+    finalize:
       inputs:
         conversation: |-
           ${{ transition.payload.conversation }}
-      sequence:
-      - id: publish_consultation_transcript
-        op: command_execution
-        const: true
-        inputs:
-          env:
-            INBOX: ${{ context.environment.op.inbox }}
-            OUTBOX: ${{ context.environment.op.outbox }}
-          run: |
-            cp "$INBOX/conversation.json" "$OUTBOX/conversation.json"
-        artifacts:
-          conversation.json:
-            kind: value
-            name: conversation.json
-            format: json
-            value: ${{ inputs.conversation }}
+      sequence: []
       outputs:
         conversation: ${{ inputs.conversation }}
-        transcript: ${{ sequence.publish_consultation_transcript.artifacts['conversation.json'] }}
       transitions:
       - to: report
         when: outputs.conversation.outcome == 'needs_review'
@@ -444,14 +401,13 @@ state:
         when: size(state_output('current','parents',[])) > 0
         payload:
           result: ${{
-            {'outcome':outputs.conversation.outcome,'summary':outputs.conversation.message,'final_artifacts':outputs.conversation.final_artifacts,'transcript':outputs.transcript,'agreements':outputs.conversation.?agreements.orValue([]),'execution_requests':outputs.conversation.?execution_requests.orValue([]),'annotations':outputs.conversation.?annotations.orValue([])}
+            {'outcome':outputs.conversation.outcome,'summary':outputs.conversation.message,'final_artifacts':outputs.conversation.final_artifacts,'agreements':outputs.conversation.?agreements.orValue([]),'execution_requests':outputs.conversation.?execution_requests.orValue([]),'annotations':outputs.conversation.?annotations.orValue([])}
             }}
           frame: ${{ states.current.outputs.parents[size(states.current.outputs.parents)-1] }}
           parents: ${{ jq(states.current.outputs.parents, '.[0:-1]') }}
     report:
       inputs:
-        conversation: ${{ states.publish.outputs.conversation }}
-        transcript: ${{ states.publish.outputs.transcript }}
+        conversation: ${{ states.finalize.outputs.conversation }}
       sequence: []
       outputs:
         error: ''
@@ -466,28 +422,28 @@ state:
               required: true
       transitions:
       - to: request_consultation_direction
-        when: states.publish.outputs.conversation.outcome == 'needs_review'
+        when: states.finalize.outputs.conversation.outcome == 'needs_review'
     request_consultation_direction:
       id: request_consultation_direction
       include: ./review.yaml
       inputs:
-        title: ${{ states.publish.outputs.conversation.review_title }}
-        documents: ${{ states.publish.outputs.conversation.documents }}
+        title: ${{ states.finalize.outputs.conversation.review_title }}
+        documents: ${{ states.finalize.outputs.conversation.documents }}
         fields: ${{ states.report.outputs.review.form.fields }}
-        annotations: ${{ states.publish.outputs.conversation.?annotations.orValue([]) }}
-        overview: "${{ size(states.publish.outputs.conversation.review_documents.filter(k,k == 'review.md' || k.endsWith('/review.md')))
-          > 0 ? states.publish.outputs.conversation.review_documents.filter(k,k == 'review.md' || k.endsWith('/review.md'))[0]
+        annotations: ${{ states.finalize.outputs.conversation.?annotations.orValue([]) }}
+        overview: "${{ size(states.finalize.outputs.conversation.review_documents.filter(k,k == 'review.md' || k.endsWith('/review.md')))
+          > 0 ? states.finalize.outputs.conversation.review_documents.filter(k,k == 'review.md' || k.endsWith('/review.md'))[0]
           : 'review.md' }}"
-        summary: ${{ states.publish.outputs.conversation.message }}
-        brief: "${{ size(states.publish.outputs.conversation.review_documents.filter(k,k == 'review.md' || k.endsWith('/review.md')))
-          > 0 ? states.publish.outputs.conversation.review_documents[states.publish.outputs.conversation.review_documents.filter(k,k
+        summary: ${{ states.finalize.outputs.conversation.message }}
+        brief: "${{ size(states.finalize.outputs.conversation.review_documents.filter(k,k == 'review.md' || k.endsWith('/review.md')))
+          > 0 ? states.finalize.outputs.conversation.review_documents[states.finalize.outputs.conversation.review_documents.filter(k,k
           == 'review.md' || k.endsWith('/review.md'))[0]] : null }}"
       transitions:
       - to: expert_record
         when: true
     expert_record:
       inputs:
-        previous: ${{ states.publish.outputs.conversation }}
+        previous: ${{ states.finalize.outputs.conversation }}
         response: ${{ states.request_consultation_direction.outputs.response }}
         review: ${{ states.request_consultation_direction.outputs.documents }}
         direction: ${{ states.request_consultation_direction.outputs.response.fields.direction }}
@@ -518,7 +474,7 @@ state:
           round. Return the unresolved question or implementation need to the
           coordinator.','final_artifacts':inputs.conversation.documents}],'add') }}
       transitions:
-      - to: publish
+      - to: finalize
         when: true
         payload:
           conversation: ${{ outputs.conversation }}
@@ -558,8 +514,6 @@ state:
         requester_session: {}
         documents: ${{ states.advice.outputs.frame.conversation.documents }}
         max_iterations: ${{ inputs.max_iterations }}
-        continuation: {}
-        direction: ''
         cell: ${{ states.advice.outputs.target.cell }}
         requester_ref: ${{ states.advice.outputs.target.ref }}
         topic: ${{ states.advice.outputs.target.thread }}
@@ -598,7 +552,7 @@ state:
              'agreements':inputs.frame.conversation.?agreements.orValue([]) + inputs.result.?agreements.orValue([]) +
                (inputs.result.outcome == 'agreed' ? [{'request':jq([{'kind':'feature','ref':'main'},inputs.frame.requests[inputs.frame.index]],'add'),
                  'target':{'cell':inputs.frame.requests[inputs.frame.index].cell,'ref':inputs.frame.requests[inputs.frame.index].?ref.orValue('main')},
-                 'result':{'outcome':'agreed','final_artifacts':inputs.result.final_artifacts,'continuation':inputs.result.transcript,'annotations':inputs.result.?annotations.orValue([])} }] : [])}], 'add') }}
+                 'result':{'outcome':'agreed','final_artifacts':inputs.result.final_artifacts,'annotations':inputs.result.?annotations.orValue([])} }] : [])}], 'add') }}
         frame: ${{ inputs.frame }}
         parents: ${{ inputs.parents }}
       transitions:
@@ -613,21 +567,18 @@ state:
           conversation: ${{ outputs.conversation }}
           parents: ${{ outputs.parents }}
 outputs:
-  annotations: "${{ jq({'annotations': states.publish.outputs.conversation.?annotations.orValue([]), 'documents': states.publish.outputs.conversation.final_artifacts},
+  annotations: "${{ jq({'annotations': states.finalize.outputs.conversation.?annotations.orValue([]), 'documents': states.finalize.outputs.conversation.final_artifacts},
     '. as $v | [(.annotations // [])[] | select(.id as $id | $v.documents | has($id))]') }}"
-  outcome: ${{ states.publish.outputs.conversation.outcome }}
-  requester_session: ${{ states.publish.outputs.conversation.requester_session }}
-  consultant_session: ${{ states.publish.outputs.conversation.consultant_session }}
-  requester_start_session: ${{ states.publish.outputs.conversation.requester_start_session }}
-  continuation: ${{ states.publish.outputs.transcript }}
-  state: ${{ states.publish.outputs.conversation }}
-  artifacts: ${{ states.publish.outputs.conversation.documents }}
-  transcript: ${{ states.publish.outputs.transcript }}
-  final_artifacts: ${{ states.publish.outputs.conversation.final_artifacts }}
-  summary: ${{ states.publish.outputs.conversation.message }}
+  outcome: ${{ states.finalize.outputs.conversation.outcome }}
+  requester_session: ${{ states.finalize.outputs.conversation.requester_session }}
+  consultant_session: ${{ states.finalize.outputs.conversation.consultant_session }}
+  requester_start_session: ${{ states.finalize.outputs.conversation.requester_start_session }}
+  artifacts: ${{ states.finalize.outputs.conversation.documents }}
+  final_artifacts: ${{ states.finalize.outputs.conversation.final_artifacts }}
+  summary: ${{ states.finalize.outputs.conversation.message }}
   review: "${{ state_exists('request_consultation_direction') ? jq([state_output('report', 'review', {}), {'documents':states.request_consultation_direction.outputs.documents}],
     'add') : state_output('report', 'review', {}) }}"
   report_error: ${{ state_output('report', 'error', '') }}
-  agreements: ${{ states.publish.outputs.conversation.?agreements.orValue([]) }}
-  execution_requests: ${{ states.publish.outputs.conversation.?execution_requests.orValue([]) }}
+  agreements: ${{ states.finalize.outputs.conversation.?agreements.orValue([]) }}
+  execution_requests: ${{ states.finalize.outputs.conversation.?execution_requests.orValue([]) }}
   review_receipts: "${{ jq((state_exists('expert_record') ? states.expert_record.runs.map(r,r.outputs.receipt) + [states.expert_record.outputs.receipt] : []) + (state_exists('turn') ? states.turn.runs.map(r,r.outputs.review_receipts) + [states.turn.outputs.review_receipts] : []), 'flatten | map(select(.submission_id? != null)) | unique_by(.request_id,.submission_id)') }}"

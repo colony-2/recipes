@@ -1,0 +1,56 @@
+schema_version: 2
+id: consultation-render-probe
+input_schema:
+  conversation:
+    type: object
+  documents:
+    type: artifact_map
+    default_value: {}
+  prefix:
+    type: string
+    default_value: ''
+  aliases:
+    type: object
+    default_value: {}
+inputs:
+  prefix: ${{ inputs.prefix }}
+  conversation: ${{ inputs.conversation }}
+  documents: ${{ inputs.documents }}
+  aliases: ${{ inputs.aliases }}
+sequence:
+- id: bind_evidence
+  include: ../../recipes/adaptive/document-bindings.yaml
+  inputs:
+    prefix: ${{ inputs.prefix }}
+    documents: ${{ inputs.documents }}
+- id: render
+  include: ../../recipes/adaptive2/consultation-render.yaml
+  inputs:
+    conversation: ${{ inputs.conversation }}
+    selected_documents: ${{ sequence.bind_evidence.outputs.documents }}
+    attachment_map: ${{ jq([sequence.bind_evidence.outputs.attachment_map,inputs.aliases],'add') }}
+- id: inspect_rendered_documents
+  op: command_execution
+  artifacts:
+    ./: ${{ jq([sequence.bind_evidence.outputs.documents,sequence.render.outputs.documents],'add') }}
+  inputs:
+    env:
+      INBOX: ${{ context.environment.op.inbox }}
+    run: |
+      python3 - <<'PY'
+      import json, os, re
+      from pathlib import Path
+      root = Path(os.environ['INBOX'])
+      documents = {p.name: p.read_text() for p in root.glob('*.md') if p.name in ('conversation.md', 'summary.md')}
+      assert 'conversation.md' in documents
+      for name, text in documents.items():
+          for target in re.findall(r'\]\(([^)]+)\)', text):
+              assert (root / target).is_file(), (name, target)
+      print(json.dumps(documents))
+      PY
+  execution_needs:
+    packages:
+    - nix:github:NixOS/nixpkgs/e7439b6b14ad3cc35d05608ebca9bce01a25f5f8#python3
+outputs:
+  content: ${{ json_parse(sequence.inspect_rendered_documents.outputs.stdout) }}
+  documents: ${{ sequence.render.outputs.documents }}
