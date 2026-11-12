@@ -77,6 +77,18 @@ first Markdown heading requires file access. Do not translate a large validator
 into an opaque CEL expression or replace Python with shell JSON plumbing. Remove
 interpreter provisioning only when no remaining execution in that operation needs it.
 
+Keep policy separate from document layout: compute title precedence and evidence
+eligibility as named values, then render the text with an ordinary template.
+Prefer a readable Markdown block over nested string concatenation and escaped
+newlines. Test literal template text and whitespace through the real consumer;
+removing an interpreter does not by itself make an expression easier to maintain.
+
+Reserve generated filenames before composing a packet. Use the existing document
+binding helper and pass its delivery map to the renderer; moving a whole packet
+together preserves relative links between its evidence files. Match citations by
+artifact identity, not filename alone. An omitted file can retain a tested producer
+locator, but its historical presence does not select it for delivery.
+
 ### Confirm cell resolution
 
 `c2j submit` targets the current cell by default. That works when the repo has a usable `.c2/config.yaml`.

@@ -1,0 +1,73 @@
+schema_version: 2
+id: consultation-packet
+input_schema:
+  source_documents:
+    type: object
+    default_value: {}
+inputs:
+  source_documents: ${{ inputs.source_documents }}
+sequence:
+- id: produce
+  op: command_execution
+  inputs:
+    env:
+      OUTBOX: ${{ context.environment.op.outbox }}
+    run: |
+      printf 'Original evidence bytes\n' > "$OUTBOX/current.md"
+- id: consult
+  include: ../../recipes/adaptive2/consultation.yaml
+  inputs:
+    thread: packet
+    request: Preserve "quoted" text and both drafts.
+    consultant_cell: storage
+    consultant_role: Own draft persistence.
+    documents: ${{ jq([{'current.md':sequence.produce.artifacts['current.md']},inputs.source_documents],'add') }}
+- id: inspect
+  op: command_execution
+  const: true
+  execution_needs:
+    packages:
+    - nix:github:NixOS/nixpkgs/e7439b6b14ad3cc35d05608ebca9bce01a25f5f8#python3
+  artifacts:
+    ./: ${{ sequence.consult.outputs.final_artifacts }}
+  inputs:
+    env:
+      INBOX: ${{ context.environment.op.inbox }}
+    run: |
+      python3 - <<'PYINSPECT'
+      import json, os, re, subprocess, tempfile
+      from pathlib import Path
+      root=Path(os.environ['INBOX'])
+      content={str(p.relative_to(root)):p.read_text() for p in root.rglob('*') if p.is_file()}
+      for name in ['conversation.md','summary.md']:
+          for target in re.findall(r'\]\(([^)]+)\)',content.get(name,'')):
+              assert (root/target).is_file(), (name,target)
+      # Retrieve the original bytes using the locator printed by the production renderer.
+      original=[]
+      for job, ordinal, name in re.findall(r"producer job `([^`]+)`, task ([0-9]+), artifact `([^`]+)`", content['conversation.md']):
+          if name != 'current.md': continue
+          cursor=None
+          task=None
+          while True:
+              with tempfile.TemporaryDirectory() as tmp:
+                  dest=Path(tmp)/'tasks.json'
+                  subprocess.run(['c2j','job','log',job,'--limit','100','--json','--output',str(dest)]+(['--cursor',cursor] if cursor else []),check=True)
+                  page=json.loads(dest.read_text())
+              for t in page.get('tasks',[]):
+                  for a in t.get('artifacts',[]):
+                      key=a.get('reference',{}).get('stored',{}).get('key',{})
+                      if key.get('taskOrdinal')==int(ordinal) and key.get('name')==name: task=t['id']
+              cursor=page.get('next_cursor')
+              if task or not cursor: break
+          assert task, (job,ordinal,name)
+          with tempfile.TemporaryDirectory() as tmp:
+              dest=Path(tmp)/'original.txt'
+              subprocess.run(['c2j','job','artifact',job,'--task',task,'--name',name,'--output',str(dest)],check=True)
+              original.append(dest.read_text())
+      print(json.dumps({'content':content,'original':original}))
+      PYINSPECT
+outputs:
+  content: ${{ json_parse(sequence.inspect.outputs.stdout).content }}
+  original: ${{ json_parse(sequence.inspect.outputs.stdout).original }}
+  result: ${{ sequence.consult.outputs }}
+  artifact_refs: ${{ sequence.consult.outputs.final_artifacts }}

@@ -1,0 +1,552 @@
+recipe: consultation-packet.yaml
+cases:
+- id: reserved-names-rebase-packet-and-handoff
+  type: integration_case
+  runtime:
+    cell: notebook
+    cells:
+      notebook:
+        files:
+          PURPOSE.md: Own notebook.
+      storage:
+        files:
+          PURPOSE.md: Own persistence.
+    responses: []
+  inputs:
+    source_documents:
+      conversation.md:
+        kind: value
+        name: conversation.md
+        format: text
+        value: 'Source conversation bytes
+
+          '
+      summary.md:
+        kind: value
+        name: summary.md
+        format: text
+        value: 'Source summary bytes
+
+          '
+  mocks:
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: storage
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: agreed
+            reply: 'Preserve "quotes".
+
+
+              Keep ${{ literal }} and {{ untouched }}.'
+            files:
+            - path: conversation.md
+              description: Selected evidence
+              title: null
+            - path: summary.md
+              description: Selected evidence
+              title: null
+            - path: current.md
+              description: Selected evidence
+              title: null
+            - path: iter1/consultant/summary.md
+              description: Selected evidence
+              title: Recommendation
+            - path: iter1/consultant/work/handoff.md
+              description: Selected evidence
+              title: Accepted assignment
+            requests: []
+            review_title: Choose draft retention
+            handoff: iter1/consultant/work/
+            work_kind: feature
+        artifacts:
+          iter1/consultant/summary.md: '# Recommendation
+
+            Keep both drafts.
+
+            '
+          iter1/consultant/work/handoff.md: '# Assignment
+
+            Original accepted bytes.
+
+            '
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: agreed
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.result.outcome == "agreed" && outputs.result.handoff == "evidence/iter1/consultant/work/"
+  - type: cel_true
+    expr: outputs.content["evidence/conversation.md"] == "Source conversation bytes\n" && outputs.content["evidence/summary.md"]
+      == "Source summary bytes\n"
+  - type: cel_true
+    expr: outputs.content["evidence/iter1/consultant/work/handoff.md"] == "# Assignment\nOriginal accepted bytes.\n"
+  - type: cel_true
+    expr: outputs.content["summary.md"].contains("](evidence/iter1/consultant/summary.md)")
+  - type: cel_true
+    expr: outputs.content["conversation.md"].contains("[current.md](evidence/current.md)") && outputs.content["evidence/current.md"]
+      == "Original evidence bytes\n"
+  - type: cel_true
+    expr: 'outputs.content["conversation.md"].startsWith("# notebook and storage: Accepted assignment\n")'
+  - type: cel_true
+    expr: outputs.content["conversation.md"].contains("Keep ${{ literal }} and {{ untouched }}.")
+  - type: cel_true
+    expr: '!calls.exists(c,c.node_path.contains("read_document_headings"))'
+  - type: cel_true
+    expr: '!calls.exists(c,c.node_path.contains("publish_consultation_transcript") || c.node_path.contains("restore_consultation_transcript"))'
+- id: same-name-replacement-keeps-old-producer
+  type: integration_case
+  runtime:
+    cell: notebook
+    cells:
+      notebook:
+        files:
+          PURPOSE.md: Own notebook.
+      storage:
+        files:
+          PURPOSE.md: Own persistence.
+    responses: []
+  inputs: {}
+  mocks:
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: storage
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: answered
+            reply: 'Preserve "quotes".
+
+
+              Keep ${{ literal }} and {{ untouched }}.'
+            files:
+            - path: current.md
+              description: Selected evidence
+              title: null
+            - path: iter1/consultant/summary.md
+              description: Selected evidence
+              title: Recommendation
+            requests: []
+            review_title: Choose draft retention
+            handoff: null
+            work_kind: null
+        artifacts:
+          current.md: 'Replacement bytes
+
+            '
+          iter1/consultant/summary.md: '# Recommendation
+
+            Use replacement.
+
+            '
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: answered
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.original == ["Original evidence bytes\n"]
+  - type: cel_true
+    expr: outputs.content["current.md"] == "Replacement bytes\n"
+  - type: cel_true
+    expr: "outputs.content[\"conversation.md\"].contains(\"- current.md \u2014 producer job `\") && outputs.content[\"\
+      conversation.md\"].contains(\"- [current.md](current.md)\")"
+  - type: cel_true
+    expr: '!calls.exists(c,c.node_path.contains("publish_consultation_transcript") || c.node_path.contains("restore_consultation_transcript"))'
+- id: human-attachment-selected
+  type: integration_case
+  runtime:
+    cell: notebook
+    cells:
+      notebook:
+        files:
+          PURPOSE.md: Own notebook.
+      storage:
+        files:
+          PURPOSE.md: Own persistence.
+    responses:
+    - node_path: consultation-packet/consult/adaptive2-consultation/request_consultation_direction/request_consultation_direction/adaptive2-review/request_human_review
+      fields:
+        direction: 'Keep both drafts.
+
+          Use "conditional" saves.'
+      attachments:
+        annotations: ../fixtures/consultation-expert-direction.md
+  inputs: {}
+  mocks:
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: storage
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: needs_review
+            reply: 'Preserve "quotes".
+
+
+              Keep ${{ literal }} and {{ untouched }}.'
+            files:
+            - path: iter1/consultant/review.md
+              description: Selected evidence
+              title: Choose retention
+            requests: []
+            review_title: Choose draft retention
+            handoff: null
+            work_kind: null
+        artifacts:
+          iter1/consultant/review.md: '# Keep both drafts
+
+            Choose retention.'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: needs_review
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: notebook
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: continue
+            reply: Preserve the human direction.
+            files:
+            - path: consultation-expert-direction.md
+              description: Selected evidence
+              title: null
+            requests: []
+            review_title: Choose draft retention
+            handoff: null
+            work_kind: null
+        artifacts: {}
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: continue
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: storage
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: answered
+            reply: 'Preserve "quotes".
+
+
+              Keep ${{ literal }} and {{ untouched }}.'
+            files:
+            - path: iter2/consultant/summary.md
+              description: Selected evidence
+              title: Recommendation
+            - path: consultation-expert-direction.md
+              description: Selected evidence
+              title: null
+            requests: []
+            review_title: Choose draft retention
+            handoff: null
+            work_kind: null
+        artifacts:
+          iter2/consultant/summary.md: '# Recommendation
+
+            Keep both drafts.'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: answered
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.content["conversation.md"].contains("## Human\n\nKeep both drafts.\nUse \"conditional\" saves.")
+  - type: cel_true
+    expr: '"consultation-expert-direction.md" in outputs.content && outputs.content["consultation-expert-direction.md"].contains("Strict
+      validation must be opt-in") && outputs.content["conversation.md"].contains("[consultation-expert-direction.md](consultation-expert-direction.md)")'
+  - type: cel_true
+    expr: outputs.original == ["Original evidence bytes\n"]
+  - type: cel_true
+    expr: '!calls.exists(c,c.node_path.contains("publish_consultation_transcript") || c.node_path.contains("restore_consultation_transcript"))'
+  - type: cel_true
+    expr: outputs.result.outcome == "answered"
+- id: human-attachment-omitted
+  type: integration_case
+  runtime:
+    cell: notebook
+    cells:
+      notebook:
+        files:
+          PURPOSE.md: Own notebook.
+      storage:
+        files:
+          PURPOSE.md: Own persistence.
+    responses:
+    - node_path: consultation-packet/consult/adaptive2-consultation/request_consultation_direction/request_consultation_direction/adaptive2-review/request_human_review
+      fields:
+        direction: 'Keep both drafts.
+
+          Use "conditional" saves.'
+      attachments:
+        annotations: ../fixtures/consultation-expert-direction.md
+  inputs: {}
+  mocks:
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: storage
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: needs_review
+            reply: 'Preserve "quotes".
+
+
+              Keep ${{ literal }} and {{ untouched }}.'
+            files:
+            - path: iter1/consultant/review.md
+              description: Selected evidence
+              title: Choose retention
+            requests: []
+            review_title: Choose draft retention
+            handoff: null
+            work_kind: null
+        artifacts:
+          iter1/consultant/review.md: '# Keep both drafts
+
+            Choose retention.'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: needs_review
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: notebook
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: continue
+            reply: Preserve the human direction.
+            files:
+            - path: consultation-expert-direction.md
+              description: Selected evidence
+              title: null
+            requests: []
+            review_title: Choose draft retention
+            handoff: null
+            work_kind: null
+        artifacts: {}
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: continue
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: storage
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: answered
+            reply: 'Preserve "quotes".
+
+
+              Keep ${{ literal }} and {{ untouched }}.'
+            files:
+            - path: iter2/consultant/summary.md
+              description: Selected evidence
+              title: Recommendation
+            requests: []
+            review_title: Choose draft retention
+            handoff: null
+            work_kind: null
+        artifacts:
+          iter2/consultant/summary.md: '# Recommendation
+
+            Keep both drafts.'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: answered
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.content["conversation.md"].contains("## Human\n\nKeep both drafts.\nUse \"conditional\" saves.")
+  - type: cel_true
+    expr: '!("consultation-expert-direction.md" in outputs.content) && !outputs.content["conversation.md"].contains("[consultation-expert-direction.md](consultation-expert-direction.md)")'
+  - type: cel_true
+    expr: outputs.original == ["Original evidence bytes\n"]
+  - type: cel_true
+    expr: '!calls.exists(c,c.node_path.contains("publish_consultation_transcript") || c.node_path.contains("restore_consultation_transcript"))'
+  - type: cel_true
+    expr: outputs.result.outcome == "answered"
+- id: continuing-packet-then-empty-selection
+  type: integration_case
+  runtime:
+    cell: notebook
+    cells:
+      notebook:
+        files:
+          PURPOSE.md: Own notebook.
+      storage:
+        files:
+          PURPOSE.md: Own persistence.
+    responses: []
+  inputs:
+    source_documents:
+      conversation.md:
+        kind: value
+        name: conversation.md
+        format: text
+        value: 'Source conversation bytes
+
+          '
+      summary.md:
+        kind: value
+        name: summary.md
+        format: text
+        value: 'Source summary bytes
+
+          '
+  mocks:
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: storage
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: continue
+            reply: 'Preserve "quotes".
+
+
+              Keep ${{ literal }} and {{ untouched }}.'
+            files:
+            - path: conversation.md
+              description: Selected evidence
+              title: null
+            - path: summary.md
+              description: Selected evidence
+              title: null
+            - path: current.md
+              description: Selected evidence
+              title: null
+            - path: iter1/consultant/summary.md
+              description: Selected evidence
+              title: Recommendation
+            requests: []
+            review_title: Choose draft retention
+            handoff: null
+            work_kind: null
+        artifacts:
+          iter1/consultant/summary.md: '# Recommendation
+
+            Keep both drafts.
+
+            '
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: agreed
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: notebook
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: answered
+            reply: The current API answers the question.
+            files: []
+            requests: []
+            review_title: Choose draft retention
+            handoff: null
+            work_kind: null
+        artifacts: {}
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: agreed
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.result.outcome == "answered" && size(outputs.content) == 1 && "conversation.md" in outputs.content
+  - type: cel_true
+    expr: '!outputs.content["conversation.md"].contains("](evidence/")'
+  - type: cel_true
+    expr: outputs.content["conversation.md"].contains("The current API answers the question.")
+  - type: cel_true
+    expr: calls.exists(c,c.op == "extension_execution" && c.cell == "notebook" && "evidence/conversation.md" in
+      c.artifacts && c.artifacts["summary.md"].contains("](evidence/iter1/consultant/summary.md)"))
+  - type: cel_true
+    expr: '!calls.exists(c,c.node_path.contains("read_document_headings"))'

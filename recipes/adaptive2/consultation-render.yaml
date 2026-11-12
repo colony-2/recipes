@@ -1,80 +1,58 @@
 # Presentation only: the caller chooses evidence; this helper never recovers history.
 id: adaptive2-consultation-render
 inputs:
-  conversation: >-
-    ${{ inputs.conversation }}
-  selected_documents: >-
-    ${{ inputs.selected_documents }}
-  attachment_map: >-
-    ${{ inputs.?attachment_map.orValue({}) }}
+  conversation: ${{ inputs.conversation }}
+  selected_documents: ${{ inputs.selected_documents }}
+  attachment_map: ${{ inputs.?attachment_map.orValue({}) }}
 vars:
-  requester: >-
-    ${{ inputs.conversation.requester_cell }}
+  requester: ${{ inputs.conversation.requester_cell }}
   receiver: >-
     ${{ nonempty(inputs.conversation.consultant.cell) ? inputs.conversation.consultant.cell : inputs.conversation.requester_cell }}
   handoff: >-
     ${{ nonempty(inputs.conversation.?handoff.orValue('')) ? inputs.conversation.handoff + 'handoff.md' : '' }}
-  summary: >-
-    ${{ inputs.conversation.?summary_file.orValue('') }}
+  summary: ${{ inputs.conversation.?summary_file.orValue('') }}
+  descriptors: >-
+    ${{ jq(inputs.conversation.transcript.map(t,type(t.?files.orValue([])) == list ? t.?files.orValue([]) : []), 'flatten') }}
 sequence:
-- id: title_candidates
-  inputs:
-    transcript: >-
-      ${{ inputs.conversation.transcript }}
-    selected: >-
-      ${{ inputs.selected_documents }}
-    aliases: >-
-      ${{ inputs.attachment_map }}
-    handoff: >-
-      ${{ vars.handoff }}
-    summary: >-
-      ${{ vars.summary }}
-  vars:
-    descriptors: >-
-      ${{ jq(inputs.transcript.map(t,type(t.?files.orValue([])) == list ? t.?files.orValue([]).filter(f, f.path in t.?artifacts.orValue({}) && inputs.aliases[?f.path].orValue(f.path) in inputs.selected && jq(t.artifacts[f.path],'del(.name)') == jq(inputs.selected[inputs.aliases[?f.path].orValue(f.path)],'del(.name)')) : []), 'flatten') }}
-  sequence: []
-  outputs:
-    handoff: >-
-      ${{ vars.descriptors.filter(f,f.path == inputs.handoff && nonempty(f.?title.orValue(''))) }}
-    summary: >-
-      ${{ vars.descriptors.filter(f,f.path == inputs.summary && nonempty(f.?title.orValue(''))) }}
 - id: titles
   inputs:
-    handoff: >-
-      ${{ sequence.title_candidates.outputs.handoff }}
-    summary: >-
-      ${{ sequence.title_candidates.outputs.summary }}
-    handoff_path: >-
-      ${{ vars.handoff }}
-    summary_path: >-
-      ${{ vars.summary }}
-    aliases: >-
-      ${{ inputs.attachment_map }}
+    descriptors: ${{ vars.descriptors }}
+    handoff: ${{ vars.handoff }}
+    summary: ${{ vars.summary }}
+    aliases: ${{ inputs.attachment_map }}
+  vars:
+    handoff_titles: ${{ inputs.descriptors.filter(f,f.path == inputs.handoff && nonempty(f.?title.orValue(''))) }}
+    summary_titles: ${{ inputs.descriptors.filter(f,f.path == inputs.summary && nonempty(f.?title.orValue(''))) }}
   sequence: []
   outputs:
-    handoff: >-
-      ${{ size(inputs.handoff) > 0 ? inputs.handoff[size(inputs.handoff)-1].title : '' }}
-    summary: >-
-      ${{ size(inputs.summary) > 0 ? inputs.summary[size(inputs.summary)-1].title : '' }}
+    handoff_title: >-
+      ${{ size(vars.handoff_titles) > 0 ? vars.handoff_titles[size(vars.handoff_titles)-1].title : '' }}
+    summary_title: >-
+      ${{ size(vars.summary_titles) > 0 ? vars.summary_titles[size(vars.summary_titles)-1].title : '' }}
     handoff_target: >-
-      ${{ inputs.aliases[?inputs.handoff_path].orValue(inputs.handoff_path) }}
+      ${{ inputs.aliases[?inputs.handoff].orValue(inputs.handoff) }}
     summary_target: >-
-      ${{ inputs.aliases[?inputs.summary_path].orValue(inputs.summary_path) }}
+      ${{ inputs.aliases[?inputs.summary].orValue(inputs.summary) }}
 - id: headings
   inputs:
+    documents: ${{ inputs.selected_documents }}
+    handoff_title: ${{ sequence.titles.outputs.handoff_title }}
+    summary_title: ${{ sequence.titles.outputs.summary_title }}
+    handoff: ${{ sequence.titles.outputs.handoff_target }}
+    summary: ${{ sequence.titles.outputs.summary_target }}
+  vars:
+    # Metadata settles the handoff before any reads. Otherwise read only missing titles.
     candidates: >-
-      ${{ jq({'documents':inputs.selected_documents, 'paths':inputs.selected_documents.filter(k,sequence.titles.outputs.handoff == '' &&
-        ((k == sequence.titles.outputs.handoff_target && vars.handoff != '') ||
-         (k == sequence.titles.outputs.summary_target && vars.summary != '' && sequence.titles.outputs.summary == '')))},
-        '. as $v | .documents | with_entries(select(.key as $k | $v.paths | index($k)))') }}
-    handoff: >-
-      ${{ sequence.titles.outputs.handoff_target }}
-    summary: >-
-      ${{ sequence.titles.outputs.summary_target }}
+      ${{ jq([
+        inputs.handoff_title == '' && inputs.handoff != '' && inputs.handoff in inputs.documents
+          ? {inputs.handoff:inputs.documents[inputs.handoff]} : {},
+        inputs.handoff_title == '' && inputs.summary_title == '' && inputs.summary != '' && inputs.summary in inputs.documents
+          ? {inputs.summary:inputs.documents[inputs.summary]} : {}
+      ], 'add') }}
   state:
     initial:
     - to: read_document_headings
-      when: size(inputs.candidates) > 0
+      when: size(vars.candidates) > 0
     - to: absent
       when: true
     states:
@@ -86,15 +64,12 @@ sequence:
           packages:
           - nix:github:NixOS/nixpkgs/e7439b6b14ad3cc35d05608ebca9bce01a25f5f8#python3
         artifacts:
-          source/: ${{ inputs.candidates }}
+          source/: ${{ vars.candidates }}
         inputs:
           env:
-            INBOX: >-
-              ${{ context.environment.op.inbox }}
-            HANDOFF: >-
-              ${{ inputs.handoff }}
-            SUMMARY: >-
-              ${{ inputs.summary }}
+            INBOX: ${{ context.environment.op.inbox }}
+            HANDOFF: ${{ inputs.handoff }}
+            SUMMARY: ${{ inputs.summary }}
           run: |
             python3 - <<'PY'
             import json, os
@@ -111,63 +86,75 @@ sequence:
       absent:
         sequence: []
   outputs:
-    handoff: >-
-      ${{ json_parse(state_output('read_document_headings','stdout','{"handoff":"","summary":""}')).handoff }}
-    summary: >-
-      ${{ json_parse(state_output('read_document_headings','stdout','{"handoff":"","summary":""}')).summary }}
-- id: paragraphs
+    # Candidate order is handoff metadata, handoff heading, summary metadata, summary heading.
+    title: >-
+      ${{ first_nonempty(inputs.handoff_title,
+        json_parse(state_output('read_document_headings','stdout','{"handoff":"","summary":""}')).handoff,
+        inputs.summary_title,
+        json_parse(state_output('read_document_headings','stdout','{"handoff":"","summary":""}')).summary,
+        'Conversation') }}
+- id: turns
   inputs:
-    transcript: >-
-      ${{ inputs.conversation.transcript }}
-    selected: >-
-      ${{ inputs.selected_documents }}
-    aliases: >-
-      ${{ inputs.attachment_map }}
-    requester: >-
-      ${{ vars.requester }}
-    receiver: >-
-      ${{ vars.receiver }}
+    transcript: ${{ inputs.conversation.transcript }}
+    selected: ${{ inputs.selected_documents }}
+    aliases: ${{ inputs.attachment_map }}
+    requester: ${{ vars.requester }}
+    receiver: ${{ vars.receiver }}
   vars:
+    # Match evidence independently of its delivery name, before constructing Markdown.
+    selected_identities: ${{ jq(inputs.selected, 'with_entries(.value |= del(.name))') }}
     turns: >-
       ${{ inputs.transcript.map(t, {'owner': t.participant == 'consultant' ? inputs.receiver : t.participant == 'requester' ? inputs.requester : 'Human',
         'reply': t.?reply.orValue(t.?thinking.orValue('')),
         'evidence': size(t.?artifacts.orValue({})) > 0 ? t.artifacts : type(t.?files.orValue([])) == map ? t.files : {} }) }}
   sequence: []
   outputs:
-    sections: >-
-      ${{ vars.turns.map(t, '## ' + t.owner + '\n\n' + t.reply + '\n\n' +
-        jq(t.evidence.map(n,
-          inputs.aliases[?n].orValue(n) in inputs.selected &&
-          jq(t.evidence[n],'del(.name)') == jq(inputs.selected[inputs.aliases[?n].orValue(n)],'del(.name)')
-          ? '- [' + n + '](' + inputs.aliases[?n].orValue(n) + ')' : '- ' + n + (t.evidence[n].?kind.orValue('') == 'stored' ? ' — producer job `' + t.evidence[n].stored.key.jobId + '`, task ' + string(t.evidence[n].stored.key.taskOrdinal) + ', artifact `' + t.evidence[n].stored.key.name + '` (inspect with c2j job tools)' : ' — retained at this exchange’s producing task')), 'join("\\n")') + '\n') }}
+    turns: >-
+      ${{ vars.turns.map(t, {'owner':t.owner, 'reply':t.reply,
+        'evidence':t.evidence.map(n, {
+          'label':n, 'target':inputs.aliases[?n].orValue(n),
+          'producer':t.evidence[n].?kind.orValue('') == 'stored' ? t.evidence[n].stored.key : null,
+          'selected':inputs.aliases[?n].orValue(n) in vars.selected_identities &&
+            jq(t.evidence[n],'del(.name)') == vars.selected_identities[inputs.aliases[?n].orValue(n)]
+        })}) }}
 - id: format
   inputs:
-    title: >-
-      ${{ sequence.titles.outputs.handoff != '' ? sequence.titles.outputs.handoff
-        : sequence.headings.outputs.handoff != '' ? sequence.headings.outputs.handoff
-        : sequence.titles.outputs.summary != '' ? sequence.titles.outputs.summary
-        : sequence.headings.outputs.summary != '' ? sequence.headings.outputs.summary : 'Conversation' }}
-    requester: >-
-      ${{ vars.requester }}
-    receiver: >-
-      ${{ vars.receiver }}
-    summary: >-
-      ${{ vars.summary }}
-    summary_target: >-
-      ${{ sequence.titles.outputs.summary_target }}
-    message: >-
-      ${{ inputs.conversation.message }}
-    sections: >-
-      ${{ sequence.paragraphs.outputs.sections }}
+    title: ${{ sequence.headings.outputs.title }}
+    requester: ${{ vars.requester }}
+    receiver: ${{ vars.receiver }}
+    summary: ${{ vars.summary }}
+    summary_target: ${{ sequence.titles.outputs.summary_target }}
+    message: ${{ inputs.conversation.message }}
+    turns: ${{ sequence.turns.outputs.turns }}
   vars:
-    conversation: >-
-      ${{ '# ' + inputs.requester + ' and ' + inputs.receiver + ': ' + inputs.title + '\n\n' + jq(inputs.sections, 'join("\\n")') }}
+    conversation: |
+      # {{ inputs.requester }} and {{ inputs.receiver }}: {{ inputs.title }}
+
+      {{ range $index, $turn := inputs.turns -}}
+      {{ if $index }}{{ "\n" }}{{ end -}}
+      ## {{ .owner }}
+
+      {{ .reply }}
+
+      {{ range .evidence -}}
+      {{ if .selected -}}
+      - [{{ .label }}]({{ .target }})
+      {{ else -}}
+      - {{ .label }}{{ if .producer }} — producer job `{{ .producer.jobId }}`, task {{ .producer.taskOrdinal }}, artifact `{{ .producer.name }}` (inspect with c2j job tools){{ end }}
+      {{ end -}}
+      {{ end -}}
+      {{ if not .evidence }}{{ "\n" }}{{ end -}}
+      {{ end -}}
+    summary: |
+      # {{ inputs.title }}
+
+      {{ inputs.message }}
+
+      [Full recommendation and open questions]({{ inputs.summary_target }}) · [Conversation](conversation.md)
   sequence: []
   outputs:
     documents: >-
       ${{ jq([{'conversation.md': {'kind':'value','name':'conversation.md','format':'text','value':vars.conversation} },
-        inputs.summary != '' ? {'summary.md': {'kind':'value','name':'summary.md','format':'text',
-          'value':'# ' + inputs.title + '\n\n' + inputs.message + '\n\n[Full recommendation and open questions](' + inputs.summary_target + ') · [Conversation](conversation.md)\n'} } : {}], 'add') }}
+        inputs.summary != '' ? {'summary.md': {'kind':'value','name':'summary.md','format':'text','value':vars.summary} } : {}], 'add') }}
 outputs:
-  documents: >-
-    ${{ sequence.format.outputs.documents }}
+  documents: ${{ sequence.format.outputs.documents }}

@@ -432,6 +432,10 @@ state:
               type: paragraph_text
               question: ${{ inputs.conversation.message }}
               required: true
+            - id: annotations
+              type: file_upload
+              question: Optional documents supporting your direction.
+              required: false
       transitions:
       - to: request_consultation_direction
         when: states.finalize.outputs.conversation.outcome == 'needs_review'
@@ -603,19 +607,36 @@ state:
     present_exchange:
       inputs:
         conversation: ${{ states.record.outputs.conversation }}
+        # Move the whole packet together so evidence's own relative links keep working.
+        evidence_prefix: >-
+          ${{ states.record.outputs.conversation.documents.exists(n,n in ['conversation.md','summary.md']) ? 'evidence/' : '' }}
       sequence:
+      - id: bind_evidence
+        include: ../adaptive/document-bindings.yaml
+        inputs:
+          prefix: ${{ inputs.evidence_prefix }}
+          documents: ${{ inputs.conversation.documents }}
+          annotations: ${{ inputs.conversation.?annotations.orValue([]) }}
       - id: render_exchange
         include: ./consultation-render.yaml
         inputs:
           conversation: >-
             ${{ {'requester_cell':inputs.conversation.requester_cell,'consultant':{'cell':inputs.conversation.consultant.cell},
-              'handoff':inputs.conversation.?handoff.orValue(''),'summary_file':inputs.conversation.?summary_file.orValue('') in inputs.conversation.documents ? inputs.conversation.summary_file : '',
+              'handoff':inputs.conversation.?handoff.orValue(''),'summary_file':inputs.conversation.?summary_file.orValue('') in sequence.bind_evidence.outputs.attachment_map ? inputs.conversation.summary_file : '',
               'message':inputs.conversation.message,'transcript':inputs.conversation.transcript.map(t,{
                 'participant':t.participant,'thinking':t.?thinking.orValue(''),'files':t.?files.orValue([]),'artifacts':t.?artifacts.orValue({})})} }}
-          selected_documents: ${{ inputs.conversation.documents }}
+          selected_documents: ${{ sequence.bind_evidence.outputs.documents }}
+          attachment_map: ${{ sequence.bind_evidence.outputs.attachment_map }}
       outputs:
         conversation: |-
-          ${{ jq([inputs.conversation, {'documents':jq([inputs.conversation.documents, {'conversation.md':sequence.render_exchange.outputs.documents['conversation.md']}],'add'), 'final_artifacts':jq([inputs.conversation.final_artifacts, {'conversation.md':sequence.render_exchange.outputs.documents['conversation.md']}, nonempty(inputs.conversation.?summary_file.orValue('')) ? {'summary.md':sequence.render_exchange.outputs.documents['summary.md']} : {}],'add')}], 'add') }}
+          ${{ jq([inputs.conversation, {
+            'documents':jq([sequence.bind_evidence.outputs.documents, sequence.render_exchange.outputs.documents],'add'),
+            'final_artifacts':jq([sequence.bind_evidence.outputs.documents, sequence.render_exchange.outputs.documents],'add'),
+            'review_documents':sequence.bind_evidence.outputs.documents,
+            'annotations':sequence.bind_evidence.outputs.annotations,
+            'summary_file':sequence.bind_evidence.outputs.attachment_map[?inputs.conversation.?summary_file.orValue('')].orValue(''),
+            'handoff':nonempty(inputs.conversation.?handoff.orValue('')) ? inputs.evidence_prefix + inputs.conversation.handoff : ''
+          }], 'add') }}
       transitions:
       - to: advice
         when: states.turn.outputs.turn.result.response.?requests.orValue([]).exists(r,r.action == 'consult')
