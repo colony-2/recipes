@@ -1,0 +1,41 @@
+schema_version: 2
+id: review-link-limits-probe
+input_schema:
+  scenario:
+    type: string
+    default_value: normal
+inputs:
+  scenario: ${{ inputs.scenario }}
+sequence:
+- id: prepare_evidence
+  op: command_execution
+  inputs:
+    env:
+      OUTBOX: ${{ context.environment.op.outbox }}
+      SCENARIO: ${{ inputs.scenario }}
+    run: |
+      python3 - <<'PY'
+      import os
+      from pathlib import Path
+      root = Path(os.environ['OUTBOX'])
+      scenario = os.environ['SCENARIO']
+      (root / 'target.txt').write_text('Actual evidence bytes')
+      if scenario == 'large-document':
+          (root / 'review.md').write_text('x' * (5 * 1024 * 1024 + 1))
+      elif scenario == 'many-links':
+          (root / 'review.md').write_text('[Evidence](target.txt)\n' * 10001)
+      elif scenario == 'large-packet':
+          for n in range(7):
+              (root / ('source' + str(n) + '.md')).write_text('x' * (5 * 1024 * 1024))
+      else:
+          (root / 'review.md').write_text('[Evidence](target.txt)\n')
+      PY
+  execution_needs:
+    packages:
+    - nix:github:NixOS/nixpkgs/e7439b6b14ad3cc35d05608ebca9bce01a25f5f8#python3
+- id: check
+  include: ../../recipes/adaptive2/review-links.yaml
+  inputs:
+    documents: ${{ sequence.prepare_evidence.artifacts }}
+outputs:
+  issues: ${{ sequence.check.outputs.issues }}

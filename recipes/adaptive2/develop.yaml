@@ -199,36 +199,6 @@ state:
           : []) + (state_exists('work') ? jq(states.work.runs.map(r,r.outputs.child_results) + [states.work.outputs.child_results],'add').map(r,{'action':'await','job_id':r.job_id,'result':r})
           : []) + (state_exists('wait_children') ? jq(states.wait_children.runs.map(r,r.outputs.results) + [states.wait_children.outputs.results],'add').map(r,{'action':'await','job_id':r.job_id,'result':r})
           : []) }}"
-        direct_pending: ${{ states.work.outputs.pending_jobs }}
-      sequence:
-      - id: current_annotations
-        include: ./current-annotations.yaml
-        inputs:
-          documents: ${{ vars.documents }}
-          annotations: ${{ inputs.annotations + inputs.turn.?annotations.orValue([]) }}
-      outputs:
-        issues: ${{ vars.issues }}
-        session: ${{ inputs.turn.result.?session.orValue(inputs.session) }}
-        documents: ${{ vars.documents }}
-        annotations: ${{ sequence.current_annotations.outputs.annotations }}
-        pending_jobs: ${{ jq(inputs.coordination.filter(e,e.action == 'execute' &&
-          !inputs.coordination.exists(n,n.action == 'execute' && n.?replaces.orValue('') ==
-          e.job_id)).filter(e,!inputs.coordination.exists(a,a.action == 'await' && a.job_id ==
-          e.job_id)).map(e,e.job_id) + inputs.direct_pending, 'unique') }}
-        failed_jobs: ${{ inputs.coordination.filter(e,e.action == 'execute' &&
-          !inputs.coordination.exists(n,n.action == 'execute' && n.?replaces.orValue('') ==
-          e.job_id)).filter(e,inputs.coordination.exists(a,a.action == 'await' && a.job_id == e.job_id &&
-          (a.result.status != 'completed' || !(a.result.?outputs.orValue({}).?merged.orValue(false) ||
-          a.result.?outputs.orValue({}).?disposition.orValue('') in
-          ['unchanged','delegated'])))).map(e,e.job_id) }}
-      vars:
-        # Current selections are working context, not a cumulative archive.
-        # Consultation records retain history independently of these inbox files.
-        documents: |-
-          ${{ jq([states.work.outputs.turn.result.?output_schema_valid.orValue(false) ? jq([jq(states.work.outputs.documents, 'with_entries(select(.key == "test-statements.md" or .key == "handoff.md" or .key == "request.md" or .key == "one-pager.md"))'), states.work.outputs.turn.documents,
-             jq(states.work.runs.map(r,r.outputs.child_documents) + [states.work.outputs.child_documents],'add'),
-             state_exists('wait_children') ? jq(states.wait_children.runs.map(r,r.outputs.documents) + [states.wait_children.outputs.documents],'add | with_entries(select(.key | startswith("results/") or startswith("error/children/")))') : {}], 'add') : states.work.outputs.documents,
-           {'request.md':states.start.outputs.documents['request.md']}, state_output('direction_approved','one_pager',null) != null ? {'approved-direction/one-pager.md':jq([state_output('direction_approved','one_pager',null),{'name':'approved-direction/one-pager.md'}],'add')} : {}], 'add') }}
         issues: |-
           ${{ (size(states.work.outputs.turn.result.?response.orValue({}).?packages.orValue([])) > 0 && states.work.outputs.turn.result.response.next != 'blocked' ? ['Use next: blocked with a package request so the recipe can authorize and validate it before continuing.'] : []) + (states.work.outputs.turn.result.?response.orValue({}).?next.orValue('') == 'ask_user' ? [] : states.work.outputs.turn.?issues.orValue([]))
            + (states.work.outputs.turn.result.?status.orValue('failed') != 'completed' ? ['Agent did not complete: ' + states.work.outputs.turn.result.?errorMessage.orValue('No completed response.')] : [])
@@ -241,6 +211,46 @@ state:
             + (states.work.outputs.turn.result.response.next == 'review' && !states.work.outputs.turn.result.response.?files.orValue([]).exists(f, f.path == {'design': (states.work.outputs.turn.result.response.?work_kind.orValue('') == 'explanation' && 'answer.md' in states.work.outputs.turn.documents ? 'answer.md' : 'one-pager.md'), 'test-plan': 'test-statements.md', 'implement': 'implementation.md'}[states.dispatch.outputs.phase]) ? ['Review requires ' + {'design': (states.work.outputs.turn.result.response.?work_kind.orValue('') == 'explanation' && 'answer.md' in states.work.outputs.turn.documents ? 'answer.md' : 'one-pager.md'), 'test-plan': 'test-statements.md', 'implement': 'implementation.md'}[states.dispatch.outputs.phase] + ' in the returned files.'] : [])
             + (states.work.outputs.turn.result.response.next == 'ask_user' && (!nonempty(states.work.outputs.turn.result.response.?review_title.orValue('')) || size(states.work.outputs.turn.result.response.?questions.orValue([])) == 0 || states.work.outputs.turn.result.response.?questions.orValue([]).exists(q, q.id == 'annotations')) ? ['ask_user requires review_title naming the decision and focused questions; annotations is a reserved question id.'] : [])
            : []) + (states.work.outputs.turn.result.?response.orValue({}).?next.orValue('') == 'coordinate' && size(states.work.outputs.turn.result.response.?requests.orValue([])) == 0 ? ['Return at least one consultation or execution request.'] : []) + (states.dispatch.outputs.phase == 'implement' && states.work.outputs.turn.result.?response.orValue({}).?next.orValue('') == 'review' && !states.work.outputs.turn.result.response.?files.orValue([]).exists(f, f.path == 'test-results.md') ? ['Publish test-results.md mapping statement IDs to results and evidence.'] : []) + (states.work.outputs.expectations_changed && states.work.outputs.turn.result.response.next != 'redesign' ? ['Formal expectations are fixed before implementation. Return redesign to update their plan with preserved expectations and any required deprecation.'] : []) + (states.dispatch.outputs.phase == 'test-plan' && states.work.outputs.turn.result.?response.orValue({}).?next.orValue('') == 'review' && !('handoff.md' in states.work.outputs.turn.documents) ? ['Publish handoff.md synthesized from the settled design and consultation outcomes for the new implementation session.'] : []) + (states.dispatch.outputs.phase == 'design' && states.work.outputs.turn.result.response.next == 'review' && (!(states.work.outputs.turn.result.response.?work_kind.orValue('') in ['feature','bug','explanation','oversight']) || !nonempty(states.work.outputs.turn.result.response.?review_title.orValue(''))) ? ['Name the work kind and a descriptive review_title identifying the cell and intended outcome.'] : []) }}
+        direct_pending: ${{ states.work.outputs.pending_jobs }}
+        working_documents: ${{ states.work.outputs.documents }}
+        child_documents: ${{ states.work.outputs.child_documents }}
+        request_document: ${{ states.start.outputs.documents['request.md'] }}
+        approved_one_pager: ${{ state_output('direction_approved','one_pager',null) }}
+      sequence:
+      - id: select_documents
+        inputs:
+          issues: ${{ inputs.issues }}
+          turn: ${{ inputs.turn }}
+          documents: ${{ inputs.working_documents }}
+          child_documents: ${{ inputs.child_documents }}
+          request_document: ${{ inputs.request_document }}
+          approved_one_pager: ${{ inputs.approved_one_pager }}
+        sequence: []
+        outputs:
+          # Keep correction inputs until a valid report selects its next packet.
+          documents: >-
+            ${{ jq([inputs.turn.result.?output_schema_valid.orValue(false) && size(inputs.issues) == 0 ? jq([jq(inputs.documents, 'with_entries(select(.key == "test-statements.md" or .key == "handoff.md" or .key == "request.md" or .key == "one-pager.md"))'), inputs.turn.documents, inputs.child_documents], 'add') : inputs.documents,
+              {'request.md':inputs.request_document}, inputs.approved_one_pager != null ? {'approved-direction/one-pager.md':jq([inputs.approved_one_pager,{'name':'approved-direction/one-pager.md'}],'add')} : {}], 'add') }}
+      - id: current_annotations
+        include: ./current-annotations.yaml
+        inputs:
+          documents: ${{ sequence.select_documents.outputs.documents }}
+          annotations: ${{ inputs.annotations + inputs.turn.?annotations.orValue([]) }}
+      outputs:
+        issues: ${{ inputs.issues }}
+        session: ${{ inputs.turn.result.?session.orValue(inputs.session) }}
+        documents: ${{ sequence.select_documents.outputs.documents }}
+        annotations: ${{ sequence.current_annotations.outputs.annotations }}
+        pending_jobs: ${{ jq(inputs.coordination.filter(e,e.action == 'execute' &&
+          !inputs.coordination.exists(n,n.action == 'execute' && n.?replaces.orValue('') ==
+          e.job_id)).filter(e,!inputs.coordination.exists(a,a.action == 'await' && a.job_id ==
+          e.job_id)).map(e,e.job_id) + inputs.direct_pending, 'unique') }}
+        failed_jobs: ${{ inputs.coordination.filter(e,e.action == 'execute' &&
+          !inputs.coordination.exists(n,n.action == 'execute' && n.?replaces.orValue('') ==
+          e.job_id)).filter(e,inputs.coordination.exists(a,a.action == 'await' && a.job_id == e.job_id &&
+          (a.result.status != 'completed' || !(a.result.?outputs.orValue({}).?merged.orValue(false) ||
+          a.result.?outputs.orValue({}).?disposition.orValue('') in
+          ['unchanged','delegated'])))).map(e,e.job_id) }}
       transitions:
       - to: repair
         when: size(outputs.issues) > 0
@@ -1640,9 +1650,10 @@ outputs:
   publication: ${{ state_output('merge','publication',{}) }}
   rebase_repairs: "${{ inputs.prior_rebase_repairs + (state_exists('rebase_repair') ? size(states.rebase_repair.runs)
     + 1 : 0) }}"
-  coordination: "${{ (state_exists('coordinate') ? jq(states.coordinate.runs.map(r,r.outputs.records) + [states.coordinate.outputs.records],'add')
+  coordination: >-
+    ${{ jq((state_exists('coordinate') ? jq(states.coordinate.runs.map(r,r.outputs.records) + [states.coordinate.outputs.records],'add')
     : []) + (state_exists('work') ? jq(states.work.runs.map(r,r.outputs.child_results) + [states.work.outputs.child_results],'add').map(r,{'action':'await','job_id':r.job_id,'result':r})
     : []) + (state_exists('wait_children') ? jq(states.wait_children.runs.map(r,r.outputs.results) + [states.wait_children.outputs.results],'add').map(r,{'action':'await','job_id':r.job_id,'result':r})
-    : []) }}"
+    : []), 'map(if .action == "consult" then {action, reference, target, result:(.result | {outcome,summary,work_kind,failure_code})} elif .action == "await" then {action,job_id,result:(.result | {job_id,status,failure_message,failure,outputs:(.outputs // {} | with_entries(select(.key as $k | ["merged","disposition","status","ok","assistant_summary","summary"] | index($k))))})} else {action,job_id,cell,ref,handoff,replaces,ready} end)') }}
   work_kind: ${{
     state_output('direction_approved','work_kind',state_output('work','turn.result.response.work_kind','')) }}

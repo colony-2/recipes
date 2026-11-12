@@ -54,12 +54,12 @@ input_schema:
     type: number
     default_value: 0
 inputs:
+  requester_session: ${{ inputs.?requester_session.orValue({}) }}
   annotations: ${{ inputs.annotations }}
   thread: ${{ inputs.thread }}
   request: ${{ inputs.request }}
   consultant: "${{ {'cell': inputs.consultant_cell, 'role': inputs.consultant_role, 'ref': inputs.consultant_ref}
     }}"
-  requester_session: ${{ inputs.?requester_session.orValue({}) }}
   documents: ${{ inputs.documents }}
   max_iterations: ${{ inputs.max_iterations }}
   depth: ${{ inputs.depth }}
@@ -199,6 +199,7 @@ state:
                 prefix: ${{ vars.prefix }}
                 allowed: ${{ vars.schema.properties.outcome.enum }}
                 participant: ${{ inputs.conversation.next }}
+                documents: ${{ inputs.conversation.documents }}
               sequence:
               - id: diagnose
                 sequence: []
@@ -211,7 +212,7 @@ state:
                     + (size(inputs.turn.jobs.?job_ids.orValue([])) > 0 ? ['Consultation cannot submit jobs. Return the requested scope instead.'] : [])
                     + (!(inputs.turn.result.?response.orValue({}).?outcome.orValue('') in inputs.allowed) ? ['Choose an outcome allowed for this participant.'] : [])
                     + (size(inputs.turn.result.?response.orValue({}).?requests.orValue([])) > 0 && !(inputs.turn.result.response.outcome in ['continue','needs_review']) ? ['Return continue when requesting nested advice.'] : [])
-                    + (inputs.turn.result.?response.orValue({}).?files.orValue([]).exists(f,!f.path.startsWith(inputs.prefix) || f.path.contains('..') || f.path.contains('\\') || f.path.contains('//') || f.path.endsWith('/') || !(f.path in inputs.turn.artifacts)) ? ['Declare actual reply files under ' + inputs.prefix + ', using safe relative paths.'] : [])
+                    + (inputs.turn.result.?response.orValue({}).?files.orValue([]).exists(f,(!f.path.startsWith(inputs.prefix) && !(f.path in inputs.documents)) || f.path.contains('..') || f.path.contains('\\') || f.path.contains('//') || f.path.endsWith('/') || !(f.path in inputs.turn.artifacts)) ? ['Declare new reply files under ' + inputs.prefix + ' or retain selected input files, using safe relative paths.'] : [])
                     + (size(inputs.turn.result.?response.orValue({}).?files.orValue([]).map(f,f.path)) != size(jq(inputs.turn.result.?response.orValue({}).?files.orValue([]),'map(.path) | unique')) ? ['Declare each reply file once.'] : [])
                     + (inputs.turn.result.?response.orValue({}).?outcome.orValue('') == 'needs_review' && !nonempty(inputs.turn.result.response.?review_title.orValue('')) ? ['Name the actual human decision in review_title.'] : [])
                     + (inputs.participant == 'consultant' && inputs.turn.result.?response.orValue({}).?outcome.orValue('') in ['agreed','answered','declined','redirected'] && !inputs.turn.result.response.files.exists(f,f.path == inputs.prefix + 'summary.md') ? ['Publish summary.md in the current reply directory.'] : [])
@@ -221,6 +222,7 @@ state:
                   prefix: ${{ inputs.prefix }}
                   allowed: ${{ inputs.allowed }}
                   participant: ${{ inputs.participant }}
+                  documents: ${{ inputs.documents }}
               outputs:
                 turn: ${{ inputs.turn }}
                 valid: |-
@@ -318,19 +320,24 @@ state:
                    '. as $v | $v.files | map({key: .path, value: $v.artifacts[.path]}) | from_entries') }}
           outcome: |-
             ${{ inputs.turn.result.response.?requests.orValue([]).exists(r,r.action == 'execute') ? (inputs.turn.result.response.outcome == 'agreed' && inputs.previous.next == 'consultant' ? 'agreed' : 'work_requested') : inputs.turn.result.response.?requests.orValue([]).exists(r,r.action == 'consult') ? (inputs.depth < 4 ? 'continue' : 'recovery') : inputs.turn.result.response.outcome == 'continue' && inputs.previous.next == 'consultant' && int(inputs.previous.round_iterations)+1 >= int(inputs.previous.max_iterations) ? 'recovery' : inputs.turn.result.response.outcome }}
+      - id: current_annotations
+        include: ./current-annotations.yaml
+        inputs:
+          documents: ${{ sequence.resolve.outputs.files }}
+          annotations: ${{ inputs.previous.?annotations.orValue([]) + inputs.turn.?annotations.orValue([]) }}
       outputs:
         conversation: |-
           ${{ jq([inputs.previous,
                 {'exchange_number':int(inputs.previous.?exchange_number.orValue(0))+1,'review_title':inputs.turn.result.response.?review_title.orValue(''), 'review_documents':sequence.resolve.outputs.files,'outcome': sequence.resolve.outputs.outcome,
                  'message': inputs.turn.result.response.reply,
-           'summary_file': inputs.previous.next == 'consultant' && (('iter' + string(int(inputs.previous.iteration)+1) + '/consultant/summary.md') in sequence.resolve.outputs.files) ? ('iter' + string(int(inputs.previous.iteration)+1) + '/consultant/summary.md') : inputs.previous.?summary_file.orValue(''),
+           'summary_file': ('iter' + string(int(inputs.previous.iteration)+1) + '/consultant/summary.md') in sequence.resolve.outputs.files ? ('iter' + string(int(inputs.previous.iteration)+1) + '/consultant/summary.md') : '',
            'handoff': inputs.previous.next == 'consultant' && inputs.turn.result.response.outcome == 'agreed' ? inputs.turn.result.response.handoff + (inputs.turn.result.response.handoff.endsWith('/') ? '' : '/') : inputs.previous.?handoff.orValue(''),
            'work_kind': inputs.previous.next == 'consultant' && inputs.turn.result.response.outcome == 'agreed' ? inputs.turn.result.response.work_kind : inputs.previous.?work_kind.orValue(''),
            'execution_requests': inputs.previous.?execution_requests.orValue([]) + inputs.turn.result.response.?requests.orValue([]).filter(r,r.action == 'execute'),
                            'assessment': inputs.previous.next == 'consultant' ? inputs.turn.result.response.?assessment.orValue('') : '',
                  'seen': jq([inputs.previous.?seen.orValue({'requester': 0, 'consultant': 0}),
                              {inputs.previous.next: int(inputs.previous.round)}], 'add'),
-                 'annotations': inputs.previous.?annotations.orValue([]) + inputs.turn.?annotations.orValue([]),
+                 'annotations': sequence.current_annotations.outputs.annotations,
                  'next': inputs.previous.next == 'consultant' ? 'requester' : 'consultant',
                  'iteration': int(inputs.previous.iteration) + (inputs.previous.next == 'consultant' ? 1 : 0),
                  'round_iterations': int(inputs.previous.round_iterations) + (inputs.previous.next == 'consultant' ? 1 : 0),
@@ -342,7 +349,7 @@ state:
                  'consultant': inputs.previous.next == 'consultant' && inputs.previous.consultant.cell != ''
                     ? jq([inputs.previous.consultant, {'ref': inputs.turn.base_hash}], 'add')
                     : inputs.previous.consultant,
-                 'documents': jq([inputs.previous.documents, sequence.resolve.outputs.files], 'add'),
+                 'documents': sequence.resolve.outputs.files,
                  'final_artifacts': sequence.resolve.outputs.outcome == 'continue' ? {} : sequence.resolve.outputs.files,
                  'transcript': inputs.previous.transcript + [
                    {'participant': inputs.previous.next,
@@ -350,7 +357,7 @@ state:
                     'outcome': inputs.turn.result.response.outcome,
                     'thinking': inputs.turn.result.response.reply,
                     'files': inputs.turn.result.response.files,
-                    'annotations': inputs.turn.?annotations.orValue([]), 'artifacts': sequence.resolve.outputs.files}]}], 'add') }}
+                    'artifacts': sequence.resolve.outputs.files}]}], 'add') }}
       transitions:
       - to: present_exchange
         when: true
@@ -512,17 +519,28 @@ state:
         parents: ${{ inputs.parents }}
         target: ${{ sequence.select.outputs }}
       transitions:
+      - to: select_advice_documents
+        when: true
+    select_advice_documents:
+      include: ../adaptive/document-bindings.yaml
+      inputs:
+        prefix: ''
+        strip_prefix: ${{ states.advice.outputs.target.request.?handoff.orValue('') }}
+        documents: >-
+          ${{ nonempty(states.advice.outputs.target.request.?handoff.orValue('')) ? states.advice.outputs.frame.conversation.documents : {} }}
+        annotations: ${{ states.advice.outputs.frame.conversation.?annotations.orValue([]) }}
+      transitions:
       - to: start_advice
         when: true
     start_advice:
       include: ../adaptive/consultation-start.yaml
       inputs:
-        annotations: []
+        annotations: ${{ states.select_advice_documents.outputs.annotations }}
         request: ${{ states.advice.outputs.target.request.request }}
         consultant: "${{ {'cell':states.advice.outputs.target.request.cell,'ref':states.advice.outputs.target.request.?ref.orValue('main'),'role':states.advice.outputs.target.request.?role.orValue('Owning
           cell: clarify the requested contract')} }}"
         requester_session: {}
-        documents: ${{ states.advice.outputs.frame.conversation.documents }}
+        documents: ${{ states.select_advice_documents.outputs.documents }}
         max_iterations: ${{ inputs.max_iterations }}
         cell: ${{ states.advice.outputs.target.cell }}
         requester_ref: ${{ states.advice.outputs.target.ref }}
@@ -547,6 +565,7 @@ state:
         inputs:
           prefix: ${{ 'downstream/' + string(inputs.frame.conversation.exchange_number) + '/' +
             string(inputs.frame.index) + '/' }}
+          annotations: ${{ inputs.result.?annotations.orValue([]) }}
           documents: |-
             ${{ jq([inputs.result.final_artifacts,
                 {'outcome.md': {'kind':'value', 'name':'outcome.md', 'format':'text',
@@ -559,12 +578,13 @@ state:
                        'round_iterations': inputs.human_round > inputs.frame.human_round ? 0 : inputs.frame.conversation.round_iterations,
              'message': size(inputs.result.?execution_requests.orValue([])) > 0 ? 'Implementation requested by the serving consultation. Return this work to the coordinator.' : 'Read downstream/ for the advice or accepted scope. Finish the original question when answered; no dispatch or acknowledgement exchange is needed.',
              'documents':jq([inputs.frame.conversation.documents,sequence.documents.outputs.documents],'add'),
+             'annotations':inputs.frame.conversation.?annotations.orValue([]) + sequence.documents.outputs.annotations,
              'final_artifacts':size(inputs.result.?execution_requests.orValue([])) > 0 ? sequence.documents.outputs.documents : inputs.frame.conversation.final_artifacts,
              'execution_requests':inputs.frame.conversation.?execution_requests.orValue([]) + inputs.result.?execution_requests.orValue([]),
              'agreements':inputs.frame.conversation.?agreements.orValue([]) + inputs.result.?agreements.orValue([]) +
                (inputs.result.outcome == 'agreed' ? [{'request':jq([{'kind':'feature','ref':'main'},inputs.frame.requests[inputs.frame.index]],'add'),
                  'target':{'cell':inputs.frame.requests[inputs.frame.index].cell,'ref':inputs.frame.requests[inputs.frame.index].?ref.orValue('main')},
-                 'result':{'outcome':'agreed','handoff':inputs.result.?handoff.orValue(''),'work_kind':inputs.result.?work_kind.orValue(''),'final_artifacts':inputs.result.final_artifacts,'annotations':inputs.result.?annotations.orValue([])} }] : [])}], 'add') }}
+                 'result':{'outcome':'agreed','summary':inputs.result.summary,'handoff':inputs.result.?handoff.orValue(''),'work_kind':inputs.result.?work_kind.orValue(''),'final_artifacts':{inputs.result.handoff + 'handoff.md':inputs.result.final_artifacts[inputs.result.handoff + 'handoff.md'] } } }] : [])}], 'add') }}
         frame: ${{ jq([inputs.frame, {'human_round':inputs.human_round}],'add') }}
         parents: ${{ inputs.parents }}
       transitions:
@@ -588,12 +608,14 @@ state:
         include: ./consultation-render.yaml
         inputs:
           conversation: >-
-            ${{ jq([inputs.conversation, {'summary_file': inputs.conversation.?summary_file.orValue('') in inputs.conversation.review_documents ? inputs.conversation.summary_file : ''}], 'add') }}
-          selected_documents: ${{ inputs.conversation.review_documents }}
+            ${{ {'requester_cell':inputs.conversation.requester_cell,'consultant':{'cell':inputs.conversation.consultant.cell},
+              'handoff':inputs.conversation.?handoff.orValue(''),'summary_file':inputs.conversation.?summary_file.orValue('') in inputs.conversation.documents ? inputs.conversation.summary_file : '',
+              'message':inputs.conversation.message,'transcript':inputs.conversation.transcript.map(t,{
+                'participant':t.participant,'thinking':t.?thinking.orValue(''),'files':t.?files.orValue([]),'artifacts':t.?artifacts.orValue({})})} }}
+          selected_documents: ${{ inputs.conversation.documents }}
       outputs:
-        conversation: >-
-          ${{ jq([inputs.conversation, {'documents':jq([inputs.conversation.documents, sequence.render_exchange.outputs.documents],'add'),
-            'final_artifacts':jq([inputs.conversation.review_documents, sequence.render_exchange.outputs.documents],'add')}], 'add') }}
+        conversation: |-
+          ${{ jq([inputs.conversation, {'documents':jq([inputs.conversation.documents, {'conversation.md':sequence.render_exchange.outputs.documents['conversation.md']}],'add'), 'final_artifacts':jq([inputs.conversation.final_artifacts, {'conversation.md':sequence.render_exchange.outputs.documents['conversation.md']}, nonempty(inputs.conversation.?summary_file.orValue('')) ? {'summary.md':sequence.render_exchange.outputs.documents['summary.md']} : {}],'add')}], 'add') }}
       transitions:
       - to: advice
         when: states.turn.outputs.turn.result.response.?requests.orValue([]).exists(r,r.action == 'consult')
@@ -609,18 +631,11 @@ state:
           parents: ${{ states.current.outputs.parents }}
 outputs:
   annotations: "${{ jq({'annotations': states.finalize.outputs.conversation.?annotations.orValue([]), 'documents':
-    states.finalize.outputs.conversation.final_artifacts}, '. as $v | [(.annotations // [])[] | select(.id as $id
-    | $v.documents | has($id))]') }}"
+    states.finalize.outputs.conversation.final_artifacts}, '. as $v | [(.annotations // [])[] | select((.id as $id
+    | $v.documents | has($id)) and ((.ref | del(.name)) == ($v.documents[.id] | del(.name))))]') }}"
   outcome: ${{ states.finalize.outputs.conversation.outcome }}
-  requester_session: ${{ states.finalize.outputs.conversation.requester_session }}
-  consultant_session: ${{ states.finalize.outputs.conversation.consultant_session }}
-  requester_start_session: ${{ states.finalize.outputs.conversation.requester_start_session }}
-  artifacts: ${{ states.finalize.outputs.conversation.documents }}
   final_artifacts: ${{ states.finalize.outputs.conversation.final_artifacts }}
   summary: ${{ states.finalize.outputs.conversation.message }}
-  review: "${{ state_exists('request_consultation_direction') ? jq([state_output('report', 'review', {}), {'documents':states.request_consultation_direction.outputs.documents}],
-    'add') : state_output('report', 'review', {}) }}"
-  report_error: ${{ state_output('report', 'error', '') }}
   agreements: ${{ states.finalize.outputs.conversation.?agreements.orValue([]) }}
   execution_requests: ${{ states.finalize.outputs.conversation.?execution_requests.orValue([]) }}
   handoff: ${{ states.finalize.outputs.conversation.?handoff.orValue('') }}

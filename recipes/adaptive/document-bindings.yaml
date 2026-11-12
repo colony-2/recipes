@@ -4,31 +4,32 @@ id: adaptive-document-bindings
 version: 1.0.0
 inputs:
   prefix: ${{ inputs.prefix }}
+  strip_prefix: ${{ inputs.?strip_prefix.orValue('') }}
   documents: ${{ inputs.documents }}
   annotations: ${{ inputs.?annotations.orValue([]) }}
 sequence: []
 outputs:
   documents: |-
-    ${{ jq({'prefix': inputs.prefix, 'documents': inputs.documents}, vars.rename_documents) }}
+    ${{ jq({'prefix': inputs.prefix, 'strip_prefix': inputs.strip_prefix, 'documents': inputs.documents}, vars.rename_documents) }}
   attachment_map: |-
-    ${{ jq({'prefix': inputs.prefix, 'documents': inputs.documents}, vars.attachment_map) }}
+    ${{ jq({'prefix': inputs.prefix, 'strip_prefix': inputs.strip_prefix, 'documents': inputs.documents}, vars.attachment_map) }}
   annotations: |-
-    ${{ jq({'prefix': inputs.prefix, 'documents': inputs.documents, 'annotations': inputs.annotations}, vars.rename_annotations) }}
+    ${{ jq({'prefix': inputs.prefix, 'strip_prefix': inputs.strip_prefix, 'documents': inputs.documents, 'annotations': inputs.annotations}, vars.rename_annotations) }}
 vars:
   rename_documents: |
-    .prefix as $prefix |
-    .documents | with_entries(.key = ($prefix + .key) | .value.name = .key)
+    .prefix as $prefix | .strip_prefix as $strip |
+    .documents | with_entries(select(.key | startswith($strip)) | .key = ($prefix + (.key | ltrimstr($strip))) | .value.name = .key)
   attachment_map: |
-    .prefix as $prefix |
-    .documents | keys | map({key: ., value: ($prefix + .)}) | from_entries
+    .prefix as $prefix | .strip_prefix as $strip |
+    .documents | keys | map(select(startswith($strip)) | {key: ., value: ($prefix + ltrimstr($strip))}) | from_entries
   rename_annotations: |
     . as $context |
     # An alias changes the visible name, never the artifact identity.
     def same_document:
-      has("id") and (.id as $id | $context.documents | has($id)) and
+      has("id") and (.id | startswith($context.strip_prefix)) and (.id as $id | $context.documents | has($id)) and
       (($context.documents[.id] | del(.name)) == (.ref | del(.name)));
     def rename:
-      .id = ($context.prefix + .id) | .lineage += [.id];
+      .id = ($context.prefix + (.id | ltrimstr($context.strip_prefix))) | .lineage += [.id];
     [.annotations[] |
      select(same_document) |
      rename |

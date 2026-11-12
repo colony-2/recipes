@@ -1,0 +1,121 @@
+recipe: consultation-selection.yaml
+cases:
+- id: launched-request-rebases-and-filters-metadata
+  type: integration_case
+  runtime:
+    cell: notebook
+    cells:
+      notebook:
+        files:
+          PURPOSE.md: Own notebook.
+          .c2/recipes/selected-consultation.yaml: "schema_version: 2\nid: selected-consultation\ninput_schema:\n\
+            \  documents:\n    type: artifact_map\n    default_value: {}\n  annotations:\n    type: array\n    default_value:\
+            \ []\n    items:\n      type: object\n  request:\n    type: string\n    default_value: ''\n  thread:\n\
+            \    type: string\n    default_value: ''\n  consultant_cell:\n    type: string\n    default_value: ''\n\
+            \  consultant_ref:\n    type: string\n    default_value: main\n  consultant_role:\n    type: string\n\
+            \    default_value: ''\ninputs:\n  documents: ${{ inputs.documents }}\n  annotations: ${{ inputs.annotations\
+            \ }}\nsequence:\n- id: consume\n  op: command_execution\n  artifacts:\n    ./: ${{ inputs.documents\
+            \ }}\n  inputs:\n    env:\n      INBOX: ${{ context.environment.op.inbox }}\n    run: |\n      test\
+            \ \"$(cat \"$INBOX/request.md\")\" = 'Selected current request'\n      test \"$(cat \"$INBOX/current.md\"\
+            )\" = 'Current replacement evidence'\n      test ! -e \"$INBOX/ancient.md\"\noutputs:\n  outcome: answered\n\
+            \  summary: Current selected evidence inspected.\n  final_artifacts: ${{ inputs.documents }}\n  annotations:\
+            \ ${{ inputs.annotations }}\n  agreements: []\n"
+      storage:
+        files:
+          PURPOSE.md: Own storage.
+  mocks:
+    ops:
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: valid
+    value: true
+  - type: cel_true
+    expr: calls.exists(c,c.op == "recipes.run" && size(c.inputs.recipes[0].inputs.documents) == 2 && size(c.inputs.recipes[0].inputs.annotations)
+      == 2 && c.inputs.recipes[0].inputs.annotations.all(a,a.id in ["request.md","current.md"] && a.descriptor.title
+      != "Stale title" && a.descriptor.title != "Historical title"))
+  - type: cel_true
+    expr: outputs.records[0].result.outcome == "answered" && outputs.annotations.exists(a,a.id == "coordination/selection-0/artifacts/current.md"
+      && a.descriptor.title == "Current title")
+  - type: cel_true
+    expr: calls.exists(c,c.op == "recipes.run" && c.inputs.recipes[0].inputs.annotations.exists(a,a.id == "request.md"
+      && a.sources.exists(s,s.id == "current.md" && s.lineage == ["work/current.md","current.md"])))
+- id: inline-request-rebases-and-filters-metadata
+  type: integration_case
+  runtime:
+    cell: notebook
+    cells:
+      notebook:
+        files:
+          PURPOSE.md: Own notebook.
+          .c2/recipes/selected-consultation.yaml: "schema_version: 2\nid: selected-consultation\ninput_schema:\n\
+            \  documents:\n    type: artifact_map\n    default_value: {}\n  annotations:\n    type: array\n    default_value:\
+            \ []\n    items:\n      type: object\n  request:\n    type: string\n    default_value: ''\n  thread:\n\
+            \    type: string\n    default_value: ''\n  consultant_cell:\n    type: string\n    default_value: ''\n\
+            \  consultant_ref:\n    type: string\n    default_value: main\n  consultant_role:\n    type: string\n\
+            \    default_value: ''\ninputs:\n  documents: ${{ inputs.documents }}\n  annotations: ${{ inputs.annotations\
+            \ }}\nsequence:\n- id: consume\n  op: command_execution\n  artifacts:\n    ./: ${{ inputs.documents\
+            \ }}\n  inputs:\n    env:\n      INBOX: ${{ context.environment.op.inbox }}\n    run: |\n      test\
+            \ \"$(cat \"$INBOX/request.md\")\" = 'Selected current request'\n      test \"$(cat \"$INBOX/current.md\"\
+            )\" = 'Current replacement evidence'\n      test ! -e \"$INBOX/ancient.md\"\noutputs:\n  outcome: answered\n\
+            \  summary: Current selected evidence inspected.\n  final_artifacts: ${{ inputs.documents }}\n  annotations:\
+            \ ${{ inputs.annotations }}\n  agreements: []\n"
+      storage:
+        files:
+          PURPOSE.md: Own storage.
+  mocks:
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: storage
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            outcome: answered
+            reply: Current evidence inspected.
+            files:
+            - path: request.md
+              description: Selected request
+              title: Selected request
+            - path: current.md
+              description: Current evidence
+              title: Current title
+            - path: iter1/consultant/summary.md
+              description: Current recommendation
+              title: Current recommendation
+            requests: []
+        artifacts:
+          iter1/consultant/summary.md: '# Current recommendation
+
+            Keep the current evidence.'
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: answer
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: valid
+    value: true
+  - type: cel_true
+    expr: '!calls.exists(c,c.op == "recipes.run") && calls.exists(c,c.op == "extension_execution" && c.cell == "storage"
+      && has(c.artifacts) && "request.md" in c.artifacts && "current.md" in c.artifacts && !("ancient.md" in c.artifacts)
+      && c.artifacts["current.md"].contains("Current replacement evidence"))'
+  - type: cel_true
+    expr: outputs.records[0].result.outcome == "answered" && outputs.annotations.exists(a,a.id == "coordination/selection-0/artifacts/current.md"
+      && a.descriptor.title == "Current title")
+  inputs:
+    consultation_recipe: git+https://github.com/colony-2/recipes.git//recipes/adaptive2/consultation.yaml@main

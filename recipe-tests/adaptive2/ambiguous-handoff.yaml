@@ -1,0 +1,32 @@
+schema_version: 2
+id: ambiguous-handoff
+input_schema:
+  known:
+    type: boolean
+    default_value: false
+inputs:
+  known: ${{ inputs.known }}
+sequence:
+- id: originals
+  op: command_execution
+  const: true
+  inputs:
+    env:
+      OUTBOX: ${{ context.environment.op.outbox }}
+    run: |
+      echo 'First accepted assignment' > "$OUTBOX/first.md"
+      echo 'Second accepted assignment' > "$OUTBOX/second.md"
+      echo 'Unaccepted third assignment' > "$OUTBOX/third.md"
+- id: accepted
+  include: ../../recipes/adaptive2/accepted-handoff.yaml
+  inputs:
+    cell: storage
+    directory: "${{ inputs.known ? 'accepted/one/' : 'unknown/' }}"
+    documents: >-
+      ${{ {'handoff.md':inputs.known ? sequence.originals.artifacts['first.md'] : sequence.originals.artifacts['third.md']} }}
+    agreements: >-
+      ${{ [{'cell':'storage','directory':'accepted/one/','result':{'outcome':'agreed','work_kind':'bug','handoff':'one/','final_artifacts':{'one/handoff.md':sequence.originals.artifacts['first.md']} } },
+        {'cell':'storage','directory':'accepted/two/','result':{'outcome':'agreed','work_kind':'bug','handoff':'two/','final_artifacts':{'two/handoff.md':sequence.originals.artifacts['second.md']} } }] }}
+outputs:
+  valid: ${{ sequence.accepted.outputs.valid }}
+  reason: ${{ sequence.accepted.outputs.reason }}

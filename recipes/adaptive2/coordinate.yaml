@@ -76,6 +76,17 @@ state:
           reason: ${{ outputs.target.?detail.orValue('Unable to resolve the requested cell or ref.') }}
       - to: creation_result
         when: "!outputs.ready || states.pick.outputs.request.?kind.orValue('feature') == 'create'"
+      - to: request_annotations
+        when: true
+    request_annotations:
+      include: ../adaptive/document-bindings.yaml
+      inputs:
+        prefix: ''
+        strip_prefix: ${{ states.pick.outputs.request.?handoff.orValue('') }}
+        documents: >-
+          ${{ nonempty(states.pick.outputs.request.?handoff.orValue('')) ? state_output('record','documents',inputs.documents) : {} }}
+        annotations: ${{ state_output('record','annotations',inputs.annotations) }}
+      transitions:
       - to: consult_fresh
         when: inputs.consultation_recipe ==
           'git+https://github.com/colony-2/recipes.git//recipes/adaptive2/consultation.yaml@main'
@@ -91,7 +102,7 @@ state:
         consultant_role: "${{ states.pick.outputs.request.?role.orValue('Owning cell: agree scope and acceptance outcomes')
           }}"
         documents: ${{ states.route.outputs.documents }}
-        annotations: ${{ state_output('record','annotations',inputs.annotations) }}
+        annotations: ${{ states.request_annotations.outputs.annotations }}
       transitions:
       - to: consulted
         when: true
@@ -111,7 +122,7 @@ state:
             ${{ jq(states.pick.outputs.request.?title.orValue(null), 'if type == "string" then if test("[^[:space:]]") then . else null end else null end') != null ? states.pick.outputs.request.title : 'Consult ' + states.route.outputs.target.cell + ' about delegated work' }}
           name: ${{ inputs.consultation_recipe }}
           inputs: "${{ {'thread':states.pick.outputs.reference,'request':states.pick.outputs.request.request,'consultant_cell':states.route.outputs.target.cell,'consultant_ref':states.route.outputs.target.ref,'consultant_role':states.pick.outputs.request.?role.orValue('Owning
-            cell: agree scope and acceptance outcomes'),'documents':states.route.outputs.documents,'annotations':state_output('record','annotations',inputs.annotations)}
+            cell: agree scope and acceptance outcomes'),'documents':states.route.outputs.documents,'annotations':states.request_annotations.outputs.annotations}
             }}"
         wait:
           on: job
@@ -144,7 +155,7 @@ state:
         when: true
         payload:
           record: ${{
-            {'action':'consult','reference':states.pick.outputs.reference,'request':jq([{'kind':'feature','ref':'main'},states.pick.outputs.request],'add'),'target':states.route.outputs.target,'result':outputs.result,'creation':states.route.outputs.creation}
+            {'action':'consult','reference':states.pick.outputs.reference,'request':jq([{'kind':'feature','ref':'main'},states.pick.outputs.request],'add'),'target':states.route.outputs.target,'result':jq(outputs.result,vars.consultation_result),'creation':states.route.outputs.creation}
             }}
           documents: ${{ outputs.result.final_artifacts }}
           session: ${{ inputs.session }}
@@ -267,7 +278,7 @@ state:
       - to: record
         when: true
         payload:
-          record: ${{ {'action':'await','job_id':outputs.result.job_id,'result':outputs.result} }}
+          record: ${{ {'action':'await','job_id':outputs.result.job_id,'result':jq(outputs.result,vars.child_result)} }}
           documents: ${{
             jq([outputs.result.?outputs.orValue({}).?final_artifacts.orValue(outputs.result.?outputs.orValue({}).?artifact_refs.orValue({})),outputs.errors],'add')
             }}
@@ -294,10 +305,18 @@ state:
           documents: ${{ jq({'record':inputs.record}, vars.status_documents) }}
           prefix: ${{ 'coordination/' + inputs.record.?reference.orValue(inputs.record.?job_id.orValue('creation'))
             + '/' }}
+      - id: current_annotations
+        include: ./current-annotations.yaml
+        inputs:
+          documents: ${{
+            jq([inputs.previous_documents,sequence.bind.outputs.documents,sequence.status.outputs.documents,jq({'documents':inputs.documents,'job':inputs.record.?job_id.orValue(inputs.record.?reference.orValue('creation'))},
+            ' . as $v | .documents | with_entries(select(.key | startswith("error/")) | .key = ("error/children/" +
+            $v.job + "/" + (.key|ltrimstr("error/"))) | .value.name = .key)')], 'add') }}
+          annotations: ${{ inputs.previous_annotations + sequence.bind.outputs.annotations }}
       outputs:
         record: ${{ inputs.record }}
         session: ${{ inputs.session }}
-        annotations: ${{ inputs.previous_annotations + sequence.bind.outputs.annotations }}
+        annotations: ${{ sequence.current_annotations.outputs.annotations }}
         documents: ${{
           jq([inputs.previous_documents,sequence.bind.outputs.documents,sequence.status.outputs.documents,jq({'documents':inputs.documents,'job':inputs.record.?job_id.orValue(inputs.record.?reference.orValue('creation'))},
           ' . as $v | .documents | with_entries(select(.key | startswith("error/")) | .key = ("error/children/" +
@@ -352,7 +371,7 @@ state:
         when: true
 outputs:
   valid: ${{ !state_exists('invalid') }}
-  records: "${{ state_exists('await_requested') ? states.await_requested.outputs.results.map(r,{'action':'await','job_id':r.job_id,'result':r})
+  records: "${{ state_exists('await_requested') ? states.await_requested.outputs.results.map(r,{'action':'await','job_id':r.job_id,'result':jq(r,vars.child_result)})
     : jq((state_exists('record') ? states.record.runs.map(r,r.outputs.record) + [states.record.outputs.record] : []),
     vars.records) }}"
   session: ${{ inputs.session }}
@@ -380,6 +399,15 @@ vars:
           if .[0] != "" or .[1] != "" then "\nAssignment outcome: " + (.[0] | tostring) + "\n" + (.[1] | tostring | .[:2000]) else "" end)
        else "Creation completed: " + ($r.ready | tostring) end)}}
   records: |
-    map(. as $record | [$record] +
+    map(. as $record | [del(.result.agreements)] +
       (($record.result.agreements // []) | to_entries | map(.value +
         {action:"consult",reference:($record.reference + "/advice-" + (.key|tostring))}))) | add // []
+  consultation_result: |
+    def accepted:
+      . as $r | {outcome, summary, handoff, work_kind, failure_code, execution_requests, review_receipts} |
+      .final_artifacts = (if ($r.handoff // "") != "" and $r.final_artifacts[$r.handoff + "handoff.md"] != null
+        then {($r.handoff + "handoff.md"): $r.final_artifacts[$r.handoff + "handoff.md"]} else {} end);
+    . as $r | accepted | .agreements = [($r.agreements // [])[] | .result |= accepted]
+  child_result: |
+    {job_id, status, failure_message, failure, outputs: (.outputs // {} |
+      with_entries(select(.key as $k | ["merged","disposition","status","ok","assistant_summary","summary"] | index($k))))}

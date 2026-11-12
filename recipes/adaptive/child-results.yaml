@@ -61,7 +61,10 @@ state:
         results: ${{ jq(inputs.ready, '[.[] | .result]') }}
         documents: ${{ jq(inputs.ready, vars.documents) }}
 outputs:
-  results: ${{ states.collect.outputs.results }}
+  # Selected documents travel once through documents; keep lifecycle facts here.
+  # Select existing outcome keys: synthesized nulls break optional Boolean defaults.
+  results: >-
+    ${{ jq(states.collect.outputs.results, '[.[] | {job_id,status,failure_message,failure,outputs:(.outputs // {} | with_entries(select(.key as $k | ["merged","disposition","status","ok","assistant_summary","summary"] | index($k))))}]') }}
   documents: ${{ states.collect.outputs.documents }}
   failed: ${{ states.collect.outputs.results.exists(r,r.status != 'completed' ||
     r.?outputs.orValue({}).?ok.orValue(true) == false || r.?outputs.orValue({}).?status.orValue('passed') in

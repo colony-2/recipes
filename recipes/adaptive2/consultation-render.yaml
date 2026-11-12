@@ -21,13 +21,17 @@ sequence:
   inputs:
     transcript: >-
       ${{ inputs.conversation.transcript }}
+    selected: >-
+      ${{ inputs.selected_documents }}
+    aliases: >-
+      ${{ inputs.attachment_map }}
     handoff: >-
       ${{ vars.handoff }}
     summary: >-
       ${{ vars.summary }}
   vars:
     descriptors: >-
-      ${{ jq(inputs.transcript.map(t,type(t.?files.orValue([])) == list ? t.?files.orValue([]) : []), 'flatten') }}
+      ${{ jq(inputs.transcript.map(t,type(t.?files.orValue([])) == list ? t.?files.orValue([]).filter(f, f.path in t.?artifacts.orValue({}) && inputs.aliases[?f.path].orValue(f.path) in inputs.selected && jq(t.artifacts[f.path],'del(.name)') == jq(inputs.selected[inputs.aliases[?f.path].orValue(f.path)],'del(.name)')) : []), 'flatten') }}
   sequence: []
   outputs:
     handoff: >-
@@ -135,7 +139,7 @@ sequence:
         jq(t.evidence.map(n,
           inputs.aliases[?n].orValue(n) in inputs.selected &&
           jq(t.evidence[n],'del(.name)') == jq(inputs.selected[inputs.aliases[?n].orValue(n)],'del(.name)')
-          ? '- [' + n + '](' + inputs.aliases[?n].orValue(n) + ')' :  '- ' + n), 'join("\\n")') + '\n') }}
+          ? '- [' + n + '](' + inputs.aliases[?n].orValue(n) + ')' : '- ' + n + (t.evidence[n].?kind.orValue('') == 'stored' ? ' — producer job `' + t.evidence[n].stored.key.jobId + '`, task ' + string(t.evidence[n].stored.key.taskOrdinal) + ', artifact `' + t.evidence[n].stored.key.name + '` (inspect with c2j job tools)' : ' — retained at this exchange’s producing task')), 'join("\\n")') + '\n') }}
 - id: format
   inputs:
     title: >-

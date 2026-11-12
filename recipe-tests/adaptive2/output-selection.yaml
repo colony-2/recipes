@@ -1,0 +1,62 @@
+schema_version: 2
+id: output-selection
+input_schema:
+  prompt:
+    type: string
+    default_value: Preserve both drafts.
+inputs:
+  prompt: ${{ inputs.prompt }}
+sequence:
+- id: build
+  include: ../../build.yaml
+  inputs:
+    prompt: ${{ inputs.prompt }}
+- id: inspect_history
+  op: command_execution
+  const: true
+  execution_needs:
+    packages:
+    - nix:github:NixOS/nixpkgs/e7439b6b14ad3cc35d05608ebca9bce01a25f5f8#python3
+  artifacts:
+    conversation.md: ${{ sequence.build.outputs.artifact_refs['coordination/request-0-0/artifacts/conversation.md'] }}
+  inputs:
+    env:
+      INBOX: ${{ context.environment.op.inbox }}
+    run: |
+      python3 - <<'PYINSPECT'
+      import json, os, re, subprocess, tempfile
+      from pathlib import Path
+      text=(Path(os.environ['INBOX'])/'conversation.md').read_text()
+      job, ordinal, name=re.findall(r"producer job `([^`]+)`, task ([0-9]+), artifact `([^`]+)`",text)[0]
+      def read(*args):
+          with tempfile.TemporaryDirectory() as tmp:
+              dest=Path(tmp)/'inventory.json'
+              subprocess.run(['c2j','job',*args,'--json','--output',str(dest)],check=True)
+              return json.loads(dest.read_text())
+      cursor=None
+      task=None
+      while True:
+          args=['log',job,'--limit','100']+(['--cursor',cursor] if cursor else [])
+          page=read(*args)
+          for t in page.get('tasks',[]):
+              for a in t.get('artifacts',[]):
+                  key=a.get('reference',{}).get('stored',{}).get('key',{})
+                  if key.get('taskOrdinal')==int(ordinal) and key.get('name')==name:
+                      task=t['id']
+          cursor=page.get('next_cursor')
+          if task or not cursor: break
+      assert task, (job,ordinal,name)
+      with tempfile.TemporaryDirectory() as tmp:
+          dest=Path(tmp)/'history.txt'
+          subprocess.run(['c2j','job','artifact',job,'--task',task,'--name',name,'--output',str(dest)],check=True)
+          content=dest.read_text()
+          assert 'Original request evidence' in content or 'Storage evidence' in content, content
+          print(content)
+      PYINSPECT
+
+outputs:
+  # Measure the complete entrypoint result, with no projection or artifact-body substitution.
+  inspected_history: ${{ sequence.inspect_history.outputs.stdout }}
+  build_output: ${{ sequence.build.outputs }}
+  output_bytes: ${{ size(bytes(json_stringify(sequence.build.outputs))) }}
+  stored_reference_occurrences: ${{ size(jq(sequence.build.outputs, '[.. | objects | select(.kind? == "stored")]')) }}

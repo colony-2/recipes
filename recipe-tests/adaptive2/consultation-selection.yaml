@@ -1,0 +1,53 @@
+schema_version: 2
+id: consultation-selection
+input_schema:
+  consultation_recipe:
+    type: string
+    default_value: selected-consultation
+inputs:
+  consultation_recipe: ${{ inputs.consultation_recipe }}
+sequence:
+- id: produce
+  op: command_execution
+  const: true
+  inputs:
+    env:
+      OUTBOX: ${{ context.environment.op.outbox }}
+    run: |
+      echo 'Selected current request' > "$OUTBOX/request.md"
+      echo 'Superseded contents' > "$OUTBOX/current.md"
+      echo 'Historical unselected contents' > "$OUTBOX/ancient.md"
+- id: replace
+  op: command_execution
+  const: true
+  inputs:
+    env:
+      OUTBOX: ${{ context.environment.op.outbox }}
+    run: echo 'Current replacement evidence' > "$OUTBOX/current.md"
+- id: coordinate
+  include: ../../recipes/adaptive2/coordinate.yaml
+  inputs:
+    phase: design
+    requests:
+    - action: consult
+      cell: storage
+      request: Inspect the selected current request and evidence.
+      handoff: work/
+    root_cell: root
+    root_ref: main
+    consultation_recipe: ${{ inputs.consultation_recipe }}
+    build_recipe: unused
+    create_recipe: unused
+    session: {}
+    prefix: selection
+    documents: >-
+      ${{ {'work/request.md':sequence.produce.artifacts['request.md'], 'work/current.md':sequence.replace.artifacts['current.md'], 'ancient.md':sequence.produce.artifacts['ancient.md']} }}
+    annotations: >-
+      ${{ [{'id':'work/request.md','ref':sequence.produce.artifacts['request.md'],'descriptor':{'title':'Selected request'},'sources':[{'id':'work/current.md','ref':sequence.replace.artifacts['current.md'],'lineage':['work/current.md']}]},
+        {'id':'work/current.md','ref':sequence.produce.artifacts['current.md'],'descriptor':{'title':'Stale title'},'sources':[]},
+        {'id':'work/current.md','ref':sequence.replace.artifacts['current.md'],'descriptor':{'title':'Current title'},'sources':[]},
+        {'id':'ancient.md','ref':sequence.produce.artifacts['ancient.md'],'descriptor':{'title':'Historical title'},'sources':[]}] }}
+outputs:
+  valid: ${{ sequence.coordinate.outputs.valid }}
+  records: ${{ sequence.coordinate.outputs.records }}
+  annotations: ${{ sequence.coordinate.outputs.annotations }}
