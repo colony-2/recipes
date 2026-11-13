@@ -1,6 +1,7 @@
 # Adaptive2: work that humans can follow
 
-The default workflow selected by root [`build.yaml`](../../build.yaml), based on adaptive. Start with the
+The retained workflow selected explicitly through [`build.yaml`](build.yaml), based on adaptive.
+The root default now uses [adaptive3](../adaptive3/README.md). Start with the
 [proposal](../../guides/adaptive2/PROPOSAL.md),
 [implementation assessment](../../guides/adaptive2/IMPLEMENTATION.md), and
 [actual review packets](../../guides/adaptive2/results/README.md).

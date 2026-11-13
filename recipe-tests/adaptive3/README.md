@@ -46,3 +46,6 @@ c2j test run --file recipe-tests/adaptive3/consultation.live.yaml --include-live
 These require a working Codex provider. Human replies are scripted; the writing,
 validation and conversational answers are live. See the
 [saved trial documents](../../guides/adaptive3/results/README.md).
+
+`default-build.test.yaml` targets root `build.yaml` directly, covering explanation,
+feature delivery and repository-improvement hooks through adaptive3.

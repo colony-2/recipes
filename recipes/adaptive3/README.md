@@ -1,6 +1,6 @@
 # Adaptive3
 
-An opt-in development recipe built around one cycle:
+The default development recipe, built around one cycle:
 **Execute → full Validate → Review**. Corrections repeat the whole cycle.
 Questions stay in Review. Accepted work advances directly to the next stage.
 
@@ -8,7 +8,8 @@ The five stages are Direction, Preparation, Implementation, Outcome acceptance,
 and Integration/publication. Direction and Outcome have human review. The other
 stages use independent agent review. An accepted explanation can finish at Direction.
 
-Use the root `adaptive3.yaml` entrypoint. `build.yaml` still uses adaptive2.
+Use root `build.yaml` for the default entrypoint, or `adaptive3.yaml` explicitly.
+See the [rollout notes](../../guides/adaptive3/ROLLOUT.md) for the public contract.
 
 ```sh
 # Run the local adaptive3 source against the current cell.

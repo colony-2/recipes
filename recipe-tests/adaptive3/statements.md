@@ -22,5 +22,5 @@ Agent decisions are scripted unless a case is explicitly marked live.
 | A3-15 | Prompt includes create no worker tasks and preserve literal caller text. | High | Integration / c2j | prompts/ |
 | A3-16 | Cancellation retains its meaning and never silently recreates cancelled work. | Critical | Integration / c2j | lifecycle.yaml, consultation.yaml |
 | A3-17 | Real UI reviews contain readable captures linked from the selected human document. | High | Live integration / Codex, browser | validate.yaml, tools.yaml |
-| A3-18 | Default build and adaptive2 continue using their existing recipes. | Critical | Integration / c2j | build.yaml, recipes/adaptive2/ |
+| A3-18 | Default build uses adaptive3; the explicit adaptive2 entrypoint remains available. | Critical | Integration / c2j | build.yaml, adaptive3.yaml, recipes/adaptive2/build.yaml |
 | A3-19 | A failed resolver correction asks for human direction before another automatic attempt, even when the error message changes. | Critical | Integration / c2j, Nix | resolver.yaml, adaptive3.yaml |

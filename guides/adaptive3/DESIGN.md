@@ -1,5 +1,8 @@
 # Adaptive3: implementation design
 
+The initial design below kept adaptive3 opt-in. The subsequent
+[default rollout](ROLLOUT.md) makes it the workflow selected by `build.yaml`.
+
 Design for a **separate, opt-in recipe**, based on the agreed
 [activity lifecycle](../adaptive2/PROPOSAL_REUSABLE_ACTIVITIES.md).
 Adaptive2 and the current `build` entrypoint stay intact. This document specifies the implementation contract. See

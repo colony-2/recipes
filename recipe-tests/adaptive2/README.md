@@ -1,20 +1,19 @@
 # Adaptive2 native tests
 
-`direction-review.test.yaml` and `build-delivery.test.yaml` run the public root
-`build.yaml`, so changing its routing cannot leave these tests exercising a stale
-standalone entrypoint. `default-child.test.yaml` also resolves a real named build
-with that entrypoint in a disposable repository. Consultation and handoff suites
-exercise the inline protocol and original artifact identity.
+The suites use `recipes/adaptive2/build.yaml` explicitly. Default explicit adaptive2 build
+coverage now lives in `../adaptive3/default-build.test.yaml`; retargeting these
+regressions preserves their adaptive2 purpose after the default switch.
+Named-child fixtures install the real adaptive2 entrypoint and its companion
+recipes into disposable repositories. Existing consultation/recovery assertions
+remain specific to adaptive2.
 
-`../self-improvement/build.test.yaml` covers the public build's existing local
-hooks and audit inputs. The previous `../adaptive/` flow suites intentionally use
-`../adaptive/build.yaml`, a test-only copy of the old public input contract which
-includes the retained adaptive implementation. Their helper coverage remains
-useful, but they do not prove the new direction flow.
+`../self-improvement/build.test.yaml` retains the adaptive2 hook regression;
+adaptive3's default-build suite separately checks repository-improvement inputs,
+backgrounders and native verification through the new default.
 
 `../adaptive/hook-const.test.yaml` checks discarded read-only hook edits, nested
 `const` inheritance, persisted prepare edits, and floating branch advancement.
-`build-delivery.test.yaml` also completes the public build after configure attempts
+`build-delivery.test.yaml` also completes the explicit adaptive2 build after configure attempts
 an edit. See the [hook expectations and validation](../adaptive/hook-const-statements.md).
 
 Run the normal native suite with the pinned c2j and packaged operations:
@@ -32,7 +31,7 @@ in [the workflow guide](../../recipes/adaptive2/README.md) and
 The automatic-limit regressions use real input receipts, inline consultations,
 package decisions, child submission, Git races, and artifact transport. Model
 decisions are scripted. `build-handoff-recovery.test.yaml` exercises parent output
-normalization and correction through the public build, including identical and
+normalization and correction through the explicit adaptive2 build, including identical and
 changed outbox copies. `human-turns.test.yaml` repeats human reviews under an
 explicit one-turn allowance. `merge-turns.test.yaml` uses a real concurrent Git
 writer to check approval reuse and renewed retry allowances.
@@ -79,7 +78,7 @@ responses to check waiting and unreadable-source correction; it does not simulat
 a worker restart or a prolonged human wait.
 
 `annotation-growth.test.yaml` runs four implementation/review rounds through the
-public build, with 24 separate evidence logs, three human revisions and a final
+explicit adaptive2 build, with 24 separate evidence logs, three human revisions and a final
 merge. It checks current artifact identity, unique annotations and retained source
 links. The previous recipe exceeded JobDB's final-output limit on this fixture.
 `current-annotations.test.yaml` covers descriptor replacement, stale references,

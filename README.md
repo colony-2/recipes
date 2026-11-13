@@ -6,38 +6,34 @@ describes this cell's responsibilities.
 
 ## Build
 
-[`build.yaml`](build.yaml) runs [`recipes/adaptive2/`](recipes/adaptive2/README.md).
+[`build.yaml`](build.yaml) runs [adaptive3](recipes/adaptive3/README.md).
 It frames the request as a feature, bug, explanation, or oversight assignment.
-Delivery starts with a human-approved one-pager, then detailed planning,
-implementation, verification, and an outcome review before publication.
-A straightforward explanation can return its answer directly. Agent feedback returns to the appropriate working phase.
-See [the process description and diagrams](ADAPTIVE_BUILD_PROCESS.md).
+Five stages share one Execute → full Validate → Review cycle: Direction,
+Preparation, Implementation, Outcome acceptance, and Integration/publication.
+Direction and Outcome have human review. Questions stay in Review; corrections
+repeat the destination stage's complete cycle. An accepted explanation can finish
+at Direction. See [the process description](ADAPTIVE_BUILD_PROCESS.md).
 
 ```sh
 c2j submit --recipe-file ./build.yaml \
   --inputs-json '{"title":"Retry handling","prompt":"Add retry handling"}' --run --embed
 ```
 
-`prompt` is required. `title` is optional; `target_directory` defaults to `.`.
-The cell encompasses the whole repository. Other inputs, including verification
-requirements, child recipe selectors, documents and checkpoints, are declared in
-the entrypoint's schema v2 contract.
+`prompt` is required. Optional inputs are `title`, `target_directory`, `documents`,
+`require_verification`, `max_iterations` and `resume_from`. `type: build` is also
+accepted from CLI callers. The cell encompasses the whole repository. The
+[rollout notes](guides/adaptive3/ROLLOUT.md) explain the changed public contract.
 
-Prompts live in `recipes/adaptive2/prompts.yaml`, included through an empty sequence
-that creates no worker task. Specific typed values carry orchestration state;
-files carry evidence, feedback, command diagnostics, and review documents.
-Standing context is supplied when a session starts. Agents can use `c2j self` to
-inspect their execution context and capabilities, and `c2j job log`, `fields`,
-`artifacts`, and `snapshot` to retrieve selected work from jobs visible through existing
-JobDB read permissions, including producer jobs outside the direct child chain.
+Prompts live in `recipes/adaptive3/prompts/`, using empty-sequence includes.
+Standing context is supplied when a session starts. Agents can use `c2j self`
+and the job inspection commands to retrieve selected earlier work. Native outputs
+carry workflow state; files carry actual work, diagnostics and human review content.
 
-Serving consultations resolve external scope. The receiving cell writes the agreed
-`handoff.md`; public replies and selected documents remain in a readable conversation.
-The coordinator passes the receiver's original handoff to the execution owner. The parent
-follows the exact job and can submit a corrected fresh attempt after failure, carrying
-selected artifacts or a reviewed patch when useful. Sessions and execution history are
-not inherited. See [the current workflow](recipes/adaptive2/README.md) and
-[rollout limitations](guides/adaptive2/ROLLOUT.md).
+Consultation runs inline in the receiving cell's workspace. The receiver writes
+any delivery assignment, which can start a child job. A caught failure enters
+resolution inside the parent job. The [workflow guide](recipes/adaptive3/README.md)
+and [runtime requirements](guides/adaptive3/RUNTIME_REQUIREMENTS.md) distinguish
+implemented recovery from remaining runtime limitations.
 
 Use the [documentation map](guides/README.md) and
 [general improvement guidance](guides/RECIPE_IMPROVEMENT_GUIDE.md) for recipe work.
@@ -64,8 +60,9 @@ See [creation behavior and failure handling](recipes/create/README.md).
 
 The helpers still needed by creation remain in [`recipes/kernel/`](recipes/kernel/README.md).
 The old heavy/light build, ticket/job workflows, superpowers family, and their
-exclusive helpers and tests have been removed. Adaptive2 is the default build path. Unchanged helpers are shared with
-`recipes/adaptive/`, whose previous flow remains covered by separate regression tests.
+exclusive helpers and tests have been removed. Adaptive3 is the default build path. Adaptive2 remains explicitly available at
+`recipes/adaptive2/build.yaml`, with its shared `recipes/adaptive/` helpers and
+separate regression tests.
 
 ## Tests
 
@@ -81,8 +78,9 @@ c2j test run --directory . --case-timeout 10m --out-dir .c2/test-results
 
 Deterministic suites mock model responses and declare human answers while exercising
 native artifacts, Git, reviews, child jobs and publication. Public build coverage
-lives in `recipe-tests/adaptive2/` and `recipe-tests/self-improvement/`. Previous
-adaptive and shared-helper regressions live in `recipe-tests/adaptive/`; creation coverage is in
+lives in `recipe-tests/adaptive3/`, including repository-improvement hook coverage.
+Retained adaptive2 tests use its explicit entrypoint; older adaptive and shared-helper
+regressions live in `recipe-tests/adaptive/`. Creation coverage is in
 `recipe-tests/`. Documentation examples are also discovered. Live model/skill checks
 are opt-in with `--include-live` and require configured authentication.
 

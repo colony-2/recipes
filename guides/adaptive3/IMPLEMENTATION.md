@@ -1,7 +1,8 @@
 # Adaptive3 implementation and assessment
 
-Adaptive3 is implemented as a separate, opt-in recipe. Start at
-[`adaptive3.yaml`](../../adaptive3.yaml). `build.yaml` still uses adaptive2.
+Adaptive3 is implemented separately and is now the default behind
+[`build.yaml`](../../build.yaml). [`adaptive3.yaml`](../../adaptive3.yaml) remains
+its direct entrypoint. See the [rollout notes](ROLLOUT.md).
 This work fits the recipes cell; c2j remains responsible for durable execution,
 permissions, workspaces and runtime recovery.
 
@@ -14,11 +15,14 @@ Read the [actual trial documents](results/README.md) to assess the writing, and
 [test results](TEST_RESULTS.md) for the evidence and its limits. The
 [design](DESIGN.md) records the intended structure.
 
+The [follow-up list](TODO.md) records human-directed model overrides, incomplete
+result correction, qualitative scope by cell and measured code-change reports.
+
 ## Delivered against the plan
 
 | Plan | Implementation |
 | --- | --- |
-| Separate adaptive3 | New public entrypoint, helpers, prompts and tests. Existing adaptive2 recipe sources and the build entrypoint are unchanged. |
+| Separate adaptive3 | New public entrypoint, helpers, prompts and tests. Existing adaptive2 recipe sources remain separate; the public build now forwards to adaptive3. |
 | Define the activities once | `execute.yaml`, `validate.yaml` and `review.yaml` own the activities. `cycle.yaml` composes one pass; `lifecycle.yaml` handles corrections and service interruptions. |
 | Five visible stages | Named states in the public entrypoint. Direction and Outcome require human acceptance; other stages use independent agent assessment. An accepted explanation finishes at Direction. |
 | Human-readable work | Four work types; the existing one-pager and outcome headings; descriptive titles; consequential Q&A without a question-count cap; change-size estimates and actuals as useful review information. |
@@ -142,5 +146,5 @@ examples. This is ready for further opt-in evaluation, subject to these limits:
 
 Memory, Docker and other broader environment requirements are outside the package
 service delivered here. Their provisioning and durable suspension belong to c2j
-and the environment owner. The default build remains adaptive2 while these opt-in
-trials and runtime requirements are evaluated.
+and the environment owner. The default now uses adaptive3 following the requested switch; these runtime
+requirements and follow-up trials remain open.
