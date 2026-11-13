@@ -1,0 +1,45 @@
+schema_version: 2
+id: validator-environment-check
+input_schema:
+  prompt:
+    type: string
+  title:
+    type: string
+    default_value: ''
+inputs:
+  documents: ${{ context.artifacts }}
+sequence:
+- id: first
+  include: ../../recipes/adaptive3/tools.yaml
+  inputs:
+    check: review_files
+    documents: ${{ inputs.documents }}
+    title: Check Markdown and image decoding
+    primary: review/README.md
+  catch:
+  - when: failure.kind != 'cancellation'
+    continue:
+      outputs:
+        result:
+          status: failed
+          summary: ${{ failure.message }}
+- id: repeat
+  include: ../../recipes/adaptive3/tools.yaml
+  inputs:
+    check: review_files
+    documents: ${{ inputs.documents }}
+    title: Check Markdown and image decoding
+    primary: review/README.md
+  catch:
+  - when: failure.kind != 'cancellation'
+    continue:
+      outputs:
+        result:
+          status: failed
+          summary: ${{ failure.message }}
+outputs:
+  first: ${{ sequence.first.outputs.result }}
+  repeat: ${{ sequence.repeat.outputs.result }}
+  summary: '${{ sequence.first.outputs.result.status == ''passed'' && sequence.repeat.outputs.result.status == ''passed''
+    ? ''Both validator tasks passed Markdown parsing and image decoding.'' : ''Validator environment check did not
+    pass. Read the first and repeat results and their command preparation logs.'' }}'

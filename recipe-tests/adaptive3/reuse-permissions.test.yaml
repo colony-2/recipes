@@ -1,0 +1,261 @@
+recipe: reuse-permissions.yaml
+cases:
+- id: trusted-root
+  type: integration_case
+  runtime:
+    secrets:
+      codex_api_key: synthetic-test-key
+    cells:
+      root:
+        files:
+          README.md: Fixture consumer.
+          .c2/recipes/reuse-probe.yaml: '{"schema_version": 2, "id": "reuse-probe", "input_schema": {"prompt": {"type":
+            "string"}}, "sequence": [{"id": "work", "include": "../../recipes/adaptive3/cycle.yaml", "inputs": {"purpose":
+            "advice", "request": "Explain current draft storage."}}], "outputs": {"result": "${{ sequence.work.outputs.result
+            }}"}}'
+        file_sources:
+          .test/library/recipes: ../../recipes
+          recipes: ../../recipes
+  mocks:
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: ready
+            summary: Drafts are held in memory.
+            title: Where drafts are stored
+            primary: review/answer.md
+            work_kind: explanation
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: Drafts are held in memory.
+        artifacts:
+          review/answer.md: |-
+            # Where drafts are stored
+            Drafts are held in memory.
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: passed
+            summary: The answer matches the code.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: The answer matches the code.
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: accepted
+            summary: A useful answer.
+            stage: null
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: A useful answer.
+    - match:
+        op: command_execution
+      repeat: true
+      required: false
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.result.status=="completed" && outputs.result.outputs.result.status=="accepted"
+  - type: cel_true
+    expr: size(calls.filter(c,c.op=="extension_execution"))==3
+- id: authorized-include
+  type: integration_case
+  runtime:
+    secrets:
+      codex_api_key: synthetic-test-key
+    cells:
+      root:
+        files:
+          README.md: Fixture consumer.
+          .c2/recipes/reuse-probe.yaml: '{"schema_version": 2, "id": "reuse-probe", "input_schema": {"prompt": {"type":
+            "string"}}, "sequence": [{"id": "work", "include": "FOREIGN", "perms": {"jobdb": {"secrets": {"resolve":
+            ["codex_api_key"]}}}, "inputs": {"purpose": "advice", "request": "Explain current draft storage."}}],
+            "outputs": {"result": "${{ sequence.work.outputs.result }}"}}'
+        file_sources:
+          .test/library/recipes: ../../recipes
+  mocks:
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: ready
+            summary: Drafts are held in memory.
+            title: Where drafts are stored
+            primary: review/answer.md
+            work_kind: explanation
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: Drafts are held in memory.
+        artifacts:
+          review/answer.md: |-
+            # Where drafts are stored
+            Drafts are held in memory.
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: passed
+            summary: The answer matches the code.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: The answer matches the code.
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: accepted
+            summary: A useful answer.
+            stage: null
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: A useful answer.
+    - match:
+        op: command_execution
+      repeat: true
+      required: false
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.result.status=="completed" && outputs.result.outputs.result.status=="accepted"
+  - type: cel_true
+    expr: size(calls.filter(c,c.op=="extension_execution"))==3
+- id: denied-include
+  type: integration_case
+  runtime:
+    secrets:
+      codex_api_key: synthetic-test-key
+    cells:
+      root:
+        files:
+          README.md: Fixture consumer.
+          .c2/recipes/reuse-probe.yaml: '{"schema_version": 2, "id": "reuse-probe", "input_schema": {"prompt": {"type":
+            "string"}}, "sequence": [{"id": "work", "include": "FOREIGN", "perms": {"jobdb": {}}, "inputs": {"purpose":
+            "advice", "request": "Explain current draft storage."}}], "outputs": {"result": "${{ sequence.work.outputs.result
+            }}"}}'
+        file_sources:
+          .test/library/recipes: ../../recipes
+  mocks:
+    ops:
+    - match:
+        op: command_execution
+      repeat: true
+      required: false
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: (outputs.result.status=="completed" && outputs.result.outputs.result.status=="stuck") || outputs.result.status
+      in ["failed","rejected"]
+  - type: cel_true
+    expr: '(outputs.result.status == "rejected" ? outputs.submission_error : outputs.result.status == "failed" ?
+      outputs.result.failure_message : outputs.result.outputs.result.summary).contains("codex_api_key")'
+- id: denied-ceiling
+  type: integration_case
+  runtime:
+    secrets:
+      codex_api_key: synthetic-test-key
+    cells:
+      root:
+        files:
+          README.md: Fixture consumer.
+          .c2/recipes/reuse-probe.yaml: '{"schema_version": 2, "id": "reuse-probe", "input_schema": {"prompt": {"type":
+            "string"}}, "sequence": [{"id": "work", "include": "FOREIGN", "perms": {"jobdb": {"secrets": {"resolve":
+            ["codex_api_key"]}}}, "inputs": {"purpose": "advice", "request": "Explain current draft storage."}}],
+            "outputs": {"result": "${{ sequence.work.outputs.result }}"}, "perms": {"limit": {"jobdb": {}}}}'
+        file_sources:
+          .test/library/recipes: ../../recipes
+  mocks:
+    ops:
+    - match:
+        op: command_execution
+      repeat: true
+      required: false
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: (outputs.result.status=="completed" && outputs.result.outputs.result.status=="stuck") || outputs.result.status
+      in ["failed","rejected"]
+  - type: cel_true
+    expr: '(outputs.result.status == "rejected" ? outputs.submission_error : outputs.result.status == "failed" ?
+      outputs.result.failure_message : outputs.result.outputs.result.summary).contains("codex_api_key")'
+- id: foreign-default
+  type: integration_case
+  runtime:
+    secrets:
+      codex_api_key: synthetic-test-key
+    cells:
+      root:
+        files:
+          README.md: Fixture consumer.
+          .c2/recipes/reuse-probe.yaml: '{"schema_version": 2, "id": "reuse-probe", "input_schema": {"prompt": {"type":
+            "string"}}, "sequence": [{"id": "work", "op": "nix:github:colony-2/c2ops/published#codex", "const":
+            true, "perms": {"jobdb": {}}, "inputs": {"prompt": "Read the project.", "output": {"schema": {"type":
+            "object"}}}}], "outputs": {"result": "${{ sequence.work.outputs.result }}"}}'
+        file_sources:
+          .test/library/recipes: ../../recipes
+  mocks:
+    ops:
+    - match:
+        op: command_execution
+      repeat: true
+      required: false
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: (outputs.result.status=="completed" && outputs.result.outputs.result.status=="stuck") || outputs.result.status
+      in ["failed","rejected"]
+  - type: cel_true
+    expr: '(outputs.result.status == "rejected" ? outputs.submission_error : outputs.result.status == "failed" ?
+      outputs.result.failure_message : outputs.result.outputs.result.summary).contains("codex_api_key")'

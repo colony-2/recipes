@@ -50,25 +50,25 @@ validation and conversational answers are live. See the
 `default-build.test.yaml` targets root `build.yaml` directly, covering explanation,
 feature delivery and repository-improvement hooks through adaptive3.
 
-Consumer regression: after native cycle/resolver tests, run the real Cortex form
+Consumer regression: after native cycle/backstop tests, run the real Cortex form
 adapter and renderer in an isolated Cortex checkout with its locked dependencies:
 
 ```sh
 python3 recipe-tests/adaptive3/consumer/run.py /path/to/cortex \
   /path/to/cycle/cases/questions-stay-in-review/result.json \
-  /path/to/resolver/cases/resolver-retains-discussion-session/result.json
+  /path/to/backstop/cases/backstop-retains-discussion-session/result.json
 ```
 
 This exercises click, text entry, Back, upload and submit against actual generated
 forms. It is a DOM integration test, not a deployed browser test.
 
 Follow-up suites cover requester correction/adoption, isolated diagnostic paths,
-resolver-first continuation and independent finite loop allowances. `renewal.test.yaml`
+backstop-first continuation and independent finite loop allowances. `renewal.test.yaml`
 advances an actual disposable upstream repeatedly to test merge chasing and approval
 reuse. `collections.test.yaml` measures expanded native file-reference metadata;
 it is not a claim that compact directory references exist.
 
-Continuation orchestration scripts the resolver's recovered records. Exact history
+Continuation orchestration scripts the backstop's recovered records. Exact history
 retrieval is covered separately by `inspection.test.yaml`. The cancelled-child message
 fixture scripts the terminal response; actual cancellation is covered for the parent.
 See [the follow-up assessment](../../guides/adaptive3/FOLLOWUP_IMPLEMENTATION.md)

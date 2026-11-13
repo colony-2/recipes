@@ -14,8 +14,8 @@ checkout = Path(sys.argv[1]).resolve()
 forms = []
 for report in sys.argv[2:]:
     result = json.loads(Path(report).read_text())
-    forms.append(result['run']['runtime']['reviews'][0]['form'])
-assert len(forms) >= 2, 'Supply cycle and resolver native reports'
+    forms.extend(review['form'] for review in result['run']['runtime']['reviews'])
+assert len(forms) >= 2, 'Supply cycle and backstop native reports'
 target = checkout / 'web/app/src/components/Adaptive3Consumer.test.tsx'
 assert not target.exists(), f'Refusing to overwrite {target}'
 with tempfile.TemporaryDirectory(prefix='adaptive3-forms-') as scratch:

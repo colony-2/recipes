@@ -34,13 +34,13 @@ flowchart LR
     R -->|Accepted| N[Next stage or completion]
     E -->|Need another owner| C[Consultation]
     C --> E
-    E -->|Stuck| S[Resolver in this job]
+    E -->|Stuck| S[Backstop in this job]
     V -->|Stuck| S
     R -->|Stuck| S
     S -->|Correction or new direction| E
 ```
 
-The resolver can return to an earlier stage's Execute. Each such return runs
+Backstop can return to an earlier stage's Execute. Each such return runs
 that stage's whole cycle. Consultation can also supply an answer during Review;
 if the item changes, it goes through Execute and full Validate again.
 
@@ -69,7 +69,7 @@ recipes/adaptive3/
   validate.yaml
   review.yaml
   consultation.yaml
-  resolver.yaml
+  backstop.yaml
   agent.yaml
   hooks.yaml
   packages.yaml
@@ -84,7 +84,7 @@ recipes/adaptive3/
     validate.yaml
     review.yaml
     consultation.yaml
-    resolver.yaml
+    backstop.yaml
     packages.yaml
 recipe-tests/adaptive3/
   README.md
@@ -100,14 +100,14 @@ guides/adaptive3/
 
 | File | Owns | Does not own |
 | --- | --- | --- |
-| `adaptive3.yaml` | Public inputs, configure invocation, the five named stages, explicit returns to earlier stages, the same-job resolver and final outputs. | Agent tools, document selection algorithms or a generic workflow dispatcher. |
+| `adaptive3.yaml` | Public inputs, configure invocation, the five named stages, explicit returns to earlier stages, the same-job Backstop and final outputs. | Agent tools, document selection algorithms or a generic workflow dispatcher. |
 | `lifecycle.yaml` | The single Execute → full Validate → Review loop. Consultation/package interruptions, automatic attempt accounting and returning `stuck` to its caller. | Stage order, per-finding validation selection or publication approval. |
 | `cycle.yaml` | One Execute → full Validate → Review pass, shared by the lifecycle and consultation. | Retry accounting or recursive includes. |
 | `execute.yaml` | Performing the current assignment with an agent, or the concrete native operations needed for integration. Supplies stage-specific task text and applies new feedback. | Its own repair loop. A correction is another invocation through the lifecycle. |
 | `validate.yaml` | The complete validation for the assignment: checks, applicable hooks and examination of the actual output. Returns findings and original diagnostics. | Rewriting the output or deciding which checks to omit after a correction. |
 | `review.yaml` | Independent assessment or a human review conversation, including explicit acceptance and applicable approval reuse. | Rebuilding attachments, editing code, or deciding whether acceptance needs another gate. |
 | `consultation.yaml` | Inline owner dialogue, receiver-authored requests, optional child submission, native waiting and bringing the actual result back. | Its own requirements ledger, mandatory handoff files or a different recovery policy. |
-| `resolver.yaml` | Diagnose a stuck assignment using job history and tools, discuss it when needed, and arrange a correction in this job. | Replacing the job, fabricating successful checks or a second scheduler. |
+| `backstop.yaml` | Diagnose a stuck assignment using job history and tools, discuss it when needed, and arrange a correction in this job. | Replacing the job, fabricating successful checks or a second scheduler. |
 | `agent.yaml` | The c2ops call, session start/resume, instructions at session creation, workspace mutability and artifact binding. | Response repair, artifact reconciliation, phase classification or business decisions. |
 | `hooks.yaml` | The five existing build hook calls, their public contract and native failure results. | Hook source trust, hash management, settings files in agent inboxes or recovery loops. |
 | `packages.yaml` | Package policy, any required approval, approved-environment validation and adoption. | General workflow recovery or its own human-dialogue implementation. |
@@ -172,7 +172,7 @@ when unused; they are not populated with empty objects in every agent response.
 | `review` | `purpose`, `request`, `documents`, `title`, `primary`, `validation`, `feedback` | Acceptance and its native receipt, a change request, or `stuck`. Questions remain inside this include. |
 | `agent` | `prompt`, `schema`, `documents`, `session`, `read_only` | Validated response, native checkpoint and artifacts. c2j records children. |
 | `consultation` | `cell`, `request`, `documents`, `feedback`, `mode`, `max_iterations`, `job` | Receiver's answer or agreed request, selected outputs, and actual child result when execution was requested. |
-| `resolver` | `stage`, `request`, `problem`, `documents`, `feedback`, `prior_job`, `automatic` | Corrected direction and the stage to resume; native human response when one was needed. |
+| `backstop` | `stage`, `request`, `problem`, `documents`, `feedback`, `prior_job`, `automatic` | Corrected direction and the stage to resume; native human response when one was needed. |
 | `hooks` | `hook`, `request`, `target_directory`, `documents`, `settings`, `publication` | The native hook result, settings from configure, and exported artifacts. |
 | `packages` | `requests`, `reason` | Approved and validated configuration, or findings for Execute/resolution. |
 | `package-probe` | `config`, `checks` | Probe results and diagnostics. |
@@ -279,7 +279,7 @@ evaluation or generated prompt files.
 | `validate.yaml` | Complete validation expectations by purpose; how to report actual failures and missing UI evidence. |
 | `review.yaml` | Independent review, human conversation, descriptive form titles and choice labels. |
 | `consultation.yaml` | Requester/receiver language, challenge existing assumptions, receiver-authored work and child-result evaluation. |
-| `resolver.yaml` | Diagnose the real blocker, preserve useful work, discuss it plainly and return a concrete correction. |
+| `backstop.yaml` | Diagnose the real blocker, preserve useful work, discuss it plainly and return a concrete correction. |
 | `packages.yaml` | Request format, policy/approval explanation and approved-environment validation. |
 
 Keep each prompt include to the named values its text uses, generally zero to
@@ -464,7 +464,7 @@ experiment is different from authorizing delivery before direction approval.
 Most external delivery goes through consultation. c2j records tool-submitted
 children automatically; the agent must not recreate that tracking.
 
-A stuck adaptive3 child enters its own resolver and retains its identity. Its
+A stuck adaptive3 child enters its own Backstop and retains its identity. Its
 parent must be able to receive a help event while that child remains open; this
 needs a verified native communication/wait contract. A terminal failed older or
 external child returns to the requesting agent with its ID, outcome message and
@@ -479,25 +479,25 @@ completed it. Retrieve current native information when evaluating a dependency.
 Do not enforce an obsolete prerequisite after the human changes scope, and do
 not treat a goal status alone as proof that the current assignment was satisfied.
 
-`resume_from` enters the resolver first. It inspects exact prior work and human
+`resume_from` enters Backstop first. It inspects exact prior work and human
 decisions, returns selected documents and original approval/merge records, and
 chooses the remaining stage. Configuration preserves that choice. The destination
 runs its complete cycle; earlier stages need not have run in this job. Unfinished
 code is restored in the managed workspace during Implementation. A completed
 merge goes to remaining publication. Changed scope returns to Direction.
 
-### Stuck and the resolver
+### Stuck and Backstop
 
 Catch supported operation failures and preserve their original diagnostic. A
 correctable finding returns to Execute. Repeated inability to make progress or
-exhausted automatic attempts produces `stuck` and enters the same-job resolver.
-The resolver can investigate across stages, consult owners and arrange environment
+exhausted automatic attempts produces `stuck` and enters the same-job Backstop.
+Backstop can investigate across stages, consult owners and arrange environment
 work. It returns concrete direction to a stage's Execute, never to one check.
 
 Human discussion stays open without consuming or granting automatic attempts.
 A clear resolution can grant a bounded new attempt or change direction. Waiting
-uses native input/wait operations and consumes no model turns. The resolver must
-not recursively spawn more resolvers or automatically retry itself forever.
+uses native input/wait operations and consumes no model turns. Backstop must
+not recursively spawn more Backstops or automatically retry itself forever.
 An explicit human cancellation remains the terminal stop mechanism.
 Automatic loops have finite, independent allowances. `max_iterations` defaults
 to four work passes; values below one use that default. Owner exchanges and
@@ -506,7 +506,7 @@ continuations. Each receiving owner has four local passes and nesting is limited
 to four suspended owners. Merge chasing permits three automatic returns through
 Implementation and Outcome, retaining its count across those visits.
 
-The resolver can grant 1–20 more attempts to the paused loop while retaining
+Backstop can grant 1–20 more attempts to the paused loop while retaining
 other counters. It can make two automatic corrections before needing explicit
 human continuation. Questions neither consume nor grant attempts. These are
 recipe-state counters, not files or a parallel job ledger. No production execution
@@ -580,7 +580,7 @@ for project validation. Job-model behavior stays in native recipe tests.
 | Catch ordinary operation failures and retain diagnostics | Supported by the [failure contract](../RECIPE_FAILURE_HANDLING_USER_GUIDE.md); test actual failed agent, hook and Git operations through the new entrypoint. |
 | Recover from every error after a job is accepted | The current guide excludes template/schema/authoring errors from ordinary catches. Request c2j support for durable suspension and same-job resolution; do not claim the recipe already guarantees it. |
 | Wake a parent for a still-open child's help request and reply to that child | Verify available native APIs. Missing support is a c2j requirement; no shell polling or deliberate child failure to wake the parent. |
-| Resolver or unavailable worker cannot run | Needs a runtime-owned durable pause/notification path. A broken agent cannot implement its own fallback merely through another prompt. |
+| Backstop or unavailable worker cannot run | Needs a runtime-owned durable pause/notification path. A broken agent cannot implement its own fallback merely through another prompt. |
 | Deliver validator source from the captured recipe | Prove native source/artifact packaging or use a packaged operation. No worker-local checkout assumptions. |
 | Apply and probe approved worker configuration | Reuse established fresh-task/job semantics, with native permission checks; report any missing environment transition to c2j. |
 
@@ -607,7 +607,7 @@ old tests, not assertions about old internal documents.
 | `packages.test.yaml` | Allow/deny policy; no pre-approval probe; exact approved configuration; probe/adoption failure preserves parent work. |
 | `integration.test.yaml` | Native Git operations; unchanged rebase reuses approval after full cycles; changed result gets focused review; publication failure does not duplicate merge. |
 | `build.test.yaml` | Run the real `adaptive3.yaml` entrypoint with native artifact transport, schemas, input receipts and child behavior. |
-| `live.live.yaml` | Actual one-pager, brief human Q&A, receiver disagreement, scope revision, UI screenshots and a useful resolver discussion. |
+| `live.live.yaml` | Actual one-pager, brief human Q&A, receiver disagreement, scope revision, UI screenshots and a useful Backstop discussion. |
 
 Use small fixtures per boundary, plus validator unit tests for byte/content
 properties that native routing mocks cannot establish. Mock agent choices to

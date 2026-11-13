@@ -1,5 +1,127 @@
 # Adaptive3 follow-ups
 
+## Open findings from 2026-11-13
+
+Scope: the [review-options audit](AUDIT_REVIEW_OPTIONS.md), Python preparation,
+and the two jobs below on `http://192.168.1.195:9047/c2`. Implementation and test results are in the [assessment](IMPLEMENTATION_REVIEW_AND_BACKSTOP.md).
+The earlier completed checklist remains below as history.
+
+- [x] **Restore reader-friendly documents.** Compare adaptive2's owner-voice and
+  human-language instructions with adaptive3. Explain the user problem and proposed
+  change first; use familiar words, direct commitments and short connected prose.
+  Keep workflow bookkeeping out of documents. Preserve the one-pager sections and
+  every consequential design question. Put the shared guidance in one place and
+  have existing validation request clearer writing when needed.
+
+- [x] **Rename Backstop to Backstop.** Rename the activity, prompts, state paths,
+  current documentation and tests together. Keep the same recovery responsibilities
+  and boundaries. Preserve historical audit names and descriptions as history.
+
+- [x] **Restore clear approval choices.** Use **Approve direction**, **Accept
+  answer**, **Accept and merge**, and **Accept outcome** as appropriate. Package
+  requests need **Add tools and run checks** and **Do not add these tools**.
+  Derive the decision from the existing stage, work kind and validated candidate;
+  retain one shared review activity. Test the generated native forms and their
+  resulting paths for each case. Declining tools must neither launch a probe nor
+  adopt configuration; the requester should receive the decision.
+
+- [x] **Separate questions from change requests.** Show **Ask a question** and
+  **Request changes**, using the existing review conversation agent. Preserve
+  `feedback` and `annotations` field IDs. Test both buttons through Cortex's real
+  adapter/renderer, including typing, uploading, returning to choices, empty
+  submissions and repeated questions. Asking a question must not start execution
+  or grant more automatic attempts.
+
+- [x] **Make the stage or Backstop the visible requester.** Prefix descriptive
+  titles with **Direction**, **Outcome review**, the actual stage requesting
+  tools, or **Backstop**. Keep the full title within its limit. Backstop should
+  describe the immediate blocker and proposed action; name the interrupted stage
+  separately when useful. Show the actual allowance when asking for more attempts.
+  Keep model controls usable when the agent cannot start, without unrelated JSON
+  in every question. Test titles in the review queue and detail view, including
+  reopened reviews, long subjects and native fallback forms.
+
+- [x] **Reconsider new feedback before Backstop continues.** Currently, Continue
+  can forward text/uploads while returning its previously selected stage and
+  correction. Match ordinary review: plain approval can resume; new feedback goes
+  through the conversation agent first. Test conflicting scope, an annotated
+  document and a question accompanying Continue. Verify the actual interpreted
+  correction and destination, not merely that notes were forwarded. The selected
+  stage still runs its complete activity cycle.
+
+- [x] **Make recovery requests readable without missing documents.** Keep a
+  simple correction in the question itself. Attach any supporting document actually
+  referenced, use working review links, and select an existing relevant overview
+  when useful. The original Cortex request linked to an unattached worker-local
+  correction file while displaying an old design. Test that situation and reject
+  local-only links through existing validation. Do not add mandatory recovery
+  documents, handoff files or a document-management activity.
+
+- [x] **Cover permission failures at foreign recipe includes and preserve recovery.**
+  Job `3M2pIhgSrgP6tJKgGrzM2WoqNHW` failed before its first agent started:
+  `input secret "codex_api_key" exceeds the enclosing limit: lease permission denied`.
+  Its custom `python-preparation-recipes-advice` wrapper calls adaptive3 Execute
+  directly; its recorded path has no surrounding lifecycle/Backstop to recover.
+  The earlier attempt `3M2pAXYfy6BnQvXl3GH37kk74oZ` failed identically. A later
+  alternative, `3M2pYAOdgBC6lUbJSTT4ZUiWrkL`, also failed resolving the foreign
+  operation's secret default. Retrying unchanged permissions cannot address this.
+
+  Inspect the submitted wrapper and effective ceiling to identify the precise
+  missing authorization. c2j's documented contract requires caller authorization
+  for secret references from a foreign recipe; an optional secret expression does
+  not waive it. Document a supported reuse example with the correct include grant
+  and the existing recovery boundary. Prefer the normal build/consultation path
+  when it satisfies the assignment. Keep necessary input-secret authorization
+  separate from delegated secret-reading capability; do not broadly grant secrets
+  to every agent or work around a denied ceiling.
+
+  Test trusted-root and foreign-include cases with actual source identity and
+  native permission evaluation: authorized input, missing grant, denied enclosing
+  ceiling and foreign operation default. Use fixture secrets, never real keys.
+  Mocks must not bypass input-secret resolution. Test that the supported containing
+  workflow receives a launch failure, preserves its diagnostic, and offers local
+  recovery/native human input when the agent cannot run. Owner: recipes for reuse
+  guidance, containing workflow and coverage; c2j if its documented authorization
+  contract is violated. The current error establishes a denial, not why the
+  submitted authorization was insufficient.
+
+- [ ] **Verify the shipped Python dependencies in real task environments.**
+  Track [the c2j bug](../BUG_REPORT_C2J_PYTHON_DEPENDENCY_ENVIRONMENT.md), goal
+  `3M2nxdy26CqBg7b2FzRob6uoeMN`. Confirm the supported interpreter/library contract
+  before changing the recipe declaration. Run the unmodified validator through
+  real fresh preparation and cache reuse on a supported worker, checking Pillow
+  imports/image decoding and Markdown parsing. Unsupported dependencies must fail
+  preparation clearly before the command runs. Local tests with preinstalled
+  dependencies cover validator logic, not this boundary. Keep that distinction
+  explicit in test results and release checks. The [real-worker check](VALIDATOR_WORKER_CHECK.md)
+  still fails in both tasks with `No module named PIL`; this remains a c2j blocker.
+
+- [x] **Make diagnostic completion distinguishable from a successful repair.**
+  Job `3M2oINy9BiYRlbhD6YhRoX2Ebrk` was a diagnostic child of the c2j bug-fix job
+  `3M2nxf25SYsee0HnOxsaw94fLpG`. It ran two probes (`first`, `reuse`); both returned
+  `import_ok: false` and `No module named 'PIL'`. The script caught `ImportError`
+  and exited zero, so the job and its diagnostic goal completed successfully.
+  It collected useful evidence; it did not implement a repair. The parent repair
+  job was still active when inspected.
+
+  Give diagnostic jobs titles and concise results that say what they checked and
+  found. A collection-only probe may succeed after recording a negative finding;
+  an acceptance check must signal failed acceptance. Teach the requesting agent
+  to read the result before concluding the dependency or original goal is fixed.
+  Use ordinary result text/fields and existing requester recovery, not a new
+  evidence schema. Test a successful diagnostic job containing a negative finding,
+  a failed acceptance probe, and a successful acceptance probe. Verify the negative
+  finding returns to the requester for action instead of being treated as repair
+  completion solely because the child job succeeded.
+
+Evidence: native `job show`, `job log`, `job story`, `job result` and the second
+job's `_c2j/execution/reuse.log`, inspected 2026-11-13. The first failure is an
+input-permission error; the second is a completed diagnostic with a negative
+finding. Neither establishes that the Python bug was repaired. No observed jobs
+were changed during this audit.
+
+## Earlier implementation checklist
+
 - [x] **Allow human-directed model and reasoning changes.** Add optional job inputs
   `model` and `reasoning_effort`. For each field, use the latest human-directed
   override, then the job input, then the c2ops config default (`codex_model` or

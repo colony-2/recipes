@@ -4,6 +4,8 @@ inputs:
   request: ${{ inputs.request }}
   validation: ${{ inputs.?validation.orValue({}) }}
   feedback: ${{ inputs.?feedback.orValue({}) }}
+  decision: ${{ inputs.?decision.orValue(inputs.purpose) }}
+  title: ${{ inputs.?title.orValue('') }}
 sequence: []
 outputs:
   task: |-
@@ -11,18 +13,46 @@ outputs:
     Validation: ${{ inputs.validation.?summary.orValue('') }}
     Human choice: ${{ inputs.feedback.?fields.orValue({}).?decision.orValue('') }}
     Human message: ${{ inputs.feedback.?fields.orValue({}).?feedback.orValue('') }}
+    When the human selects question, answer and keep the review pending.
     When a human asks a question, answer directly and return answer; keep this item pending.
     When they clearly request changes, preserve the original wording, return changes, and
     name an earlier stage only if necessary. Scope changes go to direction; behavior changes
     go to implementation. Do not ask the human to select a phase. If approval conflicts with
     a change request, explain and clarify in this conversation before accepting anything.
+    If the human declines tools, do not approve or install them.
     An independent assessment returns accepted only when the actual result meets the current
     assignment. Explain material differences and failures in ordinary English. Agent judgment
     cannot manufacture human approval. Keep document identities unchanged.
     Read any attached human notes in inbox/work/feedback/ before interpreting the reply.
-  decision: Accept this result, or discuss it / request changes.
-  accept: Accept this result
-  discuss: Discuss or request changes
+  decision: ${{ vars.questions[?inputs.decision].orValue('Review this work.') }}
   message: Question or requested change
   reply: ${{ inputs.feedback.?summary.orValue('') }}
   notes: Attach notes or an annotated document (optional)
+  title: ${{ vars.stages[inputs.purpose] + ' — ' + inputs.title }}
+  options: '${{ [{''value'':''accept'',''label'':vars.accept[?inputs.decision].orValue(''Accept outcome'')}] + (inputs.decision
+    == ''packages'' ? [{''value'':''decline'',''label'':vars.decline_label}] : []) + [{''value'':''question'',''label'':vars.question_label},{''value'':''revise'',''label'':vars.change_label}]
+    }}'
+vars:
+  stages:
+    configure: Setup
+    direction: Direction
+    preparation: Preparation
+    implementation: Implementation
+    outcome: Outcome review
+    integration: Integration
+    advice: Consultation
+  questions:
+    direction: Approve this direction so detailed planning can begin?
+    answer: Does this answer your question? Accepting it completes this job.
+    merge: Merge these changes?
+    outcome: Accept this outcome and complete the job without a merge?
+    packages: Approve these tools and their checks? The cell configuration is adopted after the checks pass.
+  accept:
+    direction: Approve direction
+    answer: Accept answer
+    merge: Accept and merge
+    outcome: Accept outcome
+    packages: Add tools and run checks
+  question_label: Ask a question
+  change_label: Request changes
+  decline_label: Do not add these tools

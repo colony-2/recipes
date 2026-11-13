@@ -6,6 +6,7 @@ inputs:
   primary: ${{ inputs.?primary.orValue('') }}
   requests: ${{ inputs.?requests.orValue([]) }}
   adopted: ${{ inputs.?adopted.orValue(false) }}
+  message: ${{ inputs.?message.orValue('') }}
 state:
   initial:
   - to: review_files
@@ -32,6 +33,7 @@ state:
           OUTBOX: ${{ context.environment.op.outbox }}
           TITLE: ${{ inputs.title }}
           PRIMARY: ${{ inputs.primary }}
+          MESSAGE: ${{ inputs.message }}
         run: |
           python3 - <<'PY'
           import json, os, pathlib, subprocess
@@ -59,7 +61,19 @@ state:
           if primary:
            try: local(primary)
            except Exception as ex: issue('Primary document: '+str(ex))
-           if not title.strip() or len(title)>120 or any(ord(c)<32 or 127<=ord(c)<=159 for c in title): issue('Choose a nonempty descriptive title of at most 120 characters without control characters.')
+           if not title.strip() or len(title)>100 or any(ord(c)<32 or 127<=ord(c)<=159 for c in title): issue('Choose a nonempty descriptive title of at most 100 characters without control characters.')
+          def links(text, name, parent):
+           parser=Links(); parser.feed(text)
+           for link in parser.links:
+            u=urlsplit(link)
+            if u.scheme=='file':
+             issue(name+': replace machine-local file URL with an attached relative link '+link); continue
+            if u.scheme or u.netloc or not u.path: continue
+            try: local(str(parent/unquote(u.path)))
+            except Exception: issue(name+': missing or unsafe local link '+link)
+          message=os.environ.get('MESSAGE','')
+          if message:
+           links(subprocess.check_output(['cmark','--unsafe'],input=message,text=True), 'Review question', pathlib.Path('.'))
           for p in sorted(root.rglob('*')):
            if not p.is_file(): continue
            name=str(p.relative_to(root))
@@ -71,14 +85,7 @@ state:
             if p.stat().st_size>5*1024*1024: raise ValueError('Document is too large to inspect; reduce the human review file.')
             text=p.read_text()
             if p.suffix.lower() in ('.md','.markdown'): text=subprocess.check_output(['cmark','--unsafe'],input=text,text=True)
-            parser=Links(); parser.feed(text)
-            for link in parser.links:
-             u=urlsplit(link)
-             if u.scheme=='file':
-              issue(name+': replace machine-local file URL with an attached relative link '+link); continue
-             if u.scheme or u.netloc or not u.path: continue
-             try: local(str(p.relative_to(root).parent/unquote(u.path)))
-             except Exception: issue(name+': missing or unsafe local link '+link)
+            links(text,name,p.relative_to(root).parent)
            except Exception as ex: issue(name+': '+str(ex))
           (out/'error'/'review-files.log').write_text('\n'.join(issues) if issues else 'All selected review files are readable and locally linked.\n')
           print(json.dumps({'status':'changes' if issues else 'passed','summary':str(len(issues))+' review file issues; see error/review-files.log','count':len(issues)}))

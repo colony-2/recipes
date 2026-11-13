@@ -8,6 +8,7 @@ inputs:
   validation: ${{ inputs.?validation.orValue({}) }}
   feedback: ${{ inputs.?feedback.orValue({}) }}
   agent_settings: ${{ inputs.?agent_settings.orValue({}) }}
+  decision: ${{ inputs.?decision.orValue(inputs.purpose) }}
 state:
   initial: setup
   states:
@@ -22,15 +23,17 @@ state:
           request: ${{ inputs.request }}
           validation: ${{ inputs.validation }}
           feedback: ${{ inputs.feedback }}
+          decision: ${{ inputs.decision }}
+          title: ${{ inputs.title }}
       outputs:
         schema: ${{ sequence.schemas.outputs.review }}
         text: ${{ sequence.prompts.outputs }}
       transitions:
       - to: compare
-        when: inputs.purpose == 'outcome' && inputs.feedback.?approval.orValue({}).?result.orValue({}).?receipt.hasValue()
+        when: inputs.decision in ['merge','outcome'] && inputs.feedback.?approval.orValue({}).?result.orValue({}).?receipt.hasValue()
           && inputs.feedback.approval.?patch.orValue(null) != null
       - to: ask
-        when: inputs.purpose in ['direction','outcome']
+        when: inputs.decision in ['direction','answer','merge','outcome','packages']
       - to: assess
         when: 'true'
       inputs:
@@ -41,6 +44,7 @@ state:
         primary: ${{ inputs.primary }}
         validation: ${{ inputs.validation }}
         feedback: ${{ inputs.feedback }}
+        decision: ${{ inputs.decision }}
     assess:
       include: ./agent.yaml
       inputs:
@@ -60,7 +64,7 @@ state:
       inputs:
         form:
           kind: review
-          title: ${{ inputs.title }}
+          title: ${{ states.setup.outputs.text.title }}
           documents: ${{ inputs.documents }}
           overview_document_id: ${{ inputs.primary }}
           fields:
@@ -70,11 +74,7 @@ state:
               ${{ transition.payload.?clarification.orValue('') }}
               ${{ state_exists('answer') ? states.answer.outputs.response.summary : states.setup.outputs.text.decision }}
             required: true
-            options:
-            - value: accept
-              label: ${{ states.setup.outputs.text.accept }}
-            - value: revise
-              label: ${{ states.setup.outputs.text.discuss }}
+            options: ${{ states.setup.outputs.text.options }}
           - id: feedback
             type: paragraph_text
             question: ${{ states.setup.outputs.text.message }}
@@ -85,10 +85,19 @@ state:
             required: false
       transitions:
       - to: ask
-        when: outputs.fields.decision == 'revise' && !nonempty(outputs.fields.?feedback.orValue('')) && size(outputs.?artifact_refs.orValue({}))
-          == 0
+        when: outputs.fields.decision in ['question','revise'] && !nonempty(outputs.fields.?feedback.orValue(''))
+          && size(outputs.?artifact_refs.orValue({})) == 0
         payload:
           clarification: Enter a question or requested change, or attach notes, then confirm.
+      - to: done
+        when: inputs.decision == 'packages' && outputs.fields.decision == 'decline'
+        payload:
+          result:
+            status: changes
+            summary: The human declined these tools. Find another approach.
+            human: ${{ outputs }}
+            documents: ${{ jq(outputs.?artifact_refs.orValue({}), 'with_entries(.key = "feedback/" + .key | .value.name
+              = .key)') }}
       - to: done
         when: outputs.fields.decision == 'accept' && outputs.fields.?feedback.orValue('') == '' && size(outputs.?artifact_refs.orValue({}))
           == 0
@@ -108,6 +117,7 @@ state:
           request: ${{ inputs.request }}
           validation: ${{ inputs.validation }}
           feedback: ${{ inputs.reply }}
+          decision: ${{ inputs.decision }}
       - id: agent
         include: ./agent.yaml
         inputs:
@@ -127,12 +137,13 @@ state:
           = "feedback/" + .key | .value.name = .key)')], 'add') }}
         session: ${{ state_output('answer','session',{}) }}
         agent_settings: ${{ inputs.agent_settings }}
+        decision: ${{ inputs.decision }}
       outputs:
         response: ${{ sequence.agent.outputs.response }}
         session: ${{ sequence.agent.outputs.session }}
       transitions:
       - to: done
-        when: outputs.response.status in ['changes','stuck']
+        when: states.ask.outputs.fields.decision != 'question' && outputs.response.status in ['changes','stuck']
         payload:
           result: ${{ jq([outputs.response, {'human':states.ask.outputs,'documents':jq(states.ask.outputs.?artifact_refs.orValue({}),
             'with_entries(.key = "feedback/" + .key | .value.name = .key)')}], 'add') }}

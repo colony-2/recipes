@@ -1,0 +1,38 @@
+schema_version: 2
+id: reuse-permissions
+sequence:
+- id: launch
+  op: command_execution
+  inputs:
+    run: |
+      set -eu
+      fixture_repo=$(mktemp -d)
+      trap 'rm -rf "$fixture_repo"' EXIT
+      cp -R .test/library/. "$fixture_repo/"
+      git -C "$fixture_repo" init -q -b main
+      git -C "$fixture_repo" add .
+      git -C "$fixture_repo" -c user.name=Fixture -c user.email=fixture@example.invalid commit -qm fixture
+      python3 - "$fixture_repo" <<'FIXTURE'
+      import json, pathlib, sys
+      p=pathlib.Path('.c2/recipes/reuse-probe.yaml')
+      v=json.loads(p.read_text())
+      node=v['sequence'][0]
+      if node.get('include')=='FOREIGN':
+          node['include']='git+file://'+sys.argv[1]+'//recipes/adaptive3/cycle.yaml@main'
+      p.write_text(json.dumps(v))
+      FIXTURE
+      c2j submit 'Exercise input-secret permissions' --advanced-recipe-file .c2/recipes/reuse-probe.yaml --from-workspace-now --jobdb embed:/// --json
+    continue_on_error: true
+- id: wait
+  op: recipe.await_result_soft
+  when: size(sequence.launch.jobs.job_ids)>0
+  inputs:
+    target:
+      job: ${{ sequence.launch.jobs.job_ids[0] }}
+    wait:
+      'on': job
+      condition: complete
+    return_when: terminal
+outputs:
+  result: ${{ sequence.?wait.orValue({}).?outputs.orValue({'status':'rejected'}) }}
+  submission_error: ${{ sequence.launch.outputs.stderr }}

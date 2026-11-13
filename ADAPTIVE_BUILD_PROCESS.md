@@ -26,7 +26,7 @@ flowchart LR
     R -->|Accepted| N[Next stage or completion]
     E -->|Owner work needed| C[Consultation]
     C --> E
-    E -->|Stuck| S[Resolver in this job]
+    E -->|Stuck| S[Backstop in this job]
     V -->|Stuck| S
     R -->|Stuck| S
     S -->|Correction| E
@@ -72,7 +72,7 @@ approval before a fresh probe job runs, then the tested configuration is adopted
 
 An unchanged rebase can reuse its native approval after full validation. Publication
 recovery preserves an already completed merge. Ordinary caught failures enter the
-same-job resolver; human cancellation stays terminal. Template/schema failures
+same-job backstop; human cancellation stays terminal. Template/schema failures
 and unavailable runtime infrastructure are not universally recoverable yet.
 
 ## Implementation and validation

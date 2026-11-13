@@ -27,7 +27,7 @@ require_verification: true
 
 Optional inputs are `documents` (selected artifact references), `resume_from`
 (a previous job to inspect), and `max_iterations` (automatic passes before
-resolution; zero disables that allowance). Human discussion does not consume
+Backstop; zero uses the finite default of four). Human discussion does not consume
 these passes. A new job starts fresh agent sessions and uses inspection to
 recover useful previous work.
 
@@ -51,9 +51,9 @@ inline; delivery uses a child adaptive3 job and a native wait.
 
 ## Recovery and local hooks
 
-An ordinary caught failure reports `stuck` and enters the resolver in the same
-job. The resolver investigates and directs a correction back to a stage's
-Execute. If that correction also gets stuck, the resolver asks for human direction
+An ordinary caught failure reports `stuck` and enters Backstop in the same
+job. The backstop investigates and directs a correction back to a stage's
+Execute. If that correction also gets stuck, Backstop asks for human direction
 before another attempt. Human cancellation remains terminal.
 
 Configure, before-design, prepare, verify and publish retain the existing
@@ -71,7 +71,7 @@ approval, validates it in a separate job, and checks the adopted configuration.
 - `lifecycle.yaml` handles corrections, consultations and package interruptions.
 - `cycle.yaml` defines a single Execute/Validate/Review pass, shared with consultation.
 - `execute.yaml`, `validate.yaml`, `review.yaml` define those activities once.
-- `resolver.yaml`, `consultation.yaml`, `packages.yaml` provide their services.
+- `backstop.yaml`, `consultation.yaml`, `packages.yaml` provide their services.
 - `agent.yaml` owns session start/resume and native Codex calls.
 - `hooks.yaml`, `integration.yaml`, `specialists.yaml` call existing extension points.
 - `prompts/` and `schemas.yaml` are empty includes; they create no worker tasks.
@@ -80,3 +80,7 @@ approval, validates it in a separate job, and checks the adopted configuration.
 See the [design](../../guides/adaptive3/DESIGN.md),
 [implementation assessment](../../guides/adaptive3/IMPLEMENTATION.md), and
 [tests](../../recipe-tests/adaptive3/README.md) before widening use.
+
+For foreign includes and diagnostic jobs, see [the reuse guide](../../guides/adaptive3/REUSE.md).
+The [supported-worker check](../../guides/adaptive3/VALIDATOR_WORKER_CHECK.md) covers the
+validator dependency boundary separately from local routing tests.

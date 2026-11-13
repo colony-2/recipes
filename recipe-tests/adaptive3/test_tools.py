@@ -59,6 +59,12 @@ class Validators(unittest.TestCase):
         self.put('review/README.md', '# Review\n![UI](missing.png)\n[escape](../../private.md)')
         self.assertEqual(self.check('review_files')['count'], 2)
 
+    def test_recovery_question_links(self):
+        self.put('review/correction.md', '# Restore image checks')
+        self.assertEqual(self.check('review_files', PRIMARY='review/correction.md', MESSAGE='[Correction](review/correction.md)')['status'], 'passed')
+        self.assertEqual(self.check('review_files', PRIMARY='review/correction.md', MESSAGE='[Correction](/tmp/private/correction.md)')['status'], 'changes')
+        self.assertEqual(self.check('review_files', PRIMARY='review/correction.md', MESSAGE='[Correction](file:///tmp/correction.md)')['status'], 'changes')
+
     def test_corrupt_image(self):
         self.put('review/README.md', '![UI](screen.png)')
         self.put('review/screen.png', 'not an image')

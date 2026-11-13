@@ -1,0 +1,73 @@
+id: adaptive3-backstop-prompts
+inputs:
+  stage: ${{ inputs.stage }}
+  request: ${{ inputs.request }}
+  problem: ${{ inputs.problem }}
+  feedback: ${{ inputs.?feedback.orValue({}) }}
+  prior_job: ${{ inputs.?prior_job.orValue('') }}
+sequence: []
+outputs:
+  task: |
+    Help get this job moving again. Current stage: {{ inputs.stage }}.
+    Request: {{ inputs.request }}
+    Problem: ${{ inputs.problem.?summary.orValue('') }}
+    Child attempt: ${{ inputs.problem.?child.orValue({}).?job_id.orValue('') }}
+    Child diagnostic: ${{ inputs.problem.?child.orValue({}).?failure_message.orValue('') }}
+    Human choice: ${{ inputs.feedback.?fields.orValue({}).?decision.orValue('') }}
+    Human words: ${{ inputs.feedback.?fields.orValue({}).?feedback.orValue('') }}
+    Inspect the original failure, relevant job tasks, partial results and owner capabilities.
+    Find a concrete correction using available tools and owners. Do not replace this job,
+    weaken required results or revive excluded requirements. Read a cancellation
+    message: respect a stop request; a corrective cancellation can support a new
+    attempt with the requested changes.
+    Return resume and the stage whose Execute should act on your correction. If you need
+    human direction, return ask with a clear explanation and focused question.
+    A question-only human reply asks for an answer, not another automatic work allowance.
+
+    Read any attached human notes in inbox/work/feedback/ before deciding the correction.
+    Model changes come from human guidance. The native review has optional model and
+    reasoning-effort fields. Use those to change invocation settings, including when a
+    provider cannot run. Do not select replacements autonomously; explain what failed
+    and ask the human to enter the choice if it was only discussed in prose.
+    Prior job: {{ inputs.prior_job }}
+    ${{ inputs.prior_job == '' ? '' : vars.recovery }}
+
+    When a local allowance is exhausted, explain the correction or progress and propose
+    a finite additional_attempts value (1–20). Question-only discussion grants no attempts.
+
+    Write a short self-contained explanation: what stopped, what you suggest doing,
+    and what the human's approval would allow. Return a descriptive title naming this
+    problem. Speak directly as the cell's owner. Avoid words such as bootstrap when
+    plain words can explain the actual action. Do not link to worker-local paths.
+    You do not need to create a recovery document. If existing supporting documents
+    help, return only those in review/ and name the useful first document in primary;
+    use links relative to the attached collection. Otherwise return primary: null.
+    Approval with new text or attachments requires you to reconsider the proposal.
+    Incorporate a compatible correction; ask again if approval conflicts with a scope
+    change or leaves an essential choice unresolved. On question, answer and return
+    ask. Changing the model alone is not permission to change scope or skip checks.
+    Review preparation findings: ${{ inputs.feedback.?validation.orValue({}).?summary.orValue('') }}
+  message: Question or requested change
+  notes: Attach notes or an annotated document (optional)
+  question: Ask a question
+  change: Request changes
+  continue: Apply this correction
+  retry: Try another
+  attempts: attempts
+  model_continue: Use these agent settings
+  unreadable: I could not prepare a readable correction. Please describe how to continue or adjust the agent settings.
+vars:
+  recovery: |-
+    When a prior job is supplied, inspect it before choosing the next stage. Read the latest
+    human direction, actual approvals, useful task outputs, current children and completed
+    merges/publication. Recover only useful files into outbox, keeping their relative links.
+    Return the actual prior human receipt in approval with its source job and task; copy
+    its approved patch only when available and needed, and name that outbox path in patch.
+    Return publication only from an actual successful native merge result; include its
+    source job and task and original merged_hash. Never infer approval or merge from an
+    agent's summary. Leave these fields null when no such record applies. A denied or
+    missing history read is a blocker to clarify, not proof that approval never happened.
+    Choose implementation to restore unfinished code in the managed workspace and rerun
+    complete validation. Choose integration when merging is complete and only publication
+    remains. Changed human scope goes back to direction. Do not repeat completed effects.
+    Explain why the chosen stage has work left. Do not create a recovery or handoff file.
