@@ -62,3 +62,35 @@ The inspection fixture runs the real CLI inside a native task, reads fields and
 artifacts beyond the first page and retrieves exact bytes beyond a truncated
 preview. Report-quality decisions are scripted in these orchestration tests;
 they do not establish the quality of model writing or semantic classification.
+
+## Milestone 3: human-directed model settings
+
+- `build` and `adaptive3` accept optional `model` and `reasoning_effort` inputs.
+  A two-field private `agent_settings` value carries only invocation choices
+  through the existing activities. Resolver overrides persist for later stages.
+- Each field independently uses the latest human choice, then the job input.
+  Absent keys stay absent; c2ops applies `codex_model` and
+  `codex_reasoning_effort`, or its own unspecified behavior. No model names or
+  reasoning defaults are hardcoded in the recipe.
+- The resolver's native form accepts explicit model/effort fields even when no
+  model runs. Rejected choices show the actual error and attempted settings and
+  return to that form. Questions do not authorize continuing work. Prose-only
+  model suggestions are explained in review; the human enters the choice in
+  the explicit fields. Agents do not select replacements.
+- `agent.yaml` uses the native `extension_execution` operation with a dynamically
+  assembled input map so unset keys can actually be omitted. The c2ops selector
+  is unchanged. Its manifest's API-secret default receives the documented
+  `codex_api_key` grant; no new credential or secret lookup code was introduced.
+- Corrected an accidental field-name edit in the earlier feedback change that
+  had made integration ignore its supplied commit message. Added an assertion
+  that the actual squash receives the assignment text.
+
+The four native model scenarios cover omitted fields, independent job overrides,
+worker-default delegation, repeated provider failure and persistence after human
+correction. Mocked extension calls observe the authored inputs, before extension
+manifest defaults; the c2j `TestCodexConfigurationDefaultsMatrix` and
+`TestConfigurationDefaultRequiredAndNested` tests passed for actual default
+materialization. This distinction avoids claiming a mocked model call tests a
+provider. Resolver dialogue regressions and consumer checks cover the native form.
+
+The runtime test pin advances to c2j main `3fec5e4`. No c2j source was changed.

@@ -5,8 +5,9 @@ inputs:
   problem: ${{ inputs.problem }}
   documents: ${{ inputs.?documents.orValue({}) }}
   feedback: ${{ inputs.?feedback.orValue({}) }}
+  agent_settings: ${{ inputs.?agent_settings.orValue({}) }}
 state:
-  initial: setup
+  initial: settings
   states:
     setup:
       sequence:
@@ -30,7 +31,8 @@ state:
         request: ${{ inputs.request }}
         problem: ${{ inputs.problem }}
         documents: ${{ inputs.documents }}
-        feedback: ${{ inputs.feedback }}
+        feedback: '${{ state_exists(''ask'') ? {''fields'':states.ask.outputs.fields} : inputs.feedback }}'
+        agent_settings: ${{ states.settings.outputs.agent_settings }}
     investigate:
       include: ./agent.yaml
       inputs:
@@ -39,11 +41,13 @@ state:
           .properties.stage.enum = $stages') }}
         documents: ${{ jq([inputs.documents,inputs.problem.?errors.orValue({})], 'add') }}
         read_only: true
+        agent_settings: ${{ states.settings.outputs.agent_settings }}
       transitions:
       - to: done
-        when: outputs.response.status == 'resume' && inputs.feedback.?status.orValue('') != 'resume'
+        when: outputs.response.status == 'resume' && states.settings.outputs.allow_resume
         payload:
-          result: ${{ outputs.response }}
+          result: '${{ state_exists(''ask'') ? jq([outputs.response,{''human'':states.ask.outputs,''documents'':jq(states.ask.outputs.?artifact_refs.orValue({}),''with_entries(.key
+            = "feedback/" + .key | .value.name = .key)'')}], ''add'') : outputs.response }}'
       - to: ask
         when: 'true'
       catch:
@@ -60,9 +64,10 @@ state:
           fields:
           - id: decision
             type: multiple_choice
-            question: '${{ transition.payload.?clarification.orValue('''') + (transition.payload.?clarification.orValue('''')
-              == '''' ? '''' : ''\n'') + (state_exists(''answer'') ? states.answer.outputs.response.summary : state_output(''investigate'',''response'',inputs.problem).summary)
-              }}'
+            question: '${{ (transition.payload.?problem.hasValue() ? transition.payload.problem.message : (state_exists(''answer'')
+              ? states.answer.outputs.response.summary : state_output(''investigate'',''response'',inputs.problem).summary))
+              + ''\nAgent settings: '' + (size(states.settings.outputs.agent_settings)>0 ? json_stringify(states.settings.outputs.agent_settings)
+              : ''worker defaults'') + ''\n'' + transition.payload.?clarification.orValue('''') }}'
             required: true
             options:
             - value: continue
@@ -77,9 +82,23 @@ state:
             type: file_upload
             question: ${{ states.setup.outputs.text.notes }}
             required: false
+          - id: model
+            type: short_answer
+            question: Model override (optional; blank keeps the current choice)
+            required: false
+          - id: reasoning_effort
+            type: short_answer
+            question: Reasoning effort override (optional; blank keeps the current choice)
+            required: false
           kind: review
           documents: ${{ inputs.documents }}
       transitions:
+      - to: settings
+        when: nonempty(outputs.fields.?model.orValue('')) || nonempty(outputs.fields.?reasoning_effort.orValue(''))
+        payload:
+          agent_settings: ${{ jq([states.settings.outputs.agent_settings,outputs.fields], '.[0] + (.[1] | with_entries(select((.key
+            == "model" or .key == "reasoning_effort") and .value != "")))') }}
+          allow_resume: ${{ outputs.fields.decision == 'continue' }}
       - to: ask
         when: outputs.fields.decision == 'revise' && !nonempty(outputs.fields.?feedback.orValue('')) && size(outputs.?artifact_refs.orValue({}))
           == 0
@@ -110,6 +129,7 @@ state:
         documents: ${{ jq([inputs.documents,jq(states.ask.outputs.?artifact_refs.orValue({}), 'with_entries(.key
           = "feedback/" + .key | .value.name = .key)')], 'add') }}
         session: ${{ state_output('answer','session',state_output('investigate','session',{})) }}
+        agent_settings: ${{ states.settings.outputs.agent_settings }}
       sequence:
       - id: prompts
         include: ./prompts/resolver.yaml
@@ -126,6 +146,7 @@ state:
           documents: ${{ inputs.documents }}
           read_only: true
           session: ${{ inputs.session }}
+          agent_settings: ${{ inputs.agent_settings }}
       outputs:
         response: ${{ sequence.agent.outputs.response }}
         session: ${{ sequence.agent.outputs.session }}
@@ -139,8 +160,21 @@ state:
       sequence: []
       outputs:
         result: ${{ transition.payload.result }}
+    settings:
+      inputs:
+        agent_settings: ${{ transition.payload.?agent_settings.orValue(inputs.agent_settings) }}
+        allow_resume: ${{ transition.payload.?allow_resume.orValue(inputs.feedback.?status.orValue('') != 'resume')
+          }}
+      sequence: []
+      outputs:
+        agent_settings: ${{ inputs.agent_settings }}
+        allow_resume: ${{ inputs.allow_resume }}
+      transitions:
+      - to: setup
+        when: 'true'
 outputs:
   result: ${{ states.done.outputs.result }}
+  agent_settings: ${{ states.settings.outputs.agent_settings }}
 vars:
   destinations:
     configure:

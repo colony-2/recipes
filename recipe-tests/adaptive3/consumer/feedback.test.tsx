@@ -33,4 +33,20 @@ describe('Adaptive3 native review forms', () => {
       attachments: { annotations: file },
     })));
   });
+  it.each(forms.filter(config => config.fields.some(field => field.id === 'model')))
+  ('$title accepts model changes without a working agent', async config => {
+    const form = adaptInputFormConfig(config, 'adaptive3-model-fallback');
+    const onSubmit = vi.fn();
+    const user = userEvent.setup();
+    render(<InputFormRenderer form={form} onSubmit={onSubmit} />);
+    await user.type(screen.getByLabelText(form.fields.find(f => f.id === 'model')!.label), 'chosen-model');
+    await user.type(screen.getByLabelText(form.fields.find(f => f.id === 'reasoning_effort')!.label), 'high');
+    const action = form.fields.find(f => f.id === 'decision')!;
+    await user.click(screen.getByRole('button', { name: action.optionLabels!.continue, exact: true }));
+    await user.click(screen.getByRole('button', { name: 'OK', exact: true }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      fields: { decision: 'continue', model: 'chosen-model', reasoning_effort: 'high' },
+    })));
+  });
+
 });

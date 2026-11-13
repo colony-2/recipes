@@ -33,3 +33,6 @@ Agent decisions are scripted unless a case is explicitly marked live.
 | A3-25 | Missing change measurements return to the writer; final reviews separate cells and include test frameworks. | reporting.test.yaml | high | integration, c2j |
 | A3-26 | Candidate measurements preserve per-file additions/removals and mark binaries uncountable. | test_tools.py | high | unit, Git |
 | A3-27 | Job inspection follows pagination and retrieves exact output beyond previews. | inspection.test.yaml | high | integration, c2j |
+
+| A3-28 | Explicit model settings override worker defaults independently; absent settings stay omitted. | models.test.yaml | high | integration, c2j |
+| A3-29 | Unavailable models reopen native human input; corrected settings persist into subsequent work and validation. | models.test.yaml | critical | integration, c2j |

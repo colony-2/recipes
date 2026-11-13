@@ -1,6 +1,6 @@
 # Adaptive3 follow-ups
 
-- [ ] **Allow human-directed model and reasoning changes.** Add optional job inputs
+- [x] **Allow human-directed model and reasoning changes.** Add optional job inputs
   `model` and `reasoning_effort`. For each field, use the latest human-directed
   override, then the job input, then the c2ops config default (`codex_model` or
   `codex_reasoning_effort`), otherwise leave it unspecified. Omit unset operation
