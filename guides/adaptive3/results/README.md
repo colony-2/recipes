@@ -6,6 +6,7 @@ were scripted test inputs; they were not a production user's approvals.
 
 | Trial | Start here | Outcome |
 | --- | --- | --- |
+| Clearer stage titles and separate question/change choices (2026-11-13) | [One-pager](notebook-reviews-2026-11-13/review/durable-local-drafts.md), then [conversation and assessment](notebook-reviews-2026-11-13/dialogue.md) | Full direction lifecycle, validation, question and explicit approval passed. |
 | Preserve a notebook draft after closing the browser | [One-pager](notebook/review/durable-local-draft-saving.md), then [human question and answer](notebook/dialogue.md) | Execute, full Validate and human dialogue/acceptance passed. |
 | Recover old saves using the storage cell | [Request, receiver response and assignment](storage/dialogue.md), then [receiver's proposal](storage/review/five-version-recovery-proposal.md) | Receiver challenged a redundant API. Execute, full Validate and independent Review passed. |
 

@@ -1,6 +1,6 @@
 """Run the actual Cortex adapter/renderer against forms from native recipe test reports.
 
-python3 run.py CORTEX_CHECKOUT CYCLE_REPORT_JSON RESOLVER_REPORT_JSON
+python3 run.py CORTEX_CHECKOUT CYCLE_REPORT_JSON BACKSTOP_REPORT_JSON
 Install the checkout's locked pnpm dependencies first. No source edits are retained.
 """
 import json

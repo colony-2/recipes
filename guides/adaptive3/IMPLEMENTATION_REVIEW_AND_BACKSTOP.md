@@ -57,6 +57,14 @@ now explains that the response needs an artifact name such as `review/design.md`
 The live test uses the complete bounded lifecycle so it can correct findings
 before human review, instead of assuming its first draft will pass validation.
 
+The final live trial passed: a real agent produced the one-pager, full validation
+passed, another agent answered the scripted human question, and the review stayed
+open until explicit approval. See the [unaltered document and dialogue](results/notebook-reviews-2026-11-13/dialogue.md).
+Its opening and design questions are clearer; the dialogue still adds some
+implementation/review-status commentary that could be shorter. A trial during the
+fixture migration stopped at review because its scripted response used the wrong
+native node path. Correcting the path produced the passing run.
+
 ## Scope and remaining boundaries
 
 This work adds no evidence ledger, mandatory recovery document, separate repair
