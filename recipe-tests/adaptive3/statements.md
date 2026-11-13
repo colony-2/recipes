@@ -36,3 +36,16 @@ Agent decisions are scripted unless a case is explicitly marked live.
 
 | A3-28 | Explicit model settings override worker defaults independently; absent settings stay omitted. | models.test.yaml | high | integration, c2j |
 | A3-29 | Unavailable models reopen native human input; corrected settings persist into subsequent work and validation. | models.test.yaml | critical | integration, c2j |
+
+| A3-30 | Successful and failed child outcomes reach their requester before resolution, including after invalid reports. | child-recovery.test.yaml | critical | integration, c2j |
+| A3-31 | Wrapped failures retain same-named logs with distinct producer paths and exact bytes. | diagnostics.test.yaml | critical | integration, c2j |
+| A3-32 | Prepare failure diagnostics reach the working agent without replacing the current review documents. | hook-recovery.test.yaml | high | integration, c2j |
+
+| A3-33 | Existing active or successful attempts are awaited without another delivery submission. | adoption.test.yaml | critical | integration, c2j |
+| A3-34 | Corrective cancellation text reaches the requester without cancelling its parent or automatically replacing the child. | child-recovery.test.yaml | critical | integration, scripted terminal result |
+
+- **A3-35 · critical · integration · c2j:** Resume approved implementation without repeating direction review; changed scope returns to Direction. (`resume.test.yaml`)
+- **A3-36 · critical · integration · c2j:** Preserve recorded publication state and avoid another merge when only publication remains. (`resume.test.yaml`)
+- **A3-37 · critical · integration · c2j:** Bound each automatic loop independently; discussion grants no attempts, and explicit renewal remains finite. (`limits.test.yaml`, `renewal.test.yaml`)
+- **A3-38 · high · integration · c2j:** Deliver selected directories intact and measure current reference-map growth honestly. (`collections.test.yaml`)
+- **A3-39 · critical · integration · c2j:** A failed child returns to its requester for a corrected retry without escalating or duplicating prior submissions. (`child-recovery.test.yaml`)

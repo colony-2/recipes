@@ -19,7 +19,7 @@ input_schema:
     default_value: false
   max_iterations:
     type: number
-    default_value: 0
+    default_value: 4
   resume_from:
     type: string
     default_value: ''
@@ -40,25 +40,71 @@ inputs:
   model: ${{ inputs.model }}
   reasoning_effort: ${{ inputs.reasoning_effort }}
 state:
-  initial: configure
+  initial:
+  - to: resolve
+    when: inputs.resume_from != ''
+    payload:
+      stage: recovery
+      problem:
+        summary: Inspect previous work and current direction before choosing where to continue.
+      documents: ${{ inputs.documents }}
+  - to: configure
+    when: 'true'
   states:
     configure:
       id: configure
-      include: ./recipes/adaptive3/hooks.yaml
       inputs:
-        hook: configure
         request: ${{ inputs.prompt }}
         target_directory: ${{ inputs.target_directory }}
+        documents: ${{ transition.payload.?documents.orValue(inputs.documents) }}
+        feedback: ${{ transition.payload.?feedback.orValue({}) }}
+        destination: ${{ transition.payload.?destination.orValue('direction') }}
+      sequence:
+      - id: hook
+        include: ./recipes/adaptive3/hooks.yaml
+        inputs:
+          hook: configure
+          request: ${{ inputs.request }}
+          target_directory: ${{ inputs.target_directory }}
+          documents: ${{ inputs.documents }}
+      outputs:
+        result: ${{ sequence.hook.outputs.result }}
+        settings: ${{ sequence.hook.outputs.settings }}
+        destination: ${{ inputs.destination }}
         documents: ${{ inputs.documents }}
+        feedback: ${{ inputs.feedback }}
       transitions:
       - to: direction
-        when: outputs.result.status in ['passed','skipped']
+        when: outputs.result.status in ['passed','skipped'] && outputs.destination == 'direction'
+        payload:
+          documents: ${{ outputs.documents }}
+          feedback: ${{ outputs.feedback }}
+      - to: preparation
+        when: outputs.result.status in ['passed','skipped'] && outputs.destination == 'preparation'
+        payload:
+          documents: ${{ outputs.documents }}
+          feedback: ${{ outputs.feedback }}
+      - to: implementation
+        when: outputs.result.status in ['passed','skipped'] && outputs.destination == 'implementation'
+        payload:
+          documents: ${{ outputs.documents }}
+          feedback: ${{ outputs.feedback }}
+      - to: outcome
+        when: outputs.result.status in ['passed','skipped'] && outputs.destination == 'outcome'
+        payload:
+          documents: ${{ outputs.documents }}
+          feedback: ${{ outputs.feedback }}
+      - to: integration
+        when: outputs.result.status in ['passed','skipped'] && outputs.destination == 'integration'
+        payload:
+          documents: ${{ outputs.documents }}
+          feedback: ${{ outputs.feedback }}
       - to: resolve
         when: 'true'
         payload:
           stage: configure
           problem: ${{ outputs.result }}
-          documents: ${{ inputs.documents }}
+          documents: ${{ outputs.documents }}
     direction:
       id: direction
       include: ./recipes/adaptive3/lifecycle.yaml
@@ -67,7 +113,6 @@ state:
         request: |-
           {{ inputs.title }}
           {{ inputs.prompt }}
-          ${{ inputs.resume_from == '' ? '' : 'Recover useful work and current human direction from job ' + inputs.resume_from }}
         target_directory: ${{ inputs.target_directory }}
         documents: ${{ transition.payload.?documents.orValue(inputs.documents) }}
         feedback: ${{ transition.payload.?feedback.orValue({}) }}
@@ -105,12 +150,11 @@ state:
         request: |-
           {{ inputs.title }}
           {{ inputs.prompt }}
-          ${{ inputs.resume_from == '' ? '' : 'Recover useful work and current human direction from job ' + inputs.resume_from }}
         target_directory: ${{ inputs.target_directory }}
         documents: ${{ transition.payload.?documents.orValue(state_output('direction','documents',inputs.documents))
           }}
-        feedback: '${{ transition.payload.?feedback.orValue(has(states.direction.outputs.feedback.approval) ? states.direction.outputs.feedback
-          : states.direction.outputs.result) }}'
+        feedback: '${{ transition.payload.?feedback.orValue(state_output(''direction'',''feedback'',{}).?approval.hasValue()
+          ? state_output(''direction'',''feedback'',{}) : state_output(''direction'',''result'',{})) }}'
         settings: ${{ states.configure.outputs.settings }}
         require_verification: ${{ inputs.require_verification }}
         max_iterations: ${{ inputs.max_iterations }}
@@ -146,12 +190,11 @@ state:
         request: |-
           {{ inputs.title }}
           {{ inputs.prompt }}
-          ${{ inputs.resume_from == '' ? '' : 'Recover useful work and current human direction from job ' + inputs.resume_from }}
         target_directory: ${{ inputs.target_directory }}
         documents: ${{ transition.payload.?documents.orValue(state_output('preparation','documents',inputs.documents))
           }}
-        feedback: '${{ transition.payload.?feedback.orValue(has(states.preparation.outputs.feedback.approval) ?
-          states.preparation.outputs.feedback : states.preparation.outputs.result) }}'
+        feedback: '${{ transition.payload.?feedback.orValue(state_output(''preparation'',''feedback'',{}).?approval.hasValue()
+          ? state_output(''preparation'',''feedback'',{}) : state_output(''preparation'',''result'',{})) }}'
         settings: ${{ states.configure.outputs.settings }}
         require_verification: ${{ inputs.require_verification }}
         max_iterations: ${{ inputs.max_iterations }}
@@ -192,12 +235,11 @@ state:
         request: |-
           {{ inputs.title }}
           {{ inputs.prompt }}
-          ${{ inputs.resume_from == '' ? '' : 'Recover useful work and current human direction from job ' + inputs.resume_from }}
         target_directory: ${{ inputs.target_directory }}
         documents: ${{ transition.payload.?documents.orValue(state_output('implementation','documents',inputs.documents))
           }}
-        feedback: '${{ transition.payload.?feedback.orValue(has(states.implementation.outputs.feedback.approval)
-          ? states.implementation.outputs.feedback : states.implementation.outputs.result) }}'
+        feedback: '${{ transition.payload.?feedback.orValue(state_output(''implementation'',''feedback'',{}).?approval.hasValue()
+          ? state_output(''implementation'',''feedback'',{}) : state_output(''implementation'',''result'',{})) }}'
         settings: ${{ states.configure.outputs.settings }}
         require_verification: ${{ inputs.require_verification }}
         max_iterations: ${{ inputs.max_iterations }}
@@ -247,24 +289,19 @@ state:
         request: |-
           {{ inputs.title }}
           {{ inputs.prompt }}
-          ${{ inputs.resume_from == '' ? '' : 'Recover useful work and current human direction from job ' + inputs.resume_from }}
         target_directory: ${{ inputs.target_directory }}
         documents: ${{ transition.payload.?documents.orValue(state_output('outcome','documents',inputs.documents))
           }}
-        feedback: '${{ transition.payload.?feedback.orValue(has(states.outcome.outputs.feedback.approval) ? states.outcome.outputs.feedback
-          : states.outcome.outputs.result) }}'
+        feedback: '${{ transition.payload.?feedback.orValue(state_output(''outcome'',''feedback'',{}).?approval.hasValue()
+          ? state_output(''outcome'',''feedback'',{}) : state_output(''outcome'',''result'',{})) }}'
         settings: ${{ states.configure.outputs.settings }}
         require_verification: ${{ inputs.require_verification }}
         max_iterations: ${{ inputs.max_iterations }}
         agent_settings: ${{ state_output('resolve','agent_settings',jq({'model':inputs.model,'reasoning_effort':inputs.reasoning_effort},'with_entries(select(.value
           != ""))')) }}
       transitions:
-      - to: implementation
-        when: has(outputs.result.failure) && outputs.result.failure.code == 'MERGE_UPSTREAM_ADVANCED'
-        payload:
-          documents: ${{ outputs.documents }}
-          feedback: ${{ {'failure':outputs.result.failure,'summary':outputs.result.summary,'approval':{'result':states.outcome.outputs.result,'patch':states.outcome.outputs.patch}
-            } }}
+      - to: chase
+        when: outputs.result.?failure.orValue({}).?code.orValue('') == 'MERGE_UPSTREAM_ADVANCED'
       - to: resolve
         when: outputs.result.status == 'stuck'
         payload:
@@ -312,6 +349,9 @@ state:
         feedback: ${{ transition.payload.?feedback.orValue(state_output('resolve','result',{})) }}
         agent_settings: ${{ state_output('resolve','agent_settings',jq({'model':inputs.model,'reasoning_effort':inputs.reasoning_effort},'with_entries(select(.value
           != ""))')) }}
+        prior_job: '${{ transition.payload.stage == ''recovery'' ? inputs.resume_from : '''' }}'
+        automatic_used: ${{ state_output('resolve','automatic_used',0) }}
+        merge_limit: ${{ state_output('resolve','merge_limit',3) }}
       sequence:
       - id: resolver
         include: ./recipes/adaptive3/resolver.yaml
@@ -322,12 +362,26 @@ state:
           request: ${{ inputs.request }}
           feedback: ${{ inputs.feedback }}
           agent_settings: ${{ inputs.agent_settings }}
+          prior_job: ${{ inputs.prior_job }}
+          automatic: ${{ inputs.automatic_used < 2 }}
       outputs:
-        result: ${{ sequence.resolver.outputs.result }}
-        documents: ${{ inputs.documents }}
+        result: ${{ jq([sequence.resolver.outputs.result,inputs.problem],'.[0] as $r | .[1] as $p | $r + (if $p.budget
+          then {budget:($p.budget | .limits[$p.loop] += ([$r.additional_attempts // 4,1] | max | [.,20] | min))}
+          else {} end)') }}
+        documents: ${{ sequence.resolver.outputs.documents }}
         problem: ${{ inputs.problem }}
         agent_settings: ${{ sequence.resolver.outputs.agent_settings }}
+        automatic_used: '${{ sequence.resolver.outputs.result.?human.orValue({}).?fields.orValue({}).?decision.orValue('''')
+          == ''continue'' ? 0 : inputs.automatic_used+1 }}'
+        merge_limit: '${{ inputs.merge_limit + (inputs.problem.?loop.orValue('''') == ''merge'' ? int(sequence.resolver.outputs.result.?additional_attempts.orValue(4))
+          : 0) }}'
       transitions:
+      - to: configure
+        when: '!state_exists(''configure'') && outputs.result.stage != ''configure'''
+        payload:
+          destination: ${{ outputs.result.stage }}
+          documents: ${{ outputs.documents }}
+          feedback: ${{ jq([outputs.problem,outputs.result], 'add') }}
       - to: configure
         when: outputs.result.stage == 'configure'
         payload:
@@ -362,11 +416,41 @@ state:
       sequence: []
       outputs:
         result: ${{ transition.payload.result }}
+    chase:
+      inputs:
+        used: ${{ state_output('chase','used',0)+1 }}
+        limit: ${{ state_output('resolve','merge_limit',3) }}
+        documents: ${{ states.integration.outputs.documents }}
+        feedback: '${{ jq([states.integration.outputs.feedback,{''failure'':states.integration.outputs.result.failure,''summary'':states.integration.outputs.result.summary,''approval'':state_exists(''outcome'')
+          ? {''result'':states.outcome.outputs.result,''patch'':states.outcome.outputs.patch} : states.integration.outputs.feedback.?approval.orValue({})}],''add'')
+          }}'
+      sequence: []
+      outputs:
+        used: ${{ inputs.used }}
+        limit: ${{ inputs.limit }}
+        documents: ${{ inputs.documents }}
+        feedback: ${{ inputs.feedback }}
+      transitions:
+      - to: implementation
+        when: outputs.used <= outputs.limit
+        payload:
+          documents: ${{ outputs.documents }}
+          feedback: ${{ outputs.feedback }}
+      - to: resolve
+        when: 'true'
+        payload:
+          stage: implementation
+          documents: ${{ outputs.documents }}
+          problem: ${{ jq([outputs.feedback,{'status':'stuck','loop':'merge','summary':'Repeated upstream changes
+            have used the merge allowance. Decide the next correction before trying another complete cycle.'}],'add')
+            }}
+          feedback: ${{ outputs.feedback }}
 outputs:
   summary: ${{ states.complete.outputs.result.work.summary }}
-  work_kind: ${{ states.direction.outputs.work.?work_kind.orValue('feature') }}
+  work_kind: ${{ states.complete.outputs.result.work.?work_kind.orValue(state_output('outcome','work',{}).?work_kind.orValue(state_output('implementation','work',{}).?work_kind.orValue(state_output('preparation','work',{}).?work_kind.orValue(state_output('direction','work',{}).?work_kind.orValue('oversight')))))
+    }}
   artifact_refs: ${{ states.complete.outputs.result.documents }}
-  reviews: '${{ [states.direction.outputs.result] + (state_exists(''outcome'') ? [states.outcome.outputs.result]
-    : []) }}'
+  reviews: '${{ (state_exists(''direction'') ? [states.direction.outputs.result] : []) + (state_exists(''outcome'')
+    ? [states.outcome.outputs.result] : []) }}'
   merge: ${{ states.complete.outputs.result.work.?publication.orValue({}) }}
   publication: ${{ states.complete.outputs.result.work.?publish.orValue({}) }}

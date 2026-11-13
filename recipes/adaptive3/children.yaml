@@ -1,0 +1,64 @@
+id: adaptive3-children
+inputs:
+  jobs: ${{ inputs.jobs }}
+state:
+  initial: next
+  states:
+    next:
+      inputs:
+        index: ${{ transition.payload.?index.orValue(0) }}
+      sequence: []
+      outputs:
+        index: ${{ inputs.index }}
+      transitions:
+      - to: wait
+        when: outputs.index < size(inputs.jobs)
+      - to: done
+        when: 'true'
+    wait:
+      id: wait
+      op: recipe.await_result_soft
+      inputs:
+        target:
+          job: ${{ inputs.jobs[states.next.outputs.index] }}
+        wait:
+          'on': job
+          condition: complete
+        return_when: terminal
+      transitions:
+      - to: collect
+        when: 'true'
+    collect:
+      inputs:
+        result: ${{ states.wait.outputs }}
+      sequence:
+      - id: errors
+        include: ./diagnostics.yaml
+        inputs:
+          directory: ${{ 'children/' + inputs.result.job_id + '/errors' }}
+          failure: ${{ jq(inputs.result,'[.failure // {}, .outputs.failure // {}]') }}
+          artifacts: ${{ jq(inputs.result,'((.artifacts // {}) + (.outputs.artifact_refs // {})) | with_entries(select(((.key|startswith("_c2j/")) and ((.key|endswith(".log")) or (.key|endswith(".txt"))))
+            or (.key|startswith("error/")) or (.key|startswith("errors/"))))') }}
+      outputs:
+        result: ${{ {'job_id':inputs.result.job_id,'status':inputs.result.status,'message':inputs.result.?failure_message.orValue(''),'summary':jq(inputs.result,'(.outputs.summary
+          // "") | if type == "string" then .[:2000] else "" end')} }}
+        documents: ${{ jq(inputs.result,'(.outputs.artifact_refs // .artifacts // {}) | with_entries(select((.key|startswith("_c2j/"))
+          or (.key|startswith("error/")) or (.key|startswith("errors/")) | not))') }}
+        errors: ${{ sequence.errors.outputs.documents }}
+      transitions:
+      - to: next
+        when: 'true'
+        payload:
+          index: ${{ states.next.outputs.index+1 }}
+    done:
+      sequence: []
+outputs:
+  results: '${{ state_exists(''collect'') ? states.collect.runs.map(r,r.outputs.result) + [states.collect.outputs.result]
+    : [] }}'
+  documents: '${{ jq(state_exists(''collect'') ? states.collect.runs.map(r,r.outputs) + [states.collect.outputs]
+    : [],vars.documents) }}'
+vars:
+  documents: |-
+    map(. as $child | (.documents | with_entries(
+     select(.key != "__git_state_thin_pack__" and .key != "diff_from_base.diff" and .key != "diff_from_parent.diff")
+     | .key = "children/" + $child.result.job_id + "/results/" + .key | .value.name = .key)) + .errors) | add // {}

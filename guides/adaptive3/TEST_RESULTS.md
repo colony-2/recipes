@@ -1,7 +1,8 @@
 # Adaptive3 test results — 2026-11-13
 
-Runtime: c2j `c244db82949ea989cd90d4352325b40b88cca5d0`, now pinned in
-`.c2j-version`. Recipe baseline: `c0c69bd`; results cover the initial adaptive3 implementation.
+Initial runtime: c2j `c244db82949ea989cd90d4352325b40b88cca5d0`. Recipe baseline:
+`c0c69bd`. The initial results below are historical; follow-up results use the
+current `.c2j-version` pin, `3fec5e455133216ab103a4eb693143e09640742b`.
 
 ## Results
 
@@ -100,3 +101,40 @@ python3 recipe-tests/checks/recipe_timeout_policy.py .
 The direct Python tests need PyYAML, Pillow, cmark, yq and Git. `--case-timeout`
 limits the test harness, not production recipe execution. Live commands and
 fixture details are in the [test README](../../recipe-tests/adaptive3/README.md).
+
+
+## Follow-up implementation results
+
+| Check | Final result |
+| --- | --- |
+| Native source validation | All 82 cases validate. |
+| Native recipe execution in the dependency-substitution lane | All 82 cases pass across the full run and targeted follow-ups. |
+| Direct embedded-validator tests | 9 pass. |
+| Actual Cortex adapter/renderer DOM tests | 3 pass using the generated native forms. |
+| c2j model-default materialization | Default matrix and required/nested default checks pass. |
+| Unmodified native dependency activation on a supported worker | Not established; the audited Cortex job demonstrates a real Pillow activation failure. |
+| Compact native directory references | Unavailable; 1,024 files expand to 202,940 bytes of reference metadata. |
+
+The broad execution run passed 79 of 81 cases. One test-lane copy lacked a required
+document fixture; the default-build suite passed after restoring it. The other
+case still expected human renewal after one automatic resolver correction; its
+fixture now exercises the specified two corrections before human renewal and passes.
+A further receiving-owner adoption case passes. Targeted follow-ups also verify
+recovered bug classification and command/Git diagnostics returned with child results.
+
+Native execution uses a disposable copy with only the validators' `execution_needs`
+removed and their declared tools preinstalled. Native state machines, managed Git,
+submissions, waits, input forms and command bodies execute. Model decisions are
+scripted. This setup cannot verify dependency realization or activation on a real
+worker. It must not be used to claim that the audited Pillow failure is fixed.
+
+The actual repeated-upstream test performs native merges and rebases, pauses after
+three automatic merge-chase returns, renews one attempt and completes without
+repeated human approval for the unchanged edit. Child checks cover failed and
+successful attempts, a corrected retry, adoption of active/completed attempts,
+receiver-side adoption and invalid reports after submission. The cancelled-child
+message is a scripted native-result fixture; parent cancellation has a real
+prepared-operation cancellation test.
+
+See [the implementation assessment](FOLLOWUP_IMPLEMENTATION.md) for each todo item
+and [the job audit](AUDIT_3M28e5.md) for the production failure and test gap.

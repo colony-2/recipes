@@ -61,3 +61,15 @@ python3 recipe-tests/adaptive3/consumer/run.py /path/to/cortex \
 
 This exercises click, text entry, Back, upload and submit against actual generated
 forms. It is a DOM integration test, not a deployed browser test.
+
+Follow-up suites cover requester correction/adoption, isolated diagnostic paths,
+resolver-first continuation and independent finite loop allowances. `renewal.test.yaml`
+advances an actual disposable upstream repeatedly to test merge chasing and approval
+reuse. `collections.test.yaml` measures expanded native file-reference metadata;
+it is not a claim that compact directory references exist.
+
+Continuation orchestration scripts the resolver's recovered records. Exact history
+retrieval is covered separately by `inspection.test.yaml`. The cancelled-child message
+fixture scripts the terminal response; actual cancellation is covered for the parent.
+See [the follow-up assessment](../../guides/adaptive3/FOLLOWUP_IMPLEMENTATION.md)
+for the supported-worker dependency-activation gap exposed by a real Cortex job.

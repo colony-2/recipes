@@ -32,12 +32,6 @@ preinstalled dependencies on PATH. Recipe graph, scripts and prompts remain the
 same. This does not verify normal worker dependency provisioning; see
 [RUNTIME_REQUIREMENTS.md](RUNTIME_REQUIREMENTS.md).
 
-## Remaining milestones
-
-Model overrides, reporting, requester-led recovery, resolver-first continuation,
-diagnostics, local allowances, inspection guidance and directory transport remain
-in progress. The todo list is the completion checklist.
-
 ## Milestone 2: complete results and useful review content
 
 - Removed the generic child-title fallback. An assignment without a title returns
@@ -95,3 +89,87 @@ materialization. These checks do not invoke a model provider. The real prepared-
 barrier verifies that the Nix adapter can start and remains cancellable. Resolver dialogue regressions and consumer checks cover the native form.
 
 The runtime test pin advances to c2j main `3fec5e4`. No c2j source was changed.
+
+## Milestones 4–6: requester recovery, continuation and local allowances
+
+- Direct agent submissions and recipe delivery use the same terminal-result path.
+  A failed or cancelled child returns its native identity, message and selected
+  result/error directories to the requesting agent. The requester decides whether
+  to retry, adopt existing work, continue or report that it is stuck. Invalid agent
+  reports retain native submitted-job identities, so correction does not lose
+  already-started children. Existing active and successful jobs can be consumed
+  without another submission. Nested owner sessions are retained.
+- Diagnostics retain original relative names under separate job/task/cause
+  directories. Hook results cannot overwrite the current human review. Prepare
+  failures return to the working agent; publish failures retain both the completed
+  merge and the command log. Configured specialist failures join those findings.
+- `resume_from` enters the resolver before configuration or work. It selects the
+  remaining stage and recovers selected documents, original receipt values and
+  recorded merge results, with their source job/task. There is no recovery manifest.
+  Configuration preserves that choice; stage inputs do not assume earlier stages
+  ran in this job. Missing history access asks a specific question. An approval
+  without a patch cannot trigger unchanged-patch comparison.
+- The resolver uses one agent conversation for investigation and dialogue, including
+  repeated questions. A human model change starts a fresh invocation with the new
+  settings, so an older answer cannot override the latest attempt.
+- Automatic work corrections default to four; owner exchanges, child-result rounds
+  continuations and package attempts have separate finite allowances. Nested owners have their
+  own correction counts and finite nesting depth. Merge chasing keeps its own count
+  across stage visits. Zero does not mean unlimited. An exhausted loop reports its
+  own counts and limits in native state. A resolver can grant 1–20 further attempts
+  to that loop; other counters remain unchanged. After two automatic resolver
+  corrections, explicit human continuation is required. Questions remain unlimited.
+
+The full regression run also exposed a model-variant bug: YAML merge anchors had
+inherited the base node ID. Every variant now has its own ID, matching the state
+whose result is read. The targeted model tests pass with this correction.
+
+Tests distinguish orchestration from agent judgment. Continuation tests script the
+resolver's recovered records and stage decision, then exercise native configuration,
+managed workspaces, full validation and merge/publication routing. They do not prove
+that a model will correctly interpret every prior history. The separate inspection
+test exercises real pagination and exact CLI retrieval. The cancellation-message
+case scripts a terminal child response; native parent cancellation is separately
+covered by the prepared-operation barrier.
+
+## Remaining external requirements
+
+Compact directory references cannot be implemented against the current runtime.
+The real collection test delivers 1,024 files but measures 202,940 bytes of expanded
+reference metadata. [The runtime requirement](RUNTIME_REQUIREMENTS.md#4-transport-a-selected-directory-as-one-native-reference)
+defines the missing c2j and Cortex contract; no custom archive or manifest was added.
+
+[The requested Cortex job audit](AUDIT_3M28e5.md) found a real Pillow activation
+failure and a recovery consultation blocked by that same validator. The local test
+lane does not verify worker package activation. No deployed job or c2j source was
+modified. Native dependency activation and the already-documented notification of
+still-open children remain external requirements.
+
+## Checklist against the requested plan
+
+| Todo | Result | Principal checks |
+| --- | --- | --- |
+| 1. Human-directed models | Implemented; absent inputs use worker defaults, native form remains available after provider failure. | Four model cases, runtime default tests, real prepared-operation cancellation. |
+| 2. Incomplete results | Implemented; no child-title filler, invalid reports preserve submitted children, missing content returns through the full cycle. | Title correction, invalid-report recovery, package and report validation. |
+| 3. Scope and measurements | Implemented; qualitative per-cell 1p table and actual outcome counts including test frameworks. | Missing-report correction, real numeric/binary Git measurements, assessor instructions. |
+| 4. Requester-led child recovery | Implemented; success/failure/cancellation messages reach the requester; correction, retry and adoption use native identities. | Real successful/failed/retried children, active/completed adoption, scripted cancellation message. |
+| 5. Resolver-first continuation | Implemented; recover original records and selected artifacts, configure, then run the chosen stage's full cycle. | Approved implementation, changed scope, inaccessible history, remaining publication, recovered work classification. |
+| 6. Diagnostic directories | Implemented with existing file refs; original producer/cause paths and bytes survive. | Same-named logs, nested causes, prepare/publish failures, specialist errors. |
+| 7. Shared specialist validation | Implemented; fixed stage policy, common assessment and complete current findings. | Required rejection, optional advice, full rerun, native error and hook guidance. |
+| 8. Local automatic limits | Implemented; independent counters, finite renewal and a separately bounded resolver. | Counter isolation, zero fallback, human discussion, finite renewal, real repeated upstream advancement. |
+| 9. Inspection guidance | Implemented in initial context; exact task fields/artifacts and pagination are explained. | Real CLI retrieval beyond page one and beyond previews. |
+| 10. Compact directory refs | Blocked on a missing runtime/consumer contract; selected relative subtrees and small presentation fields are used today. | Native 32-file and 1,024-file transport with measured metadata growth. |
+| 11. Feedback UI | Implemented; supported field/action names, retained conversation and empty-discussion handling. | Native forms plus three real Cortex renderer/adapter DOM tests. |
+
+A failed child may have no final output at all. In that case the requester receives
+its identity and original failure message plus instructions to retrieve intermediate
+task outputs through job inspection. The recipe preserves diagnostics returned by
+the native wait, including command logs, but does not invent a final result or
+pretend it has downloaded intermediate artifacts that the wait did not return.
+
+
+Final validation: all 82 native cases have passing results after the documented
+fixture/expectation corrections and targeted follow-ups; all source cases validate.
+Nine direct validator tests and three actual Cortex DOM integration tests pass.
+The execution-lane and live-worker limitations are detailed in
+[TEST_RESULTS.md](TEST_RESULTS.md#follow-up-implementation-results).

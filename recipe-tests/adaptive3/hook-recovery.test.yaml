@@ -1,0 +1,152 @@
+recipe: lifecycle.yaml
+cases:
+- id: prepare-diagnostics-return-to-the-working-agent
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          README.md: Parent
+          .c2/recipes/hooks/build/prepare.yaml: |
+            id: prepare
+            sequence:
+            - id: probe
+              op: command_execution
+              inputs:
+                run: |-
+                  if [ ! -f repaired.txt ]; then echo prepare-needs-repair >&2; exit 7; fi
+                  printf ok
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: Prepared.
+              artifact_refs: {}
+  inputs:
+    purpose: implementation
+    request: Complete the local change.
+  mocks:
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response: &id001
+            status: ready
+            summary: The owner result is sufficient; continue this implementation.
+            title: Review the implemented change
+            primary: review/change.md
+            work_kind: feature
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: The owner result is sufficient; continue this implementation.
+        artifacts:
+          review/change.md: |
+            # Current implementation
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response: *id001
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: The owner result is sufficient; continue this implementation.
+          worktree:
+            repaired.txt: |
+              repaired
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: passed
+            summary: The local work and owner outcome satisfy the request.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: The local work and owner outcome satisfy the request.
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: accepted
+            summary: The implementation is ready.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: The implementation is ready.
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.result.status=="accepted"
+  - type: cel_true
+    expr: calls.filter(c,c.op=="extension_execution" && c.node_path.contains("/execute/")).size()==2
+  - type: cel_true
+    expr: calls.exists(c,c.op=="extension_execution" && c.node_path.contains("/execute/") && has(c.artifacts) &&
+      c.artifacts.exists(k,k.contains("error/hooks/prepare/") && c.artifacts[k].contains("prepare-needs-repair")))
+  - type: cel_true
+    expr: '"review/change.md" in outputs.documents'
+- id: publish-failure-preserves-the-completed-merge-and-log
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          README.md: Parent
+          .c2/recipes/hooks/build/publish.yaml: |
+            id: publish
+            sequence:
+            - id: publish
+              op: command_execution
+              inputs:
+                run: echo publish-needs-repair >&2; exit 9
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: Published.
+              artifact_refs: {}
+  inputs:
+    purpose: integration
+    request: Complete the local change.
+  mocks:
+    ops:
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.result.status=="stuck"
+  - type: cel_true
+    expr: size(outputs.result.publication.merged_hash)>0
+  - type: cel_true
+    expr: outputs.result.errors.exists(k,k.contains("error/hooks/publish/") && k.endsWith(".log"))
+  - type: cel_true
+    expr: calls.filter(c,c.op=="merge").size()==1

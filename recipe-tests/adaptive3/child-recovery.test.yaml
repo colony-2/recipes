@@ -1,0 +1,787 @@
+recipe: lifecycle.yaml
+cases:
+- id: successful-child-returns-to-requester
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          README.md: Parent
+      storage:
+        files:
+          README.md: Storage
+  inputs:
+    purpose: implementation
+    request: Use the owner result to complete the local implementation.
+  mocks:
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response: &id001
+            status: ready
+            summary: The owner result is sufficient; continue this implementation.
+            title: Review the implemented change
+            primary: review/change.md
+            work_kind: feature
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: The owner result is sufficient; continue this implementation.
+          children:
+          - recipe: child.yaml
+            cell: storage
+            inputs:
+              fail: false
+            await: terminal
+            bind: requested
+        artifacts:
+          review/change.md: |
+            # Current implementation
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response: *id001
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: The owner result is sufficient; continue this implementation.
+        artifacts:
+          review/change.md: |
+            # Current implementation
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response: &id002
+            status: passed
+            summary: The local work and owner outcome satisfy the request.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: The local work and owner outcome satisfy the request.
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response: &id003
+            status: accepted
+            summary: The implementation is ready.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: The implementation is ready.
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.result.status=="accepted"
+  - type: cel_true
+    expr: size(events.filter(e,e.kind=="child_submitted"))==1
+  - type: cel_true
+    expr: size(calls.filter(c,c.op=="recipe.await_result_soft"))==1
+  - type: cel_true
+    expr: calls.exists(c,c.op=="extension_execution" && c.node_path.contains("/execute/") && c.inputs.inputs.prompt.contains(calls.filter(w,w.op=="recipe.await_result_soft")[0].inputs.target.job)
+      && c.inputs.inputs.prompt.contains("completed"))
+  - type: cel_true
+    expr: '!calls.exists(c,c.node_path.contains("/resolver/"))'
+- id: failed-child-returns-to-requester
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          README.md: Parent
+      storage:
+        files:
+          README.md: Storage
+  inputs:
+    purpose: implementation
+    request: Use the owner result to complete the local implementation.
+  mocks:
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response: *id001
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: The owner result is sufficient; continue this implementation.
+          children:
+          - recipe: child.yaml
+            cell: storage
+            inputs:
+              fail: true
+            await: terminal
+            bind: requested
+        artifacts:
+          review/change.md: |
+            # Current implementation
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response: *id001
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: The owner result is sufficient; continue this implementation.
+        artifacts:
+          review/change.md: |
+            # Current implementation
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response: *id002
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: The local work and owner outcome satisfy the request.
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response: *id003
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: The implementation is ready.
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.result.status=="accepted"
+  - type: cel_true
+    expr: size(events.filter(e,e.kind=="child_submitted"))==1
+  - type: cel_true
+    expr: size(calls.filter(c,c.op=="recipe.await_result_soft"))==1
+  - type: cel_true
+    expr: calls.exists(c,c.op=="extension_execution" && c.node_path.contains("/execute/") && c.inputs.inputs.prompt.contains(calls.filter(w,w.op=="recipe.await_result_soft")[0].inputs.target.job)
+      && c.inputs.inputs.prompt.contains("failed"))
+  - type: cel_true
+    expr: '!calls.exists(c,c.node_path.contains("/resolver/"))'
+  - type: cel_true
+    expr: calls.exists(c,c.op=="extension_execution" && c.node_path.contains("/execute/") && c.inputs.inputs.prompt.contains("exit
+      status 9"))
+- id: invalid-report-after-child
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          README.md: Parent
+      storage:
+        files:
+          README.md: Storage
+  inputs:
+    purpose: implementation
+    request: Use the owner result to complete the local implementation.
+  mocks:
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: false
+          response: *id001
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: The owner result is sufficient; continue this implementation.
+          children:
+          - recipe: child.yaml
+            cell: storage
+            inputs:
+              fail: true
+            await: terminal
+            bind: requested
+        artifacts:
+          review/change.md: |
+            # Current implementation
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response: *id001
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: The owner result is sufficient; continue this implementation.
+        artifacts:
+          review/change.md: |
+            # Current implementation
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response: *id002
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: The local work and owner outcome satisfy the request.
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response: *id003
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: The implementation is ready.
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.result.status=="accepted"
+  - type: cel_true
+    expr: size(events.filter(e,e.kind=="child_submitted"))==1
+  - type: cel_true
+    expr: size(calls.filter(c,c.op=="recipe.await_result_soft"))==1
+  - type: cel_true
+    expr: calls.exists(c,c.op=="extension_execution" && c.node_path.contains("/execute/") && c.inputs.inputs.prompt.contains(calls.filter(w,w.op=="recipe.await_result_soft")[0].inputs.target.job)
+      && c.inputs.inputs.prompt.contains("failed"))
+  - type: cel_true
+    expr: '!calls.exists(c,c.node_path.contains("/resolver/"))'
+  - type: cel_true
+    expr: calls.exists(c,c.op=="extension_execution" && c.node_path.contains("/execute/") && c.inputs.inputs.prompt.contains("exit
+      status 9"))
+- id: two-children-preserve-same-named-results
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          README.md: Parent
+      storage:
+        files:
+          README.md: Storage
+  inputs:
+    purpose: implementation
+    request: Use the owner result to complete the local implementation.
+  mocks:
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response: &id004
+            status: ready
+            summary: The owner result is sufficient; continue this implementation.
+            title: Review the implemented change
+            primary: review/change.md
+            work_kind: feature
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: The owner result is sufficient; continue this implementation.
+          children:
+          - recipe: child.yaml
+            cell: storage
+            inputs:
+              fail: false
+            await: terminal
+            bind: requested
+          - recipe: child.yaml
+            cell: storage
+            inputs:
+              fail: false
+            await: terminal
+            bind: other
+        artifacts:
+          review/change.md: |
+            # Current implementation
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response: *id004
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: The owner result is sufficient; continue this implementation.
+        artifacts:
+          review/change.md: |
+            # Current implementation
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: passed
+            summary: The local work and owner outcome satisfy the request.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: The local work and owner outcome satisfy the request.
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: accepted
+            summary: The implementation is ready.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: The implementation is ready.
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.result.status=="accepted"
+  - type: cel_true
+    expr: size(events.filter(e,e.kind=="child_submitted"))==2
+  - type: cel_true
+    expr: size(calls.filter(c,c.op=="recipe.await_result_soft"))==2
+  - type: cel_true
+    expr: calls.exists(c,c.op=="extension_execution" && c.node_path.contains("/execute/") && c.inputs.inputs.prompt.contains(calls.filter(w,w.op=="recipe.await_result_soft")[0].inputs.target.job)
+      && c.inputs.inputs.prompt.contains("completed"))
+  - type: cel_true
+    expr: '!calls.exists(c,c.node_path.contains("/resolver/"))'
+  - type: cel_true
+    expr: calls.exists(c,c.op=="extension_execution" && has(c.artifacts) && size(c.artifacts.filter(k,k.startsWith("work/children/")
+      && k.endsWith("/results/result.txt")))==2)
+- id: corrective-cancellation-reaches-requester
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          README.md: Parent
+      storage:
+        files:
+          README.md: Storage
+  inputs:
+    purpose: implementation
+    request: Use the owner result to complete the local implementation.
+  mocks:
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: consult
+            summary: Ask storage to retain three saves.
+            consultation:
+              cell: storage
+              request: Retain three saves.
+              mode: delivery
+              job: null
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: Ask storage to retain three saves.
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: ready
+            summary: I can implement that.
+            assignment: Retain three saves.
+            title: Retain three saves
+            work_kind: feature
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: I can implement that.
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: passed
+            summary: Owner request is clear.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: Owner request is clear.
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: accepted
+            summary: Owner request is ready.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: Owner request is ready.
+    - match:
+        op: recipes.run
+      behavior:
+        mode: return
+        outputs:
+          job_ids:
+          - cancelled-fixture-attempt
+    - match:
+        op: recipe.await_result_soft
+      behavior:
+        mode: return
+        outputs:
+          job_id: cancelled-fixture-attempt
+          status: cancelled
+          failure_message: Stop this approach. Use our existing retention API.
+          artifacts:
+            _c2j/execution/check.log:
+              kind: value
+              name: _c2j/execution/check.log
+              format: text
+              value: Original child diagnostic bytes.
+            _c2j/git-stderr.txt:
+              kind: value
+              name: _c2j/git-stderr.txt
+              format: text
+              value: Original gateway failure.
+          outputs: {}
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: ready
+            summary: The owner result is sufficient; continue this implementation.
+            title: Review the implemented change
+            primary: review/change.md
+            work_kind: feature
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: The owner result is sufficient; continue this implementation.
+        artifacts:
+          review/change.md: |
+            # Current implementation
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: passed
+            summary: The local work and owner outcome satisfy the request.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: The local work and owner outcome satisfy the request.
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: accepted
+            summary: The implementation is ready.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: The implementation is ready.
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.result.status=="accepted" && size(calls.filter(c,c.op=="recipes.run"))==1
+  - type: cel_true
+    expr: calls.exists(c,c.op=="extension_execution" && c.cell=="root" && c.inputs.inputs.prompt.contains("cancelled-fixture-attempt")
+      && c.inputs.inputs.prompt.contains("Stop this approach. Use our existing retention API."))
+  - type: cel_true
+    expr: calls.exists(c,c.op=="extension_execution" && c.node_path.contains("/execute/") && has(c.artifacts) &&
+      c.artifacts.exists(k,k.contains("/errors/") && c.artifacts[k].contains("Original child diagnostic bytes.")))
+  - type: cel_true
+    expr: calls.exists(c,c.op=="extension_execution" && c.node_path.contains("/execute/") && has(c.artifacts) &&
+      c.artifacts.exists(k,k.contains("/errors/") && k.endsWith("git-stderr.txt") && c.artifacts[k].contains("Original
+      gateway failure.")))
+- id: requester-corrects-and-retries-failed-child
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          README.md: Parent
+      storage:
+        files:
+          README.md: Storage
+  inputs:
+    purpose: implementation
+    request: Use the owner result to complete the local implementation.
+  mocks:
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response: &id005
+            status: ready
+            summary: The owner result is sufficient; continue this implementation.
+            title: Review the implemented change
+            primary: review/change.md
+            work_kind: feature
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: The owner result is sufficient; continue this implementation.
+          children:
+          - recipe: child.yaml
+            cell: storage
+            inputs:
+              fail: true
+            await: terminal
+            bind: requested
+        artifacts:
+          review/change.md: |
+            # Current implementation
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: ready
+            summary: The first attempt lacked the prerequisite; retry with the correction.
+            title: Review the implemented change
+            primary: review/change.md
+            work_kind: feature
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: The owner result is sufficient; continue this implementation.
+          children:
+          - recipe: child.yaml
+            cell: storage
+            inputs:
+              fail: false
+            await: terminal
+            bind: corrected
+        artifacts:
+          review/change.md: |
+            # Current implementation
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response: *id005
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: The owner result is sufficient; continue this implementation.
+        artifacts:
+          review/change.md: |
+            # Current implementation
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: passed
+            summary: The local work and owner outcome satisfy the request.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: The local work and owner outcome satisfy the request.
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+        cell: root
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: accepted
+            summary: The implementation is ready.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: The implementation is ready.
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.result.status=="accepted"
+  - type: cel_true
+    expr: calls.filter(c,c.op=="extension_execution" && c.cell=="root" && c.node_path.contains("/execute/")).size()==3
+  - type: cel_true
+    expr: calls.filter(c,c.op=="recipe.await_result_soft").size()==2
+  - type: cel_true
+    expr: '!calls.exists(c,c.node_path.contains("/resolve/"))'
+  - type: cel_true
+    expr: calls.exists(c,c.op=="extension_execution" && c.cell=="root" && c.inputs.inputs.prompt.contains("failed"))

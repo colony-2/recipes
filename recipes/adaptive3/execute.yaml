@@ -52,11 +52,7 @@ state:
         hook: before_design
       transitions:
       - to: work
-        when: outputs.result.status != 'failed'
-      - to: problem
         when: 'true'
-        payload:
-          problem: ${{ outputs.result }}
     work:
       include: ./agent.yaml
       inputs:
@@ -97,6 +93,7 @@ state:
         when: 'true'
         payload:
           problem: ${{ outputs.result }}
+          errors: ${{ outputs.artifacts }}
     merge:
       include: ./integration.yaml
       inputs:
@@ -122,16 +119,20 @@ state:
       sequence: []
       outputs:
         problem: ${{ transition.payload.problem }}
+        errors: ${{ transition.payload.errors }}
     done:
       sequence: []
 outputs:
-  response: '${{ state_exists(''problem'') ? {''status'':''stuck'',''summary'':states.problem.outputs.problem.summary,''failure'':states.problem.outputs.problem}
+  response: '${{ state_exists(''problem'') ? {''status'':''changes'',''summary'':states.problem.outputs.problem.summary,''failure'':states.problem.outputs.problem,''errors'':states.problem.outputs.errors}
     : (inputs.purpose == ''integration'' ? {''status'':states.publish.outputs.result.status == ''failed'' ? ''stuck'':''ready'',''summary'':states.publish.outputs.result.summary,''publication'':has(inputs.feedback.publication)
-    ? inputs.feedback.publication : states.merge.outputs.result,''publish'':states.publish.outputs.result} : states.work.outputs.response)
-    }}'
+    ? inputs.feedback.publication : states.merge.outputs.result,''publish'':states.publish.outputs.result,''errors'':states.publish.outputs.artifacts}
+    : (state_output(''before_design'',''result'',{}).?status.orValue('''') == ''failed'' && states.work.outputs.response.status
+    == ''ready'' ? {''status'':''changes'',''summary'':states.before_design.outputs.result.summary,''errors'':states.before_design.outputs.artifacts}
+    : states.work.outputs.response)) }}'
   documents: '${{ state_exists(''work'') && size(jq(states.work.outputs.artifacts,''with_entries(select(.key|startswith("review/")))''))>0
     ? jq(states.work.outputs.artifacts,''with_entries(select(.key|startswith("review/")))'') : inputs.documents
     }}'
   session: ${{ state_output('work','session',{}) }}
   artifacts: '${{ state_exists(''work'') ? states.work.outputs.artifacts : state_output(''publish'',''artifacts'',{})
     }}'
+  jobs: ${{ state_output('work','jobs',[]) }}

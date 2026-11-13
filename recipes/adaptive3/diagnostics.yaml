@@ -1,0 +1,19 @@
+id: adaptive3-diagnostics
+inputs:
+  directory: ${{ inputs.?directory.orValue('error') }}
+  artifacts: ${{ inputs.?artifacts.orValue({}) }}
+  failure: ${{ inputs.?failure.orValue({}) }}
+sequence: []
+outputs:
+  documents: ${{ jq({'directory':inputs.directory,'artifacts':inputs.artifacts,'failure':json_parse(json_stringify(inputs.failure))},vars.bindings)
+    }}
+vars:
+  bindings: |-
+    def refs: type == "object" and length > 0 and all(.[]; type == "object" and has("kind"));
+    . as $input |
+    ([.artifacts] + [.failure | .. | objects | (.diagnostics?, .artifact_refs?, .artifacts?) | select(refs)] | unique)
+    | to_entries | map(. as $set | .value | to_entries | map(
+        select(.key != "__git_state_thin_pack__" and .key != "diff_from_base.diff" and .key != "diff_from_parent.diff")
+        | .key = ($input.directory + "/" + (.value.stored.key.jobId // "source") + "/task-" +
+            ((.value.stored.key.taskOrdinal // 0)|tostring) + "/cause-" + ($set.key|tostring) + "/" + .key)
+        | .value.name = .key)) | add // [] | from_entries

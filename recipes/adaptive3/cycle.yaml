@@ -24,6 +24,8 @@ state:
         session: ${{ inputs.session }}
         agent_settings: ${{ inputs.agent_settings }}
       transitions:
+      - to: children
+        when: size(outputs.jobs)>0
       - to: validate
         when: outputs.response.status == 'ready'
       - to: done
@@ -79,22 +81,46 @@ state:
         result: ${{ transition.payload.result }}
         documents: ${{ transition.payload.documents }}
         session: ${{ transition.payload.session }}
+    children:
+      include: ./children.yaml
+      inputs:
+        jobs: ${{ states.execute.outputs.jobs }}
+      transitions:
+      - to: done
+        when: 'true'
+        payload:
+          result: ${{ {'status':'children','summary':states.execute.outputs.response.summary,'children':outputs.results,'documents':outputs.documents}
+            }}
+          documents: ${{ states.execute.outputs.documents }}
+          session: ${{ states.execute.outputs.session }}
+    failed:
+      inputs:
+        failure: ${{ transition.payload.failure }}
+        publication: ${{ state_output('execute','response',{}).?publication.orValue(null) }}
+      sequence:
+      - id: diagnostics
+        include: ./diagnostics.yaml
+        inputs:
+          failure: ${{ inputs.failure }}
+      outputs:
+        result: '${{ jq([{''status'':''stuck'',''summary'':inputs.failure.message,''failure'':inputs.failure,''errors'':sequence.diagnostics.outputs.documents},inputs.publication
+          != null ? {''publication'':inputs.publication} : {}],''add'') }}'
+      transitions:
+      - to: done
+        when: 'true'
+        payload:
+          result: ${{ outputs.result }}
+          documents: ${{ state_output('execute','documents',inputs.documents) }}
+          session: {}
 outputs:
   result: ${{ states.done.outputs.result }}
   documents: ${{ states.done.outputs.documents }}
   session: ${{ states.done.outputs.session }}
-  work: ${{ states.execute.outputs.response }}
+  work: ${{ state_output('execute','response',{}) }}
   patch: ${{ state_output('validate','patch',null) }}
   candidate: ${{ state_output('validate','candidate',{}) }}
 catch:
 - when: failure.kind != 'cancellation'
-  continue:
-    outputs:
-      result: '${{ jq([jq([{''status'':''stuck'',''summary'':failure.message,''failure'':failure},state_output(''execute'',''response'',{}).?publication.hasValue()
-        ? {''publication'':states.execute.outputs.response.publication} : {}], ''add''),{''errors'':jq([failure.?attrs.orValue({}).?command.orValue({}).?diagnostics.orValue({}),failure.?attrs.orValue({}).?extension.orValue({}).?diagnostics.orValue({})],
-        ''add | with_entries(.key = "error/" + (.key | split("/") | last) | .value.name = .key)'')}], ''add'') }}'
-      documents: ${{ state_output('execute','documents',inputs.documents) }}
-      session: {}
-      work: ${{ state_output('execute','response',{}) }}
-      candidate: {}
-      patch: null
+  to: failed
+  payload:
+    failure: ${{ json_parse(json_stringify(failure)) }}

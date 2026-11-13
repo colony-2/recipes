@@ -144,10 +144,12 @@ state:
             api_version: c2.build-hook/v1
             status: failed
             summary: ${{ failure.message }}
-            artifact_refs: ${{ jq([failure.?attrs.orValue({}).?command.orValue({}).?diagnostics.orValue({}),failure.?attrs.orValue({}).?extension.orValue({}).?diagnostics.orValue({})],
-              'add | with_entries(.key = "error/" + (.key | split("/") | last) | .value.name = .key)') }}
-            failure: ${{ failure }}
+            artifact_refs: {}
+            failure: ${{ json_parse(json_stringify(failure)) }}
             settings: {}
+      transitions:
+      - to: collect
+        when: 'true'
     before_design:
       const: true
       include:
@@ -213,9 +215,11 @@ state:
             api_version: c2.build-hook/v1
             status: failed
             summary: ${{ failure.message }}
-            artifact_refs: ${{ jq([failure.?attrs.orValue({}).?command.orValue({}).?diagnostics.orValue({}),failure.?attrs.orValue({}).?extension.orValue({}).?diagnostics.orValue({})],
-              'add | with_entries(.key = "error/" + (.key | split("/") | last) | .value.name = .key)') }}
-            failure: ${{ failure }}
+            artifact_refs: {}
+            failure: ${{ json_parse(json_stringify(failure)) }}
+      transitions:
+      - to: collect
+        when: 'true'
     prepare:
       include:
         recipe: cell://.c2/recipes/hooks/build/prepare.yaml
@@ -280,9 +284,11 @@ state:
             api_version: c2.build-hook/v1
             status: failed
             summary: ${{ failure.message }}
-            artifact_refs: ${{ jq([failure.?attrs.orValue({}).?command.orValue({}).?diagnostics.orValue({}),failure.?attrs.orValue({}).?extension.orValue({}).?diagnostics.orValue({})],
-              'add | with_entries(.key = "error/" + (.key | split("/") | last) | .value.name = .key)') }}
-            failure: ${{ failure }}
+            artifact_refs: {}
+            failure: ${{ json_parse(json_stringify(failure)) }}
+      transitions:
+      - to: collect
+        when: 'true'
     verify:
       const: true
       include:
@@ -348,9 +354,11 @@ state:
             api_version: c2.build-hook/v1
             status: failed
             summary: ${{ failure.message }}
-            artifact_refs: ${{ jq([failure.?attrs.orValue({}).?command.orValue({}).?diagnostics.orValue({}),failure.?attrs.orValue({}).?extension.orValue({}).?diagnostics.orValue({})],
-              'add | with_entries(.key = "error/" + (.key | split("/") | last) | .value.name = .key)') }}
-            failure: ${{ failure }}
+            artifact_refs: {}
+            failure: ${{ json_parse(json_stringify(failure)) }}
+      transitions:
+      - to: collect
+        when: 'true'
     publish:
       const: true
       include:
@@ -418,13 +426,22 @@ state:
             api_version: c2.build-hook/v1
             status: failed
             summary: ${{ failure.message }}
-            artifact_refs: ${{ jq([failure.?attrs.orValue({}).?command.orValue({}).?diagnostics.orValue({}),failure.?attrs.orValue({}).?extension.orValue({}).?diagnostics.orValue({})],
-              'add | with_entries(.key = "error/" + (.key | split("/") | last) | .value.name = .key)') }}
-            failure: ${{ failure }}
+            artifact_refs: {}
+            failure: ${{ json_parse(json_stringify(failure)) }}
       workspace:
         cell: ${{ context.workflow.cell }}
         ref: ${{ inputs.publication.merged_hash }}
+      transitions:
+      - to: collect
+        when: 'true'
+    collect:
+      include: ./diagnostics.yaml
+      inputs:
+        directory: '${{ (states[inputs.hook].outputs.status == ''failed'' ? ''error/hooks/'' : ''hooks/'') + inputs.hook
+          }}'
+        artifacts: ${{ states[inputs.hook].outputs.artifact_refs }}
+        failure: ${{ states[inputs.hook].outputs.?failure.orValue({}) }}
 outputs:
   result: ${{ states[inputs.hook].outputs }}
-  artifacts: ${{ states[inputs.hook].outputs.artifact_refs }}
+  artifacts: ${{ states.collect.outputs.documents }}
   settings: ${{ states[inputs.hook].outputs.?settings.orValue({}) }}

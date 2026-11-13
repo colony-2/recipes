@@ -54,3 +54,41 @@ Run the unmodified adaptive3 suites on a supported worker. The acceptance condit
 is native installation and execution of the declared validators, with no removed
 `execution_needs` or preinstalled-tool substitution. The local execution results
 are documented separately in [TEST_RESULTS.md](TEST_RESULTS.md).
+
+A real worker has now demonstrated an additional activation failure:
+[the Cortex job audit](AUDIT_3M28e5.md) records three `No module named 'PIL'`
+failures after successful dependency preparation. Current c2j source filters out
+Python's import-path activation variables. Supported-worker acceptance must cover
+those variables and cached activation, not merely package realization. The local
+preinstalled-dependency test lane cannot prove this contract.
+
+## 4. Transport a selected directory as one native reference
+
+The current pinned runtime (`3fec5e4`) supports stored, external, value and attached
+file references. A stored key names one job/task/file. An artifact-set binding
+expands a map of those references; it is not a compact directory reference.
+Object checkpoints use a different opaque archive contract and are unsuitable
+for ordinary human review attachments.
+
+The new native collection test measures this directly:
+
+| Files delivered | References emitted, including command log | Serialized reference map |
+| --- | --- | --- |
+| 32 | 33 | 6,524 bytes |
+| 1,024 | 1,025 | 202,940 bytes |
+
+File bytes arrive correctly, but metadata grows with file count before any review
+or child-result copies. The recipe cannot honestly promise compact directory
+transport with this contract. It groups selected files by directory and keeps
+presentation to a title, primary document and descriptive local links.
+
+c2j should provide one immutable directory reference that binds a selected subtree,
+materializes in inbox, survives child results and review forms, and allows paginated
+listing and exact file reads. Retain original producer identity and relative paths.
+Cortex should browse the same collection without requiring every file reference
+in the form. Neither side should need a custom archive or per-file prose metadata.
+
+Acceptance: pass a 1,024-file subtree through child completion and human review;
+keep serialized recipe state bounded by the number of selected collections,
+verify exact bytes and safe paths, and navigate local links in the actual review
+UI. Until that exists, TODO item 10 is blocked at the runtime/consumer boundary.

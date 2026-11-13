@@ -35,7 +35,7 @@
   Test missing-report correction, measured counts, per-cell separation and the
   classification of test frameworks as test code.
 
-- [ ] **Return child outcomes to the requester before escalating.** Deliver the
+- [x] **Return child outcomes to the requester before escalating.** Deliver the
   actual job ID, success/failure/cancellation message and selected result/error
   directories to the requesting agent, including after an invalid model report.
   Let it retry, recover, adopt existing work or continue as appropriate. Enter
@@ -43,14 +43,14 @@
   needs renewal. Test all outcomes, existing-child adoption and no duplicate
   submission during report correction. [Plan 1](PLAN_AUDIT_FOLLOWUPS.md#1-return-child-outcomes-to-the-agent-that-requested-the-work).
 
-- [ ] **Enter the resolver first for `resume_from`.** Inspect previous work and
+- [x] **Enter the resolver first for `resume_from`.** Inspect previous work and
   current human direction, recover useful references and actual approvals, then
   enter the stage that has remaining work. Preserve completed effects and run the
   destination's full cycle. Avoid assuming earlier stages ran in the new job.
   Test approved implementation recovery, changed scope, unreadable history and
   publication after a completed merge. [Plan 2](PLAN_AUDIT_FOLLOWUPS.md#2-start-resume_from-in-the-resolver).
 
-- [ ] **Preserve diagnostic directories and isolate producers.** Keep each
+- [x] **Preserve diagnostic directories and isolate producers.** Keep each
   child's/task's failure in its own subtree, including wrapped causes and original
   relative paths. Forward all hook failures without flattening names or replacing
   review documents. Prefer native directory references. Test same-named logs,
@@ -68,7 +68,7 @@
   findings, native failure delivery and actual hook-guidance consumers.
   [Detailed plan 4](PLAN_AUDIT_FOLLOWUPS.md#4-make-repository-required-reviews-actually-reach-validation).
 
-- [ ] **Bound every automatic loop locally and allow explicit renewal.** Use
+- [x] **Bound every automatic loop locally and allow explicit renewal.** Use
   positive finite defaults; count only repetitions owned by that loop. Inner
   consultation/child work must not spend the outer loop's allowance. Preserve the
   merge-chase count across stages. A resolver or human can grant more attempts;
@@ -82,8 +82,11 @@
   Test exact retrieval beyond previews and the first inventory page.
   [Plan 6](PLAN_AUDIT_FOLLOWUPS.md#6-add-a-short-inspection-guide-to-new-session-context).
 
-- [ ] **Use native directory references for selected artifact collections.**
-  Confirm compact transport through child results and human reviews. Carry one
+- [ ] **Use native directory references for selected artifact collections — blocked on c2j/Cortex.**
+  The pinned runtime has no compact directory-reference contract. Native tests
+  deliver 1,024 files but expand them into 202,940 bytes of reference metadata.
+  See [the concrete runtime requirement](RUNTIME_REQUIREMENTS.md#4-transport-a-selected-directory-as-one-native-reference).
+  Confirm compact transport through child results and human reviews once supported. Carry one
   coherent selected subtree, with a review title, primary document and optional
   collection purpose. Use descriptive filenames/links instead of mandatory
   per-file metadata. Test chapter growth and actual UI navigation for large

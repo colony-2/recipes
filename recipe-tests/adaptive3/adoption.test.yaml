@@ -1,0 +1,80 @@
+recipe: adoption.yaml
+cases:
+- id: adopt-successful-attempt
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          README.md: Parent
+      storage:
+        files:
+          README.md: Storage
+  mocks:
+    ops:
+    - match:
+        op: recipes.run
+      behavior:
+        mode: return
+        effects:
+          children:
+          - recipe: child.yaml
+            cell: storage
+            bind: existing
+            await: terminal
+        outputs_expr: '{"job_ids":[children.existing]}'
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.result.child.job_id==outputs.existing && outputs.result.child.status=="completed"
+  - type: cel_true
+    expr: size(calls.filter(c,c.op=="recipes.run"))==1 && !calls.exists(c,c.op=="extension_execution")
+  - type: cel_true
+    expr: ("children/"+outputs.existing+"/results/result.txt") in outputs.documents
+- id: adopt-active-attempt
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          README.md: Parent
+      storage:
+        files:
+          README.md: Storage
+    responses:
+    - node_path: waiting-child/release
+      cell: storage
+      after_call:
+        node_path: adoption-test/consultation/adaptive3-consultation/wait/wait/adaptive3-children/wait/wait
+        cell: root
+        occurrence: 1
+      fields:
+        decision: continue
+  mocks:
+    ops:
+    - match:
+        op: recipes.run
+      behavior:
+        mode: return
+        effects:
+          children:
+          - recipe: waiting-child.yaml
+            cell: storage
+            bind: existing
+        outputs_expr: '{"job_ids":[children.existing]}'
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.result.child.job_id==outputs.existing && outputs.result.child.status=="completed"
+  - type: cel_true
+    expr: size(calls.filter(c,c.op=="recipes.run"))==1 && !calls.exists(c,c.op=="extension_execution")
+  - type: cel_true
+    expr: ("children/"+outputs.existing+"/results/result.txt") in outputs.documents

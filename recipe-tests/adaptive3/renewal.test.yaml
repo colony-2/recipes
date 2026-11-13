@@ -1,0 +1,578 @@
+recipe: ../../adaptive3.yaml
+cases:
+- id: resolver-renews-only-the-paused-work-loop
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          README.md: A small project.
+    responses:
+    - node_path: adaptive3/direction/direction/adaptive3-lifecycle/cycle/cycle/adaptive3-cycle/review/review/adaptive3-review/ask/ask
+      fields:
+        decision: accept
+        feedback: ''
+  inputs:
+    prompt: Explain this project.
+    max_iterations: 1
+  mocks:
+    ops:
+    - &id001
+      match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: ready
+            summary: Current work is ready.
+            title: Review the requested outcome
+            primary: review/README.md
+            work_kind: explanation
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: Current work is ready.
+        artifacts:
+          review/README.md: |
+            # Requested outcome
+    - &id002
+      match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: changes
+            summary: Still making progress; complete the explanation.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: Still making progress; complete the explanation.
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: resume
+            stage: direction
+            summary: Complete the two remaining sections.
+            additional_attempts: 2
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: Complete the two remaining sections.
+    - *id001
+    - *id002
+    - *id001
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: passed
+            summary: Checked the assignment.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: Checked the assignment.
+    - &id010
+      match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: work_kind
+    value: explanation
+  - type: cel_true
+    expr: '!calls.exists(c,c.op=="merge")'
+  - type: cel_true
+    expr: calls.filter(c,c.op=="extension_execution" && c.node_path.contains("/execute/")).size()==3
+  - type: cel_true
+    expr: calls.filter(c,c.op=="extension_execution" && c.node_path.contains("/resolve/")).size()==1
+- id: resolver-cannot-renew-itself-forever
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          README.md: A small project.
+    responses:
+    - node_path: adaptive3/resolve/sequence/resolver/adaptive3-resolver/ask/ask
+      fields:
+        decision: revise
+        feedback: Why do you think another attempt will work?
+    - node_path: adaptive3/resolve/sequence/resolver/adaptive3-resolver/ask/ask
+      fields:
+        decision: continue
+        feedback: Apply that correction.
+    - node_path: adaptive3/direction/direction/adaptive3-lifecycle/cycle/cycle/adaptive3-cycle/review/review/adaptive3-review/ask/ask
+      fields:
+        decision: accept
+        feedback: ''
+  inputs:
+    prompt: Explain this project.
+  mocks:
+    ops:
+    - &id003
+      match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: stuck
+            summary: The environment is still unavailable.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: The environment is still unavailable.
+    - &id004
+      match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: resume
+            stage: direction
+            summary: Retry with a concrete correction.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: Retry with a concrete correction.
+    - *id003
+    - *id004
+    - *id003
+    - *id004
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: resume
+            stage: direction
+            summary: The provider was unavailable; this correction uses the installed tools.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: The provider was unavailable; this correction uses the installed tools.
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: ready
+            summary: Current work is ready.
+            title: Review the requested outcome
+            primary: review/README.md
+            work_kind: explanation
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: Current work is ready.
+        artifacts:
+          review/README.md: |
+            # Requested outcome
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: passed
+            summary: Checked the assignment.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: Checked the assignment.
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: work_kind
+    value: explanation
+  - type: cel_true
+    expr: '!calls.exists(c,c.op=="merge")'
+  - type: cel_true
+    expr: size(reviews)==3
+  - type: cel_true
+    expr: calls.filter(c,c.op=="extension_execution" && c.node_path.contains("/resolve/")).size()==4
+- id: merge-chase-limit-survives-earlier-stage-visits
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          README.md: A small project.
+          .c2/recipes/hooks/build/verify.yaml: |
+            id: advance-upstream
+            sequence:
+            - id: concurrent-change
+              op: command_execution
+              const: true
+              inputs:
+                run: |
+                  set -eu
+                  repo=$(git remote get-url origin)
+                  count=0
+                  if [ -f "$repo/upstream-count" ]; then count=$(cat "$repo/upstream-count"); fi
+                  if [ "$count" -lt 4 ]; then
+                    count=$((count + 1))
+                    echo "$count" > "$repo/upstream-count"
+                    git -C "$repo" add upstream-count
+                    git -C "$repo" commit -m "Concurrent upstream change $count"
+                  fi
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: Verified the candidate; upstream may have advanced concurrently.
+              artifact_refs: {}
+    responses:
+    - node_path: adaptive3/direction/direction/adaptive3-lifecycle/cycle/cycle/adaptive3-cycle/review/review/adaptive3-review/ask/ask
+      fields:
+        decision: accept
+        feedback: ''
+    - node_path: adaptive3/outcome/outcome/adaptive3-lifecycle/cycle/cycle/adaptive3-cycle/review/review/adaptive3-review/ask/ask
+      fields:
+        decision: accept
+        feedback: ''
+    observe_files:
+    - marker.txt
+  inputs:
+    prompt: Add a marker file.
+  mocks:
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: ready
+            summary: Current work is ready.
+            title: Review the requested outcome
+            primary: review/README.md
+            work_kind: feature
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: Current work is ready.
+        artifacts:
+          review/README.md: |
+            # Requested outcome
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: passed
+            summary: Checked the assignment.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: Checked the assignment.
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: ready
+            summary: Current work is ready.
+            title: Review the requested outcome
+            primary: review/README.md
+            work_kind: feature
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: Current work is ready.
+        artifacts:
+          review/README.md: '# Test plan'
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: passed
+            summary: Checked the assignment.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: Checked the assignment.
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: accepted
+            summary: Checked the assignment.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: Checked the assignment.
+    - &id005
+      match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: ready
+            summary: Current work is ready.
+            title: Review the requested outcome
+            primary: review/README.md
+            work_kind: feature
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: Current work is ready.
+          worktree:
+            marker.txt: |
+              done
+        artifacts:
+          review/README.md: '# Implementation'
+    - &id006
+      match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: passed
+            summary: Checked the assignment.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: Checked the assignment.
+    - &id007
+      match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: accepted
+            summary: Checked the assignment.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: Checked the assignment.
+    - &id008
+      match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: ready
+            summary: Current work is ready.
+            title: Review the requested outcome
+            primary: review/README.md
+            work_kind: feature
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: Current work is ready.
+        artifacts:
+          review/README.md: |-
+            # Outcome
+            A marker was added.
+    - &id009
+      match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: passed
+            summary: Checked the assignment.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: Checked the assignment.
+    - *id005
+    - *id006
+    - *id007
+    - *id008
+    - *id009
+    - *id005
+    - *id006
+    - *id007
+    - *id008
+    - *id009
+    - *id005
+    - *id006
+    - *id007
+    - *id008
+    - *id009
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: resume
+            stage: implementation
+            summary: Upstream has settled; allow one further complete merge attempt.
+            additional_attempts: 1
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: Upstream has settled; allow one further complete merge attempt.
+    - *id005
+    - *id006
+    - *id007
+    - *id008
+    - *id009
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: passed
+            summary: Checked the assignment.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: Checked the assignment.
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: accepted
+            summary: Checked the assignment.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: Checked the assignment.
+    - *id010
+    - match:
+        op: squash
+      repeat: true
+      behavior:
+        mode: passthrough
+    - match:
+        op: merge
+      repeat: true
+      behavior:
+        mode: passthrough
+    - match:
+        op: rebase
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.merge.merged_hash != ""
+  - type: cel_true
+    expr: repositories.root.files["marker.txt"] == "done\n"
+  - type: cel_true
+    expr: calls.filter(c,c.op=="merge").size()==5
+  - type: cel_true
+    expr: calls.filter(c,c.op=="extension_execution" && c.node_path.contains("/resolve/")).size()==1
+  - type: cel_true
+    expr: size(reviews)==2

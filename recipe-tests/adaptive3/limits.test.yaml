@@ -1,0 +1,241 @@
+recipe: lifecycle.yaml
+cases:
+- id: zero-cannot-disable-automatic-limit
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          README.md: A small project.
+    responses: []
+  inputs:
+    purpose: implementation
+    request: Fix it.
+    max_iterations: 0
+  mocks:
+    ops:
+    - &id001
+      match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: ready
+            summary: Current work is ready.
+            title: Review the requested outcome
+            primary: review/README.md
+            work_kind: feature
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: Current work is ready.
+        artifacts:
+          review/README.md: |
+            # Requested outcome
+    - &id002
+      match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: changes
+            summary: A required check still fails.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: A required check still fails.
+    - *id001
+    - *id002
+    - *id001
+    - *id002
+    - *id001
+    - *id002
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: result.status
+    value: stuck
+  - type: cel_true
+    expr: size(outputs.documents)==1
+  - type: cel_true
+    expr: outputs.result.budget.counts.work==4 && outputs.result.budget.counts.consultation==0
+  - type: cel_true
+    expr: calls.filter(c,c.op=="extension_execution" && c.node_path.contains("/execute/")).size()==4
+- id: owner-exchanges-do-not-spend-work-corrections
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          README.md: Parent
+      storage:
+        files:
+          README.md: Storage
+  inputs:
+    purpose: implementation
+    request: Use storage.
+    max_iterations: 1
+  mocks:
+    ops:
+    - &id003
+      match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: consult
+            summary: Ask storage for its current advice.
+            consultation:
+              cell: storage
+              mode: advice
+              request: Can this use your existing API?
+              job: null
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: Ask storage for its current advice.
+    - &id004
+      match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: ready
+            summary: I can use the existing API.
+            title: Use existing storage API
+            work_kind: feature
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: I can use the existing API.
+    - &id005
+      match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: passed
+            summary: The complete assignment passes.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: The complete assignment passes.
+    - &id006
+      match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: accepted
+            summary: The result is sufficient.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: The result is sufficient.
+    - *id003
+    - *id004
+    - *id005
+    - *id006
+    - *id003
+    - *id004
+    - *id005
+    - *id006
+    - *id003
+    - &id008
+      match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.result.loop=="consultation"
+  - type: cel_true
+    expr: outputs.result.budget.counts.work==0 && outputs.result.budget.counts.consultation==3
+  - type: cel_true
+    expr: calls.filter(c,c.cell=="storage" && c.op=="extension_execution").size()==9
+- id: inner-owner-corrections-keep-outer-allowance
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          README.md: Parent
+      storage:
+        files:
+          README.md: Storage
+  inputs:
+    purpose: implementation
+    request: Use storage.
+    max_iterations: 1
+  mocks:
+    ops:
+    - *id003
+    - *id004
+    - &id007
+      match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: changes
+            summary: Clarify the supported API.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: Clarify the supported API.
+    - *id004
+    - *id007
+    - *id004
+    - *id005
+    - *id006
+    - *id004
+    - *id005
+    - *id006
+    - *id008
+  assertions:
+  - type: cel_true
+    expr: outputs.result.status=="accepted"
+  - type: cel_true
+    expr: calls.filter(c,c.cell=="storage" && c.op=="extension_execution").size()==7
+  - type: cel_true
+    expr: calls.filter(c,c.cell=="root" && c.op=="extension_execution" && c.node_path.contains("/execute/")).size()==2

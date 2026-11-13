@@ -7,7 +7,7 @@ inputs:
   feedback: ${{ inputs.?feedback.orValue({}) }}
   settings: ${{ inputs.?settings.orValue({}) }}
   require_verification: ${{ inputs.?require_verification.orValue(false) }}
-  max_iterations: ${{ inputs.?max_iterations.orValue(0) }}
+  max_iterations: ${{ inputs.?max_iterations.orValue(4) }}
   agent_settings: ${{ inputs.?agent_settings.orValue({}) }}
 state:
   initial: execute
@@ -17,16 +17,32 @@ state:
         documents: ${{ transition.payload.?documents.orValue(inputs.documents) }}
         feedback: ${{ transition.payload.?feedback.orValue(inputs.feedback) }}
         session: ${{ transition.payload.?session.orValue({}) }}
-        used: ${{ transition.payload.?used.orValue(0) }}
+        used: ${{ transition.payload.?used.orValue(state_output('execute','used',vars.prior.?counts.orValue({}).?work.orValue(0)))
+          }}
+        consulted: ${{ transition.payload.?consulted.orValue(state_output('execute','consulted',vars.prior.?counts.orValue({}).?consultation.orValue(0)))
+          }}
+        children: ${{ transition.payload.?children.orValue(state_output('execute','children',vars.prior.?counts.orValue({}).?children.orValue(0)))
+          }}
+        packages: ${{ transition.payload.?packages.orValue(state_output('execute','packages',vars.prior.?counts.orValue({}).?packages.orValue(0)))
+          }}
       sequence: []
       outputs:
         documents: ${{ inputs.documents }}
         feedback: ${{ inputs.feedback }}
         session: ${{ inputs.session }}
         used: ${{ inputs.used }}
+        consulted: ${{ inputs.consulted }}
+        children: ${{ inputs.children }}
+        packages: ${{ inputs.packages }}
       transitions:
       - to: limit
-        when: inputs.max_iterations>0 && outputs.used >= inputs.max_iterations
+        when: outputs.used >= vars.work_limit
+        payload:
+          loop: work
+      - to: limit
+        when: outputs.children > vars.children_limit
+        payload:
+          loop: children
       - to: cycle
         when: 'true'
     cycle:
@@ -42,8 +58,24 @@ state:
         session: ${{ states.execute.outputs.session }}
         agent_settings: ${{ inputs.agent_settings }}
       transitions:
+      - to: execute
+        when: outputs.result.status == 'children'
+        payload:
+          documents: ${{ outputs.documents }}
+          feedback: ${{ outputs.result }}
+          session: ${{ outputs.session }}
+          used: ${{ states.execute.outputs.used }}
+          children: ${{ states.execute.outputs.children+1 }}
+      - to: limit
+        when: outputs.result.status == 'consult' && states.execute.outputs.consulted >= vars.consultation_limit
+        payload:
+          loop: consultation
       - to: consult
         when: outputs.result.status == 'consult'
+      - to: limit
+        when: outputs.result.status == 'packages' && states.execute.outputs.packages >= vars.packages_limit
+        payload:
+          loop: packages
       - to: packages
         when: outputs.result.status == 'packages'
       - to: execute
@@ -67,19 +99,16 @@ state:
         mode: '${{ inputs.purpose in [''direction'',''preparation'',''advice''] ? ''advice'' : states.cycle.outputs.result.consultation.mode
           }}'
         agent_settings: ${{ inputs.agent_settings }}
+        job: ${{ states.cycle.outputs.result.consultation.?job.orValue('') }}
       transitions:
-      - to: done
-        when: outputs.result.status == 'stuck'
-        payload:
-          result: ${{ outputs.result }}
-          documents: ${{ states.cycle.outputs.documents }}
       - to: execute
         when: 'true'
         payload:
           documents: ${{ states.cycle.outputs.documents }}
           feedback: ${{ {'consultation':outputs.result,'documents':outputs.documents} }}
           session: ${{ states.cycle.outputs.session }}
-          used: ${{ states.execute.outputs.used+1 }}
+          used: ${{ states.execute.outputs.used }}
+          consulted: ${{ states.execute.outputs.consulted+1 }}
     packages:
       include: ./packages.yaml
       inputs:
@@ -87,27 +116,41 @@ state:
         reason: ${{ states.cycle.outputs.result.summary }}
         agent_settings: ${{ inputs.agent_settings }}
       transitions:
-      - to: done
-        when: outputs.result.status == 'stuck'
-        payload:
-          result: ${{ outputs.result }}
-          documents: ${{ states.cycle.outputs.documents }}
       - to: execute
         when: 'true'
         payload:
           documents: ${{ states.cycle.outputs.documents }}
           feedback: ${{ outputs.result }}
           session: '${{ has(outputs.result.human) ? {} : states.cycle.outputs.session }}'
-          used: '${{ has(outputs.result.human) ? 0 : states.execute.outputs.used+1 }}'
+          used: ${{ states.execute.outputs.used }}
+          packages: ${{ states.execute.outputs.packages+1 }}
     limit:
       sequence: []
       outputs:
         result:
           status: stuck
-          summary: Automatic work allowance reached. Decide the next correction before granting another attempt.
+          summary: ${{ 'The '+inputs.loop+' allowance is used. Explain the next correction or progress before granting
+            more attempts.' }}
+          loop: ${{ inputs.loop }}
+          budget: ${{ inputs.budget }}
+          last_result: ${{ inputs.last_result }}
         documents: ${{ inputs.documents }}
       inputs:
         documents: ${{ states.execute.outputs.documents }}
+        loop: ${{ transition.payload.?loop.orValue('work') }}
+        budget:
+          stage: ${{ inputs.purpose }}
+          counts:
+            work: ${{ states.execute.outputs.used }}
+            consultation: ${{ states.execute.outputs.consulted }}
+            children: ${{ states.execute.outputs.children }}
+            packages: ${{ states.execute.outputs.packages }}
+          limits:
+            work: ${{ vars.work_limit }}
+            consultation: ${{ vars.consultation_limit }}
+            children: ${{ vars.children_limit }}
+            packages: ${{ vars.packages_limit }}
+        last_result: ${{ state_output('cycle','result',{}) }}
     done:
       sequence: []
       outputs:
@@ -133,3 +176,14 @@ catch:
       candidate: {}
       patch: null
       feedback: ${{ inputs.?feedback.orValue({}) }}
+vars:
+  prior: '${{ inputs.feedback.?budget.orValue({}).?stage.orValue('''') == inputs.purpose ? inputs.feedback.budget
+    : {} }}'
+  work_limit: '${{ inputs.feedback.?budget.orValue({}).?stage.orValue('''') == inputs.purpose ? inputs.feedback.budget.?limits.orValue({}).?work.orValue((inputs.max_iterations
+    >= 1 ? int(inputs.max_iterations) : 4)) : (inputs.max_iterations >= 1 ? int(inputs.max_iterations) : 4) }}'
+  consultation_limit: '${{ inputs.feedback.?budget.orValue({}).?stage.orValue('''') == inputs.purpose ? inputs.feedback.budget.?limits.orValue({}).?consultation.orValue(3)
+    : 3 }}'
+  children_limit: '${{ inputs.feedback.?budget.orValue({}).?stage.orValue('''') == inputs.purpose ? inputs.feedback.budget.?limits.orValue({}).?children.orValue(3)
+    : 3 }}'
+  packages_limit: '${{ inputs.feedback.?budget.orValue({}).?stage.orValue('''') == inputs.purpose ? inputs.feedback.budget.?limits.orValue({}).?packages.orValue(3)
+    : 3 }}'

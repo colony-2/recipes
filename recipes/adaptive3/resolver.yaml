@@ -6,175 +6,8 @@ inputs:
   documents: ${{ inputs.?documents.orValue({}) }}
   feedback: ${{ inputs.?feedback.orValue({}) }}
   agent_settings: ${{ inputs.?agent_settings.orValue({}) }}
-state:
-  initial: settings
-  states:
-    setup:
-      sequence:
-      - id: schemas
-        include: ./schemas.yaml
-      - id: prompts
-        include: ./prompts/resolver.yaml
-        inputs:
-          stage: ${{ inputs.stage }}
-          request: ${{ inputs.request }}
-          problem: ${{ inputs.problem }}
-          feedback: ${{ inputs.feedback }}
-      outputs:
-        schema: ${{ sequence.schemas.outputs.resolver }}
-        text: ${{ sequence.prompts.outputs }}
-      transitions:
-      - to: investigate
-        when: 'true'
-      inputs:
-        stage: ${{ inputs.stage }}
-        request: ${{ inputs.request }}
-        problem: ${{ inputs.problem }}
-        documents: ${{ inputs.documents }}
-        feedback: '${{ state_exists(''ask'') ? {''fields'':states.ask.outputs.fields} : inputs.feedback }}'
-        agent_settings: ${{ states.settings.outputs.agent_settings }}
-    investigate:
-      include: ./agent.yaml
-      inputs:
-        prompt: ${{ states.setup.outputs.text.task }}
-        schema: ${{ jq([states.setup.outputs.schema,vars.destinations[inputs.stage]], '.[1] as $stages | .[0] |
-          .properties.stage.enum = $stages') }}
-        documents: ${{ jq([inputs.documents,inputs.problem.?errors.orValue({})], 'add') }}
-        read_only: true
-        agent_settings: ${{ states.settings.outputs.agent_settings }}
-      transitions:
-      - to: done
-        when: outputs.response.status == 'resume' && states.settings.outputs.allow_resume
-        payload:
-          result: '${{ state_exists(''ask'') ? jq([outputs.response,{''human'':states.ask.outputs,''documents'':jq(states.ask.outputs.?artifact_refs.orValue({}),''with_entries(.key
-            = "feedback/" + .key | .value.name = .key)'')}], ''add'') : outputs.response }}'
-      - to: ask
-        when: 'true'
-      catch:
-      - when: failure.kind != 'cancellation'
-        to: ask
-        payload:
-          problem: ${{ failure }}
-    ask:
-      id: ask
-      op: input
-      inputs:
-        form:
-          title: '${{ ''Continue '' + inputs.stage + '': '' + jq(inputs.request,''split("\n")[0] | .[:85]'') }}'
-          fields:
-          - id: decision
-            type: multiple_choice
-            question: '${{ (transition.payload.?problem.hasValue() ? transition.payload.problem.message : (state_exists(''answer'')
-              ? states.answer.outputs.response.summary : state_output(''investigate'',''response'',inputs.problem).summary))
-              + ''\nAgent settings: '' + (size(states.settings.outputs.agent_settings)>0 ? json_stringify(states.settings.outputs.agent_settings)
-              : ''worker defaults'') + ''\n'' + transition.payload.?clarification.orValue('''') }}'
-            required: true
-            options:
-            - value: continue
-              label: ${{ states.setup.outputs.text.continue }}
-            - value: revise
-              label: ${{ states.setup.outputs.text.discuss }}
-          - id: feedback
-            type: paragraph_text
-            question: ${{ states.setup.outputs.text.message }}
-            required: false
-          - id: annotations
-            type: file_upload
-            question: ${{ states.setup.outputs.text.notes }}
-            required: false
-          - id: model
-            type: short_answer
-            question: Model override (optional; blank keeps the current choice)
-            required: false
-          - id: reasoning_effort
-            type: short_answer
-            question: Reasoning effort override (optional; blank keeps the current choice)
-            required: false
-          kind: review
-          documents: ${{ inputs.documents }}
-      transitions:
-      - to: settings
-        when: nonempty(outputs.fields.?model.orValue('')) || nonempty(outputs.fields.?reasoning_effort.orValue(''))
-        payload:
-          agent_settings: ${{ jq([states.settings.outputs.agent_settings,outputs.fields], '.[0] + (.[1] | with_entries(select((.key
-            == "model" or .key == "reasoning_effort") and .value != "")))') }}
-          allow_resume: ${{ outputs.fields.decision == 'continue' }}
-      - to: ask
-        when: outputs.fields.decision == 'revise' && !nonempty(outputs.fields.?feedback.orValue('')) && size(outputs.?artifact_refs.orValue({}))
-          == 0
-        payload:
-          clarification: Enter a question or requested change, or attach notes, then confirm.
-      - to: done
-        when: outputs.fields.decision == 'continue'
-        payload:
-          result:
-            status: resume
-            stage: '${{ state_exists(''answer'') ? states.answer.outputs.response.?stage.orValue(inputs.stage) :
-              state_output(''investigate'',''response'',{}).?stage.orValue(inputs.stage) }}'
-            summary: '${{ state_exists(''answer'') ? states.answer.outputs.response.summary : state_output(''investigate'',''response'',inputs.problem).summary
-              }}'
-            human: ${{ outputs }}
-            documents: ${{ jq(outputs.?artifact_refs.orValue({}), 'with_entries(.key = "feedback/" + .key | .value.name
-              = .key)') }}
-      - to: answer
-        when: 'true'
-    answer:
-      inputs:
-        stage: ${{ inputs.stage }}
-        request: ${{ inputs.request }}
-        problem: ${{ inputs.problem }}
-        feedback: ${{ states.ask.outputs }}
-        schema: ${{ jq([states.setup.outputs.schema,vars.destinations[inputs.stage]], '.[1] as $stages | .[0] |
-          .properties.stage.enum = $stages') }}
-        documents: ${{ jq([inputs.documents,jq(states.ask.outputs.?artifact_refs.orValue({}), 'with_entries(.key
-          = "feedback/" + .key | .value.name = .key)')], 'add') }}
-        session: ${{ state_output('answer','session',state_output('investigate','session',{})) }}
-        agent_settings: ${{ states.settings.outputs.agent_settings }}
-      sequence:
-      - id: prompts
-        include: ./prompts/resolver.yaml
-        inputs:
-          stage: ${{ inputs.stage }}
-          request: ${{ inputs.request }}
-          problem: ${{ inputs.problem }}
-          feedback: ${{ inputs.feedback }}
-      - id: agent
-        include: ./agent.yaml
-        inputs:
-          prompt: ${{ sequence.prompts.outputs.task }}
-          schema: ${{ inputs.schema }}
-          documents: ${{ inputs.documents }}
-          read_only: true
-          session: ${{ inputs.session }}
-          agent_settings: ${{ inputs.agent_settings }}
-      outputs:
-        response: ${{ sequence.agent.outputs.response }}
-        session: ${{ sequence.agent.outputs.session }}
-      transitions:
-      - to: ask
-        when: 'true'
-      catch:
-      - when: failure.kind != 'cancellation'
-        to: ask
-    done:
-      sequence: []
-      outputs:
-        result: ${{ transition.payload.result }}
-    settings:
-      inputs:
-        agent_settings: ${{ transition.payload.?agent_settings.orValue(inputs.agent_settings) }}
-        allow_resume: ${{ transition.payload.?allow_resume.orValue(inputs.feedback.?status.orValue('') != 'resume')
-          }}
-      sequence: []
-      outputs:
-        agent_settings: ${{ inputs.agent_settings }}
-        allow_resume: ${{ inputs.allow_resume }}
-      transitions:
-      - to: setup
-        when: 'true'
-outputs:
-  result: ${{ states.done.outputs.result }}
-  agent_settings: ${{ states.settings.outputs.agent_settings }}
+  prior_job: ${{ inputs.?prior_job.orValue('') }}
+  automatic: ${{ inputs.?automatic.orValue(true) }}
 vars:
   destinations:
     configure:
@@ -204,3 +37,167 @@ vars:
     - implementation
     - outcome
     - integration
+    recovery:
+    - configure
+    - direction
+    - preparation
+    - implementation
+    - outcome
+    - integration
+state:
+  initial: turn
+  states:
+    turn:
+      inputs:
+        agent_settings: ${{ transition.payload.?agent_settings.orValue(inputs.agent_settings) }}
+        feedback: ${{ transition.payload.?feedback.orValue(inputs.feedback) }}
+        session: ${{ transition.payload.?session.orValue({}) }}
+        allow_resume: ${{ transition.payload.?allow_resume.orValue(inputs.automatic) }}
+        human: ${{ transition.payload.?human.orValue({}) }}
+      sequence: []
+      outputs:
+        agent_settings: ${{ inputs.agent_settings }}
+        feedback: ${{ inputs.feedback }}
+        session: ${{ inputs.session }}
+        allow_resume: ${{ inputs.allow_resume }}
+        human: ${{ inputs.human }}
+      transitions:
+      - to: setup
+        when: 'true'
+    setup:
+      sequence:
+      - id: schemas
+        include: ./schemas.yaml
+      - id: prompts
+        include: ./prompts/resolver.yaml
+        inputs:
+          stage: ${{ inputs.stage }}
+          request: ${{ inputs.request }}
+          problem: ${{ inputs.problem }}
+          feedback: ${{ inputs.feedback }}
+          prior_job: ${{ inputs.prior_job }}
+      outputs:
+        schema: '${{ inputs.prior_job != '''' ? sequence.schemas.outputs.recovery : sequence.schemas.outputs.resolver
+          }}'
+        text: ${{ sequence.prompts.outputs }}
+      transitions:
+      - to: investigate
+        when: 'true'
+      inputs:
+        stage: ${{ inputs.stage }}
+        request: ${{ inputs.request }}
+        problem: ${{ inputs.problem }}
+        documents: ${{ inputs.documents }}
+        feedback: ${{ states.turn.outputs.feedback }}
+        agent_settings: ${{ states.turn.outputs.agent_settings }}
+        prior_job: ${{ inputs.prior_job }}
+    investigate:
+      include: ./agent.yaml
+      inputs:
+        prompt: ${{ states.setup.outputs.text.task }}
+        schema: ${{ jq([states.setup.outputs.schema,vars.destinations[inputs.stage]], '.[1] as $stages | .[0] |
+          .properties.stage.enum = $stages') }}
+        documents: ${{ jq([inputs.documents,inputs.problem.?errors.orValue({}),jq(states.turn.outputs.feedback.?artifact_refs.orValue({}),'with_entries(.key
+          = "feedback/" + .key | .value.name = .key)')],"add") }}
+        read_only: true
+        agent_settings: ${{ states.turn.outputs.agent_settings }}
+        session: ${{ states.turn.outputs.session }}
+      transitions:
+      - to: done
+        when: outputs.response.status == 'resume' && states.turn.outputs.allow_resume
+        payload:
+          result: '${{ size(states.turn.outputs.human)>0 ? jq([outputs.response,{''human'':states.turn.outputs.human}],''add'')
+            : outputs.response }}'
+      - to: ask
+        when: 'true'
+      catch:
+      - when: failure.kind != 'cancellation'
+        continue:
+          outputs:
+            response:
+              status: stuck
+              summary: ${{ failure.message }}
+            artifacts: {}
+            session: {}
+    ask:
+      id: ask
+      op: input
+      inputs:
+        form:
+          title: '${{ ''Continue '' + inputs.stage + '': '' + jq(inputs.request,''split("\n")[0] | .[:85]'') }}'
+          fields:
+          - id: decision
+            type: multiple_choice
+            question: |-
+              {{ states.investigate.outputs.response.summary }}
+              Agent settings: ${{ size(states.turn.outputs.agent_settings)>0 ? json_stringify(states.turn.outputs.agent_settings) : 'worker defaults' }}
+              ${{ transition.payload.?clarification.orValue('') }}
+            required: true
+            options:
+            - value: continue
+              label: ${{ states.setup.outputs.text.continue }}
+            - value: revise
+              label: ${{ states.setup.outputs.text.discuss }}
+          - id: feedback
+            type: paragraph_text
+            question: ${{ states.setup.outputs.text.message }}
+            required: false
+          - id: annotations
+            type: file_upload
+            question: ${{ states.setup.outputs.text.notes }}
+            required: false
+          - id: model
+            type: short_answer
+            question: Model override (optional; blank keeps the current choice)
+            required: false
+          - id: reasoning_effort
+            type: short_answer
+            question: Reasoning effort override (optional; blank keeps the current choice)
+            required: false
+          kind: review
+          documents: ${{ jq([inputs.documents,jq(states.investigate.outputs.artifacts,'with_entries(select(.key|startswith("review/")))')],"add")
+            }}
+      transitions:
+      - to: turn
+        when: nonempty(outputs.fields.?model.orValue('')) || nonempty(outputs.fields.?reasoning_effort.orValue(''))
+        payload:
+          agent_settings: ${{ jq([states.turn.outputs.agent_settings,outputs.fields],'.[0] + (.[1] | with_entries(select((.key
+            == "model" or .key == "reasoning_effort") and .value != "")))') }}
+          feedback: ${{ outputs }}
+          human: ${{ outputs }}
+          session: {}
+          allow_resume: ${{ outputs.fields.decision == 'continue' }}
+      - to: ask
+        when: outputs.fields.decision == 'revise' && !nonempty(outputs.fields.?feedback.orValue('')) && size(outputs.?artifact_refs.orValue({}))
+          == 0
+        payload:
+          clarification: Enter a question or requested change, or attach notes, then confirm.
+      - to: done
+        when: outputs.fields.decision == 'continue' && states.investigate.outputs.response.?stage.orValue('') in
+          vars.destinations[inputs.stage]
+        payload:
+          result: ${{ jq([states.investigate.outputs.response,{'status':'resume','human':outputs,'documents':jq(outputs.?artifact_refs.orValue({}),'with_entries(.key
+            = "feedback/" + .key | .value.name = .key)')}],'add') }}
+      - to: turn
+        when: 'true'
+        payload:
+          agent_settings: ${{ states.turn.outputs.agent_settings }}
+          feedback: ${{ outputs }}
+          human: ${{ outputs }}
+          session: ${{ states.investigate.outputs.session }}
+          allow_resume: ${{ outputs.fields.decision == 'continue' }}
+    done:
+      sequence: []
+      outputs:
+        result: ${{ jq(inputs.result, 'if .approval then .approval as $a | .approval = {result:{status:"accepted",receipt:$a.receipt,source_job:$a.source_job,source_task:$a.source_task},patch:$a.patch}
+          else . end') }}
+        documents: ${{ jq([inputs.artifacts,inputs.result], '(.[1].approval.patch // "") as $patch | .[0] | with_entries(select((.key
+          | startswith("review/")) or .key == $patch))') }}
+      inputs:
+        result: ${{ transition.payload.result }}
+        artifacts: ${{ states.investigate.outputs.artifacts }}
+outputs:
+  result: ${{ jq([states.done.outputs.result,states.done.outputs.documents], '.[1] as $files | .[0] | if .approval.patch
+    then .approval.patch = $files[.approval.patch] else . end') }}
+  agent_settings: ${{ states.turn.outputs.agent_settings }}
+  documents: '${{ size(states.done.outputs.documents)>0 ? states.done.outputs.documents : inputs.documents }}'

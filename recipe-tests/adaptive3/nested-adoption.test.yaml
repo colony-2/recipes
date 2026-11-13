@@ -1,0 +1,104 @@
+recipe: nested-adoption.yaml
+cases:
+- id: receiving-owner-adopts-an-existing-attempt
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          README.md: Parent
+      storage:
+        files:
+          README.md: Storage
+  mocks:
+    ops:
+    - match:
+        op: recipes.run
+      behavior:
+        mode: return
+        effects:
+          children:
+          - recipe: child.yaml
+            cell: storage
+            bind: existing
+            await: terminal
+        outputs_expr: '{"job_ids":[children.existing]}'
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: Inspect the existing owner result first.
+        outputs_expr: '{"status":"completed","output_schema_valid":true,"response":{"status":"consult","summary":"Inspect
+          the existing owner result first.","consultation":{"cell":"storage","mode":"advice","request":"Read existing
+          work.","job":children.existing}}}'
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: ready
+            summary: The existing result answers the question.
+            title: Use the existing storage result
+            work_kind: explanation
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: The existing result answers the question.
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: passed
+            summary: The advice is supported.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: The advice is supported.
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: accepted
+            summary: The owner answered the question.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: The owner answered the question.
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.result.status=="ready"
+  - type: cel_true
+    expr: calls.filter(c,c.op=="recipes.run").size()==1
+  - type: cel_true
+    expr: calls.filter(c,c.op=="recipe.await_result_soft").size()==1
+  - type: cel_true
+    expr: calls.filter(c,c.op=="recipe.await_result_soft")[0].inputs.target.job==outputs.existing
+  - type: cel_true
+    expr: calls.exists(c,c.op=="extension_execution" && c.cell=="storage" && c.inputs.inputs.prompt.contains(outputs.existing))

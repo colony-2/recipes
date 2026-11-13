@@ -1,0 +1,49 @@
+schema_version: 2
+id: diagnostics-test
+sequence:
+- id: first
+  op: command_execution
+  inputs:
+    env:
+      OUTBOX: ${{ context.environment.op.outbox }}
+    run: |-
+      mkdir -p "$OUTBOX/sub"
+      printf alpha > "$OUTBOX/sub/check.log"
+- id: second
+  op: command_execution
+  inputs:
+    env:
+      OUTBOX: ${{ context.environment.op.outbox }}
+    run: |-
+      mkdir -p "$OUTBOX/sub"
+      printf beta > "$OUTBOX/sub/check.log"
+- id: diagnostics
+  include: ../../recipes/adaptive3/diagnostics.yaml
+  inputs:
+    directory: error/verify
+    failure:
+      cause:
+        attrs:
+          command:
+            diagnostics: ${{ sequence.first.artifacts }}
+      other_cause:
+        attrs:
+          extension:
+            diagnostics: ${{ sequence.second.artifacts }}
+- id: check
+  op: command_execution
+  artifacts:
+    ./: ${{ sequence.diagnostics.outputs.documents }}
+  inputs:
+    env:
+      INBOX: ${{ context.environment.op.inbox }}
+    run: |-
+      python3 - <<'CHECK'
+      import json,os,pathlib
+      files=list(pathlib.Path(os.environ['INBOX']).glob('error/verify/*/task-*/cause-*/sub/check.log'))
+      assert sorted(p.read_text() for p in files)==['alpha','beta'], files
+      print(json.dumps({'status':'passed','logs':len(files)}))
+      CHECK
+outputs:
+  result: ${{ json_parse(sequence.check.outputs.stdout) }}
+  documents: ${{ sequence.diagnostics.outputs.documents }}

@@ -142,15 +142,16 @@ the values belong together. An include approaching ten inputs needs a design
 review, not a new `context` property containing those ten inputs.
 
 The initial public inputs are `title`, `prompt`, `target_directory`, `documents`,
-`require_verification`, `max_iterations` and `resume_from`. The directory is
-repository-relative. The first two are the human request, and the last two are
-automatic-work policy and optional recovery from an existing job. There is no
+`require_verification`, `max_iterations`, `resume_from`, `model` and
+`reasoning_effort`. Model settings are optional human choices; omitted values use
+the worker config. The directory is
+repository-relative. The title and prompt are the human request; `max_iterations` controls local work
+passes and `resume_from` identifies prior work to inspect. There is no
 public session checkpoint: a new adaptive3 job starts its own sessions and can
 inspect retained work through `resume_from`.
 
 This is a new entrypoint, so it need not accept adaptive2's private annotations,
-coordination state or handoff fields. Any later change to the existing public
-`build` contract is a separate migration decision.
+coordination state or handoff fields. The public `build` entrypoint now forwards to adaptive3.
 
 Declare schema v2 on each recipe with a typed contract. Keep the final public
 outputs to `summary`, `work_kind`, selected `artifact_refs`, native `reviews`,
@@ -159,18 +160,19 @@ the entire controller state or every intermediate artifact as the job result.
 
 ### Include contracts
 
-Names below describe the intended input contract. Optional inputs are omitted
+Agent activities also accept the optional two-field `agent_settings` value.
+Names below describe the input contract. Optional inputs are omitted
 when unused; they are not populated with empty objects in every agent response.
 
 | Include | Inputs | Main outputs |
 | --- | --- | --- |
 | `lifecycle` | `purpose`, `request`, `target_directory`, `documents`, `feedback`, `settings`, `require_verification`, `max_iterations` | Accepted result and selected artifacts, or a requested earlier stage with feedback, or `stuck` with its source. |
 | `execute` | `purpose`, `request`, `target_directory`, `documents`, `feedback`, `settings`, `session` | Agent response, produced artifacts and checkpoint; native results for concrete integration work. |
-| `validate` | `purpose`, `request`, `target_directory`, `documents`, `title`, `primary`, `settings`, `require_verification` | `passed`, `changes` or `stuck`; findings, check results and diagnostic references. |
+| `validate` | `purpose`, `request`, `target_directory`, `documents`, `work`, `settings`, `require_verification`, `feedback` | `passed`, `changes` or `stuck`; findings, check results and diagnostic references. |
 | `review` | `purpose`, `request`, `documents`, `title`, `primary`, `validation`, `feedback` | Acceptance and its native receipt, a change request, or `stuck`. Questions remain inside this include. |
 | `agent` | `prompt`, `schema`, `documents`, `session`, `read_only` | Validated response, native checkpoint and artifacts. c2j records children. |
-| `consultation` | `cell`, `request`, `documents`, `feedback`, `mode`, `max_iterations` | Receiver's answer or agreed request, selected outputs, and actual child result when execution was requested. |
-| `resolver` | `stage`, `request`, `problem`, `documents`, `feedback` | Corrected direction and the stage to resume; native human response when one was needed. |
+| `consultation` | `cell`, `request`, `documents`, `feedback`, `mode`, `max_iterations`, `job` | Receiver's answer or agreed request, selected outputs, and actual child result when execution was requested. |
+| `resolver` | `stage`, `request`, `problem`, `documents`, `feedback`, `prior_job`, `automatic` | Corrected direction and the stage to resume; native human response when one was needed. |
 | `hooks` | `hook`, `request`, `target_directory`, `documents`, `settings`, `publication` | The native hook result, settings from configure, and exported artifacts. |
 | `packages` | `requests`, `reason` | Approved and validated configuration, or findings for Execute/resolution. |
 | `package-probe` | `config`, `checks` | Probe results and diagnostics. |
@@ -465,9 +467,11 @@ children automatically; the agent must not recreate that tracking.
 A stuck adaptive3 child enters its own resolver and retains its identity. Its
 parent must be able to receive a help event while that child remains open; this
 needs a verified native communication/wait contract. A terminal failed older or
-external child is inspected for useful results. The parent enters resolution,
-which may agree a new external attempt; the parent job stays open. Human
-cancellation is not permission to recreate the cancelled request.
+external child returns to the requesting agent with its ID, outcome message and
+selected result/error directories. That agent decides whether to recover, retry,
+adopt an existing attempt or continue without it. Resolution is for a stuck or
+unavailable requester, or renewal of its local allowance. A corrective cancellation
+may justify a corrected attempt; a stop request must be respected.
 
 Use both identities for their actual purposes: jobs identify attempts and their
 results; goals identify the desired outcome and other attempts that may have
@@ -475,9 +479,12 @@ completed it. Retrieve current native information when evaluating a dependency.
 Do not enforce an obsolete prerequisite after the human changes scope, and do
 not treat a goal status alone as proof that the current assignment was satisfied.
 
-`resume_from` uses the same inspection tools to recover selected work and native
-decisions. It starts a new adaptive3 session. It does not import adaptive2 private
-state or assume a prior approval still covers changed scope.
+`resume_from` enters the resolver first. It inspects exact prior work and human
+decisions, returns selected documents and original approval/merge records, and
+chooses the remaining stage. Configuration preserves that choice. The destination
+runs its complete cycle; earlier stages need not have run in this job. Unfinished
+code is restored in the managed workspace during Implementation. A completed
+merge goes to remaining publication. Changed scope returns to Direction.
 
 ### Stuck and the resolver
 
@@ -492,9 +499,18 @@ A clear resolution can grant a bounded new attempt or change direction. Waiting
 uses native input/wait operations and consumes no model turns. The resolver must
 not recursively spawn more resolvers or automatically retry itself forever.
 An explicit human cancellation remains the terminal stop mechanism.
-`max_iterations: 0` disables that automatic-pass allowance, as today. Keep any
-limits on automatic negotiation distinct from human turns. Do not impose recipe
-execution timeouts; runtime limits and cancellation remain runtime responsibilities.
+Automatic loops have finite, independent allowances. `max_iterations` defaults
+to four work passes; values below one use that default. Owner exchanges and
+package attempts default to three; direct child results permit three automatic
+continuations. Each receiving owner has four local passes and nesting is limited
+to four suspended owners. Merge chasing permits three automatic returns through
+Implementation and Outcome, retaining its count across those visits.
+
+The resolver can grant 1–20 more attempts to the paused loop while retaining
+other counters. It can make two automatic corrections before needing explicit
+human continuation. Questions neither consume nor grant attempts. These are
+recipe-state counters, not files or a parallel job ledger. No production execution
+timeout is added; runtime limits and cancellation remain runtime responsibilities.
 
 ## 9. Reuse from adaptive2: preserve behavior, choose the code
 

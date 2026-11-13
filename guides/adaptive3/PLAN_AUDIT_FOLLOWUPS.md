@@ -1,6 +1,7 @@
 # Adaptive3 follow-ups: requester-led recovery and clearer reviews
 
-Status: implementation in progress, 2026-11-13. This records the feedback on the
+Status: recipe changes implemented, 2026-11-13. Compact directory transport awaits
+the documented c2j/Cortex capability. This records the feedback on the
 [adaptive2 history audit](AUDIT_ADAPTIVE2_HISTORY.md). See [the implementation record](FOLLOWUP_IMPLEMENTATION.md) for delivered changes and tests.
 The work is tracked in [TODO.md](TODO.md), alongside the three previously agreed items.
 

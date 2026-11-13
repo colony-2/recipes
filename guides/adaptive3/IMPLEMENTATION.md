@@ -15,8 +15,8 @@ Read the [actual trial documents](results/README.md) to assess the writing, and
 [test results](TEST_RESULTS.md) for the evidence and its limits. The
 [design](DESIGN.md) records the intended structure.
 
-The [follow-up list](TODO.md) records human-directed model overrides, incomplete
-result correction, qualitative scope by cell and measured code-change reports.
+The [follow-up assessment](FOLLOWUP_IMPLEMENTATION.md) records completed changes,
+regressions and runtime gaps against [the todo list](TODO.md).
 
 ## Delivered against the plan
 
@@ -28,8 +28,8 @@ result correction, qualitative scope by cell and measured code-change reports.
 | Human-readable work | Four work types; the existing one-pager and outcome headings; descriptive titles; consequential Q&A without a question-count cap; qualitative expected scope by cell and actual measured changes in the outcome review. |
 | Dialogue separate from changes | A read-only review session answers questions. Change requests carry the original human words and current uploaded notes into Execute. Scope changes return to Direction. Human turns do not consume automatic attempts. |
 | Agents own their work products | The producer selects the current `review/` collection. Validation and native human input use those artifact identities. Replacing the collection does not overlay historical files. |
-| Consultation and delivery | Inline advice runs in the receiving workspace, including nested advice. The receiver writes the assignment and may select an existing delivery workflow. Native child submission and waiting retain actual outcomes and partial-result references. |
-| Same-job resolution | Caught failures and automatic allowance exhaustion return `stuck`. The resolver proposes a correction for the same or an earlier stage. If that correction gets stuck too, human direction is required before another attempt. Discussion alone does not grant that attempt. |
+| Consultation and delivery | Inline advice runs in the receiving workspace, including nested advice. The receiver writes the assignment and may select an existing delivery workflow. Native child submission and waiting return actual outcomes and selected results to the requester, including after invalid reports; active or completed attempts can be adopted. |
+| Same-job resolution | Caught failures and automatic allowance exhaustion return `stuck`. The resolver proposes a correction for the same or an earlier stage. After two automatic resolver corrections, explicit human continuation is required. Each work/service loop has its own finite allowance. Discussion alone does not grant that attempt. |
 | Preserve local customization | Existing configure, before-design, prepare, verify and publish hook API and paths. Required verification cannot be waived by the assessing agent. Configured specialists use the shared Validate activity. |
 | Package requests | Agent request → policy or human approval → fresh probe job → adoption of the tested config. A validator rejects unrelated configuration changes and checks actual adoption. |
 | Native Git and approval reuse | Native rebase, squash and merge. Stale merge returns through Implementation and Outcome. A validator compares the whole resulting tree, including modes and binary content, to reuse approval for unchanged work. Publication recovery preserves a completed merge. |

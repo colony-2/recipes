@@ -7,8 +7,13 @@ inputs:
   mode: ${{ inputs.?mode.orValue('advice') }}
   max_iterations: ${{ inputs.?max_iterations.orValue(4) }}
   agent_settings: ${{ inputs.?agent_settings.orValue({}) }}
+  job: ${{ inputs.?job.orValue('') }}
 state:
-  initial: call
+  initial:
+  - to: wait
+    when: inputs.job != ''
+  - to: call
+    when: 'true'
   states:
     call:
       inputs:
@@ -19,6 +24,7 @@ state:
         mode: ${{ transition.payload.?mode.orValue(inputs.mode) }}
         parents: ${{ transition.payload.?parents.orValue([]) }}
         used: ${{ transition.payload.?used.orValue(0) }}
+        session: ${{ transition.payload.?session.orValue({}) }}
       sequence:
       - id: prompts
         include: ./prompts/consultation.yaml
@@ -36,9 +42,10 @@ state:
         parents: ${{ inputs.parents }}
         used: ${{ inputs.used }}
         prompt: ${{ sequence.prompts.outputs.task }}
+        session: ${{ inputs.session }}
       transitions:
       - to: stuck
-        when: inputs.max_iterations > 0 && outputs.used >= inputs.max_iterations
+        when: outputs.used >= vars.limit || size(outputs.parents) >= 4
       - to: advice
         when: 'true'
     advice:
@@ -49,10 +56,13 @@ state:
         documents: ${{ states.call.outputs.documents }}
         feedback: ${{ states.call.outputs.feedback }}
         agent_settings: ${{ inputs.agent_settings }}
+        session: ${{ states.call.outputs.session }}
       workspace:
         cell: ${{ states.call.outputs.cell }}
         ref: main
       transitions:
+      - to: existing_child
+        when: outputs.result.status == 'consult' && nonempty(outputs.result.consultation.?job.orValue(''))
       - to: call
         when: outputs.result.status == 'consult'
         payload:
@@ -61,11 +71,11 @@ state:
           mode: advice
           documents: ${{ outputs.documents }}
           feedback: {}
-          parents: ${{ states.call.outputs.parents + [{'cell':states.call.outputs.cell,'request':states.call.outputs.request,'mode':states.call.outputs.mode,'documents':states.call.outputs.documents}]
+          parents: ${{ states.call.outputs.parents + [{'cell':states.call.outputs.cell,'request':states.call.outputs.request,'mode':states.call.outputs.mode,'documents':states.call.outputs.documents,'session':outputs.session,'used':states.call.outputs.used+1}]
             }}
-          used: ${{ states.call.outputs.used+1 }}
+          used: 0
       - to: call
-        when: outputs.result.status == 'changes'
+        when: outputs.result.status in ['changes','children']
         payload:
           cell: ${{ states.call.outputs.cell }}
           request: ${{ states.call.outputs.request }}
@@ -74,6 +84,7 @@ state:
           documents: ${{ outputs.documents }}
           feedback: ${{ outputs.result }}
           used: ${{ states.call.outputs.used+1 }}
+          session: ${{ outputs.session }}
       - to: stuck
         when: outputs.result.status != 'accepted'
       - to: return_to_owner
@@ -90,6 +101,8 @@ state:
       sequence: []
       outputs:
         parent: ${{ inputs.parent }}
+        reply: ${{ inputs.reply }}
+        documents: ${{ inputs.documents }}
       transitions:
       - to: call
         when: 'true'
@@ -98,12 +111,14 @@ state:
           request: ${{ outputs.parent.request }}
           mode: ${{ outputs.parent.mode }}
           documents: ${{ outputs.parent.documents }}
-          feedback: ${{ {'consultation':states.advice.outputs.work,'documents':states.advice.outputs.documents}
-            }}
+          feedback: ${{ {'consultation':outputs.reply,'documents':outputs.documents} }}
           parents: ${{ jq(states.call.outputs.parents, ' .[0:-1]') }}
-          used: ${{ states.call.outputs.used+1 }}
+          used: ${{ outputs.parent.used }}
+          session: ${{ outputs.parent.session }}
       inputs:
         parent: ${{ states.call.outputs.parents[size(states.call.outputs.parents)-1] }}
+        reply: ${{ transition.payload.?result.orValue(states.advice.outputs.work) }}
+        documents: ${{ transition.payload.?documents.orValue(states.advice.outputs.documents) }}
     submit:
       id: submit
       op: recipes.run
@@ -120,24 +135,16 @@ state:
       - to: wait
         when: 'true'
     wait:
-      id: wait
-      op: recipe.await_result_soft
+      include: ./children.yaml
       inputs:
-        target:
-          job: ${{ states.submit.outputs.job_ids[0] }}
-        wait:
-          'on': job
-          condition: complete
-        return_when: terminal
+        jobs: '${{ inputs.job != '''' ? [inputs.job] : states.submit.outputs.job_ids }}'
       transitions:
       - to: done
-        when: outputs.status == 'completed'
-        payload:
-          result: ${{ {'status':'ready','summary':'The agreed child finished; inspect its actual result against
-            the request.','child':outputs} }}
-          documents: ${{ outputs.?artifacts.orValue({}) }}
-      - to: stuck
         when: 'true'
+        payload:
+          result: ${{ {'status':'ready','summary':'Review the child outcome and decide what to do next.','child':outputs.results[0]}
+            }}
+          documents: ${{ outputs.documents }}
     stuck:
       sequence: []
       outputs:
@@ -148,11 +155,36 @@ state:
           or child result.'',''child'':state_exists(''wait'') ? states.wait.outputs : {},''advice'':state_output(''advice'',''result'',{})}
           }}'
         documents: ${{ state_output('advice','documents',inputs.documents) }}
+      transitions:
+      - to: return_to_owner
+        when: size(states.call.outputs.parents)>0
+        payload:
+          result: ${{ outputs.result }}
+          documents: ${{ outputs.documents }}
     done:
       sequence: []
       outputs:
         result: ${{ transition.payload.result }}
         documents: ${{ transition.payload.documents }}
+    existing_child:
+      include: ./children.yaml
+      inputs:
+        jobs: ${{ [states.advice.outputs.result.consultation.job] }}
+      transitions:
+      - to: call
+        when: 'true'
+        payload:
+          cell: ${{ states.call.outputs.cell }}
+          request: ${{ states.call.outputs.request }}
+          mode: ${{ states.call.outputs.mode }}
+          parents: ${{ states.call.outputs.parents }}
+          documents: ${{ states.advice.outputs.documents }}
+          feedback: ${{ {'consultation':{'summary':'Review the existing child outcome and decide what to do next.','child':outputs.results[0]},'documents':outputs.documents}
+            }}
+          used: ${{ states.call.outputs.used+1 }}
+          session: ${{ states.advice.outputs.session }}
 outputs:
   result: '${{ state_exists(''done'') ? states.done.outputs.result : states.stuck.outputs.result }}'
   documents: '${{ state_exists(''done'') ? states.done.outputs.documents : states.stuck.outputs.documents }}'
+vars:
+  limit: '${{ inputs.max_iterations >= 1 ? int(inputs.max_iterations) : 4 }}'
