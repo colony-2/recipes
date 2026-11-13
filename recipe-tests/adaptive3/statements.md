@@ -60,3 +60,5 @@ Agent decisions are scripted unless a case is explicitly marked live.
 - **A3-47 · critical · worker integration · Nix/Python/cmark:** The shipped validator imports its declared libraries, parses Markdown and decodes images in separate task environments. (`guides/repros/validator-environment-check.yaml`)
 
 - **A3-48 · critical · integration · c2j:** Invalid or failed Backstop reports retain native human input and accept a corrected continuation. (`backstop.test.yaml`)
+
+- **A3-49 · critical · worker integration · uv/Python/Nix:** Review checks reuse prepared Python libraries across tasks and report missing or corrupt screenshots as corrections. (`tools.test.yaml`, `guides/repros/validator-environment-check.yaml`)

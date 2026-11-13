@@ -12,6 +12,11 @@ c2j reports successful preparation, then that same task fails at `import PIL`.
 Please determine the supported Python-library declaration and interpreter
 contract, fix the violated behavior, and add tests through actual task preparation.
 
+Follow-up: [explicit Python environments](FEATURE_REQUEST_C2J_PYTHON_ENVIRONMENTS.md)
+proposes the library/interpreter contract and a uv-backed option. Current `uv:`
+declarations install CLI tools; changing the Pillow reference to `uv:Pillow` is
+not a replacement for a script-library environment.
+
 ## Observed failure
 
 - JobDB: `http://192.168.1.195:9047/c2`.

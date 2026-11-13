@@ -85,16 +85,16 @@ The earlier completed checklist remains below as history.
   contract is violated. The current error establishes a denial, not why the
   submitted authorization was insufficient.
 
-- [ ] **Verify the shipped Python dependencies in real task environments.**
-  Track [the c2j bug](../BUG_REPORT_C2J_PYTHON_DEPENDENCY_ENVIRONMENT.md), goal
-  `3M2nxdy26CqBg7b2FzRob6uoeMN`. Confirm the supported interpreter/library contract
-  before changing the recipe declaration. Run the unmodified validator through
-  real fresh preparation and cache reuse on a supported worker, checking Pillow
-  imports/image decoding and Markdown parsing. Unsupported dependencies must fail
-  preparation clearly before the command runs. Local tests with preinstalled
-  dependencies cover validator logic, not this boundary. Keep that distinction
-  explicit in test results and release checks. The [real-worker check](VALIDATOR_WORKER_CHECK.md)
-  still fails in both tasks with `No module named PIL`; this remains a c2j blocker.
+- [x] **Verify the shipped Python dependencies in real task environments.**
+  Adopted c2j's supported uv Python block with Pillow 12.0.0, retaining Nix for
+  cmark. The [real-worker check](VALIDATOR_WORKER_CHECK.md) now passes Markdown
+  and PNG validation in two tasks: fresh preparation followed by reuse of the
+  same environment. Four further tasks correctly flag missing/corrupt images
+  while reusing that environment. An unavailable Pillow version fails preparation
+  before the command runs and retains uv's error. The local native runner still
+  has a Nix database failure; local preinstalled-tool tests are recorded separately
+  from these actual worker checks. Results cover this worker pool, not every image
+  architecture or cross-host cache behavior.
 
 - [x] **Make diagnostic completion distinguishable from a successful repair.**
   Job `3M2oINy9BiYRlbhD6YhRoX2Ebrk` was a diagnostic child of the c2j bug-fix job

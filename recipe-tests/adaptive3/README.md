@@ -19,6 +19,12 @@ and Git on PATH:
 python -m unittest discover -s recipe-tests/adaptive3 -p 'test_tools.py' -v
 ```
 
+These direct tests do not test dependency preparation. For the declared uv Python
+environment and retained-cache reuse, run the [two-task worker check](../../guides/adaptive3/VALIDATOR_WORKER_CHECK.md).
+It includes the actual validator with its dependencies intact; recorded runs cover
+valid, missing and corrupt PNG attachments. Native `tools.test.yaml` also includes
+the corrupt-image correction regression.
+
 Coverage is described in [statements.md](statements.md). Cycle/lifecycle tests
 cover full validation, review dialogue, original human wording and attempt
 allowances. Integration tests compare real rebased binary/content/mode changes
