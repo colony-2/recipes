@@ -63,25 +63,31 @@ state:
           fields:
           - id: decision
             type: multiple_choice
-            question: '${{ state_exists(''answer'') ? states.answer.outputs.response.summary : states.setup.outputs.text.decision
+            question: '${{ transition.payload.?clarification.orValue('''') + (transition.payload.?clarification.orValue('''')
+              == '''' ? '''' : ''\n'') + (state_exists(''answer'') ? states.answer.outputs.response.summary : states.setup.outputs.text.decision)
               }}'
             required: true
             options:
             - value: accept
               label: ${{ states.setup.outputs.text.accept }}
-            - value: discuss
+            - value: revise
               label: ${{ states.setup.outputs.text.discuss }}
-          - id: message
+          - id: feedback
             type: paragraph_text
             question: ${{ states.setup.outputs.text.message }}
             required: false
-          - id: notes
+          - id: annotations
             type: file_upload
             question: ${{ states.setup.outputs.text.notes }}
             required: false
       transitions:
+      - to: ask
+        when: outputs.fields.decision == 'revise' && !nonempty(outputs.fields.?feedback.orValue('')) && size(outputs.?artifact_refs.orValue({}))
+          == 0
+        payload:
+          clarification: Enter a question or requested change, or attach notes, then confirm.
       - to: done
-        when: outputs.fields.decision == 'accept' && outputs.fields.?message.orValue('') == '' && size(outputs.?artifact_refs.orValue({}))
+        when: outputs.fields.decision == 'accept' && outputs.fields.?feedback.orValue('') == '' && size(outputs.?artifact_refs.orValue({}))
           == 0
         payload:
           result:

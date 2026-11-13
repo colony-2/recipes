@@ -27,7 +27,7 @@ state:
           request: ${{ inputs.request }}
           target_directory: ${{ inputs.target_directory }}
           feedback: ${{ inputs.feedback }}
-          guidance: ${{ inputs.settings.?prompt_additions.orValue({})[?{'direction':'design','preparation':'test_plan','implementation':'implementation','outcome':'outcome_assessment','integration':'outcome_assessment','advice':'design'}[inputs.purpose]].orValue('')
+          guidance: ${{ inputs.settings.?prompt_additions.orValue({})[?{'direction':'design','preparation':'test_plan','implementation':'implementation','outcome':'','integration':'','advice':'design'}[inputs.purpose]].orValue('')
             }}
       outputs:
         schema: ${{ sequence.schemas.outputs.execute }}
@@ -50,7 +50,7 @@ state:
         settings: ${{ inputs.settings }}
         hook: before_design
       transitions:
-      - to: specialists
+      - to: work
         when: outputs.result.status != 'failed'
       - to: problem
         when: 'true'
@@ -59,10 +59,7 @@ state:
     work:
       include: ./agent.yaml
       inputs:
-        prompt: |-
-          {{ states.context.outputs.task }}
-
-          Configured owner findings: ${{ state_exists('specialists') ? states.specialists.outputs.result.summary : '' }}
+        prompt: '{{ states.context.outputs.task }}'
         schema: ${{ states.context.outputs.schema }}
         documents: ${{ jq([inputs.documents,inputs.feedback.?documents.orValue({}),inputs.feedback.?errors.orValue({}),state_output('before_design','artifacts',{})],
           'add') }}
@@ -125,16 +122,6 @@ state:
         problem: ${{ transition.payload.problem }}
     done:
       sequence: []
-    specialists:
-      include: ./specialists.yaml
-      inputs:
-        settings: ${{ inputs.settings }}
-        request: ${{ inputs.request }}
-        documents: ${{ inputs.documents }}
-        checkpoint: before_design
-      transitions:
-      - to: work
-        when: 'true'
 outputs:
   response: '${{ state_exists(''problem'') ? {''status'':''stuck'',''summary'':states.problem.outputs.problem.summary,''failure'':states.problem.outputs.problem}
     : (inputs.purpose == ''integration'' ? {''status'':states.publish.outputs.result.status == ''failed'' ? ''stuck'':''ready'',''summary'':states.publish.outputs.result.summary,''publication'':has(inputs.feedback.publication)

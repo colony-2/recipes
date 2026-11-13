@@ -30,7 +30,7 @@ result correction, qualitative scope by cell and measured code-change reports.
 | Agents own their work products | The producer selects the current `review/` collection. Validation and native human input use those artifact identities. Replacing the collection does not overlay historical files. |
 | Consultation and delivery | Inline advice runs in the receiving workspace, including nested advice. The receiver writes the assignment and may select an existing delivery workflow. Native child submission and waiting retain actual outcomes and partial-result references. |
 | Same-job resolution | Caught failures and automatic allowance exhaustion return `stuck`. The resolver proposes a correction for the same or an earlier stage. If that correction gets stuck too, human direction is required before another attempt. Discussion alone does not grant that attempt. |
-| Preserve local customization | Existing configure, before-design, prepare, verify and publish hook API and paths. Required verification cannot be waived by the assessing agent. Configured specialists use the shared Review activity. |
+| Preserve local customization | Existing configure, before-design, prepare, verify and publish hook API and paths. Required verification cannot be waived by the assessing agent. Configured specialists use the shared Validate activity. |
 | Package requests | Agent request → policy or human approval → fresh probe job → adoption of the tested config. A validator rejects unrelated configuration changes and checks actual adoption. |
 | Native Git and approval reuse | Native rebase, squash and merge. Stale merge returns through Implementation and Outcome. A validator compares the whole resulting tree, including modes and binary content, to reuse approval for unchanged work. Publication recovery preserves a completed merge. |
 | Keep prompts separate | Empty-sequence prompt includes with named templates. Standing instructions are inserted when a session starts; resumed sessions receive current task text. |
@@ -68,10 +68,13 @@ recursive static includes while retaining a single definition of each activity.
 Nested consultations keep only the cell, request, current documents and mode
 needed to return to their caller.
 
-**Configured specialists use Review directly.** They assess the current cell's
-work, as the existing hook contract specifies. Other owners use the receiving
-workspace consultation cycle. This avoids pretending that every independent
-assessment is a negotiation with another cell.
+**Configured specialists share Validate.** The fixed mapping in `validate.yaml`
+runs `before_design` assessments on Direction, `plan_assessment` on Preparation,
+and `outcome_assessment` on Implementation. Outcome assesses the human report
+without duplicating specialist calls. Research hooks still inform Execute.
+General and specialist assessors receive the configured assessment guidance and
+current human scope. All required findings return together through the ordinary
+full correction cycle; optional advice has no independent veto.
 
 **Provider schemas need nullable fields.** The agent provider requires declared
 properties to be required. Each activity uses its own small schema with nullable

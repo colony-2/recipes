@@ -49,3 +49,15 @@ validation and conversational answers are live. See the
 
 `default-build.test.yaml` targets root `build.yaml` directly, covering explanation,
 feature delivery and repository-improvement hooks through adaptive3.
+
+Consumer regression: after native cycle/resolver tests, run the real Cortex form
+adapter and renderer in an isolated Cortex checkout with its locked dependencies:
+
+```sh
+python3 recipe-tests/adaptive3/consumer/run.py /path/to/cortex \
+  /path/to/cycle/cases/questions-stay-in-review/result.json \
+  /path/to/resolver/cases/resolver-retains-discussion-session/result.json
+```
+
+This exercises click, text entry, Back, upload and submit against actual generated
+forms. It is a DOM integration test, not a deployed browser test.

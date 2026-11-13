@@ -35,5 +35,68 @@
   Test missing-report correction, measured counts, per-cell separation and the
   classification of test frameworks as test code.
 
+- [ ] **Return child outcomes to the requester before escalating.** Deliver the
+  actual job ID, success/failure/cancellation message and selected result/error
+  directories to the requesting agent, including after an invalid model report.
+  Let it retry, recover, adopt existing work or continue as appropriate. Enter
+  resolution only when the requester is stuck/unavailable or its local allowance
+  needs renewal. Test all outcomes, existing-child adoption and no duplicate
+  submission during report correction. [Plan 1](PLAN_AUDIT_FOLLOWUPS.md#1-return-child-outcomes-to-the-agent-that-requested-the-work).
+
+- [ ] **Enter the resolver first for `resume_from`.** Inspect previous work and
+  current human direction, recover useful references and actual approvals, then
+  enter the stage that has remaining work. Preserve completed effects and run the
+  destination's full cycle. Avoid assuming earlier stages ran in the new job.
+  Test approved implementation recovery, changed scope, unreadable history and
+  publication after a completed merge. [Plan 2](PLAN_AUDIT_FOLLOWUPS.md#2-start-resume_from-in-the-resolver).
+
+- [ ] **Preserve diagnostic directories and isolate producers.** Keep each
+  child's/task's failure in its own subtree, including wrapped causes and original
+  relative paths. Forward all hook failures without flattening names or replacing
+  review documents. Prefer native directory references. Test same-named logs,
+  nested failures and prepare/publish failure delivery.
+  [Plan 3](PLAN_AUDIT_FOLLOWUPS.md#3-preserve-diagnostics-as-separate-directories).
+
+- [x] **Unify configured specialists with the shared Validate activity.** Move
+  specialist invocation out of Execute; keep the research hook there. Define the
+  fixed stage mapping once, use the common validation prompt/schema, and pass
+  configured assessment guidance to general and specialist assessors. Return all
+  current findings in one validation result. Required failures return to Execute;
+  optional advice has no independent veto. Rerun the full stage cycle, respect
+  current human scope, and use its existing correction allowance. No new sign-off
+  files or specialist recovery workflow. Test rejection/correction, complete
+  findings, native failure delivery and actual hook-guidance consumers.
+  [Detailed plan 4](PLAN_AUDIT_FOLLOWUPS.md#4-make-repository-required-reviews-actually-reach-validation).
+
+- [ ] **Bound every automatic loop locally and allow explicit renewal.** Use
+  positive finite defaults; count only repetitions owned by that loop. Inner
+  consultation/child work must not spend the outer loop's allowance. Preserve the
+  merge-chase count across stages. A resolver or human can grant more attempts;
+  the resolver cannot renew itself indefinitely. Human discussion has no cap and
+  does not grant attempts. Test exhaustion, isolation, slow progress and renewal.
+  [Plan 5](PLAN_AUDIT_FOLLOWUPS.md#5-bound-each-automatic-loop-independently).
+
+- [ ] **Restore concise inspection guidance.** Explain actual task/field
+  discovery, exact downloads, pagination, intermediate versus final results,
+  restart-help discovery and access errors. Keep detailed data in scratch.
+  Test exact retrieval beyond previews and the first inventory page.
+  [Plan 6](PLAN_AUDIT_FOLLOWUPS.md#6-add-a-short-inspection-guide-to-new-session-context).
+
+- [ ] **Use native directory references for selected artifact collections.**
+  Confirm compact transport through child results and human reviews. Carry one
+  coherent selected subtree, with a review title, primary document and optional
+  collection purpose. Use descriptive filenames/links instead of mandatory
+  per-file metadata. Test chapter growth and actual UI navigation for large
+  directories; set-binding expansion alone does not prove compact transport.
+  [Plan 7](PLAN_AUDIT_FOLLOWUPS.md#7-pass-directories-while-keeping-human-presentation-small).
+
+- [x] **Fix missing feedback entry in adaptive3 reviews.** Compare actual UI
+  behavior with adaptive2; align feedback/upload field names and supported action
+  values, updating all readers together. Keep questions in Review, reject empty
+  discussion submissions without an agent call, and preserve repeated resolver
+  dialogue. Test real click/type/upload behavior as well as native response
+  routing. Highest priority among these follow-ups.
+  [Plan 8](PLAN_AUDIT_FOLLOWUPS.md#8-restore-usable-feedback-entry-in-human-reviews).
+
 See [the implementation assessment](IMPLEMENTATION.md) and the separate
 [runtime requirements](RUNTIME_REQUIREMENTS.md).

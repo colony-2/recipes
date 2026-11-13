@@ -60,25 +60,31 @@ state:
           fields:
           - id: decision
             type: multiple_choice
-            question: '${{ state_exists(''answer'') ? states.answer.outputs.response.summary : (state_exists(''investigate'')
-              ? states.investigate.outputs.response.summary : inputs.problem.summary) }}'
+            question: '${{ transition.payload.?clarification.orValue('''') + (transition.payload.?clarification.orValue('''')
+              == '''' ? '''' : ''\n'') + (state_exists(''answer'') ? states.answer.outputs.response.summary : state_output(''investigate'',''response'',inputs.problem).summary)
+              }}'
             required: true
             options:
             - value: continue
               label: ${{ states.setup.outputs.text.continue }}
-            - value: discuss
+            - value: revise
               label: ${{ states.setup.outputs.text.discuss }}
-          - id: message
+          - id: feedback
             type: paragraph_text
             question: ${{ states.setup.outputs.text.message }}
             required: false
-          - id: notes
+          - id: annotations
             type: file_upload
             question: ${{ states.setup.outputs.text.notes }}
             required: false
           kind: review
           documents: ${{ inputs.documents }}
       transitions:
+      - to: ask
+        when: outputs.fields.decision == 'revise' && !nonempty(outputs.fields.?feedback.orValue('')) && size(outputs.?artifact_refs.orValue({}))
+          == 0
+        payload:
+          clarification: Enter a question or requested change, or attach notes, then confirm.
       - to: done
         when: outputs.fields.decision == 'continue'
         payload:
@@ -103,6 +109,7 @@ state:
           .properties.stage.enum = $stages') }}
         documents: ${{ jq([inputs.documents,jq(states.ask.outputs.?artifact_refs.orValue({}), 'with_entries(.key
           = "feedback/" + .key | .value.name = .key)')], 'add') }}
+        session: ${{ state_output('answer','session',state_output('investigate','session',{})) }}
       sequence:
       - id: prompts
         include: ./prompts/resolver.yaml
@@ -118,8 +125,10 @@ state:
           schema: ${{ inputs.schema }}
           documents: ${{ inputs.documents }}
           read_only: true
+          session: ${{ inputs.session }}
       outputs:
         response: ${{ sequence.agent.outputs.response }}
+        session: ${{ sequence.agent.outputs.session }}
       transitions:
       - to: ask
         when: 'true'

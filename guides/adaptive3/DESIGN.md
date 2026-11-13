@@ -114,7 +114,7 @@ guides/adaptive3/
 | `package-probe.yaml` | A fresh environment that checks the approved configuration and reports actual probe results. | Delivery work or authority to expand the approved package request. |
 | `integration.yaml` | Native rebase/squash/merge operations, actual integration results and publication against the merged commit. | Asking for another approval or treating a Git hash change as an unapproved content change. |
 | `tools.yaml` | The three output validators and their declared worker packages. | Artifact selection, repair or state bookkeeping. |
-| `specialists.yaml` | Configured independent assessments using the shared Review activity. | Another review or consultation protocol. |
+| `specialists.yaml` | Configured independent assessments using the shared Validate activity. | Another review or consultation protocol. |
 | `schemas.yaml` | Small activity-specific response schemas, exported by an empty sequence. | A universal response containing every possible field. |
 
 `README.md` explains use and inspection. `IMPLEMENTATION.md` records what was
@@ -398,8 +398,11 @@ adaptive2 wrapper. Each model owns its orchestration.
 | `publish.yaml` | Integration Execute after a successful merge, against that merged commit. Its failure stays recoverable. |
 | `package-policy.yaml` | The package service, before running requested tools. |
 
-Configured specialists run at their existing conceptual points: before design,
-plan assessment and outcome assessment. Use the same consultation mechanism.
+Configured specialists run in full Validate: `before_design` on Direction,
+`plan_assessment` on Preparation, and `outcome_assessment` on Implementation.
+Outcome validates the human report without repeating the specialists. Both general
+and specialist assessors receive the corresponding assessment guidance. Required
+findings return together to Execute; optional advice has no independent veto.
 The existing consultation `key` may identify a public hook declaration, but it
 does not become an agent-maintained work/dependency identifier.
 

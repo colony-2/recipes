@@ -11,7 +11,7 @@ cases:
     - node_path: cycle-test/cycle/adaptive3-cycle/review/review/adaptive3-review/ask/ask
       fields:
         decision: accept
-        message: ''
+        feedback: ''
   inputs:
     purpose: direction
     request: Explain this project.
@@ -74,16 +74,16 @@ cases:
     responses:
     - node_path: cycle-test/cycle/adaptive3-cycle/review/review/adaptive3-review/ask/ask
       fields:
-        decision: discuss
-        message: Where are drafts?
+        decision: revise
+        feedback: Where are drafts?
     - node_path: cycle-test/cycle/adaptive3-cycle/review/review/adaptive3-review/ask/ask
       fields:
-        decision: discuss
-        message: What about closing the tab?
+        decision: revise
+        feedback: What about closing the tab?
     - node_path: cycle-test/cycle/adaptive3-cycle/review/review/adaptive3-review/ask/ask
       fields:
         decision: accept
-        message: ''
+        feedback: ''
   inputs:
     purpose: direction
     request: Preserve drafts.
@@ -184,7 +184,7 @@ cases:
     - node_path: cycle-test/cycle/adaptive3-cycle/review/review/adaptive3-review/ask/ask
       fields:
         decision: accept
-        message: ''
+        feedback: ''
   inputs:
     purpose: direction
     request: Explain 50% and literal {{ example }} and ${{ not_a_reference }}.
@@ -244,10 +244,98 @@ cases:
       root:
         files:
           README.md: A small project.
-    responses: []
+    responses:
+    - node_path: cycle-test/cycle/adaptive3-cycle/review/review/adaptive3-review/ask/ask
+      fields:
+        decision: accept
+        feedback: ''
+    observe_files:
+    - unauthorized.txt
   inputs:
     purpose: direction
-    request: Explain the current project.
+    request: Explain this project.
+  mocks:
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: ready
+            summary: Current work is ready.
+            title: Review the requested outcome
+            primary: review/README.md
+            work_kind: explanation
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: Current work is ready.
+          worktree:
+            unauthorized.txt: changed
+        artifacts:
+          review/README.md: |
+            # Requested outcome
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: passed
+            summary: Checked the assignment.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: Checked the assignment.
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: result.status
+    value: accepted
+  - type: cel_true
+    expr: calls.filter(c,c.node_path.contains("/validate/")).all(c,!("unauthorized.txt" in c.worktree))
+  - type: cel_true
+    expr: repositories.root.new_commits==0 && repositories.root.clean
+- id: blank-discussion-keeps-feedback-form-open
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          README.md: A small project.
+    responses:
+    - node_path: cycle-test/cycle/adaptive3-cycle/review/review/adaptive3-review/ask/ask
+      fields:
+        decision: revise
+        feedback: ''
+    - node_path: cycle-test/cycle/adaptive3-cycle/review/review/adaptive3-review/ask/ask
+      fields:
+        decision: revise
+        feedback: Where are drafts?
+    - node_path: cycle-test/cycle/adaptive3-cycle/review/review/adaptive3-review/ask/ask
+      fields:
+        decision: revise
+        feedback: What about closing the tab?
+    - node_path: cycle-test/cycle/adaptive3-cycle/review/review/adaptive3-review/ask/ask
+      fields:
+        decision: accept
+        feedback: ''
+  inputs:
+    purpose: direction
+    request: Preserve drafts.
   mocks:
     ops:
     - match:
@@ -269,13 +357,68 @@ cases:
               type: c2ops.codex.session/v1
               metadata:
                 label: Current work is ready.
-          worktree:
-            unauthorized.txt: changed
         artifacts:
           review/README.md: |
             # Requested outcome
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: passed
+            summary: Checked the assignment.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: Checked the assignment.
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: answer
+            summary: Drafts remain local.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: Drafts remain local.
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: answer
+            summary: Closing the tab does not erase a saved draft.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: Closing the tab does not erase a saved draft.
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
   assertions:
   - type: cel_true
-    expr: outputs.result.status=="stuck"
+    expr: size(reviews)==4
   - type: cel_true
-    expr: '!calls.exists(c,c.node_path.contains("/adaptive3-review/"))'
+    expr: size(calls.filter(c,c.node_path.contains("/tools/") || c.node_path.contains("/adaptive3-tools/")))==1
+  - type: cel_true
+    expr: size(calls.filter(c,c.node_path.contains("/execute/") && c.op=="extension_execution"))==1
+  - type: cel_true
+    expr: calls.exists(c,c.node_path.contains("/resume_read_only/") && c.op=="extension_execution")

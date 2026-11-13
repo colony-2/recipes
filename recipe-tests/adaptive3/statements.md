@@ -24,3 +24,7 @@ Agent decisions are scripted unless a case is explicitly marked live.
 | A3-17 | Real UI reviews contain readable captures linked from the selected human document. | High | Live integration / Codex, browser | validate.yaml, tools.yaml |
 | A3-18 | Default build uses adaptive3; the explicit adaptive2 entrypoint remains available. | Critical | Integration / c2j | build.yaml, adaptive3.yaml, recipes/adaptive2/build.yaml |
 | A3-19 | A failed resolver correction asks for human direction before another automatic attempt, even when the error message changes. | Critical | Integration / c2j, Nix | resolver.yaml, adaptive3.yaml |
+| A3-20 | Review actions expose feedback entry and preserve questions, changes and uploads through submission. | Critical | Integration / c2j, Cortex renderer | review.yaml, resolver.yaml |
+| A3-21 | Required specialist findings prevent acceptance until full validation passes; optional advice has no independent veto. | Critical | Integration / c2j, Nix | validate.yaml, specialists.yaml |
+| A3-22 | Configured assessment guidance reaches general and specialist assessors with current human scope and original diagnostic references. | High | Integration / c2j, Nix | validate.yaml, prompts/validate.yaml |
+| A3-23 | Repeated resolver discussion preserves the previous proposal and human context without executing work before explicit continuation. | High | Integration / c2j, Nix | resolver.yaml |

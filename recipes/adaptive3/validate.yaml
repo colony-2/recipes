@@ -8,6 +8,7 @@ inputs:
   primary: ${{ inputs.?primary.orValue('') }}
   settings: ${{ inputs.?settings.orValue({}) }}
   require_verification: ${{ inputs.?require_verification.orValue(false) }}
+  feedback: ${{ inputs.?feedback.orValue({}) }}
 state:
   initial: files
   states:
@@ -23,7 +24,7 @@ state:
         when: inputs.purpose == 'implementation'
       - to: candidate
         when: inputs.purpose == 'outcome'
-      - to: assess
+      - to: specialists
         when: 'true'
     verify:
       include: ./hooks.yaml
@@ -34,14 +35,14 @@ state:
         settings: ${{ inputs.settings }}
         hook: verify
       transitions:
-      - to: assess
+      - to: specialists
         when: 'true'
     candidate:
       include: ./tools.yaml
       inputs:
         check: approved_change
       transitions:
-      - to: assess
+      - to: specialists
         when: 'true'
     assess:
       inputs:
@@ -49,7 +50,11 @@ state:
         request: ${{ inputs.request }}
         documents: ${{ jq([inputs.documents,states.files.outputs.artifacts,state_output('verify','artifacts',{})],
           'add') }}
-        checks: ${{ {'files':states.files.outputs.result,'verify':state_output('verify','result',{})} }}
+        checks: ${{ {'files':states.files.outputs.result,'verify':state_output('verify','result',{}),'specialists':states.specialists.outputs.result}
+          }}
+        guidance: ${{ inputs.settings.?prompt_additions.orValue({})[?vars.policies[inputs.purpose].guidance].orValue('')
+          }}
+        feedback: ${{ inputs.feedback }}
       sequence:
       - id: schemas
         include: ./schemas.yaml
@@ -59,6 +64,8 @@ state:
           purpose: ${{ inputs.purpose }}
           request: ${{ inputs.request }}
           checks: ${{ inputs.checks }}
+          guidance: ${{ inputs.guidance }}
+          feedback: ${{ inputs.feedback }}
       - id: agent
         include: ./agent.yaml
         inputs:
@@ -69,8 +76,6 @@ state:
       outputs:
         result: ${{ sequence.agent.outputs.response }}
       transitions:
-      - to: specialists
-        when: inputs.purpose in ['preparation','implementation']
       - to: done
         when: 'true'
     specialists:
@@ -79,20 +84,49 @@ state:
         settings: ${{ inputs.settings }}
         request: ${{ inputs.request }}
         documents: ${{ inputs.documents }}
-        checkpoint: ${{ inputs.purpose == 'preparation' ? 'plan_assessment':'outcome_assessment' }}
+        checkpoint: ${{ vars.policies[inputs.purpose].checkpoint }}
+        purpose: ${{ inputs.purpose }}
+        guidance: ${{ inputs.settings.?prompt_additions.orValue({})[?vars.policies[inputs.purpose].guidance].orValue('')
+          }}
+        feedback: ${{ inputs.feedback }}
       transitions:
-      - to: done
+      - to: assess
         when: 'true'
     done:
       sequence: []
+      outputs:
+        findings: ${{ inputs.findings }}
+      inputs:
+        findings: '${{ (inputs.purpose in [''direction'',''outcome''] && (inputs.primary == '''' || inputs.title
+          == '''') ? [''Provide the primary review document and a descriptive review title.''] : []) + (states.files.outputs.result.status
+          != ''passed'' ? [states.files.outputs.result.summary] : []) + (inputs.purpose == ''implementation'' &&
+          (states.verify.outputs.result.status == ''failed'' || (inputs.require_verification && states.verify.outputs.result.status
+          != ''passed'')) ? [states.verify.outputs.result.summary] : []) + states.specialists.outputs.result.assessments.filter(r,r.required
+          && r.result.status != ''passed'').map(r,r.result.summary) + (states.assess.outputs.result.status != ''passed''
+          ? [states.assess.outputs.result.summary] : []) }}'
 outputs:
-  result: '${{ inputs.purpose in [''direction'',''outcome''] && (inputs.primary == '''' || inputs.title == '''')
-    ? {''status'':''changes'',''summary'':''Provide the primary review document and a descriptive review title.''}
-    : (state_exists(''specialists'') && states.specialists.outputs.result.status != ''passed'' ? states.specialists.outputs.result
-    : (states.files.outputs.result.status != ''passed'' ? states.files.outputs.result : (inputs.purpose == ''implementation''
-    && (states.verify.outputs.result.status == ''failed'' || (inputs.require_verification && states.verify.outputs.result.status
-    != ''passed'')) ? {''status'':''changes'',''summary'':states.verify.outputs.result.summary,''check'':states.verify.outputs.result}
-    : states.assess.outputs.result))) }}'
+  result: '${{ size(states.done.outputs.findings)>0 ? {''status'':''changes'',''summary'':jq(states.done.outputs.findings,''join("\n\n")'')}
+    : states.assess.outputs.result }}'
   artifacts: ${{ jq([states.files.outputs.artifacts,state_output('verify','artifacts',{})], 'add') }}
   candidate: ${{ state_output('candidate','result',{}) }}
   patch: '${{ state_exists(''candidate'') ? states.candidate.outputs.artifacts[''candidate.diff''] : null }}'
+vars:
+  policies:
+    direction:
+      checkpoint: before_design
+      guidance: plan_assessment
+    preparation:
+      checkpoint: plan_assessment
+      guidance: plan_assessment
+    implementation:
+      checkpoint: outcome_assessment
+      guidance: outcome_assessment
+    outcome:
+      checkpoint: ''
+      guidance: outcome_assessment
+    integration:
+      checkpoint: ''
+      guidance: ''
+    advice:
+      checkpoint: ''
+      guidance: ''

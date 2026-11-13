@@ -4,6 +4,9 @@ inputs:
   settings: ${{ inputs.?settings.orValue({}) }}
   request: ${{ inputs.request }}
   documents: ${{ inputs.?documents.orValue({}) }}
+  purpose: ${{ inputs.purpose }}
+  guidance: ${{ inputs.?guidance.orValue('') }}
+  feedback: ${{ inputs.?feedback.orValue({}) }}
 state:
   initial: next
   states:
@@ -21,13 +24,35 @@ state:
       - to: done
         when: 'true'
     review:
-      include: ./review.yaml
       inputs:
-        purpose: specialist
-        request: '${{ inputs.settings.consultations.filter(c,c.checkpoint == inputs.checkpoint)[states.next.outputs.index].role
-          + '': '' + inputs.settings.consultations.filter(c,c.checkpoint == inputs.checkpoint)[states.next.outputs.index].request
-          + ''\nOverall request: '' + inputs.request }}'
+        purpose: ${{ inputs.purpose }}
+        request: ${{ inputs.request }}
         documents: ${{ inputs.documents }}
+        guidance: ${{ inputs.guidance }}
+        feedback: ${{ inputs.feedback }}
+        specialist: '${{ inputs.settings.consultations.filter(c,c.checkpoint == inputs.checkpoint)[states.next.outputs.index].role
+          + '': '' + inputs.settings.consultations.filter(c,c.checkpoint == inputs.checkpoint)[states.next.outputs.index].request
+          }}'
+      sequence:
+      - id: schemas
+        include: ./schemas.yaml
+      - id: prompts
+        include: ./prompts/validate.yaml
+        inputs:
+          purpose: ${{ inputs.purpose }}
+          request: ${{ inputs.request }}
+          guidance: ${{ inputs.guidance }}
+          feedback: ${{ inputs.feedback }}
+          specialist: ${{ inputs.specialist }}
+      - id: agent
+        include: ./agent.yaml
+        inputs:
+          prompt: ${{ sequence.prompts.outputs.task }}
+          schema: ${{ sequence.schemas.outputs.validate }}
+          documents: ${{ inputs.documents }}
+          read_only: true
+      outputs:
+        result: ${{ sequence.agent.outputs.response }}
       transitions:
       - to: next
         when: 'true'
@@ -35,8 +60,16 @@ state:
           index: ${{ states.next.outputs.index+1 }}
           results: ${{ states.next.outputs.results + [{'required':inputs.settings.consultations.filter(c,c.checkpoint
             == inputs.checkpoint)[states.next.outputs.index].required,'result':outputs.result}] }}
+      catch:
+      - when: failure.kind != 'cancellation'
+        continue:
+          outputs:
+            result:
+              status: changes
+              summary: ${{ failure.message }}
+              failure: ${{ failure }}
     done:
       sequence: []
 outputs:
-  result: ${{ {'status':states.next.outputs.results.all(r,!r.required || r.result.status == 'accepted') ? 'passed':'changes','summary':jq(states.next.outputs.results.map(r,r.result.summary),
+  result: ${{ {'status':states.next.outputs.results.all(r,!r.required || r.result.status == 'passed') ? 'passed':'changes','summary':jq(states.next.outputs.results.map(r,r.result.summary),
     'join("\n")'),'assessments':states.next.outputs.results} }}
