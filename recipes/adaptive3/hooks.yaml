@@ -1,0 +1,430 @@
+id: adaptive3-hooks
+inputs:
+  hook: ${{ inputs.hook }}
+  request: ${{ inputs.request }}
+  target_directory: ${{ inputs.?target_directory.orValue('.') }}
+  documents: ${{ inputs.?documents.orValue({}) }}
+  settings: ${{ inputs.?settings.orValue({}) }}
+  publication: ${{ inputs.?publication.orValue({}) }}
+state:
+  initial:
+  - to: configure
+    when: inputs.hook == 'configure'
+  - to: before_design
+    when: inputs.hook == 'before_design'
+  - to: prepare
+    when: inputs.hook == 'prepare'
+  - to: verify
+    when: inputs.hook == 'verify'
+  - to: publish
+    when: inputs.hook == 'publish'
+  states:
+    configure:
+      const: true
+      include:
+        recipe: cell://.c2/recipes/hooks/build/configure.yaml
+        if_missing:
+          outputs:
+            api_version: c2.build-hook/v1
+            status: skipped
+            summary: No repository configure hook is configured.
+            artifact_refs: {}
+            settings:
+              require_design: false
+              prompt_additions: {}
+              variables: {}
+              consultations: []
+      inputs:
+        api_version: c2.build-hook/v1
+        request: ${{ inputs.request }}
+        target_directory: ${{ inputs.target_directory }}
+        candidate: ${{ context.git.hash }}
+        base: ${{ context.git.execution.base_hash }}
+        documents: ${{ inputs.documents }}
+      expect_outputs:
+        type: object
+        additionalProperties: false
+        required:
+        - api_version
+        - status
+        - summary
+        - artifact_refs
+        - settings
+        properties:
+          api_version:
+            type: string
+            enum:
+            - c2.build-hook/v1
+          status:
+            type: string
+            enum:
+            - passed
+            - failed
+            - skipped
+          summary:
+            type: string
+            minLength: 1
+            maxLength: 8192
+          artifact_refs:
+            type: object
+            maxProperties: 64
+            propertyNames:
+              not:
+                enum:
+                - __git_state_thin_pack__
+                - diff_from_parent.diff
+                - diff_from_base.diff
+            additionalProperties:
+              type: object
+          settings:
+            type: object
+            additionalProperties: false
+            properties:
+              require_design:
+                type: boolean
+              prompt_additions:
+                type: object
+                additionalProperties: false
+                properties:
+                  design:
+                    type: string
+                    maxLength: 8192
+                  test_plan:
+                    type: string
+                    maxLength: 8192
+                  implementation:
+                    type: string
+                    maxLength: 8192
+                  plan_assessment:
+                    type: string
+                    maxLength: 8192
+                  outcome_assessment:
+                    type: string
+                    maxLength: 8192
+              variables:
+                type: object
+              consultations:
+                type: array
+                maxItems: 40
+                items:
+                  type: object
+                  additionalProperties: false
+                  required:
+                  - key
+                  - checkpoint
+                  - role
+                  - request
+                  - required
+                  properties:
+                    key:
+                      type: string
+                      pattern: ^[a-zA-Z0-9_-]+$
+                      maxLength: 80
+                    checkpoint:
+                      enum:
+                      - before_design
+                      - plan_assessment
+                      - outcome_assessment
+                    role:
+                      type: string
+                      minLength: 1
+                      maxLength: 2048
+                    request:
+                      type: string
+                      minLength: 1
+                      maxLength: 8192
+                    required:
+                      type: boolean
+          failure:
+            type: object
+      catch:
+      - when: failure.kind != 'cancellation'
+        continue:
+          outputs:
+            api_version: c2.build-hook/v1
+            status: failed
+            summary: ${{ failure.message }}
+            artifact_refs: ${{ jq([failure.?attrs.orValue({}).?command.orValue({}).?diagnostics.orValue({}),failure.?attrs.orValue({}).?extension.orValue({}).?diagnostics.orValue({})],
+              'add | with_entries(.key = "error/" + (.key | split("/") | last) | .value.name = .key)') }}
+            failure: ${{ failure }}
+            settings: {}
+    before_design:
+      const: true
+      include:
+        recipe: cell://.c2/recipes/hooks/build/before_design.yaml
+        if_missing:
+          outputs:
+            api_version: c2.build-hook/v1
+            status: skipped
+            summary: No repository before_design hook is configured.
+            artifact_refs: {}
+      inputs:
+        api_version: c2.build-hook/v1
+        request: ${{ inputs.request }}
+        target_directory: ${{ inputs.target_directory }}
+        candidate: ${{ context.git.hash }}
+        base: ${{ context.git.execution.base_hash }}
+        documents: ${{ inputs.documents }}
+        settings:
+          kind: value
+          name: build-settings.json
+          format: json
+          value: ${{ inputs.settings }}
+      expect_outputs:
+        type: object
+        additionalProperties: false
+        required:
+        - api_version
+        - status
+        - summary
+        - artifact_refs
+        properties:
+          api_version:
+            type: string
+            enum:
+            - c2.build-hook/v1
+          status:
+            type: string
+            enum:
+            - passed
+            - failed
+            - skipped
+          summary:
+            type: string
+            minLength: 1
+            maxLength: 8192
+          artifact_refs:
+            type: object
+            maxProperties: 64
+            propertyNames:
+              not:
+                enum:
+                - __git_state_thin_pack__
+                - diff_from_parent.diff
+                - diff_from_base.diff
+            additionalProperties:
+              type: object
+          failure:
+            type: object
+      catch:
+      - when: failure.kind != 'cancellation'
+        continue:
+          outputs:
+            api_version: c2.build-hook/v1
+            status: failed
+            summary: ${{ failure.message }}
+            artifact_refs: ${{ jq([failure.?attrs.orValue({}).?command.orValue({}).?diagnostics.orValue({}),failure.?attrs.orValue({}).?extension.orValue({}).?diagnostics.orValue({})],
+              'add | with_entries(.key = "error/" + (.key | split("/") | last) | .value.name = .key)') }}
+            failure: ${{ failure }}
+    prepare:
+      include:
+        recipe: cell://.c2/recipes/hooks/build/prepare.yaml
+        if_missing:
+          outputs:
+            api_version: c2.build-hook/v1
+            status: skipped
+            summary: No repository prepare hook is configured.
+            artifact_refs: {}
+      inputs:
+        api_version: c2.build-hook/v1
+        request: ${{ inputs.request }}
+        target_directory: ${{ inputs.target_directory }}
+        candidate: ${{ context.git.hash }}
+        base: ${{ context.git.execution.base_hash }}
+        documents: ${{ inputs.documents }}
+        settings:
+          kind: value
+          name: build-settings.json
+          format: json
+          value: ${{ inputs.settings }}
+      expect_outputs:
+        type: object
+        additionalProperties: false
+        required:
+        - api_version
+        - status
+        - summary
+        - artifact_refs
+        properties:
+          api_version:
+            type: string
+            enum:
+            - c2.build-hook/v1
+          status:
+            type: string
+            enum:
+            - passed
+            - failed
+            - skipped
+          summary:
+            type: string
+            minLength: 1
+            maxLength: 8192
+          artifact_refs:
+            type: object
+            maxProperties: 64
+            propertyNames:
+              not:
+                enum:
+                - __git_state_thin_pack__
+                - diff_from_parent.diff
+                - diff_from_base.diff
+            additionalProperties:
+              type: object
+          failure:
+            type: object
+      catch:
+      - when: failure.kind != 'cancellation'
+        continue:
+          outputs:
+            api_version: c2.build-hook/v1
+            status: failed
+            summary: ${{ failure.message }}
+            artifact_refs: ${{ jq([failure.?attrs.orValue({}).?command.orValue({}).?diagnostics.orValue({}),failure.?attrs.orValue({}).?extension.orValue({}).?diagnostics.orValue({})],
+              'add | with_entries(.key = "error/" + (.key | split("/") | last) | .value.name = .key)') }}
+            failure: ${{ failure }}
+    verify:
+      const: true
+      include:
+        recipe: cell://.c2/recipes/hooks/build/verify.yaml
+        if_missing:
+          outputs:
+            api_version: c2.build-hook/v1
+            status: skipped
+            summary: No repository verify hook is configured.
+            artifact_refs: {}
+      inputs:
+        api_version: c2.build-hook/v1
+        request: ${{ inputs.request }}
+        target_directory: ${{ inputs.target_directory }}
+        candidate: ${{ context.git.hash }}
+        base: ${{ context.git.execution.base_hash }}
+        documents: ${{ inputs.documents }}
+        settings:
+          kind: value
+          name: build-settings.json
+          format: json
+          value: ${{ inputs.settings }}
+      expect_outputs:
+        type: object
+        additionalProperties: false
+        required:
+        - api_version
+        - status
+        - summary
+        - artifact_refs
+        properties:
+          api_version:
+            type: string
+            enum:
+            - c2.build-hook/v1
+          status:
+            type: string
+            enum:
+            - passed
+            - failed
+            - skipped
+          summary:
+            type: string
+            minLength: 1
+            maxLength: 8192
+          artifact_refs:
+            type: object
+            maxProperties: 64
+            propertyNames:
+              not:
+                enum:
+                - __git_state_thin_pack__
+                - diff_from_parent.diff
+                - diff_from_base.diff
+            additionalProperties:
+              type: object
+          failure:
+            type: object
+      catch:
+      - when: failure.kind != 'cancellation'
+        continue:
+          outputs:
+            api_version: c2.build-hook/v1
+            status: failed
+            summary: ${{ failure.message }}
+            artifact_refs: ${{ jq([failure.?attrs.orValue({}).?command.orValue({}).?diagnostics.orValue({}),failure.?attrs.orValue({}).?extension.orValue({}).?diagnostics.orValue({})],
+              'add | with_entries(.key = "error/" + (.key | split("/") | last) | .value.name = .key)') }}
+            failure: ${{ failure }}
+    publish:
+      const: true
+      include:
+        recipe: cell://.c2/recipes/hooks/build/publish.yaml
+        if_missing:
+          outputs:
+            api_version: c2.build-hook/v1
+            status: skipped
+            summary: No repository publish hook is configured.
+            artifact_refs: {}
+      inputs:
+        api_version: c2.build-hook/v1
+        request: ${{ inputs.request }}
+        target_directory: ${{ inputs.target_directory }}
+        candidate: ${{ context.git.hash }}
+        base: ${{ context.git.execution.base_hash }}
+        documents: ${{ inputs.documents }}
+        settings:
+          kind: value
+          name: build-settings.json
+          format: json
+          value: ${{ inputs.settings }}
+        merged_hash: ${{ inputs.publication.merged_hash }}
+        target_branch: ${{ inputs.publication.target_branch }}
+      expect_outputs:
+        type: object
+        additionalProperties: false
+        required:
+        - api_version
+        - status
+        - summary
+        - artifact_refs
+        properties:
+          api_version:
+            type: string
+            enum:
+            - c2.build-hook/v1
+          status:
+            type: string
+            enum:
+            - passed
+            - failed
+            - skipped
+          summary:
+            type: string
+            minLength: 1
+            maxLength: 8192
+          artifact_refs:
+            type: object
+            maxProperties: 64
+            propertyNames:
+              not:
+                enum:
+                - __git_state_thin_pack__
+                - diff_from_parent.diff
+                - diff_from_base.diff
+            additionalProperties:
+              type: object
+          failure:
+            type: object
+      catch:
+      - when: failure.kind != 'cancellation'
+        continue:
+          outputs:
+            api_version: c2.build-hook/v1
+            status: failed
+            summary: ${{ failure.message }}
+            artifact_refs: ${{ jq([failure.?attrs.orValue({}).?command.orValue({}).?diagnostics.orValue({}),failure.?attrs.orValue({}).?extension.orValue({}).?diagnostics.orValue({})],
+              'add | with_entries(.key = "error/" + (.key | split("/") | last) | .value.name = .key)') }}
+            failure: ${{ failure }}
+      workspace:
+        cell: ${{ context.workflow.cell }}
+        ref: ${{ inputs.publication.merged_hash }}
+outputs:
+  result: ${{ states[inputs.hook].outputs }}
+  artifacts: ${{ states[inputs.hook].outputs.artifact_refs }}
+  settings: ${{ states[inputs.hook].outputs.?settings.orValue({}) }}

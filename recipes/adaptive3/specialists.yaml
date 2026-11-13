@@ -1,0 +1,42 @@
+id: adaptive3-specialists
+inputs:
+  checkpoint: ${{ inputs.checkpoint }}
+  settings: ${{ inputs.?settings.orValue({}) }}
+  request: ${{ inputs.request }}
+  documents: ${{ inputs.?documents.orValue({}) }}
+state:
+  initial: next
+  states:
+    next:
+      inputs:
+        index: ${{ transition.payload.?index.orValue(0) }}
+        results: ${{ transition.payload.?results.orValue([]) }}
+      sequence: []
+      outputs:
+        index: ${{ inputs.index }}
+        results: ${{ inputs.results }}
+      transitions:
+      - to: review
+        when: outputs.index < size(inputs.settings.?consultations.orValue([]).filter(c,c.checkpoint == inputs.checkpoint))
+      - to: done
+        when: 'true'
+    review:
+      include: ./review.yaml
+      inputs:
+        purpose: specialist
+        request: '${{ inputs.settings.consultations.filter(c,c.checkpoint == inputs.checkpoint)[states.next.outputs.index].role
+          + '': '' + inputs.settings.consultations.filter(c,c.checkpoint == inputs.checkpoint)[states.next.outputs.index].request
+          + ''\nOverall request: '' + inputs.request }}'
+        documents: ${{ inputs.documents }}
+      transitions:
+      - to: next
+        when: 'true'
+        payload:
+          index: ${{ states.next.outputs.index+1 }}
+          results: ${{ states.next.outputs.results + [{'required':inputs.settings.consultations.filter(c,c.checkpoint
+            == inputs.checkpoint)[states.next.outputs.index].required,'result':outputs.result}] }}
+    done:
+      sequence: []
+outputs:
+  result: ${{ {'status':states.next.outputs.results.all(r,!r.required || r.result.status == 'accepted') ? 'passed':'changes','summary':jq(states.next.outputs.results.map(r,r.result.summary),
+    'join("\n")'),'assessments':states.next.outputs.results} }}

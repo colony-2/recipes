@@ -1,0 +1,350 @@
+schema_version: 2
+id: adaptive3
+version: 0.1.0
+input_schema:
+  title:
+    type: string
+    default_value: ''
+  prompt:
+    type: string
+    required: true
+  target_directory:
+    type: string
+    default_value: .
+  documents:
+    type: artifact_map
+    default_value: {}
+  require_verification:
+    type: boolean
+    default_value: false
+  max_iterations:
+    type: number
+    default_value: 0
+  resume_from:
+    type: string
+    default_value: ''
+inputs:
+  title: ${{ inputs.title }}
+  prompt: ${{ inputs.prompt }}
+  target_directory: ${{ inputs.target_directory }}
+  documents: ${{ jq([context.artifacts,inputs.documents], 'add') }}
+  require_verification: ${{ inputs.require_verification }}
+  max_iterations: ${{ inputs.max_iterations }}
+  resume_from: ${{ inputs.resume_from }}
+state:
+  initial: configure
+  states:
+    configure:
+      id: configure
+      include: ./recipes/adaptive3/hooks.yaml
+      inputs:
+        hook: configure
+        request: ${{ inputs.prompt }}
+        target_directory: ${{ inputs.target_directory }}
+        documents: ${{ inputs.documents }}
+      transitions:
+      - to: direction
+        when: outputs.result.status in ['passed','skipped']
+      - to: resolve
+        when: 'true'
+        payload:
+          stage: configure
+          problem: ${{ outputs.result }}
+          documents: ${{ inputs.documents }}
+    direction:
+      id: direction
+      include: ./recipes/adaptive3/lifecycle.yaml
+      inputs:
+        purpose: direction
+        request: |-
+          {{ inputs.title }}
+          {{ inputs.prompt }}
+          ${{ inputs.resume_from == '' ? '' : 'Recover useful work and current human direction from job ' + inputs.resume_from }}
+        target_directory: ${{ inputs.target_directory }}
+        documents: ${{ transition.payload.?documents.orValue(inputs.documents) }}
+        feedback: ${{ transition.payload.?feedback.orValue({}) }}
+        settings: ${{ states.configure.outputs.settings }}
+        require_verification: ${{ inputs.require_verification }}
+        max_iterations: ${{ inputs.max_iterations }}
+      transitions:
+      - to: resolve
+        when: outputs.result.status == 'stuck'
+        payload:
+          stage: direction
+          problem: ${{ outputs.result }}
+          documents: ${{ outputs.documents }}
+          feedback: ${{ outputs.feedback }}
+      - to: complete
+        when: outputs.result.status == 'accepted' && outputs.work.?work_kind.orValue('') == 'explanation'
+        payload:
+          result: ${{ outputs }}
+      - to: preparation
+        when: outputs.result.status == 'accepted'
+      - to: resolve
+        when: 'true'
+        payload:
+          stage: direction
+          problem: ${{ outputs.result }}
+          documents: ${{ outputs.documents }}
+          feedback: ${{ outputs.feedback }}
+    preparation:
+      id: preparation
+      include: ./recipes/adaptive3/lifecycle.yaml
+      inputs:
+        purpose: preparation
+        request: |-
+          {{ inputs.title }}
+          {{ inputs.prompt }}
+          ${{ inputs.resume_from == '' ? '' : 'Recover useful work and current human direction from job ' + inputs.resume_from }}
+        target_directory: ${{ inputs.target_directory }}
+        documents: ${{ transition.payload.?documents.orValue(state_output('direction','documents',inputs.documents))
+          }}
+        feedback: '${{ transition.payload.?feedback.orValue(has(states.direction.outputs.feedback.approval) ? states.direction.outputs.feedback
+          : states.direction.outputs.result) }}'
+        settings: ${{ states.configure.outputs.settings }}
+        require_verification: ${{ inputs.require_verification }}
+        max_iterations: ${{ inputs.max_iterations }}
+      transitions:
+      - to: resolve
+        when: outputs.result.status == 'stuck'
+        payload:
+          stage: preparation
+          problem: ${{ outputs.result }}
+          documents: ${{ outputs.documents }}
+          feedback: ${{ outputs.feedback }}
+      - to: direction
+        when: outputs.result.status == 'changes' && outputs.result.?stage.orValue('') == 'direction'
+        payload:
+          documents: ${{ outputs.documents }}
+          feedback: ${{ outputs.result }}
+      - to: implementation
+        when: outputs.result.status == 'accepted'
+      - to: resolve
+        when: 'true'
+        payload:
+          stage: preparation
+          problem: ${{ outputs.result }}
+          documents: ${{ outputs.documents }}
+          feedback: ${{ outputs.feedback }}
+    implementation:
+      id: implementation
+      include: ./recipes/adaptive3/lifecycle.yaml
+      inputs:
+        purpose: implementation
+        request: |-
+          {{ inputs.title }}
+          {{ inputs.prompt }}
+          ${{ inputs.resume_from == '' ? '' : 'Recover useful work and current human direction from job ' + inputs.resume_from }}
+        target_directory: ${{ inputs.target_directory }}
+        documents: ${{ transition.payload.?documents.orValue(state_output('preparation','documents',inputs.documents))
+          }}
+        feedback: '${{ transition.payload.?feedback.orValue(has(states.preparation.outputs.feedback.approval) ?
+          states.preparation.outputs.feedback : states.preparation.outputs.result) }}'
+        settings: ${{ states.configure.outputs.settings }}
+        require_verification: ${{ inputs.require_verification }}
+        max_iterations: ${{ inputs.max_iterations }}
+      transitions:
+      - to: resolve
+        when: outputs.result.status == 'stuck'
+        payload:
+          stage: implementation
+          problem: ${{ outputs.result }}
+          documents: ${{ outputs.documents }}
+          feedback: ${{ outputs.feedback }}
+      - to: direction
+        when: outputs.result.status == 'changes' && outputs.result.?stage.orValue('') == 'direction'
+        payload:
+          documents: ${{ outputs.documents }}
+          feedback: ${{ outputs.result }}
+      - to: preparation
+        when: outputs.result.status == 'changes' && outputs.result.?stage.orValue('') == 'preparation'
+        payload:
+          documents: ${{ outputs.documents }}
+          feedback: ${{ outputs.result }}
+      - to: outcome
+        when: outputs.result.status == 'accepted'
+      - to: resolve
+        when: 'true'
+        payload:
+          stage: implementation
+          problem: ${{ outputs.result }}
+          documents: ${{ outputs.documents }}
+          feedback: ${{ outputs.feedback }}
+    outcome:
+      id: outcome
+      include: ./recipes/adaptive3/lifecycle.yaml
+      inputs:
+        purpose: outcome
+        request: |-
+          {{ inputs.title }}
+          {{ inputs.prompt }}
+          ${{ inputs.resume_from == '' ? '' : 'Recover useful work and current human direction from job ' + inputs.resume_from }}
+        target_directory: ${{ inputs.target_directory }}
+        documents: ${{ transition.payload.?documents.orValue(state_output('implementation','documents',inputs.documents))
+          }}
+        feedback: '${{ transition.payload.?feedback.orValue(has(states.implementation.outputs.feedback.approval)
+          ? states.implementation.outputs.feedback : states.implementation.outputs.result) }}'
+        settings: ${{ states.configure.outputs.settings }}
+        require_verification: ${{ inputs.require_verification }}
+        max_iterations: ${{ inputs.max_iterations }}
+      transitions:
+      - to: complete
+        when: outputs.result.status == 'accepted' && !outputs.candidate.changed
+        payload:
+          result: ${{ outputs }}
+      - to: resolve
+        when: outputs.result.status == 'stuck'
+        payload:
+          stage: outcome
+          problem: ${{ outputs.result }}
+          documents: ${{ outputs.documents }}
+          feedback: ${{ outputs.feedback }}
+      - to: direction
+        when: outputs.result.status == 'changes' && outputs.result.?stage.orValue('') == 'direction'
+        payload:
+          documents: ${{ outputs.documents }}
+          feedback: ${{ outputs.result }}
+      - to: preparation
+        when: outputs.result.status == 'changes' && outputs.result.?stage.orValue('') == 'preparation'
+        payload:
+          documents: ${{ outputs.documents }}
+          feedback: ${{ outputs.result }}
+      - to: implementation
+        when: outputs.result.status == 'changes' && outputs.result.?stage.orValue('') == 'implementation'
+        payload:
+          documents: ${{ outputs.documents }}
+          feedback: ${{ outputs.result }}
+      - to: integration
+        when: outputs.result.status == 'accepted'
+      - to: resolve
+        when: 'true'
+        payload:
+          stage: outcome
+          problem: ${{ outputs.result }}
+          documents: ${{ outputs.documents }}
+          feedback: ${{ outputs.feedback }}
+    integration:
+      id: integration
+      include: ./recipes/adaptive3/lifecycle.yaml
+      inputs:
+        purpose: integration
+        request: |-
+          {{ inputs.title }}
+          {{ inputs.prompt }}
+          ${{ inputs.resume_from == '' ? '' : 'Recover useful work and current human direction from job ' + inputs.resume_from }}
+        target_directory: ${{ inputs.target_directory }}
+        documents: ${{ transition.payload.?documents.orValue(state_output('outcome','documents',inputs.documents))
+          }}
+        feedback: '${{ transition.payload.?feedback.orValue(has(states.outcome.outputs.feedback.approval) ? states.outcome.outputs.feedback
+          : states.outcome.outputs.result) }}'
+        settings: ${{ states.configure.outputs.settings }}
+        require_verification: ${{ inputs.require_verification }}
+        max_iterations: ${{ inputs.max_iterations }}
+      transitions:
+      - to: implementation
+        when: has(outputs.result.failure) && outputs.result.failure.code == 'MERGE_UPSTREAM_ADVANCED'
+        payload:
+          documents: ${{ outputs.documents }}
+          feedback: ${{ {'failure':outputs.result.failure,'summary':outputs.result.summary,'approval':{'result':states.outcome.outputs.result,'patch':states.outcome.outputs.patch}
+            } }}
+      - to: resolve
+        when: outputs.result.status == 'stuck'
+        payload:
+          stage: integration
+          problem: ${{ outputs.result }}
+          documents: ${{ outputs.documents }}
+          feedback: ${{ outputs.feedback }}
+      - to: direction
+        when: outputs.result.status == 'changes' && outputs.result.?stage.orValue('') == 'direction'
+        payload:
+          documents: ${{ outputs.documents }}
+          feedback: ${{ outputs.result }}
+      - to: preparation
+        when: outputs.result.status == 'changes' && outputs.result.?stage.orValue('') == 'preparation'
+        payload:
+          documents: ${{ outputs.documents }}
+          feedback: ${{ outputs.result }}
+      - to: implementation
+        when: outputs.result.status == 'changes' && outputs.result.?stage.orValue('') == 'implementation'
+        payload:
+          documents: ${{ outputs.documents }}
+          feedback: ${{ outputs.result }}
+      - to: outcome
+        when: outputs.result.status == 'changes' && outputs.result.?stage.orValue('') == 'outcome'
+        payload:
+          documents: ${{ outputs.documents }}
+          feedback: ${{ outputs.result }}
+      - to: complete
+        when: outputs.result.status == 'accepted'
+        payload:
+          result: ${{ outputs }}
+      - to: resolve
+        when: 'true'
+        payload:
+          stage: integration
+          problem: ${{ outputs.result }}
+          documents: ${{ outputs.documents }}
+          feedback: ${{ outputs.feedback }}
+    resolve:
+      inputs:
+        stage: ${{ transition.payload.stage }}
+        problem: ${{ transition.payload.problem }}
+        documents: ${{ transition.payload.documents }}
+        request: ${{ inputs.prompt }}
+        feedback: ${{ transition.payload.?feedback.orValue(state_output('resolve','result',{})) }}
+      sequence:
+      - id: resolver
+        include: ./recipes/adaptive3/resolver.yaml
+        inputs:
+          stage: ${{ inputs.stage }}
+          problem: ${{ inputs.problem }}
+          documents: ${{ inputs.documents }}
+          request: ${{ inputs.request }}
+          feedback: ${{ inputs.feedback }}
+      outputs:
+        result: ${{ sequence.resolver.outputs.result }}
+        documents: ${{ inputs.documents }}
+        problem: ${{ inputs.problem }}
+      transitions:
+      - to: configure
+        when: outputs.result.stage == 'configure'
+        payload:
+          documents: ${{ outputs.documents }}
+          feedback: ${{ jq([outputs.problem,outputs.result], 'add') }}
+      - to: direction
+        when: outputs.result.stage == 'direction'
+        payload:
+          documents: ${{ outputs.documents }}
+          feedback: ${{ jq([outputs.problem,outputs.result], 'add') }}
+      - to: preparation
+        when: outputs.result.stage == 'preparation'
+        payload:
+          documents: ${{ outputs.documents }}
+          feedback: ${{ jq([outputs.problem,outputs.result], 'add') }}
+      - to: implementation
+        when: outputs.result.stage == 'implementation'
+        payload:
+          documents: ${{ outputs.documents }}
+          feedback: ${{ jq([outputs.problem,outputs.result], 'add') }}
+      - to: outcome
+        when: outputs.result.stage == 'outcome'
+        payload:
+          documents: ${{ outputs.documents }}
+          feedback: ${{ jq([outputs.problem,outputs.result], 'add') }}
+      - to: integration
+        when: outputs.result.stage == 'integration'
+        payload:
+          documents: ${{ outputs.documents }}
+          feedback: ${{ jq([outputs.problem,outputs.result], 'add') }}
+    complete:
+      sequence: []
+      outputs:
+        result: ${{ transition.payload.result }}
+outputs:
+  summary: ${{ states.complete.outputs.result.work.summary }}
+  work_kind: ${{ states.direction.outputs.work.?work_kind.orValue('feature') }}
+  artifact_refs: ${{ states.complete.outputs.result.documents }}
+  reviews: '${{ [states.direction.outputs.result] + (state_exists(''outcome'') ? [states.outcome.outputs.result]
+    : []) }}'
+  merge: ${{ states.complete.outputs.result.work.?publication.orValue({}) }}
+  publication: ${{ states.complete.outputs.result.work.?publish.orValue({}) }}

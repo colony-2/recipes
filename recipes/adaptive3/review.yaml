@@ -1,0 +1,148 @@
+id: adaptive3-review
+inputs:
+  purpose: ${{ inputs.purpose }}
+  request: ${{ inputs.request }}
+  documents: ${{ inputs.?documents.orValue({}) }}
+  title: ${{ inputs.?title.orValue('') }}
+  primary: ${{ inputs.?primary.orValue('') }}
+  validation: ${{ inputs.?validation.orValue({}) }}
+  feedback: ${{ inputs.?feedback.orValue({}) }}
+state:
+  initial: setup
+  states:
+    setup:
+      sequence:
+      - id: schemas
+        include: ./schemas.yaml
+      - id: prompts
+        include: ./prompts/review.yaml
+        inputs:
+          purpose: ${{ inputs.purpose }}
+          request: ${{ inputs.request }}
+          validation: ${{ inputs.validation }}
+          feedback: ${{ inputs.feedback }}
+      outputs:
+        schema: ${{ sequence.schemas.outputs.review }}
+        text: ${{ sequence.prompts.outputs }}
+      transitions:
+      - to: compare
+        when: inputs.purpose == 'outcome' && inputs.feedback.?approval.orValue({}).?result.orValue({}).?receipt.hasValue()
+      - to: ask
+        when: inputs.purpose in ['direction','outcome']
+      - to: assess
+        when: 'true'
+      inputs:
+        purpose: ${{ inputs.purpose }}
+        request: ${{ inputs.request }}
+        documents: ${{ inputs.documents }}
+        title: ${{ inputs.title }}
+        primary: ${{ inputs.primary }}
+        validation: ${{ inputs.validation }}
+        feedback: ${{ inputs.feedback }}
+    assess:
+      include: ./agent.yaml
+      inputs:
+        prompt: ${{ states.setup.outputs.text.task }}
+        schema: ${{ states.setup.outputs.schema }}
+        documents: ${{ inputs.documents }}
+        read_only: true
+      transitions:
+      - to: done
+        when: 'true'
+        payload:
+          result: ${{ outputs.response }}
+    ask:
+      id: ask
+      op: input
+      inputs:
+        form:
+          kind: review
+          title: ${{ inputs.title }}
+          documents: ${{ inputs.documents }}
+          overview_document_id: ${{ inputs.primary }}
+          fields:
+          - id: decision
+            type: multiple_choice
+            question: '${{ state_exists(''answer'') ? states.answer.outputs.response.summary : states.setup.outputs.text.decision
+              }}'
+            required: true
+            options:
+            - value: accept
+              label: ${{ states.setup.outputs.text.accept }}
+            - value: discuss
+              label: ${{ states.setup.outputs.text.discuss }}
+          - id: message
+            type: paragraph_text
+            question: ${{ states.setup.outputs.text.message }}
+            required: false
+          - id: notes
+            type: file_upload
+            question: ${{ states.setup.outputs.text.notes }}
+            required: false
+      transitions:
+      - to: done
+        when: outputs.fields.decision == 'accept' && outputs.fields.?message.orValue('') == '' && size(outputs.?artifact_refs.orValue({}))
+          == 0
+        payload:
+          result:
+            status: accepted
+            summary: The human accepted this result.
+            receipt: ${{ outputs.receipt }}
+      - to: answer
+        when: 'true'
+    answer:
+      sequence:
+      - id: prompts
+        include: ./prompts/review.yaml
+        inputs:
+          purpose: ${{ inputs.purpose }}
+          request: ${{ inputs.request }}
+          validation: ${{ inputs.validation }}
+          feedback: ${{ inputs.reply }}
+      - id: agent
+        include: ./agent.yaml
+        inputs:
+          prompt: ${{ sequence.prompts.outputs.task }}
+          schema: ${{ inputs.schema }}
+          documents: ${{ inputs.documents }}
+          session: ${{ inputs.session }}
+          read_only: true
+      inputs:
+        purpose: ${{ inputs.purpose }}
+        request: ${{ inputs.request }}
+        validation: ${{ inputs.validation }}
+        reply: ${{ states.ask.outputs }}
+        schema: ${{ states.setup.outputs.schema }}
+        documents: ${{ jq([inputs.documents,jq(states.ask.outputs.?artifact_refs.orValue({}), 'with_entries(.key
+          = "feedback/" + .key | .value.name = .key)')], 'add') }}
+        session: ${{ state_output('answer','session',{}) }}
+      outputs:
+        response: ${{ sequence.agent.outputs.response }}
+        session: ${{ sequence.agent.outputs.session }}
+      transitions:
+      - to: done
+        when: outputs.response.status in ['changes','stuck']
+        payload:
+          result: ${{ jq([outputs.response, {'human':states.ask.outputs,'documents':jq(states.ask.outputs.?artifact_refs.orValue({}),
+            'with_entries(.key = "feedback/" + .key | .value.name = .key)')}], 'add') }}
+      - to: ask
+        when: 'true'
+    done:
+      sequence: []
+      outputs:
+        result: ${{ transition.payload.result }}
+    compare:
+      include: ./tools.yaml
+      inputs:
+        check: approved_change
+        documents:
+          approved.diff: ${{ jq([inputs.feedback.approval.patch,{'name':'approved.diff'}], 'add') }}
+      transitions:
+      - to: done
+        when: outputs.result.equivalent
+        payload:
+          result: ${{ inputs.feedback.approval.result }}
+      - to: ask
+        when: 'true'
+outputs:
+  result: ${{ states.done.outputs.result }}

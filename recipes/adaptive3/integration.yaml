@@ -1,0 +1,33 @@
+id: adaptive3-integration
+inputs:
+  operation: ${{ inputs.operation }}
+  target: ${{ inputs.?target.orValue(null) }}
+  message: ${{ inputs.?message.orValue('Complete reviewed work') }}
+state:
+  initial:
+  - to: rebase
+    when: inputs.operation == 'rebase'
+  - to: merge
+    when: 'true'
+  states:
+    rebase:
+      id: rebase
+      op: rebase
+      inputs:
+        target_base_hash: ${{ inputs.target }}
+    merge:
+      sequence:
+      - id: squash
+        op: squash
+        inputs:
+          commit_message: ${{ inputs.message }}
+      - id: merge
+        op: merge
+        retry:
+          maximum_attempts: 1
+      outputs:
+        publication: ${{ sequence.merge.outputs }}
+      inputs:
+        message: ${{ inputs.message }}
+outputs:
+  result: '${{ inputs.operation == ''rebase'' ? states.rebase.outputs : states.merge.outputs.publication }}'

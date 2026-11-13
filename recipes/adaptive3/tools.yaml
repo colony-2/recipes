@@ -1,0 +1,170 @@
+id: adaptive3-tools
+inputs:
+  check: ${{ inputs.check }}
+  documents: ${{ inputs.?documents.orValue({}) }}
+  title: ${{ inputs.?title.orValue('') }}
+  primary: ${{ inputs.?primary.orValue('') }}
+  requests: ${{ inputs.?requests.orValue([]) }}
+  adopted: ${{ inputs.?adopted.orValue(false) }}
+state:
+  initial:
+  - to: review_files
+    when: inputs.check == 'review_files'
+  - to: approved_change
+    when: inputs.check == 'approved_change'
+  - to: package_config
+    when: inputs.check == 'package_config'
+  states:
+    review_files:
+      id: review_files
+      op: command_execution
+      const: true
+      execution_needs:
+        packages:
+        - nix:github:NixOS/nixpkgs/e7439b6b14ad3cc35d05608ebca9bce01a25f5f8#python3
+        - nix:github:NixOS/nixpkgs/e7439b6b14ad3cc35d05608ebca9bce01a25f5f8#python3Packages.pillow
+        - nix:github:NixOS/nixpkgs/e7439b6b14ad3cc35d05608ebca9bce01a25f5f8#cmark
+      artifacts:
+        ./: ${{ inputs.documents }}
+      inputs:
+        env:
+          INBOX: ${{ context.environment.op.inbox }}
+          OUTBOX: ${{ context.environment.op.outbox }}
+          TITLE: ${{ inputs.title }}
+          PRIMARY: ${{ inputs.primary }}
+        run: |
+          python3 - <<'PY'
+          import json, os, pathlib, subprocess
+          from html.parser import HTMLParser
+          from urllib.parse import urlsplit, unquote
+          from PIL import Image
+          root=pathlib.Path(os.environ['INBOX']).resolve()
+          out=pathlib.Path(os.environ['OUTBOX']); (out/'error').mkdir(exist_ok=True)
+          issues=[]
+          def issue(s): issues.append(s)
+          def local(path):
+           p=(root/path).resolve()
+           if not p.is_relative_to(root) or not p.is_file(): raise ValueError('not a readable local file')
+           return p
+          class Links(HTMLParser):
+           def __init__(self): super().__init__(); self.links=[]; self.ignored=[]
+           def handle_starttag(self,tag,attrs):
+            if tag in ('pre','code','script','style'): self.ignored.append(tag)
+            if not self.ignored:
+             key={'a':'href','img':'src'}.get(tag)
+             self.links += [v for k,v in attrs if k==key and v]
+           def handle_endtag(self,tag):
+            if tag in self.ignored: self.ignored=self.ignored[:self.ignored.index(tag)]
+          title=os.environ.get('TITLE',''); primary=os.environ.get('PRIMARY','')
+          if primary:
+           try: local(primary)
+           except Exception as ex: issue('Primary document: '+str(ex))
+           if not title.strip() or len(title)>120 or any(ord(c)<32 or 127<=ord(c)<=159 for c in title): issue('Choose a nonempty descriptive title of at most 120 characters without control characters.')
+          for p in sorted(root.rglob('*')):
+           if not p.is_file(): continue
+           name=str(p.relative_to(root))
+           try:
+            local(name)
+            if p.suffix.lower() in ('.png','.jpg','.jpeg','.webp','.gif'):
+             with Image.open(p) as im: im.verify()
+            if p.suffix.lower() not in ('.md','.markdown','.html','.htm'): continue
+            if p.stat().st_size>5*1024*1024: raise ValueError('Document is too large to inspect; reduce the human review file.')
+            text=p.read_text()
+            if p.suffix.lower() in ('.md','.markdown'): text=subprocess.check_output(['cmark','--unsafe'],input=text,text=True)
+            parser=Links(); parser.feed(text)
+            for link in parser.links:
+             u=urlsplit(link)
+             if u.scheme=='file':
+              issue(name+': replace machine-local file URL with an attached relative link '+link); continue
+             if u.scheme or u.netloc or not u.path: continue
+             try: local(str(p.relative_to(root).parent/unquote(u.path)))
+             except Exception: issue(name+': missing or unsafe local link '+link)
+           except Exception as ex: issue(name+': '+str(ex))
+          (out/'error'/'review-files.log').write_text('\n'.join(issues) if issues else 'All selected review files are readable and locally linked.\n')
+          print(json.dumps({'status':'changes' if issues else 'passed','summary':str(len(issues))+' review file issues; see error/review-files.log','count':len(issues)}))
+          PY
+    approved_change:
+      id: approved_change
+      op: command_execution
+      const: true
+      execution_needs:
+        packages:
+        - nix:github:NixOS/nixpkgs/e7439b6b14ad3cc35d05608ebca9bce01a25f5f8#python3
+      artifacts:
+        ./: ${{ inputs.documents }}
+      inputs:
+        env:
+          INBOX: ${{ context.environment.op.inbox }}
+          OUTBOX: ${{ context.environment.op.outbox }}
+          BASE: ${{ context.git.execution.base_hash }}
+        run: |
+          python3 - <<'PY'
+          import json, os, pathlib, subprocess, tempfile
+          out=pathlib.Path(os.environ['OUTBOX']); (out/'error').mkdir(exist_ok=True)
+          def git(*args,**kwargs): return subprocess.check_output(['git',*args],**kwargs)
+          base=os.environ['BASE']; head=git('rev-parse','HEAD',text=True).strip()
+          patch=git('diff','--binary','--full-index','--no-ext-diff','--no-textconv','--no-renames',base,head)
+          (out/'candidate.diff').write_bytes(patch)
+          approved=pathlib.Path(os.environ['INBOX'])/'approved.diff'
+          equivalent=False; reason='No prior approved patch supplied.'
+          if approved.is_file():
+           try:
+            with tempfile.TemporaryDirectory() as tmp:
+             env={**os.environ,'GIT_INDEX_FILE':tmp+'/index'}
+             subprocess.run(['git','read-tree',base],env=env,check=True,capture_output=True)
+             old=approved.read_bytes()
+             if old: subprocess.run(['git','apply','--cached','--3way','--whitespace=nowarn','-'],input=old,env=env,check=True,capture_output=True)
+             equivalent=git('write-tree',env=env)==git('rev-parse','HEAD^{tree}')
+             reason='The approved edit produces this candidate.' if equivalent else 'This candidate differs from the approved edit.'
+           except subprocess.CalledProcessError as ex: reason='Cannot establish equivalence: '+(ex.stderr or b'').decode(errors='replace')
+          (out/'error'/'approved-change.log').write_text(reason)
+          print(json.dumps({'status':'passed','summary':reason[:500],'equivalent':equivalent,'changed':bool(patch)}))
+          PY
+    package_config:
+      id: package_config
+      op: command_execution
+      const: true
+      execution_needs:
+        packages:
+        - nix:github:NixOS/nixpkgs/e7439b6b14ad3cc35d05608ebca9bce01a25f5f8#python3
+        - nix:github:NixOS/nixpkgs/e7439b6b14ad3cc35d05608ebca9bce01a25f5f8#yq-go
+      artifacts:
+        ./: ${{ inputs.documents }}
+      inputs:
+        env:
+          INBOX: ${{ context.environment.op.inbox }}
+          OUTBOX: ${{ context.environment.op.outbox }}
+          REQUESTS: ${{ json_stringify(inputs.requests) }}
+          ADOPTED: ${{ string(inputs.adopted) }}
+        run: |
+          python3 - <<'PY'
+          import json, os, pathlib, subprocess
+          out=pathlib.Path(os.environ['OUTBOX']); (out/'error').mkdir(exist_ok=True)
+          def read(p):
+           if not p.exists(): return {}
+           if p.is_symlink(): raise ValueError('Configuration must not be a symlink')
+           v=json.loads(subprocess.check_output(['yq','-o=json','.',str(p)])) or {}
+           if not isinstance(v,dict): raise ValueError('Configuration must be a mapping')
+           return v
+          issues=[]
+          try:
+           current=read(pathlib.Path('.c2/config.yaml'))
+           proposed=read(pathlib.Path(os.environ['INBOX'])/'review/config.yaml')
+           requested=json.loads(os.environ['REQUESTS'])
+           if os.environ['ADOPTED']=='true' and current!=proposed: raise ValueError('The adopted configuration differs from the approved proposal')
+           if not (pathlib.Path(os.environ['INBOX'])/'review/config.yaml').is_file(): raise ValueError('No proposed configuration')
+           before=current.pop('packages',[]) or []; after=proposed.pop('packages',[]) or []
+           refs=[x['reference'] for x in requested]
+           for item in requested:
+            if item['reference'].split(':')[0] not in ('nix','uv','pnpm'): raise ValueError('Use a portable package reference')
+            if not item['check'] or any(not isinstance(x,str) or not x or '\x00' in x for x in item['check']): raise ValueError('Probe must be an argument array')
+           if current!=proposed: raise ValueError('Unrelated configuration changed')
+           if len(after)!=len(set(after)) or set(after)!=set(before+refs): raise ValueError('Package configuration differs from requested additions')
+          except Exception as ex: issues.append(str(ex))
+          (out/'error'/'package-config.log').write_text('\n'.join(issues) or 'Only approved package additions are present.\n')
+          print(json.dumps({'status':'changes' if issues else 'passed','summary':'; '.join(issues)[:700] or 'Only requested package changes.'}))
+          PY
+outputs:
+  result: ${{ json_parse(states[inputs.check].outputs.stdout) }}
+  artifacts: ${{ jq(states[inputs.check].artifacts,'with_entries(select((.key|startswith("error/")) or .key=="candidate.diff"))')
+    }}

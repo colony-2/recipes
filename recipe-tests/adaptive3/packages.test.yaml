@@ -1,0 +1,329 @@
+recipe: packages.yaml
+cases:
+- id: human-denial-does-not-probe
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          README.md: A small project.
+    responses:
+    - node_path: packages-test/packages/adaptive3-packages/approval/approval/adaptive3-review/ask/ask
+      fields:
+        decision: discuss
+        message: Do not add pytest. Use the existing test tool.
+  inputs:
+    requests:
+    - reference: uv:pytest
+      check:
+      - pytest
+      - --version
+    reason: Run project tests
+  mocks:
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: ready
+            summary: Add pytest for local tests.
+            title: Add pytest for local tests
+            primary: review/README.md
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: Add pytest for local tests.
+        artifacts:
+          review/README.md: |-
+            # Add pytest
+            Run local tests.
+          review/config.yaml: |
+            packages: ["uv:pytest"]
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: changes
+            summary: Use the existing test tool.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: Use the existing test tool.
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.result.status=="changes"
+  - type: cel_true
+    expr: '!calls.exists(c,c.op=="recipes.run")'
+- id: human-approval-precedes-failed-probe
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          README.md: Project
+    responses:
+    - node_path: packages-test/packages/adaptive3-packages/approval/approval/adaptive3-review/ask/ask
+      fields:
+        decision: accept
+        message: ''
+  inputs:
+    requests:
+    - reference: uv:pytest
+      check:
+      - pytest
+      - --version
+    reason: Run local tests
+  mocks:
+    ops:
+    - &id001
+      match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: ready
+            summary: Add pytest for local tests.
+            title: Approve pytest for local tests
+            primary: review/README.md
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: Add pytest for local tests.
+        artifacts:
+          review/README.md: |-
+            # Add pytest
+            Run local tests.
+          review/config.yaml: |
+            packages: ["uv:pytest"]
+    - match:
+        op: recipes.run
+      behavior:
+        mode: return
+        effects:
+          children:
+          - recipe: child.yaml
+            cell: root
+            inputs:
+              fail: true
+            await: terminal
+            bind: probe
+        outputs_expr: '{"job_ids":[children.probe]}'
+    - match:
+        op: recipe.await_result_soft
+      behavior:
+        mode: passthrough
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.result.status=="stuck" && outputs.result.child.status=="failed"
+  - type: cel_true
+    expr: size(calls.filter(c,c.op=="recipes.run"))==1
+  - type: cel_true
+    expr: '!calls.exists(c,c.node_path.contains("/adopt/"))'
+  - type: cel_true
+    expr: size(reviews)==1
+  - type: cel_true
+    expr: events.filter(e,e.kind=="response_release")[0].position < events.filter(e,e.kind=="child_submitted")[0].position
+- id: policy-approval-precedes-failed-probe
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          README.md: Project
+          .c2/recipes/hooks/build/package-policy.yaml: |
+            id: policy
+            outputs:
+              approved:
+                uv:pytest:
+                - pytest
+                - --version
+            sequence: []
+    responses: []
+  inputs:
+    requests:
+    - reference: uv:pytest
+      check:
+      - pytest
+      - --version
+    reason: Run local tests
+  mocks:
+    ops:
+    - *id001
+    - match:
+        op: recipes.run
+      behavior:
+        mode: return
+        effects:
+          children:
+          - recipe: child.yaml
+            cell: root
+            inputs:
+              fail: true
+            await: terminal
+            bind: probe
+        outputs_expr: '{"job_ids":[children.probe]}'
+    - match:
+        op: recipe.await_result_soft
+      behavior:
+        mode: passthrough
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.result.status=="stuck" && outputs.result.child.status=="failed"
+  - type: cel_true
+    expr: size(calls.filter(c,c.op=="recipes.run"))==1
+  - type: cel_true
+    expr: '!calls.exists(c,c.node_path.contains("/adopt/"))'
+  - type: cel_true
+    expr: size(reviews)==0
+- id: approved-probe-precedes-exact-adoption
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          README.md: A small project.
+    responses:
+    - node_path: packages-test/packages/adaptive3-packages/approval/approval/adaptive3-review/ask/ask
+      fields:
+        decision: accept
+        message: ''
+  inputs:
+    requests: &id002
+    - reference: uv:pytest==8.3.5
+      check:
+      - pytest
+      - --version
+    reason: Run local tests
+  mocks:
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: ready
+            summary: Add pytest for local tests.
+            title: Approve pytest for local tests
+            primary: review/README.md
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: Add pytest for local tests.
+        artifacts:
+          review/README.md: |-
+            # Add pytest
+            Run local tests.
+          review/config.yaml: |
+            packages: ["uv:pytest==8.3.5"]
+    - match:
+        op: recipes.run
+      behavior:
+        mode: return
+        effects:
+          children:
+          - recipe: package-probe.yaml
+            cell: root
+            inputs:
+              config:
+                kind: value
+                name: review/config.yaml
+                format: text
+                value: |
+                  packages: ["uv:pytest==8.3.5"]
+              requests: *id002
+            await: terminal
+            bind: probe
+        outputs_expr: '{"job_ids":[children.probe]}'
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: ready
+            summary: Installed the approved config.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: Installed the approved config.
+          worktree:
+            .c2/config.yaml: |
+              packages: ["uv:pytest==8.3.5"]
+    - match:
+        op: recipe.await_result_soft
+      behavior:
+        mode: passthrough
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: ready
+            summary: Adopted the validated config.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: Adopted the validated config.
+          worktree:
+            .c2/config.yaml: |
+              packages: ["uv:pytest==8.3.5"]
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.result.status=="passed"
+  - type: cel_true
+    expr: events.filter(e,e.kind=="response_release")[0].position < events.filter(e,e.kind=="child_submitted")[0].position
+  - type: cel_true
+    expr: events.filter(e,e.kind=="child_terminal")[0].position < events.filter(e,e.kind=="operation_entry" && e.node_path.contains("/adopt/"))[0].position
+  - type: cel_true
+    expr: calls.exists(c,c.node_path.endsWith("/probe/probe") && c.outputs.stdout.contains("pytest 8.3.5"))

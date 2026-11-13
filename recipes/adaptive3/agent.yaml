@@ -1,0 +1,108 @@
+id: adaptive3-agent
+inputs:
+  prompt: ${{ inputs.prompt }}
+  schema: ${{ inputs.schema }}
+  documents: ${{ inputs.?documents.orValue({}) }}
+  session: ${{ inputs.?session.orValue({}) }}
+  read_only: ${{ inputs.?read_only.orValue(true) }}
+state:
+  initial: context
+  states:
+    context:
+      include: ./prompts/context.yaml
+      transitions:
+      - to: resume_read_only
+        when: inputs.read_only && size(inputs.session) > 0
+      - to: start_read_only
+        when: inputs.read_only
+      - to: resume_work
+        when: size(inputs.session) > 0
+      - to: start_work
+        when: 'true'
+    start_read_only:
+      id: start_read_only
+      op: nix:github:colony-2/c2ops/published#codex
+      artifacts:
+        work/: ${{ inputs.documents }}
+      inputs:
+        api:
+          api_key: ${{ context.secrets.?codex_api_key.orValue(null) }}
+        prompt: |-
+          {{ inputs.prompt }}
+
+          {{ states.context.outputs.identity }}
+          {{ states.context.outputs.directories }}
+          inbox: {{ context.environment.op.inbox }}
+          outbox: {{ context.environment.op.outbox }}
+        output:
+          schema: ${{ inputs.schema }}
+        instructions: '{{ states.context.outputs.instructions }}'
+      const: true
+    resume_read_only:
+      id: resume_read_only
+      op: nix:github:colony-2/c2ops/published#codex
+      artifacts:
+        work/: ${{ inputs.documents }}
+      inputs:
+        api:
+          api_key: ${{ context.secrets.?codex_api_key.orValue(null) }}
+        prompt: |-
+          {{ inputs.prompt }}
+
+          {{ states.context.outputs.identity }}
+          {{ states.context.outputs.directories }}
+          inbox: {{ context.environment.op.inbox }}
+          outbox: {{ context.environment.op.outbox }}
+        output:
+          schema: ${{ inputs.schema }}
+        session: ${{ inputs.session }}
+      const: true
+    start_work:
+      id: start_work
+      op: nix:github:colony-2/c2ops/published#codex
+      artifacts:
+        work/: ${{ inputs.documents }}
+      inputs:
+        api:
+          api_key: ${{ context.secrets.?codex_api_key.orValue(null) }}
+        prompt: |-
+          {{ inputs.prompt }}
+
+          {{ states.context.outputs.identity }}
+          {{ states.context.outputs.directories }}
+          inbox: {{ context.environment.op.inbox }}
+          outbox: {{ context.environment.op.outbox }}
+        output:
+          schema: ${{ inputs.schema }}
+        instructions: '{{ states.context.outputs.instructions }}'
+    resume_work:
+      id: resume_work
+      op: nix:github:colony-2/c2ops/published#codex
+      artifacts:
+        work/: ${{ inputs.documents }}
+      inputs:
+        api:
+          api_key: ${{ context.secrets.?codex_api_key.orValue(null) }}
+        prompt: |-
+          {{ inputs.prompt }}
+
+          {{ states.context.outputs.identity }}
+          {{ states.context.outputs.directories }}
+          inbox: {{ context.environment.op.inbox }}
+          outbox: {{ context.environment.op.outbox }}
+        output:
+          schema: ${{ inputs.schema }}
+        session: ${{ inputs.session }}
+outputs:
+  response: '${{ (inputs.read_only ? (size(inputs.session)>0 ? states.resume_read_only : states.start_read_only)
+    : (size(inputs.session)>0 ? states.resume_work : states.start_work)).outputs.?output_schema_valid.orValue(false)
+    && (inputs.read_only ? (size(inputs.session)>0 ? states.resume_read_only : states.start_read_only) : (size(inputs.session)>0
+    ? states.resume_work : states.start_work)).outputs.status == ''completed'' ? jq((inputs.read_only ? (size(inputs.session)>0
+    ? states.resume_read_only : states.start_read_only) : (size(inputs.session)>0 ? states.resume_work : states.start_work)).outputs.response,
+    ''with_entries(select(.value != null))'') : {''status'':''stuck'',''summary'':(inputs.read_only ? (size(inputs.session)>0
+    ? states.resume_read_only : states.start_read_only) : (size(inputs.session)>0 ? states.resume_work : states.start_work)).outputs.?error_message.orValue(''The
+    agent did not finish with a valid response; inspect the task output.'')}  }}'
+  session: '${{ (inputs.read_only ? (size(inputs.session)>0 ? states.resume_read_only : states.start_read_only)
+    : (size(inputs.session)>0 ? states.resume_work : states.start_work)).outputs.?session.orValue({}) }}'
+  artifacts: '${{ (inputs.read_only ? (size(inputs.session)>0 ? states.resume_read_only : states.start_read_only)
+    : (size(inputs.session)>0 ? states.resume_work : states.start_work)).artifacts }}'

@@ -1,0 +1,155 @@
+id: adaptive3-consultation
+inputs:
+  cell: ${{ inputs.cell }}
+  request: ${{ inputs.request }}
+  documents: ${{ inputs.?documents.orValue({}) }}
+  feedback: ${{ inputs.?feedback.orValue({}) }}
+  mode: ${{ inputs.?mode.orValue('advice') }}
+  max_iterations: ${{ inputs.?max_iterations.orValue(4) }}
+state:
+  initial: call
+  states:
+    call:
+      inputs:
+        cell: ${{ transition.payload.?cell.orValue(inputs.cell) }}
+        request: ${{ transition.payload.?request.orValue(inputs.request) }}
+        documents: ${{ transition.payload.?documents.orValue(inputs.documents) }}
+        feedback: ${{ transition.payload.?feedback.orValue(inputs.feedback) }}
+        mode: ${{ transition.payload.?mode.orValue(inputs.mode) }}
+        parents: ${{ transition.payload.?parents.orValue([]) }}
+        used: ${{ transition.payload.?used.orValue(0) }}
+      sequence:
+      - id: prompts
+        include: ./prompts/consultation.yaml
+        inputs:
+          sender: '${{ size(inputs.parents)>0 ? inputs.parents[size(inputs.parents)-1].cell : context.workspace.cell
+            }}'
+          request: ${{ inputs.request }}
+          feedback: ${{ inputs.feedback }}
+      outputs:
+        cell: ${{ inputs.cell }}
+        request: ${{ inputs.request }}
+        documents: ${{ inputs.documents }}
+        feedback: ${{ inputs.feedback }}
+        mode: ${{ inputs.mode }}
+        parents: ${{ inputs.parents }}
+        used: ${{ inputs.used }}
+        prompt: ${{ sequence.prompts.outputs.task }}
+      transitions:
+      - to: stuck
+        when: inputs.max_iterations > 0 && outputs.used >= inputs.max_iterations
+      - to: advice
+        when: 'true'
+    advice:
+      include: ./cycle.yaml
+      inputs:
+        purpose: advice
+        request: ${{ states.call.outputs.prompt }}
+        documents: ${{ states.call.outputs.documents }}
+        feedback: ${{ states.call.outputs.feedback }}
+      workspace:
+        cell: ${{ states.call.outputs.cell }}
+        ref: main
+      transitions:
+      - to: call
+        when: outputs.result.status == 'consult'
+        payload:
+          cell: ${{ outputs.result.consultation.cell }}
+          request: ${{ outputs.result.consultation.request }}
+          mode: advice
+          documents: ${{ outputs.documents }}
+          feedback: {}
+          parents: ${{ states.call.outputs.parents + [{'cell':states.call.outputs.cell,'request':states.call.outputs.request,'mode':states.call.outputs.mode,'documents':states.call.outputs.documents}] }}
+          used: ${{ states.call.outputs.used+1 }}
+      - to: call
+        when: outputs.result.status == 'changes'
+        payload:
+          cell: ${{ states.call.outputs.cell }}
+          request: ${{ states.call.outputs.request }}
+          mode: ${{ states.call.outputs.mode }}
+          parents: ${{ states.call.outputs.parents }}
+          documents: ${{ outputs.documents }}
+          feedback: ${{ outputs.result }}
+          used: ${{ states.call.outputs.used+1 }}
+      - to: stuck
+        when: outputs.result.status != 'accepted'
+      - to: return_to_owner
+        when: size(states.call.outputs.parents)>0
+      - to: submit
+        when: states.call.outputs.mode == 'delivery' && has(outputs.work.assignment) && outputs.work.assignment
+          != ''
+      - to: done
+        when: 'true'
+        payload:
+          result: ${{ outputs.work }}
+          documents: ${{ outputs.documents }}
+    return_to_owner:
+      sequence: []
+      outputs:
+        parent: ${{ inputs.parent }}
+      transitions:
+      - to: call
+        when: 'true'
+        payload:
+          cell: ${{ outputs.parent.cell }}
+          request: ${{ outputs.parent.request }}
+          mode: ${{ outputs.parent.mode }}
+          documents: ${{ outputs.parent.documents }}
+          feedback: ${{ {'consultation':states.advice.outputs.work,'documents':states.advice.outputs.documents}
+            }}
+          parents: ${{ jq(states.call.outputs.parents, ' .[0:-1]') }}
+          used: ${{ states.call.outputs.used+1 }}
+      inputs:
+        parent: ${{ states.call.outputs.parents[size(states.call.outputs.parents)-1] }}
+    submit:
+      id: submit
+      op: recipes.run
+      inputs:
+        recipes:
+        - cell_name: ${{ states.call.outputs.cell }}
+          name: ${{ states.advice.outputs.work.?delivery_recipe.orValue('git+https://github.com/colony-2/recipes.git//adaptive3.yaml@main')
+            }}
+          title: ${{ states.advice.outputs.work.?title.orValue('Complete the agreed owner request') }}
+          inputs:
+            prompt: ${{ states.advice.outputs.work.assignment }}
+            documents: ${{ states.advice.outputs.documents }}
+      transitions:
+      - to: wait
+        when: 'true'
+    wait:
+      id: wait
+      op: recipe.await_result_soft
+      inputs:
+        target:
+          job: ${{ states.submit.outputs.job_ids[0] }}
+        wait:
+          'on': job
+          condition: complete
+        return_when: terminal
+      transitions:
+      - to: done
+        when: outputs.status == 'completed'
+        payload:
+          result: ${{ {'status':'ready','summary':'The agreed child finished; inspect its actual result against
+            the request.','child':outputs} }}
+          documents: ${{ outputs.?artifacts.orValue({}) }}
+      - to: stuck
+        when: 'true'
+    stuck:
+      sequence: []
+      outputs:
+        result: ${{ inputs.result }}
+        documents: ${{ inputs.documents }}
+      inputs:
+        result: '${{ {''status'':''stuck'',''summary'':''Consultation needs resolution; inspect the receiving tasks
+          or child result.'',''child'':state_exists(''wait'') ? states.wait.outputs : {},''advice'':state_output(''advice'',''result'',{})}
+          }}'
+        documents: ${{ state_output('advice','documents',inputs.documents) }}
+    done:
+      sequence: []
+      outputs:
+        result: ${{ transition.payload.result }}
+        documents: ${{ transition.payload.documents }}
+outputs:
+  result: '${{ state_exists(''done'') ? states.done.outputs.result : states.stuck.outputs.result }}'
+  documents: '${{ state_exists(''done'') ? states.done.outputs.documents : states.stuck.outputs.documents }}'

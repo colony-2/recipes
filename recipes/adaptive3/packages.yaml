@@ -1,0 +1,145 @@
+id: adaptive3-packages
+inputs:
+  requests: ${{ inputs.requests }}
+  reason: ${{ inputs.reason }}
+state:
+  initial: prepare
+  states:
+    prepare:
+      sequence:
+      - id: schemas
+        include: ./schemas.yaml
+      - id: prompts
+        include: ./prompts/packages.yaml
+        inputs:
+          requests: ${{ inputs.requests }}
+          reason: ${{ inputs.reason }}
+      - id: policy
+        include: ../adaptive/package-policy.yaml
+      - id: proposal
+        include: ./agent.yaml
+        inputs:
+          prompt: ${{ sequence.prompts.outputs.propose }}
+          schema: ${{ sequence.schemas.outputs.execute }}
+          read_only: true
+      - id: config
+        include: ./tools.yaml
+        inputs:
+          check: package_config
+          documents: ${{ sequence.proposal.outputs.artifacts }}
+          requests: ${{ inputs.requests }}
+      - id: files
+        include: ./tools.yaml
+        inputs:
+          check: review_files
+          documents: ${{ jq(sequence.proposal.outputs.artifacts, 'with_entries(select(.key | startswith("review/")))')
+            }}
+          title: ${{ sequence.proposal.outputs.response.?title.orValue('') }}
+          primary: review/README.md
+      outputs:
+        documents: ${{ jq(sequence.proposal.outputs.artifacts, 'with_entries(select(.key | startswith("review/")))')
+          }}
+        schema: ${{ sequence.schemas.outputs.execute }}
+        text: ${{ sequence.prompts.outputs }}
+        policy: ${{ sequence.policy.outputs.approved }}
+        valid: ${{ sequence.config.outputs.result.status == 'passed' && sequence.files.outputs.result.status ==
+          'passed' }}
+        findings: '${{ sequence.config.outputs.result.status != ''passed'' ? sequence.config.outputs.result : sequence.files.outputs.result
+          }}'
+        title: ${{ sequence.proposal.outputs.response.?title.orValue('') }}
+      transitions:
+      - to: done
+        when: '!outputs.valid'
+        payload:
+          result: ${{ outputs.findings }}
+      - to: launch
+        when: inputs.requests.all(r, r.reference in outputs.policy && outputs.policy[r.reference] == r.check)
+      - to: approval
+        when: 'true'
+      inputs:
+        requests: ${{ inputs.requests }}
+        reason: ${{ inputs.reason }}
+    approval:
+      include: ./review.yaml
+      inputs:
+        purpose: outcome
+        request: ${{ inputs.reason }}
+        title: ${{ states.prepare.outputs.title }}
+        primary: review/README.md
+        documents: ${{ states.prepare.outputs.documents }}
+      transitions:
+      - to: launch
+        when: outputs.result.status == 'accepted'
+      - to: done
+        when: 'true'
+        payload:
+          result: ${{ outputs.result }}
+    launch:
+      id: launch
+      op: recipes.run
+      inputs:
+        recipes:
+        - cell_name: ${{ context.workflow.cell }}
+          name: git+https://github.com/colony-2/recipes.git//recipes/adaptive3/package-probe.yaml@main
+          title: Validate approved worker tools
+          inputs:
+            config: ${{ states.prepare.outputs.documents['review/config.yaml'] }}
+            requests: ${{ inputs.requests }}
+      transitions:
+      - to: wait
+        when: 'true'
+    wait:
+      id: wait
+      op: recipe.await_result_soft
+      inputs:
+        target:
+          job: ${{ states.launch.outputs.job_ids[0] }}
+        wait:
+          'on': job
+          condition: complete
+        return_when: terminal
+      transitions:
+      - to: adopt
+        when: outputs.status == 'completed' && outputs.outputs.status == 'passed'
+      - to: done
+        when: 'true'
+        payload:
+          result:
+            status: stuck
+            summary: Approved package validation did not pass. Inspect the actual child result.
+            child: ${{ outputs }}
+    adopt:
+      inputs:
+        documents: ${{ states.prepare.outputs.documents }}
+        prompt: ${{ states.prepare.outputs.text.adopt }}
+        schema: ${{ states.prepare.outputs.schema }}
+        requests: ${{ inputs.requests }}
+      sequence:
+      - id: agent
+        include: ./agent.yaml
+        inputs:
+          prompt: ${{ inputs.prompt }}
+          schema: ${{ inputs.schema }}
+          documents: ${{ inputs.documents }}
+          read_only: false
+      - id: check
+        include: ./tools.yaml
+        inputs:
+          check: package_config
+          documents: ${{ inputs.documents }}
+          requests: ${{ inputs.requests }}
+          adopted: true
+      outputs:
+        result: ${{ sequence.check.outputs.result }}
+      transitions:
+      - to: done
+        when: 'true'
+        payload:
+          result: ${{ outputs.result }}
+    done:
+      sequence: []
+      outputs:
+        result: ${{ transition.payload.result }}
+outputs:
+  result: '${{ states.done.outputs.result.status == ''passed'' && state_exists(''approval'') ? jq([states.done.outputs.result,{''human'':states.approval.outputs.result}],
+    ''add'') : states.done.outputs.result }}'

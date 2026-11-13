@@ -1,0 +1,96 @@
+id: adaptive3-cycle
+inputs:
+  purpose: ${{ inputs.purpose }}
+  request: ${{ inputs.request }}
+  target_directory: ${{ inputs.?target_directory.orValue('.') }}
+  documents: ${{ inputs.?documents.orValue({}) }}
+  feedback: ${{ inputs.?feedback.orValue({}) }}
+  settings: ${{ inputs.?settings.orValue({}) }}
+  require_verification: ${{ inputs.?require_verification.orValue(false) }}
+  session: ${{ inputs.?session.orValue({}) }}
+state:
+  initial: execute
+  states:
+    execute:
+      include: ./execute.yaml
+      inputs:
+        purpose: ${{ inputs.purpose }}
+        request: ${{ inputs.request }}
+        target_directory: ${{ inputs.target_directory }}
+        documents: ${{ inputs.documents }}
+        feedback: ${{ inputs.feedback }}
+        settings: ${{ inputs.settings }}
+        session: ${{ inputs.session }}
+      transitions:
+      - to: validate
+        when: outputs.response.status == 'ready'
+      - to: done
+        when: 'true'
+        payload:
+          result: ${{ outputs.response }}
+          documents: ${{ outputs.documents }}
+          session: ${{ outputs.session }}
+    validate:
+      include: ./validate.yaml
+      inputs:
+        purpose: ${{ inputs.purpose }}
+        request: ${{ inputs.request }}
+        target_directory: ${{ inputs.target_directory }}
+        documents: ${{ states.execute.outputs.documents }}
+        title: ${{ states.execute.outputs.response.?title.orValue('') }}
+        primary: ${{ states.execute.outputs.response.?primary.orValue('') }}
+        settings: ${{ inputs.settings }}
+        require_verification: ${{ inputs.require_verification }}
+      transitions:
+      - to: review
+        when: outputs.result.status == 'passed'
+      - to: done
+        when: 'true'
+        payload:
+          result: '${{ jq([jq([outputs.result,{''errors'':outputs.artifacts}], ''add''),states.execute.outputs.response.?publication.hasValue()
+            ? {''publication'':states.execute.outputs.response.publication} : {}], ''add'') }}'
+          documents: ${{ states.execute.outputs.documents }}
+          session: ${{ states.execute.outputs.session }}
+    review:
+      include: ./review.yaml
+      inputs:
+        purpose: ${{ inputs.purpose }}
+        request: ${{ inputs.request }}
+        documents: ${{ states.execute.outputs.documents }}
+        title: ${{ states.execute.outputs.response.?title.orValue('') }}
+        primary: ${{ states.execute.outputs.response.?primary.orValue('') }}
+        validation: ${{ states.validate.outputs.result }}
+        feedback: ${{ inputs.feedback }}
+      transitions:
+      - to: done
+        when: 'true'
+        payload:
+          result: '${{ jq([outputs.result,states.execute.outputs.response.?publication.hasValue() ? {''publication'':states.execute.outputs.response.publication}
+            : {}], ''add'') }}'
+          documents: ${{ states.execute.outputs.documents }}
+          session: ${{ states.execute.outputs.session }}
+    done:
+      sequence: []
+      outputs:
+        result: ${{ transition.payload.result }}
+        documents: ${{ transition.payload.documents }}
+        session: ${{ transition.payload.session }}
+outputs:
+  result: ${{ states.done.outputs.result }}
+  documents: ${{ states.done.outputs.documents }}
+  session: ${{ states.done.outputs.session }}
+  work: ${{ states.execute.outputs.response }}
+  patch: ${{ state_output('validate','patch',null) }}
+  candidate: ${{ state_output('validate','candidate',{}) }}
+catch:
+- when: failure.kind != 'cancellation'
+  continue:
+    outputs:
+      result: '${{ jq([jq([{''status'':''stuck'',''summary'':failure.message,''failure'':failure},state_output(''execute'',''response'',{}).?publication.hasValue()
+        ? {''publication'':states.execute.outputs.response.publication} : {}], ''add''),{''errors'':jq([failure.?attrs.orValue({}).?command.orValue({}).?diagnostics.orValue({}),failure.?attrs.orValue({}).?extension.orValue({}).?diagnostics.orValue({})],
+        ''add | with_entries(.key = "error/" + (.key | split("/") | last) | .value.name = .key)'')}], ''add'') }}'
+      documents: ${{ state_output('execute','documents',inputs.documents) }}
+      session: {}
+      work: ${{ state_output('execute','response',{}) }}
+      candidate: {}
+      patch: null

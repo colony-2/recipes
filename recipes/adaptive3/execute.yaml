@@ -1,0 +1,148 @@
+id: adaptive3-execute
+inputs:
+  purpose: ${{ inputs.purpose }}
+  request: ${{ inputs.request }}
+  target_directory: ${{ inputs.?target_directory.orValue('.') }}
+  documents: ${{ inputs.?documents.orValue({}) }}
+  feedback: ${{ inputs.?feedback.orValue({}) }}
+  settings: ${{ inputs.?settings.orValue({}) }}
+  session: ${{ inputs.?session.orValue({}) }}
+state:
+  initial: context
+  states:
+    context:
+      inputs:
+        purpose: ${{ inputs.purpose }}
+        request: ${{ inputs.request }}
+        target_directory: ${{ inputs.target_directory }}
+        feedback: ${{ inputs.feedback }}
+        settings: ${{ inputs.settings }}
+      sequence:
+      - id: schemas
+        include: ./schemas.yaml
+      - id: prompts
+        include: ./prompts/execute.yaml
+        inputs:
+          purpose: ${{ inputs.purpose }}
+          request: ${{ inputs.request }}
+          target_directory: ${{ inputs.target_directory }}
+          feedback: ${{ inputs.feedback }}
+          guidance: ${{ inputs.settings.?prompt_additions.orValue({})[?{'direction':'design','preparation':'test_plan','implementation':'implementation','outcome':'outcome_assessment','integration':'outcome_assessment','advice':'design'}[inputs.purpose]].orValue('')
+            }}
+      outputs:
+        schema: ${{ sequence.schemas.outputs.execute }}
+        task: ${{ sequence.prompts.outputs.task }}
+      transitions:
+      - to: publish
+        when: inputs.purpose == 'integration' && has(inputs.feedback.publication)
+      - to: merge
+        when: inputs.purpose == 'integration'
+      - to: before_design
+        when: inputs.purpose == 'direction'
+      - to: work
+        when: 'true'
+    before_design:
+      include: ./hooks.yaml
+      inputs:
+        request: ${{ inputs.request }}
+        target_directory: ${{ inputs.target_directory }}
+        documents: ${{ inputs.documents }}
+        settings: ${{ inputs.settings }}
+        hook: before_design
+      transitions:
+      - to: specialists
+        when: outputs.result.status != 'failed'
+      - to: problem
+        when: 'true'
+        payload:
+          problem: ${{ outputs.result }}
+    work:
+      include: ./agent.yaml
+      inputs:
+        prompt: |-
+          {{ states.context.outputs.task }}
+
+          Configured owner findings: ${{ state_exists('specialists') ? states.specialists.outputs.result.summary : '' }}
+        schema: ${{ states.context.outputs.schema }}
+        documents: ${{ jq([inputs.documents,inputs.feedback.?documents.orValue({}),inputs.feedback.?errors.orValue({}),state_output('before_design','artifacts',{})],
+          'add') }}
+        session: ${{ inputs.session }}
+        read_only: ${{ inputs.purpose != 'implementation' }}
+      transitions:
+      - to: rebase
+        when: inputs.purpose == 'implementation' && outputs.response.status == 'ready' && inputs.feedback.?failure.orValue({}).?attrs.orValue({}).?upstream_hash.hasValue()
+      - to: prepare
+        when: inputs.purpose == 'implementation' && outputs.response.status == 'ready'
+      - to: done
+        when: 'true'
+    rebase:
+      include: ./integration.yaml
+      inputs:
+        operation: rebase
+        target: ${{ inputs.feedback.failure.attrs.upstream_hash }}
+      transitions:
+      - to: prepare
+        when: 'true'
+    prepare:
+      include: ./hooks.yaml
+      inputs:
+        request: ${{ inputs.request }}
+        target_directory: ${{ inputs.target_directory }}
+        documents: ${{ inputs.documents }}
+        settings: ${{ inputs.settings }}
+        hook: prepare
+      transitions:
+      - to: done
+        when: outputs.result.status != 'failed'
+      - to: problem
+        when: 'true'
+        payload:
+          problem: ${{ outputs.result }}
+    merge:
+      include: ./integration.yaml
+      inputs:
+        operation: merge
+        message: ${{ inputs.request }}
+      transitions:
+      - to: publish
+        when: 'true'
+    publish:
+      include: ./hooks.yaml
+      inputs:
+        request: ${{ inputs.request }}
+        target_directory: ${{ inputs.target_directory }}
+        documents: ${{ inputs.documents }}
+        settings: ${{ inputs.settings }}
+        hook: publish
+        publication: '${{ has(inputs.feedback.publication) ? inputs.feedback.publication : states.merge.outputs.result
+          }}'
+      transitions:
+      - to: done
+        when: 'true'
+    problem:
+      sequence: []
+      outputs:
+        problem: ${{ transition.payload.problem }}
+    done:
+      sequence: []
+    specialists:
+      include: ./specialists.yaml
+      inputs:
+        settings: ${{ inputs.settings }}
+        request: ${{ inputs.request }}
+        documents: ${{ inputs.documents }}
+        checkpoint: before_design
+      transitions:
+      - to: work
+        when: 'true'
+outputs:
+  response: '${{ state_exists(''problem'') ? {''status'':''stuck'',''summary'':states.problem.outputs.problem.summary,''failure'':states.problem.outputs.problem}
+    : (inputs.purpose == ''integration'' ? {''status'':states.publish.outputs.result.status == ''failed'' ? ''stuck'':''ready'',''summary'':states.publish.outputs.result.summary,''publication'':has(inputs.feedback.publication)
+    ? inputs.feedback.publication : states.merge.outputs.result,''publish'':states.publish.outputs.result} : states.work.outputs.response)
+    }}'
+  documents: '${{ state_exists(''work'') && size(jq(states.work.outputs.artifacts,''with_entries(select(.key|startswith("review/")))''))>0
+    ? jq(states.work.outputs.artifacts,''with_entries(select(.key|startswith("review/")))'') : inputs.documents
+    }}'
+  session: ${{ state_output('work','session',{}) }}
+  artifacts: '${{ state_exists(''work'') ? states.work.outputs.artifacts : state_output(''publish'',''artifacts'',{})
+    }}'

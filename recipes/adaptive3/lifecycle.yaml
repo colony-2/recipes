@@ -1,0 +1,131 @@
+id: adaptive3-lifecycle
+inputs:
+  purpose: ${{ inputs.purpose }}
+  request: ${{ inputs.request }}
+  target_directory: ${{ inputs.?target_directory.orValue('.') }}
+  documents: ${{ inputs.?documents.orValue({}) }}
+  feedback: ${{ inputs.?feedback.orValue({}) }}
+  settings: ${{ inputs.?settings.orValue({}) }}
+  require_verification: ${{ inputs.?require_verification.orValue(false) }}
+  max_iterations: ${{ inputs.?max_iterations.orValue(0) }}
+state:
+  initial: execute
+  states:
+    execute:
+      inputs:
+        documents: ${{ transition.payload.?documents.orValue(inputs.documents) }}
+        feedback: ${{ transition.payload.?feedback.orValue(inputs.feedback) }}
+        session: ${{ transition.payload.?session.orValue({}) }}
+        used: ${{ transition.payload.?used.orValue(0) }}
+      sequence: []
+      outputs:
+        documents: ${{ inputs.documents }}
+        feedback: ${{ inputs.feedback }}
+        session: ${{ inputs.session }}
+        used: ${{ inputs.used }}
+      transitions:
+      - to: limit
+        when: inputs.max_iterations>0 && outputs.used >= inputs.max_iterations
+      - to: cycle
+        when: 'true'
+    cycle:
+      include: ./cycle.yaml
+      inputs:
+        purpose: ${{ inputs.purpose }}
+        request: ${{ inputs.request }}
+        target_directory: ${{ inputs.target_directory }}
+        settings: ${{ inputs.settings }}
+        require_verification: ${{ inputs.require_verification }}
+        documents: ${{ states.execute.outputs.documents }}
+        feedback: ${{ states.execute.outputs.feedback }}
+        session: ${{ states.execute.outputs.session }}
+      transitions:
+      - to: consult
+        when: outputs.result.status == 'consult'
+      - to: packages
+        when: outputs.result.status == 'packages'
+      - to: execute
+        when: outputs.result.status == 'changes' && (!has(outputs.result.stage) || outputs.result.stage == inputs.purpose)
+        payload:
+          documents: ${{ outputs.documents }}
+          feedback: ${{ outputs.result }}
+          session: '${{ has(outputs.result.human) ? {} : outputs.session }}'
+          used: '${{ has(outputs.result.human) ? 0 : states.execute.outputs.used+1 }}'
+      - to: done
+        when: 'true'
+        payload:
+          result: ${{ outputs.result }}
+          documents: ${{ outputs.documents }}
+    consult:
+      include: ./consultation.yaml
+      inputs:
+        cell: ${{ states.cycle.outputs.result.consultation.cell }}
+        request: ${{ states.cycle.outputs.result.consultation.request }}
+        documents: ${{ states.cycle.outputs.documents }}
+        mode: '${{ inputs.purpose in [''direction'',''preparation'',''advice''] ? ''advice'' : states.cycle.outputs.result.consultation.mode
+          }}'
+      transitions:
+      - to: done
+        when: outputs.result.status == 'stuck'
+        payload:
+          result: ${{ outputs.result }}
+          documents: ${{ states.cycle.outputs.documents }}
+      - to: execute
+        when: 'true'
+        payload:
+          documents: ${{ states.cycle.outputs.documents }}
+          feedback: ${{ {'consultation':outputs.result,'documents':outputs.documents} }}
+          session: ${{ states.cycle.outputs.session }}
+          used: ${{ states.execute.outputs.used+1 }}
+    packages:
+      include: ./packages.yaml
+      inputs:
+        requests: ${{ states.cycle.outputs.result.packages }}
+        reason: ${{ states.cycle.outputs.result.summary }}
+      transitions:
+      - to: done
+        when: outputs.result.status == 'stuck'
+        payload:
+          result: ${{ outputs.result }}
+          documents: ${{ states.cycle.outputs.documents }}
+      - to: execute
+        when: 'true'
+        payload:
+          documents: ${{ states.cycle.outputs.documents }}
+          feedback: ${{ outputs.result }}
+          session: '${{ has(outputs.result.human) ? {} : states.cycle.outputs.session }}'
+          used: '${{ has(outputs.result.human) ? 0 : states.execute.outputs.used+1 }}'
+    limit:
+      sequence: []
+      outputs:
+        result:
+          status: stuck
+          summary: Automatic work allowance reached. Decide the next correction before granting another attempt.
+        documents: ${{ inputs.documents }}
+      inputs:
+        documents: ${{ states.execute.outputs.documents }}
+    done:
+      sequence: []
+      outputs:
+        result: ${{ transition.payload.result }}
+        documents: ${{ transition.payload.documents }}
+outputs:
+  result: '${{ state_exists(''done'') ? states.done.outputs.result : states.limit.outputs.result }}'
+  documents: '${{ state_exists(''done'') ? states.done.outputs.documents : states.limit.outputs.documents }}'
+  work: ${{ state_output('cycle','work',{}) }}
+  patch: ${{ state_output('cycle','patch',null) }}
+  candidate: ${{ state_output('cycle','candidate',{}) }}
+  feedback: ${{ state_output('execute','feedback',inputs.?feedback.orValue({})) }}
+catch:
+- when: failure.kind != 'cancellation'
+  continue:
+    outputs:
+      result:
+        status: stuck
+        summary: ${{ failure.message }}
+        failure: ${{ failure }}
+      documents: ${{ inputs.documents }}
+      work: {}
+      candidate: {}
+      patch: null
+      feedback: ${{ inputs.?feedback.orValue({}) }}

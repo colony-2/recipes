@@ -1,0 +1,163 @@
+id: adaptive3-resolver
+inputs:
+  stage: ${{ inputs.stage }}
+  request: ${{ inputs.request }}
+  problem: ${{ inputs.problem }}
+  documents: ${{ inputs.?documents.orValue({}) }}
+  feedback: ${{ inputs.?feedback.orValue({}) }}
+state:
+  initial: setup
+  states:
+    setup:
+      sequence:
+      - id: schemas
+        include: ./schemas.yaml
+      - id: prompts
+        include: ./prompts/resolver.yaml
+        inputs:
+          stage: ${{ inputs.stage }}
+          request: ${{ inputs.request }}
+          problem: ${{ inputs.problem }}
+          feedback: ${{ inputs.feedback }}
+      outputs:
+        schema: ${{ sequence.schemas.outputs.resolver }}
+        text: ${{ sequence.prompts.outputs }}
+      transitions:
+      - to: investigate
+        when: 'true'
+      inputs:
+        stage: ${{ inputs.stage }}
+        request: ${{ inputs.request }}
+        problem: ${{ inputs.problem }}
+        documents: ${{ inputs.documents }}
+        feedback: ${{ inputs.feedback }}
+    investigate:
+      include: ./agent.yaml
+      inputs:
+        prompt: ${{ states.setup.outputs.text.task }}
+        schema: ${{ jq([states.setup.outputs.schema,vars.destinations[inputs.stage]], '.[1] as $stages | .[0] |
+          .properties.stage.enum = $stages') }}
+        documents: ${{ jq([inputs.documents,inputs.problem.?errors.orValue({})], 'add') }}
+        read_only: true
+      transitions:
+      - to: done
+        when: outputs.response.status == 'resume' && inputs.feedback.?status.orValue('') != 'resume'
+        payload:
+          result: ${{ outputs.response }}
+      - to: ask
+        when: 'true'
+      catch:
+      - when: failure.kind != 'cancellation'
+        to: ask
+        payload:
+          problem: ${{ failure }}
+    ask:
+      id: ask
+      op: input
+      inputs:
+        form:
+          title: Decide how to continue
+          fields:
+          - id: decision
+            type: multiple_choice
+            question: '${{ state_exists(''answer'') ? states.answer.outputs.response.summary : (state_exists(''investigate'')
+              ? states.investigate.outputs.response.summary : inputs.problem.summary) }}'
+            required: true
+            options:
+            - value: continue
+              label: ${{ states.setup.outputs.text.continue }}
+            - value: discuss
+              label: ${{ states.setup.outputs.text.discuss }}
+          - id: message
+            type: paragraph_text
+            question: ${{ states.setup.outputs.text.message }}
+            required: false
+          - id: notes
+            type: file_upload
+            question: ${{ states.setup.outputs.text.notes }}
+            required: false
+          kind: review
+          documents: ${{ inputs.documents }}
+      transitions:
+      - to: done
+        when: outputs.fields.decision == 'continue'
+        payload:
+          result:
+            status: resume
+            stage: '${{ state_exists(''answer'') ? states.answer.outputs.response.?stage.orValue(inputs.stage) :
+              state_output(''investigate'',''response'',{}).?stage.orValue(inputs.stage) }}'
+            summary: '${{ state_exists(''answer'') ? states.answer.outputs.response.summary : state_output(''investigate'',''response'',inputs.problem).summary
+              }}'
+            human: ${{ outputs }}
+            documents: ${{ jq(outputs.?artifact_refs.orValue({}), 'with_entries(.key = "feedback/" + .key | .value.name
+              = .key)') }}
+      - to: answer
+        when: 'true'
+    answer:
+      inputs:
+        stage: ${{ inputs.stage }}
+        request: ${{ inputs.request }}
+        problem: ${{ inputs.problem }}
+        feedback: ${{ states.ask.outputs }}
+        schema: ${{ jq([states.setup.outputs.schema,vars.destinations[inputs.stage]], '.[1] as $stages | .[0] |
+          .properties.stage.enum = $stages') }}
+        documents: ${{ jq([inputs.documents,jq(states.ask.outputs.?artifact_refs.orValue({}), 'with_entries(.key
+          = "feedback/" + .key | .value.name = .key)')], 'add') }}
+      sequence:
+      - id: prompts
+        include: ./prompts/resolver.yaml
+        inputs:
+          stage: ${{ inputs.stage }}
+          request: ${{ inputs.request }}
+          problem: ${{ inputs.problem }}
+          feedback: ${{ inputs.feedback }}
+      - id: agent
+        include: ./agent.yaml
+        inputs:
+          prompt: ${{ sequence.prompts.outputs.task }}
+          schema: ${{ inputs.schema }}
+          documents: ${{ inputs.documents }}
+          read_only: true
+      outputs:
+        response: ${{ sequence.agent.outputs.response }}
+      transitions:
+      - to: ask
+        when: 'true'
+      catch:
+      - when: failure.kind != 'cancellation'
+        to: ask
+    done:
+      sequence: []
+      outputs:
+        result: ${{ transition.payload.result }}
+outputs:
+  result: ${{ states.done.outputs.result }}
+vars:
+  destinations:
+    configure:
+    - configure
+    direction:
+    - configure
+    - direction
+    preparation:
+    - configure
+    - direction
+    - preparation
+    implementation:
+    - configure
+    - direction
+    - preparation
+    - implementation
+    outcome:
+    - configure
+    - direction
+    - preparation
+    - implementation
+    - outcome
+    integration:
+    - configure
+    - direction
+    - preparation
+    - implementation
+    - outcome
+    - integration

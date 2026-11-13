@@ -1,0 +1,113 @@
+recipe: resolver.yaml
+cases:
+- id: discuss-before-continuing
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          README.md: A small project.
+    responses:
+    - node_path: resolver-test/resolver/adaptive3-resolver/ask/ask
+      fields:
+        decision: discuss
+        message: Why is the browser needed?
+    - node_path: resolver-test/resolver/adaptive3-resolver/ask/ask
+      fields:
+        decision: continue
+        message: Use the existing remote browser.
+  inputs:
+    stage: implementation
+    request: Fix the UI
+    problem:
+      status: stuck
+      summary: Browser unavailable
+  mocks:
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: ask
+            summary: May I use the existing remote browser?
+            stage: implementation
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: May I use the existing remote browser?
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: resume
+            summary: The remote browser captures the same application.
+            stage: implementation
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: The remote browser captures the same application.
+  assertions:
+  - type: cel_true
+    expr: size(reviews)==2
+  - type: cel_true
+    expr: outputs.result.human.fields.message=="Use the existing remote browser."
+- id: continue-retains-correction-stage-and-notes
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          README.md: A small project.
+    responses:
+    - node_path: resolver-test/resolver/adaptive3-resolver/ask/ask
+      fields:
+        decision: continue
+        message: ''
+      attachments:
+        notes: fixtures/scope.md
+  inputs:
+    stage: implementation
+    request: Fix the UI
+    problem:
+      status: stuck
+      summary: Browser unavailable
+  mocks:
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: ask
+            summary: Revise direction to use the existing remote browser.
+            stage: direction
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: May I use the existing remote browser?
+  assertions:
+  - type: cel_true
+    expr: outputs.result.summary=="Revise direction to use the existing remote browser."
+  - type: cel_true
+    expr: outputs.result.stage=="direction"
+  - type: cel_true
+    expr: '"feedback/scope.md" in outputs.result.documents && outputs.result.documents["feedback/scope.md"].name=="feedback/scope.md"'
+  - type: cel_true
+    expr: size(reviews)==1

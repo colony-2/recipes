@@ -1,0 +1,48 @@
+recipe: consultation.yaml
+live: true
+cases:
+- id: receiver-challenges-new-api
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          PURPOSE.md: |-
+            # Notebook owner
+            Owns notebook UI and editing flows.
+          README.md: The notebook needs recovery of previous text.
+      storage:
+        files:
+          PURPOSE.md: |-
+            # Storage
+            Owns persistent notebook text, history and version checks. Notebook UI belongs to notebook.
+          README.md: History already keeps three distinct saved versions, including current. Identical saves do
+            not create versions. GET /notebooks/:id/history lists retained text and version. PUT /notebooks/:id
+            with expected_version updates text and rejects stale writers. Restoration should use this same version-checked
+            PUT; a second restore endpoint would duplicate it. Retention changes require product agreement about
+            counting current and autosave granularity.
+          storage.js: |
+            export const retainedVersions = 3;
+            export function save(old, next, expectedVersion) { if (expectedVersion !== old.version) throw new Error("conflict"); return next === old.text ? old : {text: next, version: old.version + 1}; }
+    responses: []
+  inputs:
+    cell: storage
+    request: Our notebook needs users to recover old saves. Can you add a new restore endpoint and keep five versions,
+      including every autosave?
+  mocks:
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      repeat: true
+      behavior:
+        mode: passthrough
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.result.status=="ready"
+  - type: cel_true
+    expr: '!calls.exists(c,c.op=="recipes.run")'

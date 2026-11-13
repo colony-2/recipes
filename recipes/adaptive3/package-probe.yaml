@@ -1,0 +1,84 @@
+schema_version: 2
+id: adaptive3-package-probe
+input_schema:
+  config:
+    type: artifact
+    required: true
+  requests:
+    type: array
+    items:
+      type: object
+    required: true
+inputs:
+  config: ${{ inputs.config }}
+  requests: ${{ inputs.requests }}
+outputs:
+  status: ${{ states.install.outputs.result.status }}
+  summary: ${{ states.install.outputs.result.summary }}
+catch:
+- when: failure.kind != 'cancellation'
+  continue:
+    outputs:
+      status: changes
+      summary: ${{ failure.message }}
+      failure: ${{ failure }}
+state:
+  initial: install
+  states:
+    install:
+      inputs:
+        config: ${{ inputs.config }}
+        requests: ${{ inputs.requests }}
+      sequence:
+      - id: schemas
+        include: ./schemas.yaml
+      - id: prompts
+        include: ./prompts/packages.yaml
+        inputs:
+          requests: ${{ inputs.requests }}
+          reason: Validate the approved worker configuration
+      - id: install
+        include: ./agent.yaml
+        inputs:
+          prompt: ${{ sequence.prompts.outputs.install }}
+          schema: ${{ sequence.schemas.outputs.execute }}
+          documents:
+            review/config.yaml: ${{ inputs.config }}
+          read_only: false
+      - id: config
+        include: ./tools.yaml
+        inputs:
+          check: package_config
+          documents:
+            review/config.yaml: ${{ inputs.config }}
+          requests: ${{ inputs.requests }}
+          adopted: true
+      outputs:
+        result: ${{ sequence.config.outputs.result }}
+      transitions:
+      - to: probe
+        when: outputs.result.status == 'passed'
+      - to: done
+        when: 'true'
+    probe:
+      op: command_execution
+      const: true
+      inputs:
+        env:
+          REQUESTS: ${{ json_stringify(inputs.requests) }}
+        run: |
+          python3 - <<'PY'
+          import json, os, subprocess
+          for item in json.loads(os.environ['REQUESTS']):
+              print('Probe:', json.dumps(item['check']), flush=True)
+              subprocess.run(item['check'], check=True)
+          PY
+      execution_needs:
+        packages:
+        - nix:github:NixOS/nixpkgs/e7439b6b14ad3cc35d05608ebca9bce01a25f5f8#python3
+      id: probe
+      transitions:
+      - to: done
+        when: 'true'
+    done:
+      sequence: []
