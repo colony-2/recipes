@@ -1,7 +1,8 @@
 # Adaptive3 review options: audit and proposed corrections
 
-Audited 2026-11-13 at recipes `6ffbf4f`. This is an audit and proposal; the
-changes below are not implemented.
+Audited 2026-11-13 at recipes `6ffbf4f`. The findings below describe that revision.
+The subsequent [implementation assessment](IMPLEMENTATION_REVIEW_AND_BACKSTOP.md)
+records the completed corrections and remaining external blockers.
 
 Adaptive2 usually named the decision and its consequence. Adaptive3 reused one
 review activity but lost that distinction in its wording. Keep the shared
@@ -27,7 +28,7 @@ existing form fields.
 Sources: [adaptive2 prompts](../../recipes/adaptive2/prompts.yaml),
 [adaptive2 limit decisions](../../recipes/adaptive2/limit-decision.yaml),
 [adaptive3 review prompts](../../recipes/adaptive3/prompts/review.yaml), and
-[resolver prompts](../../recipes/adaptive3/prompts/resolver.yaml).
+[resolver prompts](https://github.com/colony-2/recipes/blob/6ffbf4f034b9c2fbe12dce384dca88a66f0ef32b/recipes/adaptive3/prompts/resolver.yaml).
 Adaptive2's limit forms were too long; retain their explicit consequences without
 restoring the long explanation of every possible choice.
 
@@ -53,7 +54,7 @@ the job remains the explicit native cancellation action.
 
 ### Resolver can continue without reconsidering new feedback
 
-In [resolver.yaml](../../recipes/adaptive3/resolver.yaml), `continue` with a valid
+In [resolver.yaml](https://github.com/colony-2/recipes/blob/6ffbf4f034b9c2fbe12dce384dca88a66f0ef32b/recipes/adaptive3/resolver.yaml), `continue` with a valid
 proposed stage goes straight to completion. New text or attachments are forwarded
 but do not cause the resolver to reconsider its existing plan. Explicit model
 fields take a different path and are reconsidered.

@@ -120,6 +120,17 @@ input-permission error; the second is a completed diagnostic with a negative
 finding. Neither establishes that the Python bug was repaired. No observed jobs
 were changed during this audit.
 
+## Follow-up from the Cortex loop audit
+
+- [ ] **Keep text review independent of image decoding.** Move the Pillow import
+  into the existing image-file check. Preserve the full validation cycle, declared
+  dependency, link checks and image decoding requirement. Add missing-library
+  tests proving text-only reviews pass and reviews with images request correction.
+  The [loop audit](AUDIT_3M28e5.md#follow-up-why-it-repeats-and-how-to-break-the-cycle)
+  records the disposable experiment and recovery route. This is a proposed next
+  change, separate from the completed todo implementation; c2j still owns the
+  actual Python preparation repair.
+
 ## Earlier implementation checklist
 
 - [x] **Allow human-directed model and reasoning changes.** Add optional job inputs
