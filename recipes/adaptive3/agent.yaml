@@ -6,98 +6,193 @@ inputs:
   session: ${{ inputs.?session.orValue({}) }}
   read_only: ${{ inputs.?read_only.orValue(true) }}
   agent_settings: ${{ inputs.?agent_settings.orValue({}) }}
+vars:
+  invocation: '${{ (inputs.read_only ? (size(inputs.session)>0 ? ''resume_read_only'' : ''start_read_only'') : (size(inputs.session)>0
+    ? ''resume_work'' : ''start_work'')) + (nonempty(inputs.agent_settings.?model.orValue('''')) ? ''_model'' :
+    '''') + (nonempty(inputs.agent_settings.?reasoning_effort.orValue('''')) ? ''_reasoning'' : '''') }}'
+# Each invocation runs one direct Nix operation. The variants omit unset settings
+# so the c2ops manifest supplies worker defaults; YAML merges share the actual call.
 state:
   initial: context
   states:
     context:
       include: ./prompts/context.yaml
       transitions:
-      - to: resume_read_only
-        when: inputs.read_only && size(inputs.session) > 0
       - to: start_read_only
-        when: inputs.read_only
-      - to: resume_work
-        when: size(inputs.session) > 0
+        when: vars.invocation == 'start_read_only'
+      - to: start_read_only_model
+        when: vars.invocation == 'start_read_only_model'
+      - to: start_read_only_reasoning
+        when: vars.invocation == 'start_read_only_reasoning'
+      - to: start_read_only_model_reasoning
+        when: vars.invocation == 'start_read_only_model_reasoning'
+      - to: resume_read_only
+        when: vars.invocation == 'resume_read_only'
+      - to: resume_read_only_model
+        when: vars.invocation == 'resume_read_only_model'
+      - to: resume_read_only_reasoning
+        when: vars.invocation == 'resume_read_only_reasoning'
+      - to: resume_read_only_model_reasoning
+        when: vars.invocation == 'resume_read_only_model_reasoning'
       - to: start_work
-        when: 'true'
-    start_read_only:
+        when: vars.invocation == 'start_work'
+      - to: start_work_model
+        when: vars.invocation == 'start_work_model'
+      - to: start_work_reasoning
+        when: vars.invocation == 'start_work_reasoning'
+      - to: start_work_model_reasoning
+        when: vars.invocation == 'start_work_model_reasoning'
+      - to: resume_work
+        when: vars.invocation == 'resume_work'
+      - to: resume_work_model
+        when: vars.invocation == 'resume_work_model'
+      - to: resume_work_reasoning
+        when: vars.invocation == 'resume_work_reasoning'
+      - to: resume_work_model_reasoning
+        when: vars.invocation == 'resume_work_model_reasoning'
+    start_read_only: &start_read_only
       id: start_read_only
-      op: extension_execution
+      op: nix:github:colony-2/c2ops/published#codex
+      const: true
+      inputs: &start_read_only_inputs
+        api:
+          api_key: ${{ context.secrets.?codex_api_key.orValue(null) }}
+        prompt: |-
+          {{ inputs.prompt }}
+        
+          {{ states.context.outputs.identity }}
+          {{ states.context.outputs.directories }}
+          inbox: {{ context.environment.op.inbox }}
+          outbox: {{ context.environment.op.outbox }}
+        output:
+          schema: ${{ inputs.schema }}
+        instructions: '{{ states.context.outputs.instructions }}'
       artifacts:
         work/: ${{ inputs.documents }}
+    start_read_only_model:
+      <<: *start_read_only
       inputs:
-        selector: nix:github:colony-2/c2ops/published#codex
-        inputs: '${{ jq([{''prompt'': inputs.prompt + ''\n\n'' + states.context.outputs.identity + ''\n'' + states.context.outputs.directories
-          + ''\ninbox: '' + context.environment.op.inbox + ''\noutbox: '' + context.environment.op.outbox, ''output'':
-          {''schema'': inputs.schema} }, inputs.agent_settings, {''instructions'':states.context.outputs.instructions}],
-          ''add'') }}'
-      const: true
-      perms:
-        inherit: true
-        jobdb:
-          secrets:
-            resolve:
-            - codex_api_key
-    resume_read_only:
+        <<: *start_read_only_inputs
+        model: ${{ inputs.agent_settings.model }}
+    start_read_only_reasoning:
+      <<: *start_read_only
+      inputs:
+        <<: *start_read_only_inputs
+        reasoning_effort: ${{ inputs.agent_settings.reasoning_effort }}
+    start_read_only_model_reasoning:
+      <<: *start_read_only
+      inputs:
+        <<: *start_read_only_inputs
+        model: ${{ inputs.agent_settings.model }}
+        reasoning_effort: ${{ inputs.agent_settings.reasoning_effort }}
+    resume_read_only: &resume_read_only
       id: resume_read_only
-      op: extension_execution
-      artifacts:
-        work/: ${{ inputs.documents }}
-      inputs:
-        selector: nix:github:colony-2/c2ops/published#codex
-        inputs: '${{ jq([{''prompt'': inputs.prompt + ''\n\n'' + states.context.outputs.identity + ''\n'' + states.context.outputs.directories
-          + ''\ninbox: '' + context.environment.op.inbox + ''\noutbox: '' + context.environment.op.outbox, ''output'':
-          {''schema'': inputs.schema} }, inputs.agent_settings, {''session'':inputs.session}], ''add'') }}'
+      op: nix:github:colony-2/c2ops/published#codex
       const: true
-      perms:
-        inherit: true
-        jobdb:
-          secrets:
-            resolve:
-            - codex_api_key
-    start_work:
+      inputs: &resume_read_only_inputs
+        api:
+          api_key: ${{ context.secrets.?codex_api_key.orValue(null) }}
+        prompt: |-
+          {{ inputs.prompt }}
+        
+          {{ states.context.outputs.identity }}
+          {{ states.context.outputs.directories }}
+          inbox: {{ context.environment.op.inbox }}
+          outbox: {{ context.environment.op.outbox }}
+        output:
+          schema: ${{ inputs.schema }}
+        session: ${{ inputs.session }}
+      artifacts:
+        work/: ${{ inputs.documents }}
+    resume_read_only_model:
+      <<: *resume_read_only
+      inputs:
+        <<: *resume_read_only_inputs
+        model: ${{ inputs.agent_settings.model }}
+    resume_read_only_reasoning:
+      <<: *resume_read_only
+      inputs:
+        <<: *resume_read_only_inputs
+        reasoning_effort: ${{ inputs.agent_settings.reasoning_effort }}
+    resume_read_only_model_reasoning:
+      <<: *resume_read_only
+      inputs:
+        <<: *resume_read_only_inputs
+        model: ${{ inputs.agent_settings.model }}
+        reasoning_effort: ${{ inputs.agent_settings.reasoning_effort }}
+    start_work: &start_work
       id: start_work
-      op: extension_execution
+      op: nix:github:colony-2/c2ops/published#codex
+      inputs: &start_work_inputs
+        api:
+          api_key: ${{ context.secrets.?codex_api_key.orValue(null) }}
+        prompt: |-
+          {{ inputs.prompt }}
+        
+          {{ states.context.outputs.identity }}
+          {{ states.context.outputs.directories }}
+          inbox: {{ context.environment.op.inbox }}
+          outbox: {{ context.environment.op.outbox }}
+        output:
+          schema: ${{ inputs.schema }}
+        instructions: '{{ states.context.outputs.instructions }}'
       artifacts:
         work/: ${{ inputs.documents }}
+    start_work_model:
+      <<: *start_work
       inputs:
-        selector: nix:github:colony-2/c2ops/published#codex
-        inputs: '${{ jq([{''prompt'': inputs.prompt + ''\n\n'' + states.context.outputs.identity + ''\n'' + states.context.outputs.directories
-          + ''\ninbox: '' + context.environment.op.inbox + ''\noutbox: '' + context.environment.op.outbox, ''output'':
-          {''schema'': inputs.schema} }, inputs.agent_settings, {''instructions'':states.context.outputs.instructions}],
-          ''add'') }}'
-      perms:
-        inherit: true
-        jobdb:
-          secrets:
-            resolve:
-            - codex_api_key
-    resume_work:
+        <<: *start_work_inputs
+        model: ${{ inputs.agent_settings.model }}
+    start_work_reasoning:
+      <<: *start_work
+      inputs:
+        <<: *start_work_inputs
+        reasoning_effort: ${{ inputs.agent_settings.reasoning_effort }}
+    start_work_model_reasoning:
+      <<: *start_work
+      inputs:
+        <<: *start_work_inputs
+        model: ${{ inputs.agent_settings.model }}
+        reasoning_effort: ${{ inputs.agent_settings.reasoning_effort }}
+    resume_work: &resume_work
       id: resume_work
-      op: extension_execution
+      op: nix:github:colony-2/c2ops/published#codex
+      inputs: &resume_work_inputs
+        api:
+          api_key: ${{ context.secrets.?codex_api_key.orValue(null) }}
+        prompt: |-
+          {{ inputs.prompt }}
+        
+          {{ states.context.outputs.identity }}
+          {{ states.context.outputs.directories }}
+          inbox: {{ context.environment.op.inbox }}
+          outbox: {{ context.environment.op.outbox }}
+        output:
+          schema: ${{ inputs.schema }}
+        session: ${{ inputs.session }}
       artifacts:
         work/: ${{ inputs.documents }}
+    resume_work_model:
+      <<: *resume_work
       inputs:
-        selector: nix:github:colony-2/c2ops/published#codex
-        inputs: '${{ jq([{''prompt'': inputs.prompt + ''\n\n'' + states.context.outputs.identity + ''\n'' + states.context.outputs.directories
-          + ''\ninbox: '' + context.environment.op.inbox + ''\noutbox: '' + context.environment.op.outbox, ''output'':
-          {''schema'': inputs.schema} }, inputs.agent_settings, {''session'':inputs.session}], ''add'') }}'
-      perms:
-        inherit: true
-        jobdb:
-          secrets:
-            resolve:
-            - codex_api_key
+        <<: *resume_work_inputs
+        model: ${{ inputs.agent_settings.model }}
+    resume_work_reasoning:
+      <<: *resume_work
+      inputs:
+        <<: *resume_work_inputs
+        reasoning_effort: ${{ inputs.agent_settings.reasoning_effort }}
+    resume_work_model_reasoning:
+      <<: *resume_work
+      inputs:
+        <<: *resume_work_inputs
+        model: ${{ inputs.agent_settings.model }}
+        reasoning_effort: ${{ inputs.agent_settings.reasoning_effort }}
 outputs:
-  response: '${{ (inputs.read_only ? (size(inputs.session)>0 ? states.resume_read_only : states.start_read_only)
-    : (size(inputs.session)>0 ? states.resume_work : states.start_work)).outputs.?output_schema_valid.orValue(false)
-    && (inputs.read_only ? (size(inputs.session)>0 ? states.resume_read_only : states.start_read_only) : (size(inputs.session)>0
-    ? states.resume_work : states.start_work)).outputs.status == ''completed'' ? jq((inputs.read_only ? (size(inputs.session)>0
-    ? states.resume_read_only : states.start_read_only) : (size(inputs.session)>0 ? states.resume_work : states.start_work)).outputs.response,
-    ''with_entries(select(.value != null))'') : {''status'':''stuck'',''summary'':(inputs.read_only ? (size(inputs.session)>0
-    ? states.resume_read_only : states.start_read_only) : (size(inputs.session)>0 ? states.resume_work : states.start_work)).outputs.?error_message.orValue(''The
-    agent did not finish with a valid response; inspect the task output.'')}  }}'
-  session: '${{ (inputs.read_only ? (size(inputs.session)>0 ? states.resume_read_only : states.start_read_only)
-    : (size(inputs.session)>0 ? states.resume_work : states.start_work)).outputs.?session.orValue({}) }}'
-  artifacts: '${{ (inputs.read_only ? (size(inputs.session)>0 ? states.resume_read_only : states.start_read_only)
-    : (size(inputs.session)>0 ? states.resume_work : states.start_work)).artifacts }}'
+  response: '${{ states[vars.invocation].outputs.?output_schema_valid.orValue(false) && states[vars.invocation].outputs.status
+    == ''completed'' ? jq(states[vars.invocation].outputs.response,''with_entries(select(.value != null))'') : {''status'':states[vars.invocation].outputs.status
+    == ''completed'' ? ''changes'':''stuck'',''summary'':states[vars.invocation].outputs.?errorMessage.orValue(states[vars.invocation].outputs.?error_message.orValue(''The
+    agent did not finish with a valid response; correct the report using its recorded work.''))} }}'
+  session: ${{ states[vars.invocation].outputs.?session.orValue({}) }}
+  artifacts: ${{ states[vars.invocation].artifacts }}
+  jobs: ${{ states[vars.invocation].?jobs.orValue({}).?job_ids.orValue([]) }}

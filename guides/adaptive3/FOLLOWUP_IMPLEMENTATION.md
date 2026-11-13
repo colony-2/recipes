@@ -77,20 +77,21 @@ they do not establish the quality of model writing or semantic classification.
   return to that form. Questions do not authorize continuing work. Prose-only
   model suggestions are explained in review; the human enters the choice in
   the explicit fields. Agents do not select replacements.
-- `agent.yaml` uses the native `extension_execution` operation with a dynamically
-  assembled input map so unset keys can actually be omitted. The c2ops selector
-  is unchanged. Its manifest's API-secret default receives the documented
-  `codex_api_key` grant; no new credential or secret lookup code was introduced.
+- Direct Nix selector calls remain required. The full native cancellation test
+  caught that generic `extension_execution` cannot prepare a Nix selector; mocked
+  calls had hidden this. The corrected adapter uses four optional-setting variants
+  for each existing call, sharing the call through YAML anchors. Exactly one op
+  runs per turn. Unset inputs stay omitted in authored calls; the manifest applies
+  defaults (including null when no setting exists). API-secret binding stays as before.
 - Corrected an accidental field-name edit in the earlier feedback change that
   had made integration ignore its supplied commit message. Added an assertion
   that the actual squash receives the assignment text.
 
 The four native model scenarios cover omitted fields, independent job overrides,
 worker-default delegation, repeated provider failure and persistence after human
-correction. Mocked extension calls observe the authored inputs, before extension
-manifest defaults; the c2j `TestCodexConfigurationDefaultsMatrix` and
+correction. Direct-selector mocks observe prepared inputs, including manifest defaults. The c2j `TestCodexConfigurationDefaultsMatrix` and
 `TestConfigurationDefaultRequiredAndNested` tests passed for actual default
-materialization. This distinction avoids claiming a mocked model call tests a
-provider. Resolver dialogue regressions and consumer checks cover the native form.
+materialization. These checks do not invoke a model provider. The real prepared-operation cancellation
+barrier verifies that the Nix adapter can start and remains cancellable. Resolver dialogue regressions and consumer checks cover the native form.
 
 The runtime test pin advances to c2j main `3fec5e4`. No c2j source was changed.
