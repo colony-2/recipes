@@ -28,3 +28,8 @@ Agent decisions are scripted unless a case is explicitly marked live.
 | A3-21 | Required specialist findings prevent acceptance until full validation passes; optional advice has no independent veto. | Critical | Integration / c2j, Nix | validate.yaml, specialists.yaml |
 | A3-22 | Configured assessment guidance reaches general and specialist assessors with current human scope and original diagnostic references. | High | Integration / c2j, Nix | validate.yaml, prompts/validate.yaml |
 | A3-23 | Repeated resolver discussion preserves the previous proposal and human context without executing work before explicit continuation. | High | Integration / c2j, Nix | resolver.yaml |
+
+| A3-24 | Incomplete receiver titles return through full validation before child submission. | consultation.test.yaml | critical | integration, c2j |
+| A3-25 | Missing change measurements return to the writer; final reviews separate cells and include test frameworks. | reporting.test.yaml | high | integration, c2j |
+| A3-26 | Candidate measurements preserve per-file additions/removals and mark binaries uncountable. | test_tools.py | high | unit, Git |
+| A3-27 | Job inspection follows pagination and retrieves exact output beyond previews. | inspection.test.yaml | high | integration, c2j |

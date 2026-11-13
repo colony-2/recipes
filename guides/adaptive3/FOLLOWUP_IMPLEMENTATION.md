@@ -23,8 +23,8 @@ behavior from external requirements and test limitations.
 Targeted native checks: five cycle cases, three resolver cases and four configured
 validation cases passed. Two consumer tests passed using actual native forms and
 Cortex's real adapter/renderer: click, type, upload, Back and submit. The consumer
-check uses jsdom, not a deployed browser. Source and broad regression results are
-recorded below as they complete.
+check uses jsdom, not a deployed browser. The full milestone regression run passed all 51 native cases; source validation
+also passed.
 
 Native runs use the pinned c2j `c244db8`. As in the initial implementation, this
 host requires a disposable copy with validator `execution_needs` removed and
@@ -37,3 +37,28 @@ same. This does not verify normal worker dependency provisioning; see
 Model overrides, reporting, requester-led recovery, resolver-first continuation,
 diagnostics, local allowances, inspection guidance and directory transport remain
 in progress. The todo list is the completion checklist.
+
+## Milestone 2: complete results and useful review content
+
+- Removed the generic child-title fallback. An assignment without a title returns
+  to its receiving author through Execute and full Validate before submission.
+  Probe titles name the requested tools; resolver titles name the stage/request.
+- Direction requests a per-cell Core code / Tests / Docs table with qualitative
+  scope only. Outcome requests measured additions/removals, per-file support,
+  separate cells, honest binary handling and completed-versus-pending owner work.
+  Test frameworks, harnesses and fixtures explicitly count as test code.
+- The existing approved-change validator emits Git's exact per-file numstat as
+  a diagnostic file for validation. It neither classifies files nor invents a
+  workflow accounting object. The assessor requests missing/inconsistent reports;
+  the producer corrects them through the complete cycle.
+- New-session instructions explain task occurrence IDs, field pointers, exact
+  downloads, pagination, failed-task outputs, attempts and restart discovery.
+  Inspection downloads stay in scratch.
+
+Checks: incomplete child title corrected before one submission; incomplete outcome
+report returned through two full validations; nine real validator tests, including
+numeric and binary Git measurements; four package and three resolver regressions.
+The inspection fixture runs the real CLI inside a native task, reads fields and
+artifacts beyond the first page and retrieves exact bytes beyond a truncated
+preview. Report-quality decisions are scripted in these orchestration tests;
+they do not establish the quality of model writing or semantic classification.

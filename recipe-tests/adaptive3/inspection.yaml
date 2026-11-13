@@ -1,0 +1,56 @@
+schema_version: 2
+id: inspection-test
+sequence:
+- id: context
+  include: ../../recipes/adaptive3/prompts/context.yaml
+- id: produce
+  op: nix:github:colony-2/c2ops/published#codex
+  inputs:
+    prompt: 'Fixture: retain task output for exact inspection.'
+    api: null
+- id: inspect
+  op: command_execution
+  inputs:
+    run: |-
+      python3 - <<'CHECK'
+      import json, pathlib, subprocess, tempfile
+
+      def call(*args):
+          return subprocess.check_output(['c2j', *args], text=True, stderr=subprocess.PIPE)
+      def check():
+          log=json.loads(call('job','log','self','--json'))
+          task=next(t['id'] for t in log['tasks'] if t.get('path','').endswith('/produce'))
+          with tempfile.TemporaryDirectory() as tmp:
+              scratch=pathlib.Path(tmp)
+              cursor=''; fields=[]; field_pages=0
+              while True:
+                  args=['job','fields','self','--task',task,'--limit','25','--json']
+                  if cursor: args+=['--cursor',cursor]
+                  page=json.loads(call(*args)); fields+=page['fields']; field_pages+=1
+                  cursor=page.get('next_cursor','')
+                  if not cursor: break
+              assert field_pages>1, page
+              # Copy the pointer discovered on a later page, rather than guessing the report shape.
+              target=next(f for f in fields if f.get('path',f.get('pointer','')).endswith('/field29'))
+              pointer=target.get('path',target.get('pointer'))
+              call('job','log','self','--task',task,'--field',pointer,'--output',str(scratch/'value.json'))
+              assert json.loads((scratch/'value.json').read_text())=='complete-value-'*100
+              cursor=''; names=[]; artifact_pages=0
+              while True:
+                  args=['job','artifacts','self','--task',task,'--limit','25','--json']
+                  if cursor: args+=['--cursor',cursor]
+                  page=json.loads(call(*args)); names += [a['name'] for a in page['artifacts']]; artifact_pages+=1
+                  cursor=page.get('next_cursor','')
+                  if not cursor: break
+              assert artifact_pages>1 and 'diagnostics/item31.txt' in names
+              call('job','artifact','self','--task',task,'--name','diagnostics/item31.txt','--output',str(scratch/'check.txt'))
+              assert (scratch/'check.txt').read_text()=='original bytes 31'
+          print(json.dumps({'status':'passed','field_pages':field_pages,'artifact_pages':artifact_pages}))
+      try:
+          check()
+      except Exception as error:
+          print(json.dumps({'status':'failed','error':str(error),'stderr':getattr(error,'stderr','')}))
+      CHECK
+outputs:
+  result: ${{ json_parse(sequence.inspect.outputs.stdout) }}
+  guidance: ${{ sequence.context.outputs.instructions }}

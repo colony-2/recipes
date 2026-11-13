@@ -90,6 +90,18 @@ class Validators(unittest.TestCase):
         self.commit()
         self.assertFalse(self.check('approved_change')['equivalent'])
 
+    def test_measured_per_file_counts_and_binary(self):
+        (self.repo/'file.txt').write_text('first\nsecond\n')
+        (self.repo/'harness').mkdir()
+        (self.repo/'harness/runner.py').write_text('test framework\n')
+        (self.repo/'image.bin').write_bytes(b'\x00binary')
+        self.commit()
+        self.check('approved_change')
+        counts=(self.outbox/'error/change-counts.tsv').read_text()
+        self.assertIn('2\t1\tfile.txt', counts)
+        self.assertIn('1\t0\tharness/runner.py', counts)
+        self.assertIn('-\t-\timage.bin', counts)
+
     def test_proposal_does_not_prove_adoption(self):
         self.put('review/config.yaml', 'packages: ["uv:pytest"]\n')
         env={'REQUESTS':json.dumps([{'reference':'uv:pytest','check':['pytest','--version']}])}

@@ -25,7 +25,7 @@ result correction, qualitative scope by cell and measured code-change reports.
 | Separate adaptive3 | New public entrypoint, helpers, prompts and tests. Existing adaptive2 recipe sources remain separate; the public build now forwards to adaptive3. |
 | Define the activities once | `execute.yaml`, `validate.yaml` and `review.yaml` own the activities. `cycle.yaml` composes one pass; `lifecycle.yaml` handles corrections and service interruptions. |
 | Five visible stages | Named states in the public entrypoint. Direction and Outcome require human acceptance; other stages use independent agent assessment. An accepted explanation finishes at Direction. |
-| Human-readable work | Four work types; the existing one-pager and outcome headings; descriptive titles; consequential Q&A without a question-count cap; change-size estimates and actuals as useful review information. |
+| Human-readable work | Four work types; the existing one-pager and outcome headings; descriptive titles; consequential Q&A without a question-count cap; qualitative expected scope by cell and actual measured changes in the outcome review. |
 | Dialogue separate from changes | A read-only review session answers questions. Change requests carry the original human words and current uploaded notes into Execute. Scope changes return to Direction. Human turns do not consume automatic attempts. |
 | Agents own their work products | The producer selects the current `review/` collection. Validation and native human input use those artifact identities. Replacing the collection does not overlay historical files. |
 | Consultation and delivery | Inline advice runs in the receiving workspace, including nested advice. The receiver writes the assignment and may select an existing delivery workflow. Native child submission and waiting retain actual outcomes and partial-result references. |
@@ -51,7 +51,8 @@ result correction, qualitative scope by cell and measured code-change reports.
 | `schemas.yaml`, `prompts/` | Small response shapes and human language for each activity. |
 
 All helper paths above are under [`recipes/adaptive3/`](../../recipes/adaptive3/).
-The widest input contracts have eight properties. There are no per-stage wrapper
+The activity contracts stay small; Validate receives the actual work response rather
+than separately deriving its title and primary document. There are no per-stage wrapper
 recipes. Git state, review receipts, sessions, child results and artifact identity
 remain native runtime values.
 

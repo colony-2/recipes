@@ -4,11 +4,10 @@ inputs:
   request: ${{ inputs.request }}
   target_directory: ${{ inputs.?target_directory.orValue('.') }}
   documents: ${{ inputs.?documents.orValue({}) }}
-  title: ${{ inputs.?title.orValue('') }}
-  primary: ${{ inputs.?primary.orValue('') }}
   settings: ${{ inputs.?settings.orValue({}) }}
   require_verification: ${{ inputs.?require_verification.orValue(false) }}
   feedback: ${{ inputs.?feedback.orValue({}) }}
+  work: ${{ inputs.?work.orValue({}) }}
 state:
   initial: files
   states:
@@ -16,8 +15,8 @@ state:
       include: ./tools.yaml
       inputs:
         documents: ${{ inputs.documents }}
-        title: ${{ inputs.title }}
-        primary: ${{ inputs.primary }}
+        title: ${{ inputs.work.?title.orValue('') }}
+        primary: ${{ inputs.work.?primary.orValue('') }}
         check: review_files
       transitions:
       - to: verify
@@ -48,7 +47,7 @@ state:
       inputs:
         purpose: ${{ inputs.purpose }}
         request: ${{ inputs.request }}
-        documents: ${{ jq([inputs.documents,states.files.outputs.artifacts,state_output('verify','artifacts',{})],
+        documents: ${{ jq([inputs.documents,states.files.outputs.artifacts,state_output('verify','artifacts',{}),state_output('candidate','artifacts',{})],
           'add') }}
         checks: ${{ {'files':states.files.outputs.result,'verify':state_output('verify','result',{}),'specialists':states.specialists.outputs.result}
           }}
@@ -97,13 +96,15 @@ state:
       outputs:
         findings: ${{ inputs.findings }}
       inputs:
-        findings: '${{ (inputs.purpose in [''direction'',''outcome''] && (inputs.primary == '''' || inputs.title
-          == '''') ? [''Provide the primary review document and a descriptive review title.''] : []) + (states.files.outputs.result.status
-          != ''passed'' ? [states.files.outputs.result.summary] : []) + (inputs.purpose == ''implementation'' &&
-          (states.verify.outputs.result.status == ''failed'' || (inputs.require_verification && states.verify.outputs.result.status
-          != ''passed'')) ? [states.verify.outputs.result.summary] : []) + states.specialists.outputs.result.assessments.filter(r,r.required
-          && r.result.status != ''passed'').map(r,r.result.summary) + (states.assess.outputs.result.status != ''passed''
-          ? [states.assess.outputs.result.summary] : []) }}'
+        findings: '${{ (inputs.purpose in [''direction'',''outcome''] && (!nonempty(inputs.work.?primary.orValue(''''))
+          || !nonempty(inputs.work.?title.orValue(''''))) ? [''Provide the primary review document and a descriptive
+          review title.''] : []) + (inputs.purpose == ''advice'' && nonempty(inputs.work.?assignment.orValue(''''))
+          && !nonempty(inputs.work.?title.orValue('''')) ? [''Give the proposed assignment a descriptive title before
+          submitting it.''] : []) + (states.files.outputs.result.status != ''passed'' ? [states.files.outputs.result.summary]
+          : []) + (inputs.purpose == ''implementation'' && (states.verify.outputs.result.status == ''failed'' ||
+          (inputs.require_verification && states.verify.outputs.result.status != ''passed'')) ? [states.verify.outputs.result.summary]
+          : []) + states.specialists.outputs.result.assessments.filter(r,r.required && r.result.status != ''passed'').map(r,r.result.summary)
+          + (states.assess.outputs.result.status != ''passed'' ? [states.assess.outputs.result.summary] : []) }}'
 outputs:
   result: '${{ size(states.done.outputs.findings)>0 ? {''status'':''changes'',''summary'':jq(states.done.outputs.findings,''join("\n\n")'')}
     : states.assess.outputs.result }}'

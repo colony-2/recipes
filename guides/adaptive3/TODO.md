@@ -11,7 +11,7 @@
   when the resolver's model cannot run. Test precedence, persistence, human direction
   and repeated failure.
 
-- [ ] **Return incomplete results to their producing agent.** Use the existing
+- [x] **Return incomplete results to their producing agent.** Use the existing
   Execute → full Validate → Review cycle to request missing content. Remove the
   child-title fallback “Complete the agreed owner request”; require the receiver
   to supply a descriptive title before submission. Audit similar substitutions.
@@ -19,7 +19,7 @@
   Test that incomplete advice returns for correction before child submission and
   that the corrected title reaches the child.
 
-- [ ] **Show qualitative scope in the one-pager and measured changes in the final review.**
+- [x] **Show qualitative scope in the one-pager and measured changes in the final review.**
   Remove numerical code-change estimates and estimate-versus-actual arithmetic.
   In the delivery one-pager, include a table with columns `Cell`, `Core code`,
   `Tests`, and `Docs`. Give each affected cell a row; mark each category `none`,
@@ -76,7 +76,7 @@
   does not grant attempts. Test exhaustion, isolation, slow progress and renewal.
   [Plan 5](PLAN_AUDIT_FOLLOWUPS.md#5-bound-each-automatic-loop-independently).
 
-- [ ] **Restore concise inspection guidance.** Explain actual task/field
+- [x] **Restore concise inspection guidance.** Explain actual task/field
   discovery, exact downloads, pagination, intermediate versus final results,
   restart-help discovery and access errors. Keep detailed data in scratch.
   Test exact retrieval beyond previews and the first inventory page.
