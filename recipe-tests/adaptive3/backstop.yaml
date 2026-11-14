@@ -10,16 +10,48 @@ input_schema:
   problem:
     type: object
     required: true
+  prior_job:
+    type: string
+    default_value: ''
+  probe_prerequisite:
+    type: boolean
+    default_value: false
 inputs:
   stage: ${{ inputs.stage }}
   request: ${{ inputs.request }}
   problem: ${{ inputs.problem }}
+  prior_job: ${{ inputs.?prior_job.orValue('') }}
+  probe_prerequisite: ${{ inputs.?probe_prerequisite.orValue(false) }}
 sequence:
+- id: discovery
+  op: command_execution
+  when: inputs.probe_prerequisite
+  perms:
+    jobdb:
+      jobs:
+        submit: true
+  inputs:
+    run: c2j self --json
+- id: prerequisite
+  op: command_execution
+  when: inputs.probe_prerequisite
+  perms:
+    jobdb:
+      jobs:
+        submit: true
+  inputs:
+    # Missing CLI prerequisites fail before any submission; no child is created.
+    run: c2j submit --json </dev/null
+    continue_on_error: true
 - id: backstop
   include: ../../recipes/adaptive3/backstop.yaml
   inputs:
     stage: ${{ inputs.stage }}
     request: ${{ inputs.request }}
     problem: ${{ inputs.problem }}
+    prior_job: ${{ inputs.prior_job }}
 outputs:
   result: ${{ sequence.backstop.outputs.result }}
+  discovery: ${{ sequence.?discovery.orValue({}).?outputs.orValue({}) }}
+  prerequisite: ${{ sequence.?prerequisite.orValue({}).?outputs.orValue({}) }}
+  readiness: '${{ inputs.probe_prerequisite ? jq(sequence.discovery.outputs.stdout, ''fromjson | .capabilities["jobs.submit"].availability'') : '''' }}'

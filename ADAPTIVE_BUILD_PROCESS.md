@@ -75,6 +75,15 @@ recovery preserves an already completed merge. Ordinary caught failures enter th
 same-job backstop; human cancellation stays terminal. Template/schema failures
 and unavailable runtime infrastructure are not universally recoverable yet.
 
+Backstop diagnoses completed effects, remaining work and separate failure
+boundaries before recommending recovery. It investigates within existing authority
+and resumes concrete available corrections within the existing limits. Apply is
+offered only for an available action at an allowed stage with readable evidence;
+diagnosis and external prerequisites support discussion without execution. Questions,
+settings changes and fresh approval cannot supply missing technical capabilities.
+New human text and attachments are reconsidered while retaining completed effects
+and prior approvals.
+
 ## Implementation and validation
 
 See the [implementation assessment](guides/adaptive3/IMPLEMENTATION.md),

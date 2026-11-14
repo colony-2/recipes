@@ -52,9 +52,20 @@ inline; delivery uses a child adaptive3 job and a native wait.
 ## Recovery and local hooks
 
 An ordinary caught failure reports `stuck` and enters Backstop in the same
-job. The backstop investigates and directs a correction back to a stage's
-Execute. If that correction also gets stuck, Backstop asks for human direction
-before another attempt. Human cancellation remains terminal.
+job. Backstop first diagnoses the intended outcome, completed effects, remaining
+work and failing boundaries, using retained results and earlier attempts. It
+explains realistic options, owners, uncertainty and prerequisites. Authorized
+read-only investigation needs no extra approval.
+
+Both recovery responses require nullable `action` and `stage` fields. A nonblank
+available action and an allowed destination gate automatic resume and Apply;
+a destination alone grants no work. Apply also requires readable presentation.
+Automatic corrections retain existing authority and finite limits. Diagnosis or
+externally blocked repairs stay open for discussion without Apply or extra
+attempts. Human approval cannot supply missing routes, credentials or deployment.
+Questions and agent-settings reconsideration grant no stage work or attempts.
+New words and attachments are reconsidered before acting; a materially replaced
+action needs a new decision. Human cancellation remains terminal.
 
 Configure, before-design, prepare, verify and publish retain the existing
 [build hook API](../../guides/BUILD_HOOKS_USER_GUIDE.md). Hook settings artifacts

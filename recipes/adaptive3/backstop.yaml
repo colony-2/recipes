@@ -96,19 +96,14 @@ state:
       inputs:
         prompt: ${{ states.setup.outputs.text.task }}
         schema: ${{ jq([states.setup.outputs.schema,vars.destinations[inputs.stage]], '.[1] as $stages | .[0] |
-          .properties.stage.enum = $stages') }}
+          .properties.stage.enum = ($stages + [null])') }}
         documents: ${{ jq([inputs.documents,inputs.problem.?errors.orValue({}),jq(states.turn.outputs.feedback.?artifact_refs.orValue({}),'with_entries(.key
           = "feedback/" + .key | .value.name = .key)')],"add") }}
         read_only: true
         agent_settings: ${{ states.turn.outputs.agent_settings }}
         session: ${{ states.turn.outputs.session }}
       transitions:
-      - to: done
-        when: outputs.response.status == 'resume' && states.turn.outputs.allow_resume
-        payload:
-          result: '${{ size(states.turn.outputs.human)>0 ? jq([outputs.response,{''human'':states.turn.outputs.human,''documents'':jq(states.turn.outputs.human.?artifact_refs.orValue({}),''with_entries(.key
-            = "feedback/" + .key | .value.name = .key)'')}],''add'') : outputs.response }}'
-      - to: prepare_review
+      - to: assess
         when: 'true'
       catch:
       - when: failure.kind != 'cancellation'
@@ -121,6 +116,22 @@ state:
               primary: null
             artifacts: {}
             session: {}
+    assess:
+      sequence: []
+      inputs:
+        response: ${{ states.investigate.outputs.response }}
+        stage: ${{ inputs.stage }}
+      outputs:
+        eligible: ${{ inputs.response.status in ['ask','resume'] && inputs.response.?stage.orValue('') in vars.destinations[inputs.stage]
+          && jq(inputs.response, '(.action // "") | if type == "string" then test("[^[:space:]]") else false end') }}
+      transitions:
+      - to: done
+        when: outputs.eligible && states.investigate.outputs.response.status == 'resume' && states.turn.outputs.allow_resume
+        payload:
+          result: '${{ size(states.turn.outputs.human)>0 ? jq([states.investigate.outputs.response,{''human'':states.turn.outputs.human,''documents'':jq(states.turn.outputs.human.?artifact_refs.orValue({}),''with_entries(.key
+            = "feedback/" + .key | .value.name = .key)'')}],''add'') : states.investigate.outputs.response }}'
+      - to: prepare_review
+        when: 'true'
     ask:
       id: ask
       op: input
@@ -131,16 +142,17 @@ state:
           - id: decision
             type: multiple_choice
             question: |-
-              ${{ states.prepare_review.outputs.result.status == 'passed' ? states.investigate.outputs.response.summary : states.setup.outputs.text.unreadable + '\n' + states.prepare_review.outputs.result.summary }}
-              ${{ inputs.problem.?loop.orValue('') != '' && states.investigate.outputs.response.?stage.orValue('') != '' ? 'Additional attempts for this loop: ' + string(states.investigate.outputs.response.?additional_attempts.orValue(null) != null ? states.investigate.outputs.response.additional_attempts : 4) : '' }}
+              ${{ states.prepare_review.outputs.result.status == 'passed' ? states.prepare_review.outputs.message : states.setup.outputs.text.unreadable + '\n' + states.prepare_review.outputs.result.summary }}
+              ${{ inputs.problem.?loop.orValue('') != '' && states.assess.outputs.eligible && states.prepare_review.outputs.result.status == 'passed' ? 'Additional attempts for this loop: ' + string(states.investigate.outputs.response.?additional_attempts.orValue(null) != null ? states.investigate.outputs.response.additional_attempts : 4) : '' }}
               ${{ transition.payload.?clarification.orValue('') }}
             required: true
-            options: '${{ [{''value'':''continue'',''label'':states.investigate.outputs.response.?stage.orValue('''')
-              == '''' ? states.setup.outputs.text.model_continue : inputs.problem.?loop.orValue('''') != '''' ?
+            options: '${{ (states.assess.outputs.eligible && states.prepare_review.outputs.result.status == ''passed'' ?
+              [{''value'':''continue'',''label'':inputs.problem.?loop.orValue('''') != '''' ?
               states.setup.outputs.text.retry + '' '' + string(states.investigate.outputs.response.?additional_attempts.orValue(null)
               != null ? states.investigate.outputs.response.additional_attempts : 4) + '' '' + states.setup.outputs.text.attempts
-              : states.setup.outputs.text.continue},{''value'':''question'',''label'':states.setup.outputs.text.question},{''value'':''revise'',''label'':states.setup.outputs.text.change}]
-              }}'
+              : states.setup.outputs.text.continue}] : []) +
+              [{''value'':''question'',''label'':states.setup.outputs.text.question},{''value'':''revise'',''label'':states.setup.outputs.text.change},
+              {''value'':''settings'',''label'':states.setup.outputs.text.model_continue}] }}'
           - id: feedback
             type: paragraph_text
             question: ${{ states.setup.outputs.text.message }}
@@ -173,15 +185,23 @@ state:
           feedback: ${{ jq([outputs,{'validation':states.prepare_review.outputs.result}], 'add') }}
           human: ${{ outputs }}
           session: {}
-          allow_resume: ${{ outputs.fields.decision == 'continue' }}
+          allow_resume: false
+      - to: ask
+        when: outputs.fields.decision == 'settings' && !nonempty(outputs.fields.?feedback.orValue(''))
+          && size(outputs.?artifact_refs.orValue({})) == 0
+        payload:
+          clarification: Enter a model or reasoning effort to reconsider the diagnosis. Settings do not authorize stage work.
+      - to: ask
+        when: outputs.fields.decision == 'continue' && !(states.assess.outputs.eligible && states.prepare_review.outputs.result.status == 'passed')
+        payload:
+          clarification: There is no readable available action to apply. Ask a question, request changes or reconsider agent settings.
       - to: ask
         when: outputs.fields.decision in ['question','revise'] && !nonempty(outputs.fields.?feedback.orValue(''))
           && size(outputs.?artifact_refs.orValue({})) == 0
         payload:
           clarification: Enter a question or requested change, or attach notes, then confirm.
       - to: done
-        when: outputs.fields.decision == 'continue' && states.investigate.outputs.response.?stage.orValue('') in
-          vars.destinations[inputs.stage] && !nonempty(outputs.fields.?feedback.orValue('')) && size(outputs.?artifact_refs.orValue({}))
+        when: outputs.fields.decision == 'continue' && states.assess.outputs.eligible && !nonempty(outputs.fields.?feedback.orValue('')) && size(outputs.?artifact_refs.orValue({}))
           == 0 && states.prepare_review.outputs.result.status == 'passed'
         payload:
           result: ${{ jq([states.investigate.outputs.response,{'status':'resume','human':outputs,'documents':jq(outputs.?artifact_refs.orValue({}),'with_entries(.key
@@ -193,7 +213,7 @@ state:
           feedback: ${{ jq([outputs,{'validation':states.prepare_review.outputs.result}], 'add') }}
           human: ${{ outputs }}
           session: ${{ states.investigate.outputs.session }}
-          allow_resume: ${{ outputs.fields.decision == 'continue' }}
+          allow_resume: ${{ outputs.fields.decision == 'continue' && states.assess.outputs.eligible && states.prepare_review.outputs.result.status == 'passed' }}
     done:
       sequence: []
       outputs:
@@ -229,11 +249,12 @@ state:
         title: ${{ states.investigate.outputs.response.?title.orValue('Agent needs help') }}
         primary: '${{ states.investigate.outputs.response.?primary.orValue(null) != null ? states.investigate.outputs.response.primary
           : '''' }}'
-        summary: ${{ states.investigate.outputs.response.summary }}
+        summary: '${{ states.investigate.outputs.response.summary + (states.assess.outputs.eligible ? ''\n\nAvailable action: '' + states.investigate.outputs.response.action : '''') }}'
       outputs:
         result: ${{ sequence.?files.orValue({}).?outputs.orValue({}).?result.orValue({'status':'passed'}) }}
         documents: ${{ inputs.documents }}
         primary: ${{ inputs.primary }}
+        message: ${{ inputs.summary }}
       transitions:
       - to: ask
         when: 'true'

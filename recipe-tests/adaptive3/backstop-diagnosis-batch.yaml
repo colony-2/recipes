@@ -1,0 +1,49 @@
+# A bounded live diagnostic, using the production read-only agent activity.
+# No Execute or historical job mutation is part of this evaluation.
+schema_version: 2
+id: backstop-diagnosis-batch
+input_schema:
+  prompt:
+    type: string
+    default_value: ''
+  title:
+    type: string
+    default_value: ''
+sequence:
+- id: incident
+  include: ./backstop-diagnosis.yaml
+  inputs:
+    request: Explain what happened with the act job using selected evidence in inbox/work/evidence/. Do not change historical jobs or repair external runtimes. Local fixture files belong to a separate scenario.
+    problem:
+      summary: Accepted source was published, then an absent publish hook fetched an unnecessary workspace and failed. Recovery hit a separate submission prerequisite. Diagnose the separate boundaries and recommend realistic next steps.
+- id: question
+  include: ./backstop-diagnosis.yaml
+  inputs:
+    request: Answer the human question using the incident evidence in inbox/work/evidence/. Do not change historical jobs or repair external runtimes.
+    problem:
+      summary: '${{ ''The preceding diagnosis was: '' + sequence.incident.outputs.response.summary }}'
+    feedback:
+      fields:
+        decision: question
+        feedback: What would the proposed absent-hook correction accomplish, and what consumer work would remain?
+- id: revised
+  include: ./backstop-diagnosis.yaml
+  inputs:
+    request: Reconsider the earlier recovery proposal using incident evidence and the new human notes in inbox/work/revised-human-notes.md. Do not modify historical jobs.
+    problem:
+      summary: Earlier Backstop proposed requesting a c2j repair, then resuming integration. The delivered source and existing approval must be preserved.
+    feedback:
+      fields:
+        decision: continue
+        feedback: Read inbox/work/revised-human-notes.md. These new notes invalidate the earlier proposed repair request; reconsider before any action.
+- id: local
+  include: ./backstop-diagnosis.yaml
+  inputs:
+    request: Diagnose only the separate disposable validation interruption described in inbox/work/local-evidence/human-direction.md. Inspect the restored input and run its read-only prerequisite checker. Do not apply the act incident's repair restrictions to this separately authorized local correction.
+    problem:
+      summary: Full local validation stopped because its input was missing. The input is restored; the prerequisite result is unknown until checked. Full validation remains pending. Recommend the concrete already-authorized correction if supported, explaining its limited result.
+outputs:
+  incident: ${{ sequence.incident.outputs.response }}
+  question: ${{ sequence.question.outputs.response }}
+  revised: ${{ sequence.revised.outputs.response }}
+  local: ${{ sequence.local.outputs.response }}

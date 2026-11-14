@@ -1,0 +1,64 @@
+schema_version: 2
+id: backstop-schema-test
+sequence:
+- id: schemas
+  include: ../../recipes/adaptive3/schemas.yaml
+- id: validate
+  op: command_execution
+  artifacts:
+    schemas.json:
+      kind: value
+      name: schemas.json
+      format: json
+      value: ${{ sequence.schemas.outputs }}
+  inputs:
+    env:
+      INBOX: ${{ context.environment.op.inbox }}
+    continue_on_error: true
+    run: |
+      python3 - <<'PY'
+      import copy, json, os, subprocess, tempfile
+      schemas = json.load(open(os.path.join(os.environ['INBOX'], 'schemas.json')))
+      count = 0
+      for family in ['backstop', 'recovery']:
+          base = dict(status='ask', summary='Owner route unavailable; discuss next steps.', action=None,
+                      stage=None, additional_attempts=None, title='Explain the stopped job', primary=None)
+          if family == 'recovery':
+              base.update(approval=None, publication=None)
+          valid = [base, dict(base, action='Rerun validation', stage='implementation', status='resume')]
+          valid += [dict(base, additional_attempts=n) for n in [1, 20]]
+          valid += [dict(base, summary='x' * 7000)]
+          invalid = [dict(base, **{k: v}) for k, v in [
+              ('action', 7), ('stage', 7), ('stage', 'unknown'), ('status', 'done'),
+              ('additional_attempts', 0), ('additional_attempts', 21), ('additional_attempts', 1.5),
+              ('unexpected', True), ('summary', 'x' * 8001)]]
+          for key in ['action', 'stage']:
+              v = dict(base); del v[key]; invalid.append(v)
+          for schema in [schemas[family], copy.deepcopy(schemas[family])]:
+              # Same narrowing used by the production include, with an early paused stage.
+              if schema is not schemas[family]:
+                  schema['properties']['stage']['enum'] = ['configure', 'direction', 'preparation', 'implementation', None]
+                  rejected = invalid + [dict(base, stage='integration')]
+              else:
+                  rejected = invalid
+              def accepts(value):
+                  with tempfile.TemporaryDirectory() as tmp:
+                      sp, vp = os.path.join(tmp, 'schema.json'), os.path.join(tmp, 'value.json')
+                      with open(sp, 'w') as f: json.dump(schema, f)
+                      with open(vp, 'w') as f: json.dump(value, f)
+                      r = subprocess.run(['jsonschema', '--instance', vp, sp], capture_output=True, text=True)
+                      assert r.returncode in [0, 1], r.stderr
+                      return r.returncode == 0
+              for v in valid:
+                  assert accepts(v), (family, 'rejected valid', v)
+                  count += 1
+              for v in rejected:
+                  assert not accepts(v), (family, 'accepted invalid', v)
+                  count += 1
+      print(f'{count} actual schema validations passed')
+      PY
+  execution_needs:
+    packages:
+    - nix:github:NixOS/nixpkgs/e7439b6b14ad3cc35d05608ebca9bce01a25f5f8#python3Packages.jsonschema
+outputs:
+  result: ${{ sequence.validate.outputs }}
