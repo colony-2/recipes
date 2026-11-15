@@ -42,6 +42,26 @@ state:
         root_ref: ${{ inputs.root_ref }}
         create_recipe: ${{ inputs.create_recipe }}
         documents: ${{ inputs.documents }}
+      transitions:
+      - to: creation_checked
+        when: true
+    creation_checked:
+      sequence: []
+      inputs:
+        result: ${{ states.create.outputs.result }}
+        request: ${{ inputs.request }}
+      outputs:
+        ready: >-
+          ${{ inputs.result.?status.orValue('') == 'completed'
+            && inputs.result.?outputs.orValue({}).?merged.orValue(false)
+            && inputs.result.?outputs.orValue({}).?disposition.orValue('') == 'created'
+            && inputs.result.?outputs.orValue({}).?error.orValue('') == ''
+            && size(inputs.result.?outputs.orValue({}).?created_cells.orValue([])) > 0
+            && inputs.result.?outputs.orValue({}).?created_cells.orValue([]).all(c,
+                nonempty(c.?cell.orValue('')) && nonempty(c.?repo.orValue('')) && nonempty(c.?revision.orValue(''))
+                && c.?ref.orValue('') in ['main', 'refs/heads/main'])
+            && (inputs.request.cell == '' || inputs.result.?outputs.orValue({}).?created_cells.orValue([])
+                .exists(c, c.?cell.orValue('') == inputs.request.cell)) }}
     create_guard:
       sequence: []
       transitions:
@@ -52,17 +72,12 @@ state:
     invalid:
       sequence: []
 outputs:
-  target: "${{ (state_exists('create') ? states.create.outputs.result.?outputs.orValue({}).?created_cells.orValue([]) : []).exists(c,c.?cell.orValue('')
+  target: "${{ state_output('creation_checked', 'ready', false) && (state_exists('create') ? states.create.outputs.result.?outputs.orValue({}).?created_cells.orValue([]) : []).exists(c,c.?cell.orValue('')
     == inputs.request.cell) ? jq((state_exists('create') ? states.create.outputs.result.?outputs.orValue({}).?created_cells.orValue([])
     : []).filter(c,c.?cell.orValue('') == inputs.request.cell)[0], '. + {ref:\"main\",state:\"ready\"}') : state_output('probe','target',state_output('proposal','target',{}))
     }}"
   creation: "${{ state_exists('create') ? states.create.outputs : null }}"
   documents: ${{ jq([inputs.documents,state_output('create','documents',{})], 'add') }}
-  ready: "${{ !state_exists('invalid') && !state_exists('create') || (states.create.outputs.result.status == 'completed' &&
-    states.create.outputs.result.outputs.?merged.orValue(false) && states.create.outputs.result.outputs.?disposition.orValue('')
-    == 'created' && size((state_exists('create') ? states.create.outputs.result.?outputs.orValue({}).?created_cells.orValue([])
-    : []))>0 && (state_exists('create') ? states.create.outputs.result.?outputs.orValue({}).?created_cells.orValue([]) : []).all(c,nonempty(c.repo)
-    && nonempty(c.revision) && c.ref in ['main','refs/heads/main']) && (inputs.request.cell == '' || (state_exists('create')
-    ? states.create.outputs.result.?outputs.orValue({}).?created_cells.orValue([]) : []).exists(c,c.?cell.orValue('') == inputs.request.cell)))
-    }}"
+  ready: >-
+    ${{ state_exists('create') ? state_output('creation_checked', 'ready', false) : !state_exists('invalid') }}
   valid: ${{ !state_exists('invalid') }}

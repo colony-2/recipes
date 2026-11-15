@@ -1,0 +1,36 @@
+id: verify-create-root
+inputs:
+  baseline: ${{ inputs.baseline }}
+sequence:
+- id: assert_preserved
+  op: command_execution
+  const: true
+  inputs:
+    env:
+      BASELINE: ${{ json_stringify(inputs.baseline) }}
+    run: |
+      set -eu
+      python3 - <<'PYCODE'
+      import base64, json, os, subprocess
+      baseline = json.loads(os.environ['BASELINE'])
+      def git(*args): return subprocess.check_output(['git', '-C', baseline['repo'], *args]).decode().strip()
+      head = git('rev-parse', 'main')
+      if head == baseline['head']:
+          assert git('ls-tree', 'main', '.c2/config.yaml') == baseline['config'], 'root config bytes or mode changed'
+          assert git('rev-parse', 'main^{tree}') == baseline['tree'], 'root tree changed'
+          assert git('rev-list', 'main') == baseline['history'], 'root history changed'
+      else:
+          assert git('rev-list', head + '^') == baseline['history'], 'earlier root history changed'
+          changed = git('diff', '--name-only', baseline['head'], head)
+          assert changed in ['concurrent.txt', '.c2/config.yaml\nconcurrent.txt'], 'concurrent writer tree changed'
+          if '.c2/config.yaml' in changed:
+              original = base64.b64decode(baseline['config_bytes']) if baseline['config_bytes'] else b''
+              actual = subprocess.check_output(['git', '-C', baseline['repo'], 'show', 'main:.c2/config.yaml'])
+              assert actual == original + b'\n# Concurrent root setting\nwriter_setting: preserved-exactly\n', 'writer config bytes changed'
+          else:
+              assert git('ls-tree', 'main', '.c2/config.yaml') == baseline['config']
+          assert git('show', 'main:concurrent.txt') == 'independent root writer'
+      print('Root config bytes, tree and history preserved; independent advancement retained when present.')
+      PYCODE
+outputs:
+  preserved: ${{ sequence.assert_preserved.outputs.success }}

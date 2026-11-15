@@ -1,0 +1,39 @@
+id: concurrent-root-writer
+sequence:
+  - id: write
+    op: command_execution
+    inputs:
+      run: |
+        printf 'independent root writer\n' > concurrent.txt
+        if [ "$CHANGE_CONFIG" = true ]; then
+          mkdir -p .c2
+          printf '\n# Concurrent root setting\nwriter_setting: preserved-exactly\n' >> .c2/config.yaml
+        fi
+      env:
+        CHANGE_CONFIG: ${{ string(inputs.change_config) }}
+  - id: publish
+    op: squashrebasemerge
+    inputs:
+      commit_message: Independent root writer during cell creation
+  - id: record
+    op: command_execution
+    const: true
+    inputs:
+      run: |
+        python3 - <<'PYCODE'
+        import base64, json, subprocess
+        repo = subprocess.check_output(['git', 'remote', 'get-url', 'origin']).decode().strip()
+        def git(*args): return subprocess.check_output(['git', '-C', repo, *args]).decode().strip()
+        config = git('ls-tree', 'main', '.c2/config.yaml')
+        print(json.dumps({'commit': git('rev-parse', 'main'), 'parent': git('rev-parse', 'main^'), 'tree': git('rev-parse', 'main^{tree}'), 'history': git('rev-list', 'main'), 'config': config, 'config_bytes': base64.b64encode(subprocess.check_output(['git', '-C', repo, 'show', 'main:.c2/config.yaml'])).decode() if config else None}))
+        PYCODE
+      continue_on_error: true
+outputs:
+  revision: ${{ sequence.publish.outputs.merged_hash }}
+  state: ${{ json_parse(sequence.record.outputs.stdout) }}
+input_schema:
+  change_config:
+    type: boolean
+    default_value: false
+inputs:
+  change_config: ${{ inputs.change_config }}

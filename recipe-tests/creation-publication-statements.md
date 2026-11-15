@@ -1,15 +1,26 @@
-# Creation publication failure expectations
+# Creation publication test statements
 
-These extend the creation statements: unsuccessful Git publication is a job
-failure, not a successful `publication_failed` or `registration_failed` result.
-Non-publication review and recovery outcomes retain their existing contracts.
+These replace catalog publication expectations under the approved removal recorded
+in [creation expectations](create-statements.md). Each expectation is at most 30 words.
 
-| Priority | Kind / dependencies | Files | Expected outcome |
+| Priority | Kind / dependencies | Source → test file | Expected outcome |
 | --- | --- | --- | --- |
-| Critical | Integration / c2j, Git | `recipes/create/initialize.yaml`, `recipes/create/publish.yaml`, `create.yaml` | Rejected initial publication fails initialization and creation, preserves diagnostics, and never adds an unpublished cell to the root catalog. |
-| Critical | Integration / c2j, Git | `recipes/create/publish.yaml` | When later publication fails, earlier published identities and the failing child identity remain available as durable artifacts. |
-| Critical | Integration / c2j, Git | `create.yaml` | Rejected catalog publication fails creation while retaining published cell identities; successful cell repositories remain intact. |
-| Critical | Integration / c2j, Git | `create.yaml` | Catalog squash failures propagate without attempting merge, rebasing, or replacing their diagnostic with a generic failure. |
-| Critical | Integration / c2j, Git | `recipes/create/initialize.yaml`, `create.yaml` | Successful creation preserves initial Git identity and independent cell histories; catalog publication uses separate squash and merge operations. |
-| High | Integration / c2j, Git | `recipes/create/initialize.yaml` | Initial publication never rebases onto an existing destination or overwrites unrelated history. |
-| High | Integration / c2j, Git | `create.yaml` | Catalog advancement fails publication without silently rebasing the reviewed catalog or restarting successful initialization jobs. |
+| P0 | Integration / c2j, Git | `recipes/create/initialize.yaml`, `create.yaml` → `creation-publication.test.yaml` | Initial push rejection prevents completion and preserves the original publication diagnostic. |
+| P0 | Integration / c2j, Git | `recipes/create/publish.yaml` → `creation-publication.test.yaml` | Later failure preserves earlier registered and published cells, failing child identity and available diagnostics without rollback. |
+| P0 | Integration / c2j | `recipes/create/publish.yaml` → `creation-publication.test.yaml` | Required initialization failure, timeout or cancellation prevents readiness and retains registration, pending child identity and completed publications. |
+| P1 | Integration / c2j | `recipes/create/initialize.yaml` → `creation-publication.test.yaml` | Permission and preparation failures retain their exact diagnostic and originating operation. |
+| P0 | Integration / c2j, Git | `create.yaml` → `creation-publication.test.yaml` | Root push rejection cannot block creation because creation performs no root publication. |
+| P0 | Integration / c2j, Git | `create.yaml` → `creation-publication.test.yaml` | Root config bytes, tree and history remain unchanged; independent concurrent advancement survives with absent and legacy dependents. |
+| P0 | Integration / c2j | `recipes/create/publish.yaml` → `creation-lifecycle.test.yaml` | A real held child releases only after required wait entry; creation completes only after both released children publish. |
+| P0 | Integration / c2j | `recipes/create/publish.yaml` → `creation-lifecycle.test.yaml` | A native child timeout prevents completion and retains pending child identity and the original timeout classification. |
+| P0 | Integration / c2j, Git | `create.yaml` → `creation-root-failure.test.yaml` | Initial and later publication failure preserve exact root configuration, tree and history with absent and legacy configuration. |
+
+Push rejection runs real Git receive hooks. Timeout and cancellation propagation
+cases inject the required-wait diagnostic after a successful first publication;
+router cases script terminal child statuses. A separate isolated fixture exercises
+a native child deadline. Controller cancellation of a child lease is not established: the available cancellation control requires
+the primary job itself to finish CANCELLED, while required child cancellation
+would make this parent fail. Scripted cancellation checks remain explicit. A real
+child fixture also returns a typed cancellation failure; it exercises native failure propagation without
+claiming controller or lease cancellation. Unexpected case timeouts fail
+acceptance rather than satisfying an expected error.

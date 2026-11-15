@@ -1,57 +1,35 @@
-# Runtime fixture references in mocked outputs
+# Seeded repository identities for creation tests
 
-## Problem
+Native c2j tests register disposable cells with generated portable repository
+identities. Creation proposals must use those identities rather than cell names as
+repository locators. Seeded fixtures already register their cells, so creation
+suites mock only the registration command; the separate registration suite tests
+native idempotency, conflicts and denial.
 
-`c2j test` creates each runtime cell with a generated portable repository identity.
-A mocked creation proposal cannot name that identity: `behavior.outputs` and
-`behavior.artifacts` are static, and the suite does not know the generated value.
-Using the cell name as `repo` now correctly fails repository validation.
-
-This blocks full creation/publication scenarios after their registration boundary.
-The fixture already registers its cells, so these tests mock the registration
-command while separately exercising native registration in dedicated cases.
-They still need the real registered repository for the empty-workspace selector
-and initialization child submission. Removing the explicit repo is not a fix:
-empty workspace resolution currently skips registry lookup and requires it.
-
-## Proposed interface
-
-Allow explicit fixture references in mock output values, resolved after seeding
-cells and before the mocked operation returns. For example:
+The runtime supports explicit seeded references in mock return values:
 
 ```yaml
-mocks:
-  ops:
-  - match:
-      selector: nix:github:colony-2/c2ops/published#codex
-    behavior:
-      mode: return
-      outputs:
-        response:
-          cells:
-          - name: alpha
-            repo: {fixture: cells.alpha.repo}
-            purpose_path: cells/alpha/PURPOSE.md
+behavior:
+  mode: return
+  fixture_refs:
+    alpha_repo: {cell: alpha, field: repo}
+  outputs_fixture_expr: >-
+    {"status": "completed", "output_schema_valid": true,
+     "response": {"cells": [{"name": "alpha", "repo": alpha_repo,
+       "purpose_path": "cells/alpha/PURPOSE.md"}]}}
 ```
 
-The exact syntax can follow c2j conventions. Expose the registered portable repo,
-not the host checkout path. Make unknown cells/fields a fixture-validation error.
-Resolve references only in declared fixture data, without evaluating model output
-as CEL or changing production template behavior. If artifacts need substitution,
-make it explicit and preserve ordinary literal content by default. These creation
-cases also need the same references in their proposed `root-config.yaml` artifacts,
-so the reviewed configuration and structured proposal name the same repositories.
+Declare `alpha` in `runtime.cells`. The expression above illustrates identity
+binding; actual creation responses also supply outcome, summary, files and
+questions. See [the complete creation suite](../recipe-tests/create.test.yaml).
+Computed values are explicit fixture data; ordinary artifact strings stay literal.
+No production validation is relaxed for tests.
 
-## Acceptance
+Creation no longer approves or writes root configuration, so these fixtures need
+no computed root-config artifact. The publication tests instead compare root
+configuration blobs, complete trees and history before and after creation and
+exercise an independent concurrent root writer.
 
-- Two parallel cases resolve their own cells without sharing identities.
-- Mocked proposals can supply a repository accepted by native empty workspaces
-  and child submission for that cell.
-- Unknown references fail before the scenario proceeds.
-- Literal strings, including template-looking user content, remain literal.
-- Test reports show the resolved returned value.
-
-Recipes will consume this feature in the retained full creation suites. Native
-registration conflict/permission tests and native publication tests remain.
-No production recipe should accept invalid repository locators or skip identity
-checks merely to accommodate static test responses.
+The earlier request for this runtime facility is satisfied by c2j's seeded
+reference support. Its complete interface and framework guarantees belong to
+[c2j's native testing guide](https://github.com/colony-2/c2j/blob/main/GUIDE-Native-Recipe-Testing.md#seeded-repository-references-in-native-mocks).

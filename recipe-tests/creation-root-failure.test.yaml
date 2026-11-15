@@ -1,0 +1,390 @@
+recipe: fixtures/creation-root-failure.yaml
+cases:
+  - id: initial-push-rejection-fails-creation-with-legacy-config
+    type: integration_case
+    inputs:
+      prompt: Create the approved cells.
+      reject_publication: alpha
+    runtime:
+      cells:
+        root:
+          files:
+            PURPOSE.md: Project root
+            keep.txt: original
+            .c2/config.yaml: |
+              # Legacy root configuration stays byte-for-byte intact.
+              self: {repo: example.test/root, ref: main}
+              root: {name: root, repo: example.test/root, ref: main}
+              dependents:
+                - repo: example.test/existing
+                  ref: release
+              extra: {preserve: true}
+          file_sources:
+            .c2/recipes/initialize.yaml: ../recipes/create/initialize.yaml
+            recipes/kernel/render/op.yaml: ../recipes/kernel/render/op.yaml
+        alpha: {}
+        beta: {}
+      responses:
+        - node_path: creation-root-failure/check/attempt/attempt/create/root/review/review/creation-review/review/sequence/review/kernel-review/request_human_review
+          fields:
+            decision: approve
+      observe_files:
+        - .c2/config.yaml
+        - keep.txt
+        - PURPOSE.md
+        - concurrent.txt
+    mocks:
+      ops:
+        - match:
+            node_path: creation-root-failure/check/attempt/attempt/create/root/publish/publish/publish-cells/publish/sequence/register_cell/register-cell/register
+          repeat: true
+          behavior:
+            mode: return
+            outputs:
+              success: true
+            artifacts:
+              registration.json: '{"id":"pre-registered-fixture"}'
+        - match:
+            selector: nix:github:colony-2/c2ops/published#codex
+          behavior:
+            mode: return
+            artifacts:
+              proposal.md: |-
+                # Proposed cells
+                Project fit, excluded alternatives, technology guidance and repository identities.
+              cells/alpha/PURPOSE.md: |
+                # alpha
+                Approved responsibilities.
+              cells/beta/PURPOSE.md: |
+                # beta
+                Approved responsibilities.
+            effects:
+              objects:
+                session:
+                  type: c2ops.codex.session/v1
+                  metadata:
+                    phase: creation-review
+            fixture_refs:
+              alpha_repo:
+                cell: alpha
+                field: repo
+              beta_repo:
+                cell: beta
+                field: repo
+            outputs_fixture_expr: '{"status": "completed", "output_schema_valid": true, "response": {"outcome": "review", "summary": "Creation proposal", "cells": [{"name": "alpha", "repo": alpha_repo, "purpose_path": "cells/alpha/PURPOSE.md"}, {"name": "beta", "repo": beta_repo, "purpose_path": "cells/beta/PURPOSE.md"}], "files": [{"path": "proposal.md", "description": "Review document"}, {"path": "cells/alpha/PURPOSE.md", "description": "Review document"}, {"path": "cells/beta/PURPOSE.md", "description": "Review document"}], "questions": []}}'
+        - repeat: true
+          match:
+            op: command_execution
+          behavior:
+            mode: passthrough
+        - match:
+            selector: ./recipes/kernel/render
+          repeat: true
+          behavior:
+            mode: passthrough
+    assertions:
+      - type: cel_true
+        expr: repositories.root.new_commits == 0
+      - type: cel_true
+        expr: '!calls.exists(c, (c.op == "rebase" || (c.op == "squashrebasemerge" && c.cell == "root")))'
+      - type: cel_true
+        expr: '!calls.exists(c, c.node_path.contains("/apply_catalog/") || (c.op == "merge" && c.cell == "root"))'
+      - type: cel_true
+        expr: size(calls.filter(c, c.op == "recipes.run")) == 1
+      - type: cel_true
+        expr: repositories.alpha.new_commits == 0 && repositories.beta.new_commits == 0
+      - type: cel_true
+        expr: calls.exists(c, c.node_path.endsWith("record_pending/creation-publication-record/record") && c.outputs.success && c.artifacts["initializations.json"].contains("job_id") && c.artifacts["initializations.json"].contains("pending"))
+      - type: cel_true
+        expr: repositories.root.changed_files.size() == 0
+      - type: cel_true
+        expr: outputs.failed && outputs.root_preserved
+      - type: cel_true
+        expr: outputs.failure.kind == "task_error" && outputs.failure.node.op == "squashrebasemerge" && outputs.failure.message.contains("publication-denied")
+  - id: later-push-rejection-retains-published-cell-with-legacy-config
+    type: integration_case
+    inputs:
+      prompt: Create the approved cells.
+      reject_publication: beta
+    runtime:
+      cells:
+        root:
+          files:
+            PURPOSE.md: Project root
+            keep.txt: original
+            .c2/config.yaml: |
+              # Legacy root configuration stays byte-for-byte intact.
+              self: {repo: example.test/root, ref: main}
+              root: {name: root, repo: example.test/root, ref: main}
+              dependents:
+                - repo: example.test/existing
+                  ref: release
+              extra: {preserve: true}
+          file_sources:
+            .c2/recipes/initialize.yaml: ../recipes/create/initialize.yaml
+            recipes/kernel/render/op.yaml: ../recipes/kernel/render/op.yaml
+        alpha: {}
+        beta: {}
+      responses:
+        - node_path: creation-root-failure/check/attempt/attempt/create/root/review/review/creation-review/review/sequence/review/kernel-review/request_human_review
+          fields:
+            decision: approve
+      observe_files:
+        - .c2/config.yaml
+        - keep.txt
+        - PURPOSE.md
+        - concurrent.txt
+    mocks:
+      ops:
+        - match:
+            node_path: creation-root-failure/check/attempt/attempt/create/root/publish/publish/publish-cells/publish/sequence/register_cell/register-cell/register
+          repeat: true
+          behavior:
+            mode: return
+            outputs:
+              success: true
+            artifacts:
+              registration.json: '{"id":"pre-registered-fixture"}'
+        - match:
+            selector: nix:github:colony-2/c2ops/published#codex
+          behavior:
+            mode: return
+            artifacts:
+              proposal.md: |-
+                # Proposed cells
+                Project fit, excluded alternatives, technology guidance and repository identities.
+              cells/alpha/PURPOSE.md: |
+                # alpha
+                Approved responsibilities.
+              cells/beta/PURPOSE.md: |
+                # beta
+                Approved responsibilities.
+            effects:
+              objects:
+                session:
+                  type: c2ops.codex.session/v1
+                  metadata:
+                    phase: creation-review
+            fixture_refs:
+              alpha_repo:
+                cell: alpha
+                field: repo
+              beta_repo:
+                cell: beta
+                field: repo
+            outputs_fixture_expr: '{"status": "completed", "output_schema_valid": true, "response": {"outcome": "review", "summary": "Creation proposal", "cells": [{"name": "alpha", "repo": alpha_repo, "purpose_path": "cells/alpha/PURPOSE.md"}, {"name": "beta", "repo": beta_repo, "purpose_path": "cells/beta/PURPOSE.md"}], "files": [{"path": "proposal.md", "description": "Review document"}, {"path": "cells/alpha/PURPOSE.md", "description": "Review document"}, {"path": "cells/beta/PURPOSE.md", "description": "Review document"}], "questions": []}}'
+        - repeat: true
+          match:
+            op: command_execution
+          behavior:
+            mode: passthrough
+        - match:
+            selector: ./recipes/kernel/render
+          repeat: true
+          behavior:
+            mode: passthrough
+    assertions:
+      - type: cel_true
+        expr: repositories.root.new_commits == 0
+      - type: cel_true
+        expr: '!calls.exists(c, (c.op == "rebase" || (c.op == "squashrebasemerge" && c.cell == "root")))'
+      - type: cel_true
+        expr: '!calls.exists(c, c.node_path.contains("/apply_catalog/") || (c.op == "merge" && c.cell == "root"))'
+      - type: cel_true
+        expr: size(calls.filter(c, c.op == "recipes.run")) == 2
+      - type: cel_true
+        expr: calls.exists(c, c.op == "squashrebasemerge" && c.cell == "alpha" && "outputs" in c && size(c.outputs.merged_hash) == 40) && repositories.beta.new_commits == 0
+      - type: cel_true
+        expr: calls.exists(c, c.node_path.endsWith("record_pending/creation-publication-record/record") && c.outputs.success && c.artifacts["created.json"].contains('"cell":"alpha"') && c.artifacts["created.json"].contains("revision") && c.artifacts["initializations.json"].contains('"name":"beta"'))
+      - type: cel_true
+        expr: repositories.root.changed_files.size() == 0
+      - type: cel_true
+        expr: outputs.failed && outputs.root_preserved
+      - type: cel_true
+        expr: outputs.failure.kind == "task_error" && outputs.failure.node.op == "squashrebasemerge" && outputs.failure.message.contains("publication-denied")
+  - id: initial-push-rejection-fails-creation-without-root-config
+    type: integration_case
+    inputs:
+      prompt: Create the approved cells.
+      reject_publication: alpha
+    runtime:
+      cells:
+        root:
+          files:
+            PURPOSE.md: Project root
+            keep.txt: original
+          file_sources:
+            .c2/recipes/initialize.yaml: ../recipes/create/initialize.yaml
+            recipes/kernel/render/op.yaml: ../recipes/kernel/render/op.yaml
+        alpha: {}
+        beta: {}
+      responses:
+        - node_path: creation-root-failure/check/attempt/attempt/create/root/review/review/creation-review/review/sequence/review/kernel-review/request_human_review
+          fields:
+            decision: approve
+      observe_files:
+        - .c2/config.yaml
+        - keep.txt
+        - PURPOSE.md
+        - concurrent.txt
+    mocks:
+      ops:
+        - match:
+            node_path: creation-root-failure/check/attempt/attempt/create/root/publish/publish/publish-cells/publish/sequence/register_cell/register-cell/register
+          repeat: true
+          behavior:
+            mode: return
+            outputs:
+              success: true
+            artifacts:
+              registration.json: '{"id":"pre-registered-fixture"}'
+        - match:
+            selector: nix:github:colony-2/c2ops/published#codex
+          behavior:
+            mode: return
+            artifacts:
+              proposal.md: |-
+                # Proposed cells
+                Project fit, excluded alternatives, technology guidance and repository identities.
+              cells/alpha/PURPOSE.md: |
+                # alpha
+                Approved responsibilities.
+              cells/beta/PURPOSE.md: |
+                # beta
+                Approved responsibilities.
+            effects:
+              objects:
+                session:
+                  type: c2ops.codex.session/v1
+                  metadata:
+                    phase: creation-review
+            fixture_refs:
+              alpha_repo:
+                cell: alpha
+                field: repo
+              beta_repo:
+                cell: beta
+                field: repo
+            outputs_fixture_expr: '{"status": "completed", "output_schema_valid": true, "response": {"outcome": "review", "summary": "Creation proposal", "cells": [{"name": "alpha", "repo": alpha_repo, "purpose_path": "cells/alpha/PURPOSE.md"}, {"name": "beta", "repo": beta_repo, "purpose_path": "cells/beta/PURPOSE.md"}], "files": [{"path": "proposal.md", "description": "Review document"}, {"path": "cells/alpha/PURPOSE.md", "description": "Review document"}, {"path": "cells/beta/PURPOSE.md", "description": "Review document"}], "questions": []}}'
+        - repeat: true
+          match:
+            op: command_execution
+          behavior:
+            mode: passthrough
+        - match:
+            selector: ./recipes/kernel/render
+          repeat: true
+          behavior:
+            mode: passthrough
+    assertions:
+      - type: cel_true
+        expr: repositories.root.new_commits == 0
+      - type: cel_true
+        expr: '!calls.exists(c, (c.op == "rebase" || (c.op == "squashrebasemerge" && c.cell == "root")))'
+      - type: cel_true
+        expr: '!calls.exists(c, c.node_path.contains("/apply_catalog/") || (c.op == "merge" && c.cell == "root"))'
+      - type: cel_true
+        expr: size(calls.filter(c, c.op == "recipes.run")) == 1
+      - type: cel_true
+        expr: repositories.alpha.new_commits == 0 && repositories.beta.new_commits == 0
+      - type: cel_true
+        expr: calls.exists(c, c.node_path.endsWith("record_pending/creation-publication-record/record") && c.outputs.success && c.artifacts["initializations.json"].contains("job_id") && c.artifacts["initializations.json"].contains("pending"))
+      - type: cel_true
+        expr: repositories.root.changed_files.size() == 0
+      - type: cel_true
+        expr: outputs.failed && outputs.root_preserved
+      - type: cel_true
+        expr: outputs.failure.kind == "task_error" && outputs.failure.node.op == "squashrebasemerge" && outputs.failure.message.contains("publication-denied")
+  - id: later-push-rejection-retains-published-cell-without-root-config
+    type: integration_case
+    inputs:
+      prompt: Create the approved cells.
+      reject_publication: beta
+    runtime:
+      cells:
+        root:
+          files:
+            PURPOSE.md: Project root
+            keep.txt: original
+          file_sources:
+            .c2/recipes/initialize.yaml: ../recipes/create/initialize.yaml
+            recipes/kernel/render/op.yaml: ../recipes/kernel/render/op.yaml
+        alpha: {}
+        beta: {}
+      responses:
+        - node_path: creation-root-failure/check/attempt/attempt/create/root/review/review/creation-review/review/sequence/review/kernel-review/request_human_review
+          fields:
+            decision: approve
+      observe_files:
+        - .c2/config.yaml
+        - keep.txt
+        - PURPOSE.md
+        - concurrent.txt
+    mocks:
+      ops:
+        - match:
+            node_path: creation-root-failure/check/attempt/attempt/create/root/publish/publish/publish-cells/publish/sequence/register_cell/register-cell/register
+          repeat: true
+          behavior:
+            mode: return
+            outputs:
+              success: true
+            artifacts:
+              registration.json: '{"id":"pre-registered-fixture"}'
+        - match:
+            selector: nix:github:colony-2/c2ops/published#codex
+          behavior:
+            mode: return
+            artifacts:
+              proposal.md: |-
+                # Proposed cells
+                Project fit, excluded alternatives, technology guidance and repository identities.
+              cells/alpha/PURPOSE.md: |
+                # alpha
+                Approved responsibilities.
+              cells/beta/PURPOSE.md: |
+                # beta
+                Approved responsibilities.
+            effects:
+              objects:
+                session:
+                  type: c2ops.codex.session/v1
+                  metadata:
+                    phase: creation-review
+            fixture_refs:
+              alpha_repo:
+                cell: alpha
+                field: repo
+              beta_repo:
+                cell: beta
+                field: repo
+            outputs_fixture_expr: '{"status": "completed", "output_schema_valid": true, "response": {"outcome": "review", "summary": "Creation proposal", "cells": [{"name": "alpha", "repo": alpha_repo, "purpose_path": "cells/alpha/PURPOSE.md"}, {"name": "beta", "repo": beta_repo, "purpose_path": "cells/beta/PURPOSE.md"}], "files": [{"path": "proposal.md", "description": "Review document"}, {"path": "cells/alpha/PURPOSE.md", "description": "Review document"}, {"path": "cells/beta/PURPOSE.md", "description": "Review document"}], "questions": []}}'
+        - repeat: true
+          match:
+            op: command_execution
+          behavior:
+            mode: passthrough
+        - match:
+            selector: ./recipes/kernel/render
+          repeat: true
+          behavior:
+            mode: passthrough
+    assertions:
+      - type: cel_true
+        expr: repositories.root.new_commits == 0
+      - type: cel_true
+        expr: '!calls.exists(c, (c.op == "rebase" || (c.op == "squashrebasemerge" && c.cell == "root")))'
+      - type: cel_true
+        expr: '!calls.exists(c, c.node_path.contains("/apply_catalog/") || (c.op == "merge" && c.cell == "root"))'
+      - type: cel_true
+        expr: size(calls.filter(c, c.op == "recipes.run")) == 2
+      - type: cel_true
+        expr: calls.exists(c, c.op == "squashrebasemerge" && c.cell == "alpha" && "outputs" in c && size(c.outputs.merged_hash) == 40) && repositories.beta.new_commits == 0
+      - type: cel_true
+        expr: calls.exists(c, c.node_path.endsWith("record_pending/creation-publication-record/record") && c.outputs.success && c.artifacts["created.json"].contains('"cell":"alpha"') && c.artifacts["created.json"].contains("revision") && c.artifacts["initializations.json"].contains('"name":"beta"'))
+      - type: cel_true
+        expr: repositories.root.changed_files.size() == 0
+      - type: cel_true
+        expr: outputs.failed && outputs.root_preserved
+      - type: cel_true
+        expr: outputs.failure.kind == "task_error" && outputs.failure.node.op == "squashrebasemerge" && outputs.failure.message.contains("publication-denied")

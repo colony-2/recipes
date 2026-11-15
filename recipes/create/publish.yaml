@@ -42,8 +42,8 @@ state:
             {''review'': inputs.review, ''cell'': inputs.cells[inputs.index], ''root_job'': context.workflow.job_id}
             } }}'
         outputs:
-          error: ${{ sequence.await_initialization.outputs.outputs.?error.orValue('Initialization returned no result.') }}
-          published: ${{ sequence.await_initialization.outputs.outputs.?published.orValue({}) }}
+          error: ${{ sequence.validate_publication.outputs.error }}
+          published: ${{ sequence.validate_publication.outputs.published }}
           job_id: ${{ sequence.launch_initialization.outputs.job_ids[0] }}
         sequence:
         - id: launch_initialization
@@ -68,6 +68,22 @@ state:
             wait:
               'on': job
               condition: success
+        - id: validate_publication
+          inputs:
+            error: ${{ sequence.await_initialization.outputs.?outputs.orValue({}).?error.orValue('Initialization returned no result.') }}
+            published: ${{ sequence.await_initialization.outputs.?outputs.orValue({}).?published.orValue({}) }}
+            cell: ${{ inputs.cell.name }}
+            repo: ${{ context.git.repo }}
+          sequence: []
+          outputs:
+            error: >-
+              ${{ inputs.error != '' ? inputs.error
+                : !nonempty(inputs.published.?revision.orValue('')) ? 'Initialization returned no published revision.'
+                : inputs.published.?cell.orValue('') != inputs.cell
+                  || inputs.published.?repo.orValue('') != inputs.repo
+                  || !(inputs.published.?ref.orValue('') in ['main', 'refs/heads/main'])
+                  ? 'Initialization returned a published identity that does not match the approved cell.' : '' }}
+            published: ${{ inputs.published }}
       - id: record_completed
         include: ./publication-record.yaml
         inputs:

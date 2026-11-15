@@ -52,9 +52,11 @@ changes are validated before adoption.
 ## Cell creation
 
 [`create.yaml`](create.yaml) runs in the cell named `root`. Human review covers
-repository identities, exact initial purposes, and exact root configuration.
+cell names, repository identities and exact initial purposes.
 After approval it registers cells with `c2j cell create`, starts destination-owned
-initialization jobs, and publishes the approved root catalog after they succeed.
+initialization jobs, and completes after every required initialization succeeds.
+Successful creation returns the legacy `merged: true` alias with an empty
+`merged_hash`; creation preserves root configuration and history.
 Creation alone does not complete the original feature request.
 See [creation behavior and failure handling](recipes/create/README.md).
 

@@ -1,0 +1,35 @@
+id: creation-purposes
+inputs:
+  cells: ${{ inputs.cells }}
+  documents: ${{ inputs.documents }}
+state:
+  initial: validate
+  states:
+    validate:
+      inputs:
+        index: ${{ int(transition.payload.?index.orValue(0)) }}
+        cells: ${{ inputs.cells }}
+        documents: ${{ inputs.documents }}
+      sequence:
+      - id: nonempty
+        op: command_execution
+        const: true
+        artifacts:
+          PURPOSE.md: ${{ inputs.documents[inputs.cells[inputs.index].purpose_path] }}
+        inputs:
+          continue_on_error: true
+          env:
+            INBOX: ${{ context.environment.op.inbox }}
+          run: |
+            set -eu
+            test -s "$INBOX/PURPOSE.md" || { echo 'Missing or empty proposed PURPOSE.md' >&2; exit 1; }
+      outputs:
+        valid: ${{ sequence.nonempty.outputs.success }}
+        index: ${{ inputs.index }}
+      transitions:
+      - to: validate
+        when: outputs.valid && outputs.index + 1 < size(inputs.cells)
+        payload:
+          index: ${{ outputs.index + 1 }}
+outputs:
+  valid: ${{ states.validate.outputs.valid }}

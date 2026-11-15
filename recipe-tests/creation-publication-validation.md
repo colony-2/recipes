@@ -1,5 +1,12 @@
 # Creation publication failure validation
 
+This historical report describes the 2026-11-01 workflow. Its catalog-push,
+catalog-advancement and root-merge expectations are superseded by the approved
+[creation removal](create-statements.md). The migrated clarification cases now
+execute in the current creation suite; this report is not current acceptance.
+See [current behavior](../recipes/create/README.md) and the
+[publication expectations](creation-publication-statements.md).
+
 Validated on 2026-11-01 with
 `c2j v0.0.117-0.20261031185936-a501d923f053`.
 

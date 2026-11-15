@@ -1,19 +1,16 @@
 id: create-main
-version: '1'
+version: "1"
 input_schema:
   prompt:
     type: string
     required: true
   occupied:
     type: string
-    default_value: ''
+    default_value: ""
   reject_publication:
     type: string
-    default_value: ''
+    default_value: ""
   capture_failure:
-    type: boolean
-    default_value: false
-  advance_catalog:
     type: boolean
     default_value: false
 inputs:
@@ -21,27 +18,21 @@ inputs:
   occupied: ${{ inputs.?occupied.orValue('') }}
   reject_publication: ${{ inputs.?reject_publication.orValue('') }}
   capture_failure: ${{ inputs.?capture_failure.orValue(false) }}
-  advance_catalog: ${{ inputs.?advance_catalog.orValue(false) }}
-# Optional test boundary: production create remains uncaught. Most failure tests
-# use expect_error; this boundary is only for inspecting structured identity.
-catch:
-- when: inputs.capture_failure
-  continue:
-    outputs:
-      failed: true
-      failure: ${{ json_parse(json_stringify(failure)) }}
 sequence:
-- id: prepare
-  include: ./prepare-create-remotes.yaml
-  inputs:
-    occupied: ${{ inputs.occupied }}
-    reject_publication: ${{ inputs.reject_publication }}
-    advance_catalog: ${{ inputs.advance_catalog }}
-- id: run
-  include: ../../create.yaml
-  inputs:
-    prompt: ${{ inputs.prompt }}
-    initialize_recipe: ${{ 'git+file://' + context.git.repo + '//.c2/recipes/initialize.yaml@main' }}
+  - id: prepare
+    include: ./prepare-create-remotes.yaml
+    inputs:
+      occupied: ${{ inputs.occupied }}
+      reject_publication: ${{ inputs.reject_publication }}
+  - id: run
+    include: ../../create.yaml
+    inputs:
+      prompt: ${{ inputs.prompt }}
+      initialize_recipe: ${{ 'git+' + context.git.repo + '//.c2/recipes/initialize.yaml@main' }}
+  - id: verify_root
+    include: ./verify-create-root.yaml
+    inputs:
+      baseline: ${{ sequence.prepare.outputs.baseline }}
 outputs:
   failed: false
   disposition: ${{ sequence.run.outputs.disposition }}
@@ -53,3 +44,11 @@ outputs:
   error: ${{ sequence.run.outputs.error }}
   review: ${{ sequence.run.outputs.review }}
   artifact_refs: ${{ sequence.run.outputs.artifact_refs }}
+  initializations: ${{ sequence.run.outputs.initializations }}
+  root_preserved: ${{ sequence.verify_root.outputs.preserved }}
+catch:
+  - when: inputs.capture_failure
+    continue:
+      outputs:
+        failed: true
+        failure: ${{ json_parse(json_stringify(failure)) }}

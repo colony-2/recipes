@@ -21,6 +21,12 @@ runtime when updating the pin.
 Run `recipe-tests/create.test.yaml` and
 `recipe-tests/create-handoff.test.yaml` for its review, publication, and handoff
 coverage; these use disposable repositories and do not create GitHub repositories.
+Creation's publication, lifecycle, root-failure, routing, coordination and permission
+suites also use these disposable repositories. Full-flow registration is scripted
+because seeded cells already exist; `cell-registration.test.yaml` exercises the
+real registration command and grant boundaries. `creation-lifecycle.test.yaml`
+uses native response gates and an isolated child timeout; no production timeout
+is added.
 Configure the op's declared tools, including Nix, as described in
 [c2ops worker setup](https://github.com/colony-2/c2ops/blob/published/NIX_PACKAGES.md).
 Runtime cases still resolve op manifests when model responses are mocked.

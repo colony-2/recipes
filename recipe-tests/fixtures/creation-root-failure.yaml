@@ -1,0 +1,53 @@
+id: creation-root-failure
+input_schema:
+  prompt:
+    type: string
+    required: true
+  reject_publication:
+    type: string
+    default_value: ""
+inputs:
+  prompt: ${{ inputs.prompt }}
+  reject_publication: ${{ inputs.reject_publication }}
+sequence:
+  - id: baseline
+    include: ./prepare-create-remotes.yaml
+    inputs:
+      reject_publication: ${{ inputs.reject_publication }}
+  - id: check
+    inputs:
+      baseline: ${{ sequence.baseline.outputs.baseline }}
+      prompt: ${{ inputs.prompt }}
+    state:
+      initial: attempt
+      states:
+        attempt:
+          include: ../../create.yaml
+          inputs:
+            prompt: ${{ inputs.prompt }}
+            initialize_recipe: ${{ 'git+' + context.git.repo + '//.c2/recipes/initialize.yaml@main' }}
+          catch:
+            - when: true
+              to: failed
+              payload:
+                original_failure: ${{ json_parse(json_stringify(failure)) }}
+        failed:
+          inputs:
+            original_failure: ${{ transition.payload.original_failure }}
+            baseline: ${{ inputs.baseline }}
+          sequence:
+            - id: verify
+              include: ./verify-create-root.yaml
+              inputs:
+                baseline: ${{ inputs.baseline }}
+          outputs:
+            failure: ${{ inputs.original_failure }}
+            root_preserved: ${{ sequence.verify.outputs.preserved }}
+    outputs:
+      failed: ${{ state_exists('failed') }}
+      failure: ${{ states.failed.outputs.failure }}
+      root_preserved: ${{ states.failed.outputs.root_preserved }}
+outputs:
+  failed: ${{ sequence.check.outputs.failed }}
+  failure: ${{ sequence.check.outputs.failure }}
+  root_preserved: ${{ sequence.check.outputs.root_preserved }}
