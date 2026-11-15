@@ -1,0 +1,96 @@
+schema_version: 2
+id: package-restore-test
+workspace: {cell: root}
+input_schema:
+  review_only:
+    type: boolean
+    default_value: false
+inputs:
+  review_only: ${{ inputs.review_only }}
+sequence:
+- id: candidate
+  op: command_execution
+  inputs:
+    run: |
+      mkdir -p .c2
+      printf 'name: retained-candidate\npackages: ["nix:github:NixOS/nixpkgs/e7439b6b14ad3cc35d05608ebca9bce01a25f5f8#python3"]\n' > .c2/config.yaml
+      printf 'candidate\n' > candidate.txt
+- id: committed
+  op: command_execution
+  const: true
+  inputs:
+    run: git rev-parse HEAD
+- id: proposal
+  op: recipes.run
+  inputs:
+    recipes: []
+- id: wait
+  op: recipe.await_result_soft
+  inputs:
+    target:
+      job: ${{ sequence.proposal.outputs.job_ids[0] }}
+    wait:
+      'on': job
+      condition: complete
+    return_when: terminal
+- id: candidate_documents
+  include: ../../recipes/kernel/artifact-namespace.yaml
+  inputs:
+    prefix: candidate/
+    documents: ${{ sequence.candidate.artifacts }}
+# Observe immutable producer identities without binding restore packs as documents.
+- id: inspect_packs
+  op: command_execution
+  const: true
+  inputs:
+    env:
+      CANDIDATE: ${{ json_stringify(sequence.candidate.artifacts) }}
+      PROPOSAL: ${{ json_stringify(sequence.wait.outputs.artifacts) }}
+    run: |
+      python3 - <<'PYCODE'
+      import json, os
+      candidate=json.loads(os.environ['CANDIDATE'])['__git_state_thin_pack__']
+      proposal=json.loads(os.environ['PROPOSAL'])['__git_state_thin_pack__']
+      a=candidate['stored']['key']; b=proposal['stored']['key']
+      assert a!=b and a['jobId']!=b['jobId']
+      assert a['sizeBytes']>0 and b['sizeBytes']>0
+      assert a['name']==b['name']=='__git_state_thin_pack__'
+      print(json.dumps({'candidate':a,'proposal':b}))
+      PYCODE
+- id: validate
+  include: ../../recipes/adaptive3/tools.yaml
+  inputs:
+    check: package_config
+    documents: '${{ inputs.review_only ? jq(sequence.wait.outputs.artifacts, ''with_entries(select(.key | startswith("review/")))'') : jq([sequence.candidate_documents.outputs.documents,sequence.wait.outputs.artifacts], ''add'') }}'
+    requests:
+    - reference: pnpm:typescript@5.7.3
+      check: [tsc, --version]
+- id: materialize
+  op: command_execution
+  const: true
+  artifacts:
+    validation/: ${{ sequence.validate.outputs.artifacts }}
+    ./: ${{ jq(sequence.wait.outputs.artifacts, 'with_entries(select(.key | startswith("review/")))') }}
+  inputs:
+    env:
+      INBOX: ${{ context.environment.op.inbox }}
+    run: |
+      python3 - <<'PY'
+      import pathlib, os, subprocess, json
+      root=pathlib.Path(os.environ['INBOX'])
+      assert (root/'review/README.md').read_text()=='# Configuration\n[Details](detail.md)\n'
+      assert (root/'review/detail.md').read_text()=='Retain all candidate settings.\n'
+      assert (root/'review/config.yaml').read_text()=='name: retained-candidate\npackages: ["nix:github:NixOS/nixpkgs/e7439b6b14ad3cc35d05608ebca9bce01a25f5f8#python3", "pnpm:typescript@5.7.3"]\n'
+      assert (root/'validation/error/package-config.log').read_text()=='Only approved package additions are present.\n'
+      assert pathlib.Path('candidate.txt').read_text()=='candidate\n'
+      assert not subprocess.check_output(['git','status','--porcelain'])
+      print(json.dumps({'head':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()}))
+      PY
+outputs:
+  result: ${{ sequence.validate.outputs.result }}
+  candidate_head: ${{ jq(sequence.committed.outputs.stdout, 'rtrimstr("\n")') }}
+  final_head: ${{ json_parse(sequence.materialize.outputs.stdout).head }}
+  packs: ${{ json_parse(sequence.inspect_packs.outputs.stdout) }}
+  candidate_artifacts: ${{ sequence.candidate.artifacts }}
+  proposal_artifacts: ${{ sequence.wait.outputs.artifacts }}
+  artifacts: ${{ sequence.validate.outputs.artifacts }}

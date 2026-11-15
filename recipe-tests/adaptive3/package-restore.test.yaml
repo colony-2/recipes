@@ -1,0 +1,80 @@
+recipe: package-restore.yaml
+cases:
+- id: distinct-native-packs-retain-candidate
+  type: integration_case
+  runtime:
+    observe_files: [candidate.txt, .c2/config.yaml, .git/HEAD]
+    cells:
+      root:
+        files:
+          README.md: Upstream candidate repository
+          .c2/config.yaml: 'packages: []'
+      proposal:
+        files:
+          README.md: Independent proposal repository
+  mocks:
+    ops:
+    - match:
+        op: recipes.run
+      behavior:
+        mode: return
+        effects:
+          children:
+          - recipe: package-restore-proposal.yaml
+            cell: proposal
+            await: terminal
+            bind: proposal
+        outputs_expr: '{"job_ids":[children.proposal]}'
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.result.status=="passed" && outputs.candidate_head==outputs.final_head
+  - type: cel_true
+    expr: outputs.candidate_artifacts["__git_state_thin_pack__"] != outputs.proposal_artifacts["__git_state_thin_pack__"]
+  - type: cel_true
+    expr: calls.exists(c,c.node_path.endsWith("/package_config/package_config") && c.worktree[".git/HEAD"]==outputs.candidate_head+"\n" && c.worktree["candidate.txt"]=="candidate\n" && c.worktree[".c2/config.yaml"].contains("retained-candidate"))
+  - type: cel_true
+    expr: '"error/package-config.log" in outputs.artifacts'
+  - type: cel_true
+    expr: calls.filter(c,c.node_path.endsWith("/package_config/package_config"))[0].artifacts.size()==3 && calls.filter(c,c.node_path.endsWith("/package_config/package_config"))[0].artifacts.all(k,k.startsWith("review/"))
+  - type: cel_true
+    expr: outputs.proposal_artifacts.filter(k,k.startsWith("review/")).all(k,outputs.proposal_artifacts[k].name==k && outputs.proposal_artifacts[k].stored.key.name==k)
+- id: review-only-retains-candidate
+  type: integration_case
+  runtime:
+    observe_files: [candidate.txt, .c2/config.yaml, .git/HEAD]
+    cells:
+      root:
+        files:
+          README.md: Upstream candidate repository
+          .c2/config.yaml: 'packages: []'
+      proposal:
+        files:
+          README.md: Independent proposal repository
+  inputs:
+    review_only: true
+  mocks:
+    ops:
+    - match:
+        op: recipes.run
+      behavior:
+        mode: return
+        effects:
+          children:
+          - recipe: package-restore-proposal.yaml
+            cell: proposal
+            await: terminal
+            bind: proposal
+        outputs_expr: '{"job_ids":[children.proposal]}'
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.result.status=="passed" && outputs.candidate_head==outputs.final_head

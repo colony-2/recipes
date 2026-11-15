@@ -62,3 +62,22 @@ Agent decisions are scripted unless a case is explicitly marked live.
 - **A3-48 · critical · integration · c2j:** Invalid or failed Backstop reports retain native human input and accept a corrected continuation. (`backstop.test.yaml`)
 
 - **A3-49 · critical · worker integration · uv/Python/Nix:** Review checks reuse prepared Python libraries across tasks and report missing or corrupt screenshots as corrections. (`tools.test.yaml`, `guides/repros/validator-environment-check.yaml`)
+
+| ID | Expectation | Priority | Level / dependencies | Files |
+| --- | --- | --- | --- | --- |
+| A3-50 | Unfixed validation with distinct native candidate and proposal restore packs fails preparation with the workspace collision before validator execution. | Critical | Integration / c2j, Git, Nix | `recipes/adaptive3/tools.yaml`, `recipe-tests/adaptive3/package-restore.yaml`, `recipe-tests/adaptive3/package-restore.test.yaml` |
+| A3-51 | Corrected validation executes against the committed candidate, retaining its configuration, marker and revision without persisting validator changes. | Critical | Integration / c2j, Git, Nix | `recipes/adaptive3/tools.yaml`, `recipe-tests/adaptive3/package-restore.test.yaml` |
+| A3-52 | Review documents retain their original names, references and contents while other proposal artifacts cannot enter the validator document mount. | Critical | Integration / c2j, Git, Nix | `recipes/adaptive3/tools.yaml`, `recipe-tests/adaptive3/package-restore.test.yaml` |
+| A3-53 | Review-only input remains valid and preserves the candidate through native restoration. | High | Integration / c2j, Git, Nix | `recipe-tests/adaptive3/package-restore.test.yaml`, `recipe-tests/adaptive3/tools.test.yaml` |
+| A3-54 | Requested nix, uv and pnpm additions pass validation while retaining existing packages and unrelated configuration. | Critical | Integration / c2j, Git, Nix | `recipe-tests/adaptive3/tools.test.yaml`, `recipe-tests/adaptive3/packages.test.yaml` |
+| A3-55 | Unsupported apt requests receive the portable-reference finding before any approval, probe or adoption. | Critical | Integration / c2j, Nix | `recipe-tests/adaptive3/tools.test.yaml`, `recipe-tests/adaptive3/packages.test.yaml` |
+| A3-56 | Unrelated configuration edits receive the unrelated-configuration finding and cannot advance to probing or adoption. | Critical | Integration / c2j, Nix | `recipe-tests/adaptive3/tools.test.yaml`, `recipe-tests/adaptive3/packages.test.yaml` |
+| A3-57 | Removed existing packages, unrequested additions and duplicate packages receive the package-additions finding. | High | Integration / c2j, Nix | `recipe-tests/adaptive3/tools.test.yaml` |
+| A3-58 | Adoption succeeds when the current parsed configuration equals the approved proposal and retains existing settings. | Critical | Integration / c2j, Git, Nix | `recipe-tests/adaptive3/tools.test.yaml`, `recipe-tests/adaptive3/packages.test.yaml` |
+| A3-59 | Adoption differing from the approved proposal receives the adoption-mismatch finding, including changed unrelated settings or missing approved additions. | Critical | Integration / c2j, Git, Nix | `recipe-tests/adaptive3/tools.test.yaml`, `recipe-tests/adaptive3/packages.test.yaml` |
+| A3-60 | Exact policy approval precedes probe launch without requiring human approval. | Critical | Integration / c2j, Nix | `recipe-tests/adaptive3/packages.test.yaml` |
+| A3-61 | Requests lacking an exact policy reference and check match require human approval before probe launch. | Critical | Integration / c2j, Nix | `recipe-tests/adaptive3/packages.test.yaml` |
+| A3-62 | Human denial preserves feedback and leaves both probing and adoption unexecuted. | Critical | Integration / c2j, Nix | `recipe-tests/adaptive3/packages.test.yaml` |
+| A3-63 | A failed probe job or non-passing probe finding prevents adoption and returns a non-passing result. | Critical | Integration / c2j, Nix | `recipe-tests/adaptive3/packages.test.yaml`, `recipe-tests/adaptive3/package-probe.test.yaml` |
+| A3-64 | Successful approved probing completes before exact adoption, which passes the real configuration validator. | Critical | Integration / c2j, Git, Nix | `recipe-tests/adaptive3/packages.test.yaml`, `recipe-tests/adaptive3/package-probe.test.yaml` |
+| A3-65 | Proposal validation executes against the retained candidate even when the proposal workspace and upstream configuration would produce different findings. | Critical | Integration / c2j, Git, Nix | `recipe-tests/adaptive3/package-restore.test.yaml` |
