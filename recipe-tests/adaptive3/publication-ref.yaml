@@ -1,0 +1,65 @@
+schema_version: 2
+id: publication-ref-test
+input_schema:
+  prompt:
+    type: string
+    default_value: ""
+  cell:
+    type: string
+    default_value: root
+  explicit_workspace:
+    type: boolean
+    default_value: false
+  candidate_validation:
+    type: boolean
+    default_value: false
+  caller_cell:
+    type: string
+    default_value: root
+  mode:
+    type: string
+    default_value: delivery
+  capture_config:
+    type: boolean
+    default_value: false
+inputs:
+  cell: ${{ inputs.cell }}
+  explicit_workspace: ${{ inputs.explicit_workspace }}
+  candidate_validation: ${{ inputs.candidate_validation }}
+  caller_cell: ${{ inputs.caller_cell }}
+  mode: ${{ inputs.mode }}
+  capture_config: ${{ inputs.capture_config }}
+state:
+  initial:
+    - to: capture
+      when: inputs.capture_config
+    - to: validation
+      when: inputs.candidate_validation
+    - to: explicit
+      when: inputs.explicit_workspace
+    - to: implicit
+      when: "true"
+  states:
+    validation:
+      include: ./publication-validation.yaml
+    implicit:
+      include: ./publication-request.yaml
+      inputs:
+        cell: ${{ inputs.cell }}
+        mode: ${{ inputs.mode }}
+    explicit:
+      include: ./publication-request.yaml
+      inputs:
+        cell: ${{ inputs.cell }}
+        mode: ${{ inputs.mode }}
+      workspace:
+        cell: ${{ inputs.caller_cell }}
+        ref: main
+    capture:
+      include: ./publication-config-capture.yaml
+      inputs:
+        caller_cell: ${{ inputs.caller_cell }}
+        mode: ${{ inputs.mode }}
+outputs:
+  result: '${{ inputs.capture_config ? states.capture.outputs.result : (inputs.candidate_validation ? states.validation.outputs.result : (inputs.explicit_workspace ? states.explicit.outputs.result : states.implicit.outputs.result)) }}'
+  caller_saved: '${{ inputs.capture_config || inputs.candidate_validation ? "" : (inputs.explicit_workspace ? states.explicit.outputs.caller_saved : states.implicit.outputs.caller_saved) }}'

@@ -1,0 +1,62 @@
+schema_version: 2
+id: publication-config-capture
+input_schema:
+  caller_cell:
+    type: string
+    required: true
+  mode:
+    type: string
+    required: true
+inputs:
+  caller_cell: ${{ inputs.caller_cell }}
+  mode: ${{ inputs.mode }}
+sequence:
+- id: publish_fixture
+  op: command_execution
+  const: true
+  workspace:
+    cell: root
+    ref: main
+  inputs:
+    env:
+      TARGET_REPO: ${{ context.git.repo }}
+    run: |
+      set -eu
+      upstream=$(git remote get-url origin)
+      git -C "$upstream" checkout -b published
+      echo root-published-branch > "$upstream/published.txt"
+      git -C "$upstream" add published.txt
+      git -C "$upstream" commit -qm 'Publish distinguishable fixture support'
+      echo "$TARGET_REPO"
+- id: capture_and_submit
+  op: command_execution
+  inputs:
+    env:
+      SELF_REPO: ${{ context.git.repo }}
+      ROOT_REPO: ${{ sequence.publish_fixture.outputs.stdout }}
+      CALLER: ${{ inputs.caller_cell }}
+      MODE: ${{ inputs.mode }}
+    run: |
+      set -eu
+      python3 - <<'PY'
+      import json, os, pathlib
+      caller=os.environ['CALLER']
+      config={'self':{'cell':caller,'repo':os.environ['SELF_REPO'],'ref':'published' if caller=='root' else 'main'},'root':{'repo':os.environ['ROOT_REPO'].strip(),'ref':'published'}}
+      pathlib.Path('.c2/config.yaml').write_text(json.dumps(config))
+      pathlib.Path('capture-inputs.json').write_text(json.dumps({'cell':'root','explicit_workspace':True,'caller_cell':caller,'mode':os.environ['MODE']}))
+      PY
+      # Ordinary submission captures the config above, without candidate import or ref overrides.
+      c2j submit 'Check captured publication defaults' \
+        --advanced-recipe-file .c2/recipes/publication-ref.yaml \
+        --inputs-file capture-inputs.json --jobdb embed:/// --json
+- id: wait
+  op: recipe.await_result_soft
+  inputs:
+    target:
+      job: ${{ sequence.capture_and_submit.jobs.job_ids[0] }}
+    wait:
+      'on': job
+      condition: complete
+    return_when: terminal
+outputs:
+  result: ${{ sequence.wait.outputs }}

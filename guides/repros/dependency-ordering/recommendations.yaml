@@ -1,0 +1,101 @@
+schema_version: 2
+id: dependency-ordering-recommendation
+input_schema:
+  prompt:
+    type: string
+    default_value: ""
+  title:
+    type: string
+    default_value: ""
+  variant:
+    type: string
+    required: true
+    enum:
+      - baseline
+      - revised
+  scenario:
+    type: string
+    required: true
+    enum:
+      - reader-producer
+      - provider-adoption
+      - consumer-upstream
+      - late-provider
+      - advice-candidate
+      - local-only
+      - reader-producer-rephrased
+inputs:
+  variant: ${{ inputs.variant }}
+  scenario: ${{ inputs.scenario }}
+sequence:
+  - id: baseline
+    include: ./baseline-context.yaml
+  - id: revised
+    include: ../../../recipes/adaptive3/prompts/context.yaml
+  - id: scenarios
+    include: ./scenario-inputs.yaml
+  - id: exercise
+    sequence: []
+    outputs:
+      constraint: This invocation is a read-only recommendation exercise. Use only the supplied scenario facts. Do not use tools, inspect the checkout, edit files, submit jobs, contact owners, publish or deploy. Describe proposed actions and assignments in your answer. No real delivery is authorized. This exercise constraint takes precedence over instructions to take action or investigate through tools.
+  - id: recommend
+    op: nix:github:colony-2/c2ops/published#codex
+    const: true
+    perms:
+      inherit: true
+      jobdb:
+        jobs:
+          submit: false
+    inputs:
+      api:
+        api_key: ${{ context.secrets.?codex_api_key.orValue(null) }}
+      model: ${{ context.config.?codex_model.orValue(null) }}
+      reasoning_effort: ${{ context.config.?codex_reasoning_effort.orValue(null) }}
+      instructions: '${{ (inputs.variant == "baseline" ? sequence.baseline.outputs.instructions : sequence.revised.outputs.instructions) + "\n\n" + sequence.exercise.outputs.constraint }}'
+      prompt: ${{ sequence.scenarios.outputs[inputs.scenario] + "\n\n" + "Give your next action, proposed owner requests, any local implementation assignment and rationale. Explain the order of actions and what information you would need before continuing. What changes if required prerequisite work fails, is cancelled, or completes only a diagnostic without publishing the needed change? If no prerequisite exists, say so." }}
+      output:
+        max_repair_attempts: 0
+        schema:
+          type: object
+          additionalProperties: false
+          required:
+            - next_action
+            - owner_requests
+            - local_assignment
+            - rationale
+            - prerequisite_failure
+          properties:
+            next_action:
+              type: string
+            owner_requests:
+              type: array
+              items:
+                type: object
+                additionalProperties: false
+                required:
+                  - cell
+                  - assignment
+                  - when
+                properties:
+                  cell:
+                    type: string
+                  assignment:
+                    type: string
+                  when:
+                    type: string
+            local_assignment:
+              type: string
+            rationale:
+              type: string
+            prerequisite_failure:
+              type: string
+outputs:
+  variant: ${{ inputs.variant }}
+  scenario: ${{ inputs.scenario }}
+  instructions: '${{ (inputs.variant == "baseline" ? sequence.baseline.outputs.instructions : sequence.revised.outputs.instructions) + "\n\n" + sequence.exercise.outputs.constraint }}'
+  facts: ${{ sequence.scenarios.outputs[inputs.scenario] }}
+  status: ${{ sequence.recommend.outputs.status }}
+  schema_valid: ${{ sequence.recommend.outputs.output_schema_valid }}
+  response: ${{ sequence.recommend.outputs.response }}
+artifacts:
+  ./: ${{ sequence.recommend.artifacts }}

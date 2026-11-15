@@ -49,6 +49,39 @@ Owner questions and replies appear as task responses in the receiving cell's
 workspace. The receiver writes any delivery assignment. Consultation advice is
 inline; delivery uses a child adaptive3 job and a native wait.
 
+## Dependency publication
+
+Consumer-initiated work: B is updating its feature and discovers it needs an API
+change in A. B can keep its work, ask A to implement and publish that change, wait,
+then update its dependency and finish locally. B is the workflow parent of A’s
+delivery job, but B depends on A’s API. B needs no additional coordinator or local
+implementation job for this reason alone.
+
+Provider-initiated adoption: A needs B to adopt A’s new API as part of A’s request. A
+can coordinate a same-cell implementation job through review and publication, then
+request B’s delivery against the published API. That implementation job handles the
+prerequisite; A retains the adoption request. If a new data format is involved,
+publish and, where required, deploy compatible reader support before activating
+new-format output. If the reader can implement from the agreed format contract
+without new producer code, A can keep preparation local, request reader delivery,
+and resume activation when that support is available. API discussion and isolated
+candidate checks can happen earlier.
+
+If adoption can happen after A’s original request finishes, A can publish normally
+and arrange later adoption instead. Saved commits, snapshots and recovered diffs
+preserve work; they do not publish a dependency. Use the target cell’s configured
+published ref and ordinary dependency route, including any release or deployment
+the consumer needs. A new child does not clear or refresh its caller’s candidate.
+
+Independent consultation delivery selects a fresh target workspace and submits its
+symbolic published ref explicitly, avoiding the caller's candidate-hash default.
+Advice starts from the selected target's native published default as well. With
+no workspace ref override, c2j uses captured self/root ref settings and defaults
+other targets to `main`; it does not discover an arbitrary target repository's
+configuration. Ask the owner when its publication route is unknown. Consultation
+and public build input schemas do not expose a ref override. Intentional candidate
+validation continues to use explicit workspace submission.
+
 ## Recovery and local hooks
 
 An ordinary caught failure reports `stuck` and enters Backstop in the same

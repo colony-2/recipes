@@ -1,0 +1,25 @@
+schema_version: 2
+id: publication-validation
+sequence:
+- id: validate_candidate
+  op: command_execution
+  inputs:
+    run: |
+      set -eu
+      echo unpublished-caller > caller-only.txt
+      # Retain submission stderr; the acceptance case still requires a completed child.
+      c2j submit 'Inspect the isolated candidate; this is not published delivery.' \
+        --advanced-recipe-file .c2/recipes/publication-probe.yaml \
+        --from-workspace-now --jobdb embed:/// --json || true
+- id: wait
+  op: recipe.await_result_soft
+  when: size(sequence.validate_candidate.jobs.job_ids)>0
+  inputs:
+    target:
+      job: ${{ sequence.validate_candidate.jobs.job_ids[0] }}
+    wait:
+      'on': job
+      condition: complete
+    return_when: terminal
+outputs:
+  result: ${{ sequence.?wait.orValue({}).?outputs.orValue({'status':'rejected','message':sequence.validate_candidate.outputs.stderr}) }}

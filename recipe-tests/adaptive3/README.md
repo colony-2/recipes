@@ -33,6 +33,17 @@ child waits; its submission fixture creates a disposable local child in place
 of the remote, unpublished adaptive3 selector. This tests result consumption,
 not deployment of that selector.
 
+`context-routing.test.yaml` checks shared guidance delivery to fresh agent sessions.
+`publication-ref.test.yaml` checks actual independent-child startup content for
+implicit same-cell, explicit same-cell and cross-cell requests, saved caller edits,
+and intentional candidate validation. The same suite creates distinguishable branches
+before ordinary CLI submission to check captured non-main self/root defaults for
+advice, submission and child content. It does not test automatic remote configuration
+discovery. These use scripted agent choices and do not measure prompt effectiveness.
+The separate [recommendation comparison](../../guides/repros/dependency-ordering/rubric.md)
+uses fresh authenticated model sessions; its native routing cases only check the
+comparison's instruction and scenario plumbing.
+
 Package tests distinguish proposals from adoption and check approval before
 probing, including a real fresh-task `uv:pytest==8.3.5` probe. The public entrypoint
 tests native Git publication and recovery in the same job. Do not infer model
