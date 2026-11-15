@@ -13,10 +13,11 @@ c2j test run --directory recipe-tests/adaptive3 --parallelism 1 --case-timeout 5
 
 The direct validator tests execute the actual Python embedded in `tools.yaml`
 against real files and Git objects. They need Python, PyYAML, Pillow, cmark, yq
-and Git on PATH:
+and Git on PATH. Schema tests additionally use jsonschema to validate actual producer
+reports independently of mocked provider success flags:
 
 ```sh
-python -m unittest discover -s recipe-tests/adaptive3 -p 'test_tools.py' -v
+python -m unittest discover -s recipe-tests/adaptive3 -p 'test_*.py' -v
 ```
 
 These direct tests do not test dependency preparation. For the declared uv Python
@@ -77,7 +78,13 @@ python3 recipe-tests/adaptive3/consumer/run.py /path/to/cortex \
 ```
 
 This exercises click, text entry, Back, upload and submit against actual generated
-forms. It is a DOM integration test, not a deployed browser test.
+forms. The separate document suite uses the real reader through input-details HTTP
+responses, verifies complete producer coverage (including a missing-metadata negative
+control), role ordering, overview fetches and retained feedback at desktop/mobile
+widths. Supply a report from `complete-selected-details-reach-form` to exercise
+conflicting role/order values. The HTTP document response is fixture content under
+the generated attachment ID. This is a DOM integration test; selected browser
+captures and deployed behavior require the Cortex owner's browser checks.
 
 Follow-up suites cover requester correction/adoption, isolated diagnostic paths,
 backstop-first continuation and independent finite loop allowances. `renewal.test.yaml`
@@ -90,3 +97,16 @@ retrieval is covered separately by `inspection.test.yaml`. The cancelled-child m
 fixture scripts the terminal response; actual cancellation is covered for the parent.
 See [the follow-up assessment](../../guides/adaptive3/FOLLOWUP_IMPLEMENTATION.md)
 for the supported-worker dependency-activation gap exposed by a real Cortex job.
+
+For a live writing check on managed workers, use the small containing lifecycle in
+`guides/repros/live-document-details-check.yaml` with `c2j submit --from-workspace-now`
+and a bounded preparation request. It accepts the CLI's prompt/title/type inputs,
+uses normal model authorization and performs full validation without publication.
+The local live suite needs its own valid provider credentials; HTTP 401 is a failed
+live check, even when deterministic producer tests pass.
+
+For the semantic negative case, submit `guides/repros/misleading-document-details-check.yaml`
+on a managed worker with the same workspace option. It seeds schema-valid descriptors
+about databases and billing on local draft-recovery documents, requires live independent
+rewrite findings, and passes those findings into the existing correction lifecycle.
+It succeeds only after the corrected preparation receives independent acceptance.

@@ -4,6 +4,8 @@ inputs:
   documents: ${{ inputs.?documents.orValue({}) }}
   title: ${{ inputs.?title.orValue('') }}
   primary: ${{ inputs.?primary.orValue('') }}
+  document_details: ${{ inputs.?document_details.orValue([]) }}
+  require_document_details: ${{ inputs.?require_document_details.orValue(true) }}
   requests: ${{ inputs.?requests.orValue([]) }}
   adopted: ${{ inputs.?adopted.orValue(false) }}
   message: ${{ inputs.?message.orValue('') }}
@@ -35,6 +37,9 @@ state:
           OUTBOX: ${{ context.environment.op.outbox }}
           TITLE: ${{ inputs.title }}
           PRIMARY: ${{ inputs.primary }}
+          DOCUMENT_IDS: ${{ json_stringify(inputs.documents.map(k,k)) }}
+          DOCUMENT_DETAILS: ${{ json_stringify(inputs.document_details) }}
+          REQUIRE_DOCUMENT_DETAILS: ${{ string(inputs.require_document_details) }}
           MESSAGE: ${{ inputs.message }}
         run: |
           python3 - <<'PY'
@@ -64,6 +69,50 @@ state:
            try: local(primary)
            except Exception as ex: issue('Primary document: '+str(ex))
            if not title.strip() or len(title)>100 or any(ord(c)<32 or 127<=ord(c)<=159 for c in title): issue('Choose a nonempty descriptive title of at most 100 characters without control characters.')
+          # Validate exact selected IDs before converting the producer list to native metadata.
+          selected=json.loads(os.environ['DOCUMENT_IDS']) or []
+          details=json.loads(os.environ['DOCUMENT_DETAILS'])
+          metadata={}; presentation_bytes=0; detail_start=len(issues)
+          if os.environ['REQUIRE_DOCUMENT_DETAILS']=='true':
+           if not isinstance(details,list):
+            issue('document_details must be an array.'); details=[]
+           seen=set()
+           for i,item in enumerate(details):
+            label='document_details['+str(i)+']'
+            if not isinstance(item,dict) or set(item)!={'document_id','title','description','role','order'}:
+             issue(label+': require exactly document_id, title, description, role and order.'); continue
+            name=item['document_id']
+            if not isinstance(name,str) or not name:
+             issue(label+': document_id must be a nonempty exact attachment ID.'); continue
+            if name in seen: issue(label+': duplicate document_id '+name)
+            seen.add(name)
+            if name not in selected: issue(label+': unattached document_id '+name)
+            for field,limit in (('title',120),('description',300)):
+             value=item[field]
+             if not isinstance(value,str) or not value.strip() or len(value)>limit or any(ord(c)<32 or ord(c)==127 or 0xd800<=ord(c)<=0xdfff for c in value):
+              issue(label+'.'+field+': require nonblank valid Unicode, at most '+str(limit)+' characters, without controls.')
+            if item['role'] not in ('primary','supporting','diagnostic'): issue(label+': invalid reading role.')
+            if type(item['order']) is not int or not 0<=item['order']<=1000000: issue(label+': order must be an integer from 0 to 1000000.')
+            metadata[name]={k:item[k] for k in ('title','description','role','order')}
+           for name in selected:
+            if name not in seen: issue('Missing document_details for '+name)
+           if selected:
+            primaries=[name for name,value in metadata.items() if value['role']=='primary']
+            if primary not in selected: issue('Primary must be an attached document ID.')
+            if len(primaries)!=1 or primaries[0]!=primary: issue('Exactly one primary role must match the primary overview document.')
+           elif primary: issue('An empty collection cannot have a primary overview document.')
+           # Match Go encoding/json's typed omitempty representation and HTML/line escaping.
+           presentation={}
+           if metadata: presentation['document_metadata']=metadata
+           if primary: presentation['overview_document_id']=primary
+           try:
+            encoded=json.dumps(presentation,ensure_ascii=False,separators=(',',':'))
+            for char in ('<','>','&','\u2028','\u2029'):
+             encoded=encoded.replace(char,'\\u%04x'%ord(char))
+            presentation_bytes=len(encoded.encode('utf-8'))
+            if presentation_bytes>65536: issue('Document presentation exceeds 65536 native JSON bytes; shorten purposes or select a focused collection without dropping material evidence.')
+           except UnicodeError: issue('Document presentation must contain valid Unicode attachment IDs and text.')
+          detail_findings=issues[detail_start:]
           def links(text, name, parent):
            parser=Links(); parser.feed(text)
            for link in parser.links:
@@ -90,7 +139,7 @@ state:
             links(text,name,p.relative_to(root).parent)
            except Exception as ex: issue(name+': '+str(ex))
           (out/'error'/'review-files.log').write_text('\n'.join(issues) if issues else 'All selected review files are readable and locally linked.\n')
-          print(json.dumps({'status':'changes' if issues else 'passed','summary':str(len(issues))+' review file issues; see error/review-files.log','count':len(issues)}))
+          print(json.dumps({'status':'changes' if issues else 'passed','summary':str(len(issues))+' review file issues; '+(detail_findings[0][:120]+'; ' if detail_findings else '')+'see error/review-files.log','count':len(issues),'presentation_bytes':presentation_bytes,'document_metadata':metadata if not issues else {}}))
           PY
     approved_change:
       id: approved_change
@@ -175,6 +224,7 @@ state:
           print(json.dumps({'status':'changes' if issues else 'passed','summary':'; '.join(issues)[:700] or 'Only requested package changes.'}))
           PY
 outputs:
-  result: ${{ json_parse(states[inputs.check].outputs.stdout) }}
+  result: ${{ jq(json_parse(states[inputs.check].outputs.stdout),'del(.document_metadata)') }}
+  document_metadata: ${{ json_parse(states[inputs.check].outputs.stdout).?document_metadata.orValue({}) }}
   artifacts: ${{ jq(states[inputs.check].artifacts,'with_entries(select((.key|startswith("error/")) or .key=="candidate.diff"))')
     }}

@@ -90,19 +90,21 @@ configuration diagnostic. Legacy constructs forms omitting **both**
 `document_metadata` and `overview_document_id`: no nulls or empty placeholders.
 Ordinary brief/provenance/original attachments remain available.
 
-On 2026-10-31, read-only inspection of c2j commit
-`a501d923f05378adc54d04bd87a689ee291f7afb` found the complete metadata implementation
-and authoritative fixtures in `pkg/input/document_metadata.go`,
-`pkg/input/review_metadata_test.go` and `pkg/input/testdata/review-presentation.json`.
-Its `GUIDE-Review-Recipe-Authors.md` explicitly labels the feature **unreleased**
-and says the release workflow must publish the first supporting tag and delivered
-commit. That source commit is **not** a minimum supporting release. The installed
-CLI identifies itself as `v0.0.113-0.20261030062615-9aff0af49df3+dirty`; this likewise
-is not eligibility evidence. No actual supporting release tag is currently
-verified. **Annotated production activation is unavailable.** Do not replace this
-status with HEAD or infer support from permissive decoding.
+On 2026-11-13, the c2j owner verified the first supporting published release,
+[v0.0.117](https://github.com/colony-2/c2j/releases/tag/v0.0.117), commit
+`d1c79ab7dc5fbd07903155dd12c5b0b710241cd0`, published 2026-11-04 21:24:18 UTC.
+The metadata implementation matches the inspected source
+`d031eb49c6777555cca1f58449b8451b1fc77c37`; v0.0.116 lacks it. Older source-guide
+“unreleased” wording is stale. This establishes a support floor, not deployed
+fleet eligibility or activation of the retained kernel policy above.
 
-When c2j delivers the supporting release:
+Adaptive3 sends complete checked producer descriptors directly to native input;
+it does not use the kernel annotation collector or its activation policy. See
+[adaptive3 document details](adaptive3/DOCUMENT_DETAILS.md). Its workers and
+form-serving integrations need v0.0.117 or a later compatible runtime. Cortex's
+inspected pin qualifies; deployed fleet versions still need operator verification.
+
+Before activating the retained kernel's annotated variant:
 
 1. Record its actual first supporting tag and delivered commit here and in the
    packaged policy's `supporting_tag`/`supporting_commit`. Retain the release's

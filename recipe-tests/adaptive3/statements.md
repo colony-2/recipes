@@ -81,3 +81,14 @@ Agent decisions are scripted unless a case is explicitly marked live.
 | A3-63 | A failed probe job or non-passing probe finding prevents adoption and returns a non-passing result. | Critical | Integration / c2j, Nix | `recipe-tests/adaptive3/packages.test.yaml`, `recipe-tests/adaptive3/package-probe.test.yaml` |
 | A3-64 | Successful approved probing completes before exact adoption, which passes the real configuration validator. | Critical | Integration / c2j, Git, Nix | `recipe-tests/adaptive3/packages.test.yaml`, `recipe-tests/adaptive3/package-probe.test.yaml` |
 | A3-65 | Proposal validation executes against the retained candidate even when the proposal workspace and upstream configuration would produce different findings. | Critical | Integration / c2j, Git, Nix | `recipe-tests/adaptive3/package-restore.test.yaml` |
+## Document details
+
+| Expectation | Files | Priority | Level; dependencies |
+| --- | --- | --- | --- |
+| Producer reports require complete typed document details, including exact IDs and reading priority. | `test_schemas.py`, `../../recipes/adaptive3/schemas.yaml` | critical | unit; PyYAML, jsonschema |
+| Invalid coverage, text, primary agreement or native presentation size returns correction findings before human review. | `test_tools.py`, `tools.test.yaml` | critical | unit/integration; Pillow, cmark, c2j |
+| Corrected metadata receives full validation and reaches exactly one human review. | `lifecycle.test.yaml`, `cycle.test.yaml` | critical | integration; c2j |
+| Replacement, reuse and question replies retain only the selected documents and their current descriptions. | `cycle.test.yaml`, `review.test.yaml` | critical | integration; c2j |
+| Tool and recovery reviews require checked details; failed preparation remains a document-free question. | `packages.test.yaml`, `backstop.test.yaml`, `resume.test.yaml` | critical | integration; c2j |
+| Generated forms display explicit titles, purposes and roles through the real reader while preserving drafts. | `consumer/feedback.test.tsx` | critical | integration; Cortex, locked UI tools |
+| Independent validation rejects misleading titles and irrelevant purposes with concrete rewrites, then accepts corrected descriptions. | `../../guides/repros/misleading-document-details-check.yaml` | critical | live worker integration; c2j, Codex |

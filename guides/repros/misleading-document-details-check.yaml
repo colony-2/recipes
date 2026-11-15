@@ -1,0 +1,102 @@
+schema_version: 2
+id: misleading-document-details-check
+input_schema:
+  prompt:
+    type: string
+    required: true
+  title:
+    type: string
+    default_value: ''
+  type:
+    type: string
+    default_value: build
+inputs:
+  request: ${{ inputs.prompt }}
+vars:
+  documents:
+    review/draft-plan.md:
+      kind: value
+      name: review/draft-plan.md
+      format: text
+      value: |
+        # Local draft recovery test plan
+
+        Check that unsent text stays in this browser after reopening the page.
+        This plan covers browser local storage only, without accounts or a server.
+        No implementation or test execution has occurred.
+
+        Read the [checks](draft-checks.md) for acceptance cases.
+    review/draft-checks.md:
+      kind: value
+      name: review/draft-checks.md
+      format: text
+      value: |
+        # Draft recovery acceptance checks
+
+        - Critical; integration; browser/local storage: reopening restores unsent text.
+        - Critical; integration; browser/local storage: clearing a draft keeps it empty after reopening.
+        - High; integration; browser/local storage: unavailable storage keeps the editor usable and reports unsaved text.
+
+        These are proposed expectations, not executed results.
+  work:
+    status: ready
+    summary: Review the local draft recovery plan and proposed acceptance cases.
+    title: Review local draft recovery checks
+    primary: review/draft-plan.md
+    work_kind: explanation
+    consultation: null
+    packages: null
+    assignment: null
+    delivery_recipe: null
+    document_details:
+    - document_id: review/draft-plan.md
+      title: Production database rollback runbook
+      description: Choose which production database backup to restore during an outage.
+      role: primary
+      order: 10
+    - document_id: review/draft-checks.md
+      title: Quarterly billing reconciliation totals
+      description: Inspect invoice totals and tax calculations for this quarter.
+      role: supporting
+      order: 0
+sequence:
+- id: misleading
+  include: ../../recipes/adaptive3/validate.yaml
+  inputs:
+    purpose: preparation
+    request: ${{ inputs.request }}
+    documents: ${{ vars.documents }}
+    work: ${{ vars.work }}
+- id: require_rewrite_findings
+  op: command_execution
+  const: true
+  inputs:
+    env:
+      VALIDATION_STATUS: ${{ sequence.misleading.outputs.result.status }}
+    run: |
+      set -eu
+      test "$VALIDATION_STATUS" = changes
+- id: correction
+  include: ../../recipes/adaptive3/lifecycle.yaml
+  inputs:
+    purpose: preparation
+    request: ${{ inputs.request }}
+    documents: ${{ vars.documents }}
+    feedback: ${{ sequence.misleading.outputs.result }}
+- id: require_accepted_correction
+  op: command_execution
+  const: true
+  inputs:
+    env:
+      CORRECTION_STATUS: ${{ sequence.correction.outputs.result.status }}
+    run: |
+      set -eu
+      test "$CORRECTION_STATUS" = accepted
+outputs:
+  initial_work: ${{ vars.work }}
+  initial_validation: ${{ sequence.misleading.outputs.result }}
+  correction_feedback: ${{ sequence.correction.outputs.feedback }}
+  corrected_work: ${{ sequence.correction.outputs.work }}
+  result: ${{ sequence.correction.outputs.result }}
+  documents: ${{ sequence.correction.outputs.documents }}
+  artifact_refs: ${{ sequence.correction.outputs.documents }}
