@@ -1,0 +1,95 @@
+schema_version: 2
+id: nested-child-output
+input_schema:
+  prompt:
+    type: string
+    default_value: Keep selected delivery evidence available.
+inputs:
+  prompt: ${{ inputs.prompt }}
+sequence:
+- id: build
+  include: ../../recipes/adaptive2/build.yaml
+  inputs:
+    prompt: ${{ inputs.prompt }}
+- id: inspect_collection
+  include: ../../recipes/adaptive/child-results.yaml
+  inputs:
+    jobs:
+      job_ids: ${{ jq(sequence.build.outputs.coordination.filter(r,r.action == 'await').map(r,r.job_id), 'unique') }}
+    allowed: true
+- id: inspect_coordination
+  include: ../../recipes/adaptive2/coordinate.yaml
+  inputs:
+    # A mixed request takes explicit await, rather than the all-await collector shortcut.
+    requests: ${{ sequence.inspect_collection.outputs.results.map(r,{'action':'await','job':r.job_id}) +
+      [{'action':'reconcile','dependency':{'job':sequence.inspect_collection.outputs.results[0].job_id,
+      'decision':'required','outcome':'Selected evidence delivery','rationale':'Both deliveries support this candidate.',
+      'evidence':['implementation.md']} } ] }}
+    history: ${{ sequence.inspect_collection.outputs.results.map(r,{'action':'execute','job_id':r.job_id}) }}
+    phase: implement
+    root_cell: root
+    root_ref: main
+    consultation_recipe: ''
+    build_recipe: build
+    create_recipe: ''
+    session: ${{ sequence.build.outputs.session }}
+    documents: ${{ sequence.build.outputs.artifact_refs }}
+    prefix: inspect
+- id: inspect_deliveries
+  op: command_execution
+  const: true
+  execution_needs:
+    packages:
+    - nix:github:NixOS/nixpkgs/e7439b6b14ad3cc35d05608ebca9bce01a25f5f8#python3
+  artifacts:
+    ./: ${{ sequence.build.outputs.artifact_refs }}
+    parent.json:
+      kind: value
+      name: parent.json
+      format: json
+      value: ${{ sequence.build.outputs }}
+  inputs:
+    env:
+      INBOX: ${{ context.environment.op.inbox }}
+    run: |
+      python3 - <<'PY'
+      import json, os, subprocess, tempfile
+      from pathlib import Path
+      inbox = Path(os.environ['INBOX'])
+      parent = json.loads((inbox / 'parent.json').read_text())
+      jobs = sorted({r['job_id'] for r in parent['coordination'] if r['action'] == 'await'})
+      assert len(jobs) == 2, jobs
+      total = 0
+      def read_result(job):
+          with tempfile.TemporaryDirectory() as tmp:
+              dest = Path(tmp) / 'result.json'
+              subprocess.run(['c2j', 'job', 'result', job, '--field', '', '--output', str(dest)], check=True)
+              return json.loads(dest.read_text())
+      for job in jobs:
+          raw = read_result(job)
+          size = len(json.dumps(raw, ensure_ascii=False, separators=(',', ':')).encode())
+          assert size < 262144, size
+          total += size
+          assert raw['coordination'][0]['transcript'].startswith('CHILD_HISTORY_ONLY:')
+          grandchild = raw['coordination'][1]['job_id']
+          assert read_result(grandchild)['coordination'][0]['transcript'].startswith('GRANDCHILD_HISTORY_ONLY:')
+          path = 'results/' + job + '/artifacts/evidence.txt'
+          assert (inbox / path).read_bytes() == 'Selected delivery evidence: café remains intact.\n'.encode()
+          original, delivered = raw['artifact_refs']['evidence.txt'], parent['artifact_refs'][path]
+          assert original['kind'] == delivered['kind'] == 'stored'
+          # Delivery aliases may change; producer key and content identity may not.
+          assert {k:v for k,v in original.items() if k != 'name'} == {k:v for k,v in delivered.items() if k != 'name'}
+      assert total > 262144, total
+      print(json.dumps({'deliveries': len(jobs), 'unselected_output_bytes': total, 'selected_evidence': 'bytes and stored identity preserved', 'history': 'retrieved from child and grandchild producers'}))
+      PY
+outputs:
+  build_output: ${{ sequence.build.outputs }}
+  collected_results: ${{ sequence.inspect_collection.outputs.results }}
+  collector_failed: ${{ sequence.inspect_collection.outputs.failed }}
+  coordinated_records: ${{ sequence.inspect_coordination.outputs.records }}
+  coordination_valid: ${{ sequence.inspect_coordination.outputs.valid }}
+  output_bytes: ${{ size(bytes(json_stringify(sequence.build.outputs))) }}
+  history_omitted: ${{ !json_stringify(sequence.build.outputs).contains('HISTORY_ONLY') &&
+    !json_stringify(sequence.build.outputs).contains('TRANSCRIPT_ONLY') &&
+    !json_stringify(sequence.build.outputs).contains('UNRELATED_RESULT_ONLY') }}
+  inspected: ${{ sequence.inspect_deliveries.outputs.stdout }}

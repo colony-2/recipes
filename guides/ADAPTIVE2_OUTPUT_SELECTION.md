@@ -1,5 +1,13 @@
 # Current evidence in adaptive2 results
 
+Carry only the facts needed for the next decision. A child job's identity and
+outcome let its consumer wait or recover; an accepted assignment and approval
+authorize work; selected evidence references let a reviewer assess completion.
+A record of past activity is not automatically a required input. Complete child
+outputs, consultation transcripts and nested coordination trees remain at their
+producer, available for retrieval when a concrete question requires them. Moving
+the entire tree into an automatically forwarded artifact retains the same growth.
+
 A consultation carries the files its participant explicitly selected. Declaring an existing input retains its original artifact identity; a new reply file belongs in the current turn directory. Omitting an earlier proposal leaves it at its producer. It does not make the proposal a deliverable in the next turn.
 
 The record boundary replaces the current document map and filters annotations by delivered path and immutable reference. References compare without the delivery `name`, while retaining producer and content identity. Same-name replacements therefore cannot inherit stale annotations. The binding helper can strip a selected request directory and add a consumer prefix; it applies that alias to annotation IDs, lineage and matching source references as well as file names.
@@ -25,3 +33,14 @@ The integrated renderer formats native presentation values and reads only select
 The older `recipes/adaptive/consultation.yaml` and `adaptive/coordinate.yaml` retain their legacy public session/document contracts; they are not the root build's default consultation route. The shared initializer, bindings, child collector and review helpers are covered here, but this change does not promise selection-only behavior for arbitrary custom consultation recipes. Adaptive2 projects a custom consultation's public record and filters delivered annotations; the custom producer remains responsible for choosing its own useful final artifacts.
 
 Child outcome projections select existing keys instead of constructing missing keys with null values. This preserves optional Boolean defaults used by development recovery, including completed unsuccessful children that return only `status: failed`. Shared collection, coordination records and final public coordination use the same selection rule.
+
+The nested-child regression complements the consultation propagation case with
+real delivery jobs containing consultation and grandchild history. Each delivery
+fits the unchanged write limit, while their combined unselected outputs exceed
+it. Both shared collection and explicit coordinated waiting reach the real public
+build projection. The next consumer reads selected stored evidence after delivery
+renaming and retrieves omitted history directly from its producer. The fixture
+measures the complete build result and checks useful outcomes and identities as
+well as size. Failure and absent-result controls remain in the child-result-shapes
+and shared child-results suites. These checks cover recipe output selection;
+they do not establish runtime replay behavior after a rejected write.

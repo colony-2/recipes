@@ -1,0 +1,40 @@
+schema_version: 2
+id: nested-delivery
+sequence:
+- id: grandchild
+  op: recipes.run
+  inputs:
+    recipes:
+    - cell_name: ${{ context.workspace.cell }}
+      git:
+        base_repo: ${{ context.git.repo }}
+        base_ref: ${{ context.git.ref }}
+        base_hash: ${{ context.git.resolved_hash }}
+      name: grandchild
+      inputs: {}
+    wait:
+      on: job
+      condition: complete
+- id: collect
+  op: recipe.await_result_soft
+  inputs:
+    target:
+      job: ${{ sequence.grandchild.outputs.job_ids[0] }}
+    wait:
+      on: job
+      condition: complete
+- id: evidence
+  op: command_execution
+  inputs:
+    run: |
+      printf 'Selected delivery evidence: café remains intact.\n' > "$OUTBOX/evidence.txt"
+    env:
+      OUTBOX: ${{ context.environment.op.outbox }}
+outputs:
+  disposition: unchanged
+  summary: Delivery verified; selected evidence is available.
+  artifact_refs: ${{ sequence.evidence.artifacts }}
+  # Each retained delivery fits independently. Copying two into a parent does not.
+  coordination: ${{ [{'action':'consult','transcript':jq(null, '"CHILD_HISTORY_ONLY:" + ("c" * 70000)')}, {'action':'await','job_id':sequence.grandchild.outputs.job_ids[0],'result':sequence.collect.outputs}] }}
+  transcript: CHILD_TRANSCRIPT_ONLY
+  unrelated_result: UNRELATED_RESULT_ONLY

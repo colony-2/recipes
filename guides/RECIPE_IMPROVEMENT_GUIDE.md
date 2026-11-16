@@ -19,6 +19,13 @@ An audit is one way to find work; it is not a prerequisite to every recipe edit.
 - Synthesize execution handoffs from settled decisions. Select necessary files
   and retain producer references for retrieving more. Respect fresh phase
   sessions and the distinction between read-only planning and writable implementation.
+- Carry only the facts needed for the next decision. Child identity and outcome
+  support waiting and recovery; accepted assignments and approvals authorize work;
+  selected evidence references support assessment. Past activity alone does not
+  justify forwarding a record. Leave complete child outputs, transcripts and
+  nested coordination history at their producer and retrieve them for a concrete
+  question. Automatically forwarding the same history in an artifact preserves
+  the propagation problem. See the [output-selection contract](ADAPTIVE2_OUTPUT_SELECTION.md).
 - Match acceptance to the assignment. A child does not own its parent's entire
   recovery goal. A requested investigation may finish with precise unavailability;
   that does not certify unresolved product behavior. Human scope decisions take
