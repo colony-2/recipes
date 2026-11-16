@@ -1,0 +1,311 @@
+recipe: review.yaml
+cases:
+- id: explicit-direction-destination
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          README.md: Drafts
+        file_sources:
+          recipes/review-v2/op.yaml: ../../recipes/review-v2/op.yaml
+          recipes/review-v2.py: ../../recipes/review-v2.py
+    responses:
+    - node_path: review-test/review/adaptive3-review/discuss/discuss/adaptive3-discussion/ask/ask
+      response:
+        direction: revise
+        feedback: Keep the current scope.
+        attachments: []
+        settings:
+          return_to: direction
+  inputs:
+    purpose: outcome
+    decision: outcome
+    title: Saved drafts
+    with_documents: true
+  assertions:
+  - type: cel_true
+    expr: outputs.result.status=="changes" && outputs.result.stage=="direction" &&
+      outputs.result.human.response.settings.return_to=="direction"
+  - type: cel_true
+    expr: size(reviews)==1 && reviews[0].form.request.directions.exists(d,d.id=="annotate")
+      && !calls.exists(c,c.op=="merge")
+  mocks:
+    ops:
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: changes
+            summary: Revise the selected work.
+            stage: null
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: Keep one saved draft.
+    - match:
+        selector: ./recipes/review-v2
+      repeat: true
+      behavior:
+        mode: passthrough
+- id: explicit-outcome-destination
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          README.md: Drafts
+        file_sources:
+          recipes/review-v2/op.yaml: ../../recipes/review-v2/op.yaml
+          recipes/review-v2.py: ../../recipes/review-v2.py
+    responses:
+    - node_path: review-test/review/adaptive3-review/discuss/discuss/adaptive3-discussion/ask/ask
+      response:
+        direction: revise
+        feedback: Keep the current scope.
+        attachments: []
+        settings:
+          return_to: outcome
+  inputs:
+    purpose: outcome
+    decision: outcome
+    title: Saved drafts
+    with_documents: true
+  assertions:
+  - type: cel_true
+    expr: outputs.result.status=="changes" && outputs.result.stage=="outcome" && outputs.result.human.response.settings.return_to=="outcome"
+  - type: cel_true
+    expr: size(reviews)==1 && reviews[0].form.request.directions.exists(d,d.id=="annotate")
+      && !calls.exists(c,c.op=="merge")
+  mocks:
+    ops:
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: changes
+            summary: Revise the selected work.
+            stage: null
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: Keep one saved draft.
+    - match:
+        selector: ./recipes/review-v2
+      repeat: true
+      behavior:
+        mode: passthrough
+- id: conflicting-scope-choice-clarifies-repeatedly
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          README.md: Drafts
+        file_sources:
+          recipes/review-v2/op.yaml: ../../recipes/review-v2/op.yaml
+          recipes/review-v2.py: ../../recipes/review-v2.py
+    responses:
+    - node_path: review-test/review/adaptive3-review/discuss/discuss/adaptive3-discussion/ask/ask
+      response:
+        direction: revise
+        feedback: Expand the feature scope.
+        attachments: []
+        settings:
+          return_to: implementation
+    - node_path: review-test/review/adaptive3-review/clarification/clarification/adaptive3-discussion/ask/ask
+      response:
+        direction: revise
+        feedback: Keep the expanded scope.
+        attachments: []
+        settings:
+          return_to: implementation
+    - node_path: review-test/review/adaptive3-review/clarification/clarification/adaptive3-discussion/ask/ask
+      response:
+        direction: revise
+        feedback: Use Direction for the expanded scope.
+        attachments: []
+        settings:
+          return_to: direction
+  inputs:
+    purpose: outcome
+    decision: outcome
+    title: Saved drafts
+    with_documents: true
+  assertions:
+  - type: cel_true
+    expr: outputs.result.stage=="direction" && size(reviews)==3
+  - type: cel_true
+    expr: reviews.all(r,r.form.request.review_id==reviews[0].form.request.review_id
+      && r.form.request.documents==reviews[0].form.request.documents
+      && r.form.request.document_metadata==reviews[0].form.request.document_metadata
+      && r.form.request.overview_document_id=="review/design.md")
+  - type: cel_true
+    expr: size(reviews[2].form.request.conversation)==2 && reviews[2].form.request.conversation[0].text=="Expand
+      the feature scope." && reviews[2].form.request.conversation[1].text=="Keep the
+      expanded scope."
+  - type: cel_true
+    expr: '!reviews[1].form.request.directions.exists(d,d.id=="accept") && !calls.exists(c,c.op=="merge")'
+  mocks:
+    ops:
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: changes
+            summary: Scope changes require Direction. Choose a compatible destination.
+            stage: direction
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: Keep one saved draft.
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: changes
+            summary: The scope still conflicts. Choose Direction.
+            stage: direction
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: Keep one saved draft.
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: changes
+            summary: Revise Direction for the expanded scope.
+            stage: direction
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: Keep one saved draft.
+    - match:
+        selector: ./recipes/review-v2
+      repeat: true
+      behavior:
+        mode: passthrough
+- id: question-rejects-routing-edit
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          README.md: Drafts
+        file_sources:
+          recipes/review-v2/op.yaml: ../../recipes/review-v2/op.yaml
+          recipes/review-v2.py: ../../recipes/review-v2.py
+    responses:
+    - node_path: review-test/review/adaptive3-review/discuss/discuss/adaptive3-discussion/ask/ask
+      response:
+        direction: question
+        feedback: Why?
+        attachments: []
+        settings:
+          return_to: direction
+  inputs:
+    purpose: outcome
+    decision: outcome
+    title: Saved drafts
+    with_documents: true
+  assertions:
+  - type: cel_true
+    expr: size(reviews)==0 && !calls.exists(c,c.op=="extension_execution" && has(c.inputs.inputs.prompt))
+  mocks:
+    ops:
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+    - match:
+        selector: ./recipes/review-v2
+      repeat: true
+      behavior:
+        mode: passthrough
+  expect_error: jsonschema validation failed
+- id: accept-rejects-routing-edit
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          README.md: Drafts
+        file_sources:
+          recipes/review-v2/op.yaml: ../../recipes/review-v2/op.yaml
+          recipes/review-v2.py: ../../recipes/review-v2.py
+    responses:
+    - node_path: review-test/review/adaptive3-review/discuss/discuss/adaptive3-discussion/ask/ask
+      response:
+        direction: accept
+        feedback: ''
+        attachments: []
+        settings:
+          return_to: direction
+  inputs:
+    purpose: outcome
+    decision: outcome
+    title: Saved drafts
+    with_documents: true
+  assertions:
+  - type: cel_true
+    expr: size(reviews)==0 && !calls.exists(c,c.op=="extension_execution" && has(c.inputs.inputs.prompt))
+  mocks:
+    ops:
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+    - match:
+        selector: ./recipes/review-v2
+      repeat: true
+      behavior:
+        mode: passthrough
+  expect_error: jsonschema validation failed

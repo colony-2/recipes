@@ -1,0 +1,46 @@
+# Run through consumer/run-context.py, which starts a case-local scripted provider.
+recipe: discussion-context.yaml
+live: true
+cases:
+- id: real-answering-session-retains-context
+  type: integration_case
+  runtime:
+    observe_files: [README.md]
+    secrets:
+      codex_api_key: scripted-local-only
+    config:
+      codex_api_base_url: http://127.0.0.1:1/v1
+    cells:
+      root:
+        files:
+          README.md: Read-only discussion control.
+        file_sources:
+          recipes/review-v2/op.yaml: ../../recipes/review-v2/op.yaml
+          recipes/review-v2.py: ../../recipes/review-v2.py
+    responses:
+    - node_path: discussion-context/discussion/adaptive3-discussion/ask/ask
+      response: {direction: question, feedback: '  First question? 日本語', attachments: [], settings: {}}
+    - node_path: discussion-context/discussion/adaptive3-discussion/ask/ask
+      response: {direction: question, feedback: 'Second question? 🙂', attachments: [], settings: {}}
+    - node_path: discussion-context/discussion/adaptive3-discussion/ask/ask
+      response: {direction: accept, feedback: '', attachments: [], settings: {}}
+  mocks:
+    ops:
+    - match: {op: command_execution}
+      repeat: true
+      behavior: {mode: passthrough}
+    - match: {selector: ./recipes/review-v2}
+      repeat: true
+      behavior: {mode: passthrough}
+    - match: {selector: 'nix:github:colony-2/c2ops/published#codex'}
+      repeat: true
+      behavior: {mode: passthrough}
+  assertions:
+  - type: cel_true
+    expr: size(reviews)==3 && reviews.all(r,r.form.request.review_id==outputs.review_id)
+  - type: cel_true
+    expr: reviews[2].form.request.conversation.map(t,t.text)==['  First question? 日本語','Actual first answer.','Second question? 🙂','Actual second answer.']
+  - type: cel_true
+    expr: calls.filter(c,c.op=='extension_execution' && has(c.inputs.inputs.prompt)).size()==2 && calls.filter(c,c.op=='extension_execution' && has(c.inputs.inputs.prompt))[1].inputs.inputs.session==calls.filter(c,c.op=='extension_execution' && has(c.inputs.inputs.prompt))[0].outputs.session
+  - type: cel_true
+    expr: calls.filter(c,c.op=='extension_execution' && has(c.inputs.inputs.prompt)).all(c,c.node_path.contains('read_only') && c.worktree['README.md']=='Read-only discussion control.') && repositories.root.clean && repositories.root.new_commits==0 && !calls.exists(c,c.op=='merge')

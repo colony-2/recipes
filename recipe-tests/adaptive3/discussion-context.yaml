@@ -1,0 +1,34 @@
+schema_version: 2
+id: discussion-context
+sequence:
+- id: documents
+  op: command_execution
+  inputs:
+    env:
+      CONTEXT_OUTBOX: ${{ context.environment.op.outbox }}
+    run: |
+      mkdir -p "$CONTEXT_OUTBOX/review" "$CONTEXT_OUTBOX/feedback/saved/0"
+      printf 'ORIGINAL-日本語\n' > "$CONTEXT_OUTBOX/review/design.md"
+      printf 'EARLIER-UPLOAD-🙂\n' > "$CONTEXT_OUTBOX/feedback/saved/0/notes.md"
+- id: schemas
+  include: ../../recipes/adaptive3/schemas.yaml
+- id: discussion
+  include: ../../recipes/adaptive3/discussion.yaml
+  inputs:
+    request:
+      title: Direction — Saved drafts
+      question: Approve the direction?
+      documents: ${{ jq(sequence.documents.artifacts,'with_entries(select(.key|startswith("review/")))') }}
+      overview_document_id: review/design.md
+      directions:
+      - {id: accept, label: Approve direction, feedback_mode: forbidden, allow_attachments: false, continues_review: false}
+      - {id: question, label: Ask a question, feedback_mode: required, allow_attachments: true, continues_review: true}
+      feedback: {label: Question or requested change}
+      conversation: []
+    documents: ${{ sequence.documents.artifacts }}
+    prompt: Answer questions about saved drafts. Read all original and retained feedback bytes.
+    schema: ${{ sequence.schemas.outputs.review }}
+outputs:
+  native: ${{ sequence.discussion.outputs.native }}
+  conversation: ${{ sequence.discussion.outputs.conversation }}
+  review_id: ${{ sequence.discussion.outputs.review_id }}

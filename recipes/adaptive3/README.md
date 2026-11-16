@@ -96,9 +96,26 @@ a destination alone grants no work. Apply also requires readable presentation.
 Automatic corrections retain existing authority and finite limits. Diagnosis or
 externally blocked repairs stay open for discussion without Apply or extra
 attempts. Human approval cannot supply missing routes, credentials or deployment.
-Questions and agent-settings reconsideration grant no stage work or attempts.
-New words and attachments are reconsidered before acting; a materially replaced
-action needs a new decision. Human cancellation remains terminal.
+Questions and correction-destination edits grant no stage work or attempts.
+Apply accepts the displayed correction with no new feedback or uploads. Request
+changes reopens the diagnosis; a replaced action needs a fresh decision. Human
+cancellation remains terminal.
+
+Human checkpoints use Cortex `review/v2`. Ask a question keeps the original
+documents and logical review identity, saves the exact contribution and native
+receipt, appends the actual answer, and waits for another contribution. The
+answering session receives the complete discussion and all retained files.
+Approval requires exactly empty feedback and no new uploads.
+
+Review doc comments appears when originals are attached. It sends the comments
+through the documents' complete producer and validation cycle and requests fresh
+approval. Request changes can select Auto or an applicable correction destination
+under Review settings. The selection applies once; later reviews return to Auto.
+Scope changes require Direction, and conflicting instructions stay in discussion.
+Package-review destinations pass through the containing lifecycle.
+
+Backstop no longer offers model/reasoning edits or settings reconsideration.
+Existing launch inputs and worker defaults retain their current behavior.
 
 Configure, before-design, prepare, verify and publish retain the existing
 [build hook API](../../guides/BUILD_HOOKS_USER_GUIDE.md). Hook settings artifacts
@@ -115,6 +132,9 @@ approval, validates it in a separate job, and checks the adopted configuration.
 - `lifecycle.yaml` handles corrections, consultations and package interruptions.
 - `cycle.yaml` defines a single Execute/Validate/Review pass, shared with consultation.
 - `execute.yaml`, `validate.yaml`, `review.yaml` define those activities once.
+- `discussion.yaml` retains human turns, actual answers, receipts and distinct uploads.
+- `review-policy.yaml` declares correction destinations; [the shared builder](../review-v2.yaml)
+  validates declarations and generates closed native schemas through its local source operation.
 - `backstop.yaml`, `consultation.yaml`, `packages.yaml` provide their services.
 - `agent.yaml` owns session start/resume and native Codex calls.
 - `hooks.yaml`, `integration.yaml`, `specialists.yaml` call existing extension points.
@@ -128,3 +148,6 @@ See the [design](../../guides/adaptive3/DESIGN.md),
 For foreign includes and diagnostic jobs, see [the reuse guide](../../guides/adaptive3/REUSE.md).
 The [supported-worker check](../../guides/adaptive3/VALIDATOR_WORKER_CHECK.md) covers the
 validator dependency boundary separately from local routing tests.
+
+The shared [review/v2 form contract](../../guides/REVIEW_V2.md) describes declarations,
+source resolution, native responses and compatibility for custom includes.

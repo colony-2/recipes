@@ -21,10 +21,12 @@ state:
       - id: proposal
         include: ./agent.yaml
         inputs:
-          prompt: ${{ sequence.prompts.outputs.propose }}
+          prompt: '${{ sequence.prompts.outputs.propose + ''\nHuman revision: '' + json_stringify(inputs.feedback)
+            }}'
           schema: ${{ sequence.schemas.outputs.execute }}
           read_only: true
           agent_settings: ${{ inputs.agent_settings }}
+          documents: ${{ inputs.feedback.?documents.orValue({}) }}
       - id: config
         include: ./tools.yaml
         inputs:
@@ -64,6 +66,7 @@ state:
         requests: ${{ inputs.requests }}
         reason: ${{ inputs.reason }}
         agent_settings: ${{ inputs.agent_settings }}
+        feedback: ${{ transition.payload.?feedback.orValue({}) }}
     approval:
       include: ./review.yaml
       inputs:
@@ -76,6 +79,10 @@ state:
         agent_settings: ${{ inputs.agent_settings }}
         decision: packages
       transitions:
+      - to: prepare
+        when: outputs.result.?document_comments.orValue(false)
+        payload:
+          feedback: ${{ outputs.result }}
       - to: launch
         when: outputs.result.status == 'accepted'
       - to: done

@@ -13,7 +13,7 @@ import InputDetailPage from './InputDetailPage';
 vi.mock('./ReviewJobContext', () => ({ default: () => null }));
 vi.mock('./AssistantContext', () => ({ useAssistantSource: () => undefined }));
 const forms = JSON.parse(readFileSync(process.env.ADAPTIVE3_REVIEW_FORMS!, 'utf8'));
-const documentForms = forms.filter(config => Object.keys(config.documents || {}).length > 0);
+const documentForms = forms.filter(config => Object.keys(config.request.documents || {}).length > 0);
 const server = setupServer();
 beforeAll(() => {
   // jsdom's AbortSignal belongs to a different realm from Node's native fetch.
@@ -47,7 +47,8 @@ function roleOrder(config: any): string[] {
 describe('Adaptive3 generated document reviews through the actual reader', () => {
   it('has a generated document-bearing form and detects the producer omission independently of legacy fallback', () => {
     expect(documentForms.length).toBeGreaterThan(0);
-    for (const config of documentForms) {
+    for (const form of documentForms) {
+      const config = form.request;
       requireCompleteDetails(config);
       const { document_metadata, ...missing } = config;
       expect(() => requireCompleteDetails(missing)).toThrow();
@@ -55,17 +56,33 @@ describe('Adaptive3 generated document reviews through the actual reader', () =>
   });
 
   it.each(documentForms.flatMap(config => [1280, 390].map(width => ({ config, width, title: config.title }))))
-  ('$title displays explicit details at $width px and keeps feedback during navigation', async ({ config, width }) => {
+  ('$title displays explicit details at $width px and keeps feedback during navigation', async ({ config: form, width }) => {
+    const config = form.request;
     requireCompleteDetails(config);
     window.innerWidth = width;
     const fetched: string[] = [];
+    const frozenForm = { ...form, request_id: 'producer-request' };
+    const entry = {
+      entry_id: 'document-entry', request_id: 'producer-request', kind: 'input',
+      form_fields: frozenForm, raw_form: frozenForm, locator: { invocation_id: 'fixture', generation_ordinal: 1 },
+      accepted_response: { present: false }, actor: { provenance: 'fixture' },
+      request_manifest: Object.entries(config.documents).map(([id, ref]) => ({
+        artifact_id: id, ref, availability: 'available', associations: [],
+      })), response_manifest: [], snapshot_token: 'document-reader', snapshot_revision: 1,
+    };
     let submissions = 0;
     server.use(
       http.get('http://localhost:8080/api/projects/fixture/user-inputs/producer-job', () => HttpResponse.json({
-        jobId: 'producer-job', status: 'pending', startTime: '2026-11-13T08:00:00Z', form: config,
+        jobId: 'producer-job', status: 'pending', startTime: '2026-11-13T08:00:00Z', form: frozenForm,
       })),
-      http.get('http://localhost:8080/api/projects/fixture/reviews/producer-job/documents', ({ request }) => {
-        const id = new URL(request.url).searchParams.get('document_id')!;
+      http.get('http://localhost:8080/api/projects/fixture/jobs/producer-job/conversation', () => HttpResponse.json({
+        tenant_id: 'fixture', job_id: 'producer-job', snapshot_revision: 1,
+        entries: [entry], snapshot_token: 'document-reader', completeness: 'complete',
+        activity: { availability: 'available', value: { tenant_id: 'fixture', job_id: 'producer-job', status: 'ACTIVE' } },
+      })),
+      http.get('http://localhost:8080/api/projects/fixture/jobs/producer-job/conversation/entry', () => HttpResponse.json(entry)),
+      http.get('http://localhost:8080/api/projects/fixture/jobs/producer-job/conversation/artifact', ({ request }) => {
+        const id = new URL(request.url).searchParams.get('artifact_id')!;
         expect(Object.keys(config.documents)).toContain(id);
         fetched.push(id);
         // The native fixture files remain test artifacts. Serve their selected identity through the HTTP reader boundary.
@@ -79,11 +96,11 @@ describe('Adaptive3 generated document reviews through the actual reader', () =>
     render(<MemoryRouter initialEntries={['/reviews/producer-job']}><Routes>
       <Route path="/reviews/:jobId" element={<InputDetailPage projectId="fixture" />} />
     </Routes></MemoryRouter>);
-    const feedback = config.fields.find(field => field.id === 'feedback');
-    const question = config.fields.find(field => field.id === 'decision').options.find(option => option.value === 'question');
-    await user.click(await screen.findByRole('button', { name: question.label, exact: true }));
-    const textbox = await screen.findByRole('textbox', { name: feedback.question });
-    await user.type(textbox, 'Keep the draft while I read the evidence.');
+    const question = config.directions.find(direction => direction.id === 'question');
+    await user.click(await screen.findByRole('radio', { name: new RegExp(question.label) }, { timeout: 15000 }));
+    const textbox = await screen.findByRole('textbox', { name: new RegExp(config.feedback.label) }, { timeout: 15000 });
+    await user.click(textbox);
+    await user.paste('Keep the draft while I read the evidence.');
     await user.click(screen.getByRole('button', { name: 'Show documents', exact: true }));
     const navigation = await screen.findByRole('navigation', { name: 'Review documents' });
     const expected = roleOrder(config);
@@ -104,5 +121,5 @@ describe('Adaptive3 generated document reviews through the actual reader', () =>
     expect(submissions).toBe(0);
     expect(Array.from(navigation.querySelectorAll('.review-document-entry')).map(el =>
       expected.find(id => el.textContent!.includes(id)))).toEqual(expected);
-  });
+  }, 30000);
 });

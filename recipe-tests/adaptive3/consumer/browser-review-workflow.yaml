@@ -1,0 +1,74 @@
+schema_version: 2
+id: browser-review-workflow
+input_schema:
+  prompt: {type: string, default_value: ''}
+  external_document: {type: object, default_value: {}}
+inputs:
+  external_document: ${{ inputs.external_document }}
+sequence:
+- id: original
+  op: command_execution
+  inputs:
+    env: {REVIEW_OUTBOX: '${{ context.environment.op.outbox }}'}
+    run: |
+      mkdir -p "$REVIEW_OUTBOX/review"
+      printf '# Saved drafts\n\nOriginal bytes 日本語.\n' > "$REVIEW_OUTBOX/review/design.md"
+- id: review
+  include: adaptive3/review.yaml
+  inputs:
+    purpose: outcome
+    decision: outcome
+    title: Saved drafts
+    request: Keep saved drafts.
+    primary: review/design.md
+    document_metadata:
+      review/design.md:
+        title: Saved draft behavior
+        description: Read the original proposal before choosing a direction.
+        role: primary
+        order: 10
+      review/external.md:
+        title: Independent draft evidence
+        description: Compare the supporting evidence with the proposed behavior.
+        role: supporting
+        order: 0
+    documents: ${{ jq([sequence.original.artifacts,inputs.external_document], '.[1] as $external | .[0] | with_entries(select(.key|startswith("review/"))) | . + {"review/external.md":$external}') }}
+- id: correction
+  op: command_execution
+  artifacts:
+    work/: ${{ sequence.review.outputs.result.documents }}
+  inputs:
+    env:
+      REVIEW_OUTBOX: ${{ context.environment.op.outbox }}
+      REVIEW_INBOX: ${{ context.environment.op.inbox }}
+      CORRECTION: ${{ json_stringify(sequence.review.outputs.result) }}
+    run: |
+      python3 - <<'PY'
+      import json,os,pathlib
+      r=json.loads(os.environ['CORRECTION'])
+      assert r['status']=='changes' and r['stage']=='direction'
+      files=list((pathlib.Path(os.environ['REVIEW_INBOX'])/'work/feedback').rglob('notes.md'))
+      assert sorted(p.read_text() for p in files)==['first note','second note']
+      out=pathlib.Path(os.environ['REVIEW_OUTBOX']);(out/'review').mkdir()
+      (out/'review/design.md').write_text('# Revised saved drafts\n\nRevised original after explicit correction.\n')
+      (out/'correction.json').write_text(json.dumps({'stage':r['stage'],'receipt':r['human']['receipt'],'files':[p.read_text() for p in files]}))
+      PY
+- id: revised
+  include: adaptive3/review.yaml
+  inputs:
+    purpose: direction
+    decision: direction
+    title: Revised saved drafts
+    request: Keep saved drafts.
+    primary: review/design.md
+    document_metadata:
+      review/design.md:
+        title: Revised draft behavior
+        description: Review the corrected proposal after the explicit scope change.
+        role: primary
+        order: 10
+    documents: ${{ jq(sequence.correction.artifacts,'with_entries(select(.key|startswith("review/")))') }}
+outputs:
+  original: ${{ sequence.review.outputs.result }}
+  revised: ${{ sequence.revised.outputs.result }}
+  correction: ${{ sequence.correction.artifacts['correction.json'] }}

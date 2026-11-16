@@ -1,0 +1,34 @@
+schema_version: 2
+id: generated-review
+input_schema:
+  request:
+    type: object
+    required: true
+  nameless_original:
+    type: boolean
+    default_value: false
+inputs:
+  request: ${{ inputs.request }}
+  nameless_original: ${{ inputs.nameless_original }}
+sequence:
+- id: original
+  op: command_execution
+  when: inputs.nameless_original
+  inputs:
+    env:
+      REVIEW_OUTBOX: ${{ context.environment.op.outbox }}
+    run: |
+      printf 'Original document bytes' > "$REVIEW_OUTBOX/original.md"
+- id: generate
+  include: ../../recipes/review-v2.yaml
+  inputs:
+    request: '${{ inputs.nameless_original ? jq([inputs.request,sequence.original.artifacts], ''.[0] + {documents:(.[1]|with_entries(.value |= del(.name)))}'') : inputs.request }}'
+- id: contribute
+  op: input
+  inputs:
+    form: ${{ sequence.generate.outputs.form }}
+outputs:
+  form: ${{ sequence.generate.outputs.form }}
+  native: ${{ sequence.contribute.outputs }}
+  value: '${{ size(inputs.request.?settings.orValue([])) > 0 ? sequence.contribute.outputs.response.settings.?unfamiliar.orValue(inputs.request.settings[0].value)
+    : null }}'

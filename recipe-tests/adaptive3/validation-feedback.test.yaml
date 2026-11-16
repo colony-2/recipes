@@ -1,0 +1,80 @@
+recipe: validation-feedback.yaml
+cases:
+- id: exact-v2-correction-reaches-both-assessors
+  type: integration_case
+  runtime: &runtime
+    cells:
+      root:
+        files:
+          README.md: A small project.
+  inputs:
+    feedback:
+      summary: Generated advice says deployment is required.
+      human:
+        response:
+          direction: revise
+          feedback: "  Keep this local — 日本語🙂.\nNo deployment.  "
+        fields:
+          feedback: STALE-LEGACY-DIRECTION
+  mocks: &mocks
+    ops:
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      repeat: true
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: passed
+            summary: Checked the current human scope.
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: output_equals
+    path: result.status
+    value: passed
+  - type: cel_true
+    expr: >-
+      size(calls.filter(c,c.op=="extension_execution" && has(c.inputs.inputs.prompt)
+      && c.node_path.contains("/assess/")))==1
+  - type: cel_true
+    expr: >-
+      size(calls.filter(c,c.op=="extension_execution" && has(c.inputs.inputs.prompt)
+      && c.node_path.contains("/specialists/")))==1
+  - type: cel_true
+    expr: >-
+      calls.filter(c,c.op=="extension_execution" && has(c.inputs.inputs.prompt)
+      && c.node_path.contains("/assess/")).all(c,
+      c.inputs.inputs.prompt.contains("Latest human direction:   Keep this local — 日本語🙂.\nNo deployment.  \n")
+      && !c.inputs.inputs.prompt.contains("STALE-LEGACY-DIRECTION"))
+  - type: cel_true
+    expr: >-
+      calls.filter(c,c.op=="extension_execution" && has(c.inputs.inputs.prompt)
+      && c.node_path.contains("/specialists/")).all(c,
+      c.inputs.inputs.prompt.contains("Latest human direction:   Keep this local — 日本語🙂.\nNo deployment.  \n")
+      && !c.inputs.inputs.prompt.contains("STALE-LEGACY-DIRECTION"))
+- id: absent-human-feedback-keeps-both-assessors-valid
+  type: integration_case
+  runtime: *runtime
+  mocks: *mocks
+  assertions:
+  - type: output_equals
+    path: result.status
+    value: passed
+  - type: cel_true
+    expr: >-
+      size(calls.filter(c,c.op=="extension_execution" && has(c.inputs.inputs.prompt)
+      && c.node_path.contains("/assess/")))==1
+  - type: cel_true
+    expr: >-
+      size(calls.filter(c,c.op=="extension_execution" && has(c.inputs.inputs.prompt)
+      && c.node_path.contains("/specialists/")))==1
+  - type: cel_true
+    expr: >-
+      calls.filter(c,c.op=="extension_execution" && has(c.inputs.inputs.prompt)).all(c,
+      c.inputs.inputs.prompt.contains("Latest human direction: \nRead original human notes"))

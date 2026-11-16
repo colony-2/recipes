@@ -32,7 +32,7 @@ bytes, including keys, overview and escaping. Shorten purposes and deliberately
 select a focused collection when needed; do not truncate or silently drop evidence.
 
 The existing file check validates details against the exact selected keys before
-exporting native `document_metadata`. The independent validator checks whether
+exporting `document_metadata` inside the structured review/v2 request. The independent validator checks whether
 titles and purposes describe the actual files usefully. Any finding returns through
 the ordinary full correction cycle; its finite allowance and Backstop remain.
 No annotation history, title extraction or separate repair stage is involved.
@@ -49,7 +49,7 @@ check. Package proposals keep `review/README.md` as primary. A failed Backstop
 preparation shows a document-free question with findings and hides Apply until
 the collection is readable and a concrete action is available. The checked summary
 includes that action. Diagnosis and settings discussion do not authorize stage work.
-Provider failure still permits model/settings input. Native integration of
+Provider failure still permits questions and explicit correction destinations. Native integration of
 an already accepted candidate retains file checks without a new producer turn.
 
 New/custom producers must return the required array. Recorded forms and jobs

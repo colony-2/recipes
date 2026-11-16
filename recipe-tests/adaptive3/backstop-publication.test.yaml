@@ -1,37 +1,62 @@
 recipe: ../../adaptive3.yaml
 cases:
-- id: diagnosis-and-settings-preserve-real-merge
+- id: diagnosis-and-discussion-preserve-real-merge
   type: integration_case
   runtime:
     cells:
       root:
         files:
           README.md: A small project.
-          .c2/recipes/hooks/build/publish.yaml: "id: publish-fixture\noutputs:\n  api_version: c2.build-hook/v1\n\
-            \  artifact_refs: {}\n  status: passed\n  summary: Published.\nsequence:\n- id: publish_effect\n  inputs:\n\
-            \    run: printf published\n    env:\n      MERGED_HASH: ${{ inputs.merged_hash }}\n  op: command_execution\n\
-            inputs:\n  merged_hash: ${{ inputs.merged_hash }}\n"
+          .c2/recipes/hooks/build/publish.yaml: |
+            id: publish-fixture
+            outputs:
+              api_version: c2.build-hook/v1
+              artifact_refs: {}
+              status: passed
+              summary: Published.
+            sequence:
+            - id: publish_effect
+              inputs:
+                run: printf published
+                env:
+                  MERGED_HASH: ${{ inputs.merged_hash }}
+              op: command_execution
+            inputs:
+              merged_hash: ${{ inputs.merged_hash }}
+        file_sources:
+          recipes/review-v2/op.yaml: ../../recipes/review-v2/op.yaml
+          recipes/review-v2.py: ../../recipes/review-v2.py
     responses:
-    - node_path: adaptive3/direction/direction/adaptive3-lifecycle/cycle/cycle/adaptive3-cycle/review/review/adaptive3-review/ask/ask
-      fields:
-        decision: accept
+    - node_path: adaptive3/direction/direction/adaptive3-lifecycle/cycle/cycle/adaptive3-cycle/review/review/adaptive3-review/discuss/discuss/adaptive3-discussion/ask/ask
+      response:
+        direction: accept
         feedback: ''
-    - node_path: adaptive3/outcome/outcome/adaptive3-lifecycle/cycle/cycle/adaptive3-cycle/review/review/adaptive3-review/ask/ask
-      fields:
-        decision: accept
+        attachments: []
+        settings: {}
+    - node_path: adaptive3/outcome/outcome/adaptive3-lifecycle/cycle/cycle/adaptive3-cycle/review/review/adaptive3-review/discuss/discuss/adaptive3-discussion/ask/ask
+      response:
+        direction: accept
         feedback: ''
-    - node_path: adaptive3/backstop/sequence/backstop/adaptive3-backstop/ask/ask
-      fields:
-        decision: question
+        attachments: []
+        settings: {}
+    - node_path: adaptive3/backstop/sequence/backstop/adaptive3-backstop/discuss/discuss/adaptive3-discussion/ask/ask
+      response:
+        direction: question
         feedback: What was already delivered?
-    - node_path: adaptive3/backstop/sequence/backstop/adaptive3-backstop/ask/ask
-      fields:
-        decision: settings
-        model: chosen-model
-    - node_path: adaptive3/backstop/sequence/backstop/adaptive3-backstop/ask/ask
-      fields:
-        decision: continue
+        attachments: []
+        settings: {}
+    - node_path: adaptive3/backstop/sequence/backstop/adaptive3-backstop/discuss/discuss/adaptive3-discussion/ask/ask
+      response:
+        direction: revise
+        feedback: The prerequisite is now available; reconsider the correction.
+        attachments: []
+        settings: {}
+    - node_path: adaptive3/backstop/sequence/backstop/adaptive3-backstop/discuss/discuss/adaptive3-discussion/ask/ask
+      response:
+        direction: continue
         feedback: ''
+        attachments: []
+        settings: {}
     observe_files:
     - marker.txt
   inputs:
@@ -71,9 +96,8 @@ cases:
               metadata:
                 label: Current work is ready.
         artifacts:
-          review/README.md: '# Requested outcome
-
-            '
+          review/README.md: |
+            # Requested outcome
     - match:
         selector: nix:github:colony-2/c2ops/published#codex
       behavior:
@@ -175,9 +199,8 @@ cases:
               metadata:
                 label: Current work is ready.
           worktree:
-            marker.txt: 'done
-
-              '
+            marker.txt: |
+              done
         artifacts:
           review/README.md: '# Implementation'
     - match:
@@ -238,9 +261,9 @@ cases:
               metadata:
                 label: Current work is ready.
         artifacts:
-          review/README.md: '# Outcome
-
-            A marker was added.'
+          review/README.md: |-
+            # Outcome
+            A marker was added.
     - match:
         selector: nix:github:colony-2/c2ops/published#codex
       behavior:
@@ -369,6 +392,11 @@ cases:
       repeat: true
       behavior:
         mode: passthrough
+    - match:
+        selector: ./recipes/review-v2
+      repeat: true
+      behavior:
+        mode: passthrough
   assertions:
   - type: cel_true
     expr: outputs.merge.merged_hash != ""
@@ -377,11 +405,11 @@ cases:
   - type: cel_true
     expr: size(calls.filter(c,c.op=="merge"))==1
   - type: cel_true
-    expr: size(reviews)==5 && !reviews[2].form.fields[0].options.exists(o,o.value=="continue") && !reviews[3].form.fields[0].options.exists(o,o.value=="continue")
+    expr: size(reviews)==5 && !reviews[2].form.request.directions.exists(o,o.id=="continue") && !reviews[3].form.request.directions.exists(o,o.id=="continue")
   - type: cel_true
     expr: calls.filter(c,c.node_path.endsWith("/publish_effect")).all(c,c.inputs.env.MERGED_HASH==outputs.merge.merged_hash)
   - type: cel_true
-    expr: calls.filter(c,c.node_path.contains("/backstop/") && c.op=="extension_execution").all(c,c.inputs.inputs.prompt.contains("published"
+    expr: calls.filter(c,c.node_path.contains("/backstop/") && (c.op=="extension_execution" && has(c.inputs.inputs.prompt))).all(c,c.inputs.inputs.prompt.contains("published"
       ) || c.inputs.inputs.prompt.contains("publication"))
   - type: cel_true
     expr: outputs.reviews[0].receipt==reviews[0].receipt && outputs.reviews[1].receipt==reviews[1].receipt

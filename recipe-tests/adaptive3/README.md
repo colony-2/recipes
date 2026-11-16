@@ -68,23 +68,53 @@ validation and conversational answers are live. See the
 `default-build.test.yaml` targets root `build.yaml` directly, covering explanation,
 feature delivery and repository-improvement hooks through adaptive3.
 
-Consumer regression: after native cycle/backstop tests, run the real Cortex form
-adapter and renderer in an isolated Cortex checkout with its locked dependencies:
+Review/v2 checks use the shared [contract corpus](../review-v2/contract-vectors.json)
+and [acceptance statements](../review-v2/statements.md). Run the declaration/native
+suite and Python checks before the consumer checks:
+
+```sh
+c2j test run --directory recipe-tests/review-v2
+python3 -m unittest discover -s recipe-tests/review-v2 -p test_contract.py -v
+```
+
+The Recipes-owned consumer harness temporarily places tests in an unchanged,
+published Cortex checkout with its locked dependencies. Pass complete native case
+reports; missing reports or empty reviews fail. The following cases supply actual
+Direction, discussion, Backstop and Package forms:
 
 ```sh
 python3 recipe-tests/adaptive3/consumer/run.py /path/to/cortex \
-  /path/to/cycle/cases/questions-stay-in-review/result.json \
-  /path/to/backstop/cases/backstop-retains-discussion-session/result.json
+  /path/to/review/cases/direction-decision/result.json \
+  /path/to/review/cases/question-keeps-approval-pending/result.json \
+  /path/to/backstop-actions/cases/apply-authorizes-displayed-action/result.json \
+  /path/to/packages/cases/document-comments-regenerate-before-probe/result.json
 ```
 
-This exercises click, text entry, Back, upload and submit against actual generated
-forms. The separate document suite uses the real reader through input-details HTTP
-responses, verifies complete producer coverage (including a missing-metadata negative
-control), role ordering, overview fetches and retained feedback at desktop/mobile
-widths. Supply a report from `complete-selected-details-reach-form` to exercise
-conflicting role/order values. The HTTP document response is fixture content under
-the generated attachment ID. This is a DOM integration test; selected browser
-captures and deployed behavior require the Cortex owner's browser checks.
+This runs published presentation dispatch, validators, DOM controls and direct
+native SQLite schema/upload submissions. Build Cortex and its test worker using
+its normal locked build first, then run the real HTTP/browser tests:
+
+```sh
+python3 recipe-tests/adaptive3/consumer/run-browser.py /path/to/cortex --workers 1
+```
+
+The browser suite includes generated forms, production adaptive3 review/discussion
+includes, controlled worker restarts and the frozen legacy form. It writes individual
+screenshots, worker diagnostics, native outcomes and a restart comparison in the
+Playwright results directory. Its agent is scripted to isolate routing; it reads
+actual original/upload bytes. Real Codex answering context is checked separately:
+
+```sh
+python3 recipe-tests/adaptive3/consumer/run-context.py /tmp/adaptive3-context-check
+```
+
+That runner supplies a case-local provider to the real Codex CLI and c2ops,
+checks actual file reads, ordered discussion and answering-session continuation,
+and leaves production credentials unused. See the current [form contract](../../guides/REVIEW_V2.md).
+
+The document-reader suite also checks complete native producer metadata, role ordering,
+overview selection and drafts at desktop and phone widths. Include the native report
+from `complete-selected-details-reach-form` for conflicting role/order coverage.
 
 Follow-up suites cover requester correction/adoption, isolated diagnostic paths,
 backstop-first continuation and independent finite loop allowances. `renewal.test.yaml`

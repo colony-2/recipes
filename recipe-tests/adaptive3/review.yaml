@@ -10,11 +10,28 @@ input_schema:
   title:
     type: string
     required: true
+  with_documents:
+    type: boolean
+    default_value: false
+  feedback:
+    type: object
+    default_value: {}
 inputs:
   purpose: ${{ inputs.purpose }}
   decision: ${{ inputs.decision }}
   title: ${{ inputs.title }}
+  with_documents: ${{ inputs.with_documents }}
+  feedback: ${{ inputs.feedback }}
 sequence:
+- id: original
+  op: command_execution
+  when: inputs.with_documents
+  inputs:
+    env:
+      REVIEW_OUTBOX: ${{ context.environment.op.outbox }}
+    run: |
+      mkdir -p "$REVIEW_OUTBOX/review"
+      printf '# Original direction\n\nKeep the saved drafts.\n' > "$REVIEW_OUTBOX/review/design.md"
 - id: review
   include: ../../recipes/adaptive3/review.yaml
   inputs:
@@ -22,5 +39,9 @@ sequence:
     decision: ${{ inputs.decision }}
     title: ${{ inputs.title }}
     request: Preserve drafts across restart.
+    feedback: ${{ inputs.feedback }}
+    documents: ${{ sequence.?original.orValue({}).?artifacts.orValue({}) }}
+    primary: "${{ inputs.with_documents ? 'review/design.md' : '' }}"
+    document_metadata: "${{ inputs.with_documents ? {'review/design.md':{'title':'Saved draft direction','description':'Read the proposed saving behavior.','role':'primary','order':10} } : {} }}"
 outputs:
   result: ${{ sequence.review.outputs.result }}

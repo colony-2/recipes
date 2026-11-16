@@ -7,23 +7,34 @@ cases:
       root:
         files:
           README.md: A small project.
+        file_sources:
+          recipes/review-v2/op.yaml: ../../recipes/review-v2/op.yaml
+          recipes/review-v2.py: ../../recipes/review-v2.py
     responses:
-    - node_path: adaptive3/backstop/sequence/backstop/adaptive3-backstop/ask/ask
-      fields:
-        decision: question
+    - node_path: adaptive3/backstop/sequence/backstop/adaptive3-backstop/discuss/discuss/adaptive3-discussion/ask/ask
+      response:
+        direction: question
         feedback: What remains?
-    - node_path: adaptive3/backstop/sequence/backstop/adaptive3-backstop/ask/ask
-      fields:
-        decision: settings
-        model: chosen-model
-    - node_path: adaptive3/backstop/sequence/backstop/adaptive3-backstop/ask/ask
-      fields:
-        decision: continue
+        attachments: []
+        settings: {}
+    - node_path: adaptive3/backstop/sequence/backstop/adaptive3-backstop/discuss/discuss/adaptive3-discussion/ask/ask
+      response:
+        direction: revise
+        feedback: The prerequisite is now available; reconsider the correction.
+        attachments: []
+        settings: {}
+    - node_path: adaptive3/backstop/sequence/backstop/adaptive3-backstop/discuss/discuss/adaptive3-discussion/ask/ask
+      response:
+        direction: continue
         feedback: ''
-    - node_path: adaptive3/outcome/outcome/adaptive3-lifecycle/cycle/cycle/adaptive3-cycle/review/review/adaptive3-review/ask/ask
-      fields:
-        decision: accept
+        attachments: []
+        settings: {}
+    - node_path: adaptive3/outcome/outcome/adaptive3-lifecycle/cycle/cycle/adaptive3-cycle/review/review/adaptive3-review/discuss/discuss/adaptive3-discussion/ask/ask
+      response:
+        direction: accept
         feedback: ''
+        attachments: []
+        settings: {}
     observe_files:
     - marker.txt
   inputs:
@@ -39,18 +50,13 @@ cases:
           status: completed
           output_schema_valid: true
           response:
-            document_details:
-            - document_id: review/README.md
-              title: Approved scope
-              description: Read the retained direction before resuming implementation.
-              role: primary
-              order: 0
             status: resume
             action: null
             stage: integration
             summary: Source was delivered; the route needed for recovery remains unavailable. Discuss the prerequisite.
             title: Restore progress on implementation
-            primary: review/README.md
+            primary: null
+            document_details: []
         effects:
           objects:
             session:
@@ -72,18 +78,13 @@ cases:
           status: completed
           output_schema_valid: true
           response:
-            document_details:
-            - document_id: review/README.md
-              title: Approved scope
-              description: Read the retained direction before resuming implementation.
-              role: primary
-              order: 0
             status: resume
             action: null
             stage: integration
             summary: Source was delivered; the route needed for recovery remains unavailable. Discuss the prerequisite.
             title: Restore progress on implementation
-            primary: review/README.md
+            primary: null
+            document_details: []
         effects:
           objects:
             session:
@@ -105,12 +106,6 @@ cases:
           status: completed
           output_schema_valid: true
           response:
-            document_details:
-            - document_id: review/README.md
-              title: Approved scope
-              description: Read the retained direction before resuming implementation.
-              role: primary
-              order: 0
             status: resume
             action: Rerun the stated stage after correcting its local prerequisite, preserving completed effects.
             stage: implementation
@@ -128,7 +123,8 @@ cases:
                 submitted_at: '2026-11-12T11:00:00Z'
               patch: null
             title: Restore progress on implementation
-            primary: review/README.md
+            primary: null
+            document_details: []
         effects:
           objects:
             session:
@@ -150,17 +146,17 @@ cases:
           status: completed
           output_schema_valid: true
           response:
+            status: ready
+            summary: Current work is ready.
+            title: Review the requested outcome
+            primary: review/README.md
+            work_kind: bug
             document_details:
             - document_id: review/README.md
               title: Requested outcome
               description: Read the proposed result and decision.
               role: primary
               order: 0
-            status: ready
-            summary: Current work is ready.
-            title: Review the requested outcome
-            primary: review/README.md
-            work_kind: bug
         effects:
           objects:
             session:
@@ -213,17 +209,17 @@ cases:
           status: completed
           output_schema_valid: true
           response:
+            status: ready
+            summary: Current work is ready.
+            title: Review the requested outcome
+            primary: review/README.md
+            work_kind: bug
             document_details:
             - document_id: review/README.md
               title: Requested outcome
               description: Read the proposed result and decision.
               role: primary
               order: 0
-            status: ready
-            summary: Current work is ready.
-            title: Review the requested outcome
-            primary: review/README.md
-            work_kind: bug
         effects:
           objects:
             session:
@@ -297,6 +293,11 @@ cases:
       repeat: true
       behavior:
         mode: passthrough
+    - match:
+        selector: ./recipes/review-v2
+      repeat: true
+      behavior:
+        mode: passthrough
   assertions:
   - type: cel_true
     expr: outputs.merge.merged_hash != ""
@@ -307,17 +308,16 @@ cases:
   - type: cel_true
     expr: '!calls.exists(c,c.node_path.contains("/preparation/"))'
   - type: cel_true
-    expr: calls.filter(c,c.op=="extension_execution")[0].node_path.contains("/backstop/")
+    expr: calls.filter(c,(c.op=="extension_execution" && has(c.inputs.inputs.prompt)))[0].node_path.contains("/backstop/")
   - type: cel_true
-    expr: calls.exists(c,c.node_path.contains("/implementation/") && c.op=="extension_execution" && c.inputs.inputs.prompt.contains("original-request"))
+    expr: calls.exists(c,c.node_path.contains("/implementation/") && (c.op=="extension_execution" && has(c.inputs.inputs.prompt))
+      && c.inputs.inputs.prompt.contains("original-request"))
   - type: cel_true
     expr: calls.exists(c,c.node_path.contains("/implementation/") && c.node_path.contains("/review_files/"))
   - type: output_equals
     path: work_kind
     value: bug
   - type: cel_true
-    expr: '[0,1,2].all(i,calls.filter(c,c.op=="extension_execution")[i].node_path.contains("/backstop/"))'
+    expr: '[0,1,2].all(i,calls.filter(c,(c.op=="extension_execution" && has(c.inputs.inputs.prompt)))[i].node_path.contains("/backstop/"))'
   - type: cel_true
-    expr: '!reviews[0].form.fields[0].options.exists(o,o.value=="continue") && !reviews[1].form.fields[0].options.exists(o,o.value=="continue")'
-  - type: cel_true
-    expr: '[0,1].all(i,reviews[i].form.document_metadata["review/README.md"].title=="Approved scope" && reviews[i].form.overview_document_id=="review/README.md")'
+    expr: '!reviews[0].form.request.directions.exists(o,o.id=="continue") && !reviews[1].form.request.directions.exists(o,o.id=="continue")'

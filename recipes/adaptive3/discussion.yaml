@@ -1,0 +1,124 @@
+id: adaptive3-discussion
+inputs:
+  request: ${{ inputs.request }}
+  prompt: ${{ inputs.prompt }}
+  schema: ${{ inputs.schema }}
+  documents: ${{ inputs.?documents.orValue({}) }}
+  agent_settings: ${{ inputs.?agent_settings.orValue({}) }}
+state:
+  initial: snapshot
+  states:
+    snapshot:
+      include: ../review-v2.yaml
+      inputs:
+        request: ${{ inputs.request }}
+      transitions:
+      - to: build
+        when: 'true'
+    build:
+      inputs:
+        conversation: ${{ transition.payload.?conversation.orValue(inputs.request.?conversation.orValue([])) }}
+        documents: ${{ transition.payload.?documents.orValue(inputs.documents) }}
+        session: ${{ transition.payload.?session.orValue({}) }}
+        snapshot: ${{ states.snapshot.outputs.form.request }}
+      sequence:
+      - id: form
+        include: ../review-v2.yaml
+        inputs:
+          request: ${{ jq([inputs.snapshot,inputs.conversation], '.[0] + {conversation:.[1]}') }}
+      outputs:
+        form: ${{ sequence.form.outputs.form }}
+        conversation: ${{ inputs.conversation }}
+        documents: ${{ inputs.documents }}
+        session: ${{ inputs.session }}
+      transitions:
+      - to: ask
+        when: 'true'
+    ask:
+      id: ask
+      op: input
+      inputs:
+        form: ${{ states.build.outputs.form }}
+      transitions:
+      - to: record
+        when: 'true'
+    record:
+      inputs:
+        native: ${{ states.ask.outputs }}
+        conversation: ${{ states.build.outputs.conversation }}
+        documents: ${{ states.build.outputs.documents }}
+      sequence: []
+      outputs:
+        native: ${{ inputs.native }}
+        conversation: ${{ jq([inputs.conversation,inputs.native], vars.record) }}
+        documents: ${{ jq([inputs.documents,inputs.native], vars.uploads) }}
+      transitions:
+      - to: answer
+        when: outputs.native.response.direction == 'question'
+      - to: done
+        when: 'true'
+    answer:
+      include: ./agent.yaml
+      inputs:
+        prompt: |-
+          {{ inputs.prompt }}
+          Answer the latest question directly, using the complete ordered discussion below.
+          This is discussion only. Do not revise documents, approve work, move stages,
+          replenish attempts, or apply a correction, even if your answer proposes one.
+          Return the actual answer in summary. Read original documents and all discussion
+          attachments in inbox/work/; feedback files have separate per-request paths.
+          ${{ json_stringify(states.record.outputs.conversation) }}
+        schema: ${{ inputs.schema }}
+        documents: ${{ states.record.outputs.documents }}
+        session: ${{ states.build.outputs.session }}
+        read_only: true
+        agent_settings: ${{ inputs.agent_settings }}
+      transitions:
+      - to: append_answer
+        when: 'true'
+    append_answer:
+      sequence: []
+      outputs:
+        conversation: ${{ inputs.record.conversation + [{'role':'agent','text':inputs.answer.response.summary,'attachments':jq([inputs.answer.artifacts,size(inputs.record.conversation)],
+          '.[1] as $n | .[0] | to_entries | map(select(.key | startswith("review/")) | .value.name = ("answers/"
+          + ($n|tostring) + "/" + .key) | .value)')}] }}
+        documents: ${{ jq([inputs.record.documents,inputs.answer.artifacts,size(inputs.record.conversation)], '.[2]
+          as $n | .[0] + (.[1] | with_entries(select(.key | startswith("review/")) | .key = "answers/" + ($n|tostring)
+          + "/" + .key | .value.name = .key))') }}
+        session: ${{ inputs.answer.session }}
+      transitions:
+      - to: build
+        when: 'true'
+        payload:
+          conversation: ${{ outputs.conversation }}
+          documents: ${{ outputs.documents }}
+          session: ${{ outputs.session }}
+      inputs:
+        record: ${{ states.record.outputs }}
+        answer: ${{ states.answer.outputs }}
+    done:
+      sequence: []
+      outputs:
+        native: ${{ inputs.record.native }}
+        conversation: ${{ inputs.record.conversation }}
+        documents: ${{ inputs.record.documents }}
+      inputs:
+        record: ${{ states.record.outputs }}
+outputs:
+  native: ${{ states.done.outputs.native }}
+  conversation: ${{ states.done.outputs.conversation }}
+  documents: ${{ states.done.outputs.documents }}
+  review_id: ${{ states.snapshot.outputs.form.request.review_id }}
+vars:
+  record: |-
+    .[0] as $turns | .[1] as $native |
+    ($turns | map(select(.role == "human" and .receipt.request_id == $native.receipt.request_id))) as $recorded |
+    {role:"human",direction:$native.response.direction,text:$native.response.feedback,
+     attachments:($native.response.attachments | to_entries | map(.value.name = ("feedback/" + $native.receipt.request_id + "/" + (.key|tostring) + "/" + ((.value.name // .value.stored.key.name)|split("/")|last))) | map(.value)),settings:$native.response.settings,receipt:$native.receipt} as $turn |
+    if ($recorded|length) == 0 then $turns + [$turn]
+    elif $recorded == [$turn] then $turns
+    else error("Conflicting contributions for one native receipt") end
+  uploads: |-
+    .[1] as $native | .[0] + ($native.response.attachments | to_entries | map(
+      .key = ("feedback/" + $native.receipt.request_id + "/" + (.key|tostring) + "/" + ((.value.name // .value.stored.key.name)|split("/")|last))
+      | .value.name = .key) | from_entries)

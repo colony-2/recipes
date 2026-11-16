@@ -81,6 +81,12 @@ Agent decisions are scripted unless a case is explicitly marked live.
 | A3-63 | A failed probe job or non-passing probe finding prevents adoption and returns a non-passing result. | Critical | Integration / c2j, Nix | `recipe-tests/adaptive3/packages.test.yaml`, `recipe-tests/adaptive3/package-probe.test.yaml` |
 | A3-64 | Successful approved probing completes before exact adoption, which passes the real configuration validator. | Critical | Integration / c2j, Git, Nix | `recipe-tests/adaptive3/packages.test.yaml`, `recipe-tests/adaptive3/package-probe.test.yaml` |
 | A3-65 | Proposal validation executes against the retained candidate even when the proposal workspace and upstream configuration would produce different findings. | Critical | Integration / c2j, Git, Nix | `recipe-tests/adaptive3/package-restore.test.yaml` |
+| A3-66 | Independent and specialist assessors receive exact v2 human corrections; absent human feedback remains valid. | High | Integration / c2j, Nix | `recipes/adaptive3/prompts/validate.yaml`, `recipe-tests/adaptive3/validation-feedback.test.yaml` |
+| A3-67 | Preparation reviewers receive exact human choices and messages, including Unicode, whitespace and line breaks. | Critical | Integration / pinned c2j, scripted Codex | `recipes/adaptive3/prompts/review.yaml`, `recipe-tests/adaptive3/review.test.yaml` |
+| A3-68 | Implementation reviewers receive exact human choices and messages from the current correction envelope. | Critical | Integration / pinned c2j, scripted Codex | `recipes/adaptive3/prompts/review.yaml`, `recipe-tests/adaptive3/review.test.yaml` |
+| A3-69 | Stale direct feedback cannot replace a human correction supplied through the current envelope. | Critical | Integration / pinned c2j, scripted Codex | `recipes/adaptive3/prompts/review.yaml`, `recipe-tests/adaptive3/review.test.yaml` |
+| A3-70 | Reviews without human feedback remain valid and do not invent instructions. | High | Integration / pinned c2j, scripted Codex | `recipes/adaptive3/prompts/review.yaml`, `recipe-tests/adaptive3/review.test.yaml` |
+
 ## Document details
 
 | Expectation | Files | Priority | Level; dependencies |

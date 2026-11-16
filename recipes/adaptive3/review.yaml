@@ -26,26 +26,29 @@ state:
           feedback: ${{ inputs.feedback }}
           decision: ${{ inputs.decision }}
           title: ${{ inputs.title }}
+      - id: policy
+        include: ./review-policy.yaml
+        inputs:
+          stage: ${{ inputs.purpose }}
       outputs:
         schema: ${{ sequence.schemas.outputs.review }}
         text: ${{ sequence.prompts.outputs }}
+        setting: ${{ sequence.policy.outputs.setting }}
       transitions:
       - to: compare
         when: inputs.decision in ['merge','outcome'] && inputs.feedback.?approval.orValue({}).?result.orValue({}).?receipt.hasValue()
           && inputs.feedback.approval.?patch.orValue(null) != null
-      - to: ask
+      - to: discuss
         when: inputs.decision in ['direction','answer','merge','outcome','packages']
       - to: assess
         when: 'true'
       inputs:
         purpose: ${{ inputs.purpose }}
         request: ${{ inputs.request }}
-        documents: ${{ inputs.documents }}
-        title: ${{ inputs.title }}
-        primary: ${{ inputs.primary }}
         validation: ${{ inputs.validation }}
         feedback: ${{ inputs.feedback }}
         decision: ${{ inputs.decision }}
+        title: ${{ inputs.title }}
     assess:
       include: ./agent.yaml
       inputs:
@@ -59,98 +62,100 @@ state:
         when: 'true'
         payload:
           result: ${{ outputs.response }}
-    ask:
-      id: ask
-      op: input
+    discuss:
+      include: ./discussion.yaml
       inputs:
-        form:
-          kind: review
-          title: ${{ states.setup.outputs.text.title }}
-          documents: ${{ inputs.documents }}
-          document_metadata: ${{ inputs.document_metadata }}
-          overview_document_id: ${{ inputs.primary }}
-          fields:
-          - id: decision
-            type: multiple_choice
-            question: |-
-              ${{ transition.payload.?clarification.orValue('') }}
-              ${{ state_exists('answer') ? states.answer.outputs.response.summary : states.setup.outputs.text.decision }}
-            required: true
-            options: ${{ states.setup.outputs.text.options }}
-          - id: feedback
-            type: paragraph_text
-            question: ${{ states.setup.outputs.text.message }}
-            required: false
-          - id: annotations
-            type: file_upload
-            question: ${{ states.setup.outputs.text.notes }}
-            required: false
+        request: '${{ jq([{''title'':states.setup.outputs.text.title,''question'':states.setup.outputs.text.decision
+          + (size(inputs.documents)==0 ? ''\nThere are no attached review documents to revise. Use Request changes
+          to request changes.'' : ''''),''documents'':inputs.documents,''document_metadata'':inputs.document_metadata,''directions'':states.setup.outputs.text.directions
+          + (size(inputs.documents)>0 ? [{''id'':''annotate'',''label'':''Review doc comments'',''feedback_mode'':''required'',''allow_attachments'':true,''continues_review'':false}]
+          : []),''feedback'':{''label'':states.setup.outputs.text.message},''settings'':[states.setup.outputs.setting],''conversation'':[]},inputs.primary],
+          ''.[0] + (if .[1] != "" then {overview_document_id:.[1]} else {} end)'') }}'
+        prompt: ${{ states.setup.outputs.text.task }}
+        schema: ${{ states.setup.outputs.schema }}
+        documents: ${{ inputs.documents }}
+        agent_settings: ${{ inputs.agent_settings }}
       transitions:
-      - to: ask
-        when: outputs.fields.decision in ['question','revise'] && !nonempty(outputs.fields.?feedback.orValue(''))
-          && size(outputs.?artifact_refs.orValue({})) == 0
-        payload:
-          clarification: Enter a question or requested change, or attach notes, then confirm.
       - to: done
-        when: inputs.decision == 'packages' && outputs.fields.decision == 'decline'
-        payload:
-          result:
-            status: changes
-            summary: The human declined these tools. Find another approach.
-            human: ${{ outputs }}
-            documents: ${{ jq(outputs.?artifact_refs.orValue({}), 'with_entries(.key = "feedback/" + .key | .value.name
-              = .key)') }}
-      - to: done
-        when: outputs.fields.decision == 'accept' && outputs.fields.?feedback.orValue('') == '' && size(outputs.?artifact_refs.orValue({}))
-          == 0
+        when: outputs.native.response.direction == 'accept'
         payload:
           result:
             status: accepted
             summary: The human accepted this result.
-            receipt: ${{ outputs.receipt }}
-      - to: answer
+            receipt: ${{ outputs.native.receipt }}
+            human: ${{ outputs.native }}
+            review_id: ${{ outputs.review_id }}
+            conversation: ${{ outputs.conversation }}
+      - to: done
+        when: outputs.native.response.direction == 'decline'
+        payload:
+          result:
+            status: changes
+            summary: The human declined these tools. Find another approach.
+            human: ${{ outputs.native }}
+            documents: ${{ outputs.documents }}
+            conversation: ${{ outputs.conversation }}
+      - to: done
+        when: outputs.native.response.direction == 'annotate'
+        payload:
+          result:
+            status: changes
+            stage: ${{ inputs.purpose }}
+            document_comments: true
+            summary: Revise the reviewed documents using the original comments, validate the complete revised collection
+              and request fresh approval.
+            human: ${{ outputs.native }}
+            documents: ${{ outputs.documents }}
+            review_id: ${{ outputs.review_id }}
+            conversation: ${{ outputs.conversation }}
+      - to: correction
         when: 'true'
-    answer:
-      sequence:
-      - id: prompts
-        include: ./prompts/review.yaml
-        inputs:
-          purpose: ${{ inputs.purpose }}
-          request: ${{ inputs.request }}
-          validation: ${{ inputs.validation }}
-          feedback: ${{ inputs.reply }}
-          decision: ${{ inputs.decision }}
-      - id: agent
-        include: ./agent.yaml
-        inputs:
-          prompt: ${{ sequence.prompts.outputs.task }}
-          schema: ${{ inputs.schema }}
-          documents: ${{ inputs.documents }}
-          session: ${{ inputs.session }}
-          read_only: true
-          agent_settings: ${{ inputs.agent_settings }}
+        payload:
+          reply: ${{ outputs }}
+    resolve:
+      include: ./agent.yaml
       inputs:
-        purpose: ${{ inputs.purpose }}
-        request: ${{ inputs.request }}
-        validation: ${{ inputs.validation }}
-        reply: ${{ states.ask.outputs }}
+        prompt: |-
+          {{ states.setup.outputs.text.task }}
+          The human explicitly requested changes. Preserve the original words and attachments.
+          Selected correction destination: ${{ states.correction.outputs.reply.native.response.settings.?return_to.orValue('auto') }}
+          Scope changes require direction. If that conflicts with an explicit destination,
+          return answer with the clarification needed; do not perform work or accept anything.
+          Full ordered discussion: ${{ json_stringify(states.correction.outputs.reply.conversation) }}
         schema: ${{ states.setup.outputs.schema }}
-        documents: ${{ jq([inputs.documents,jq(states.ask.outputs.?artifact_refs.orValue({}), 'with_entries(.key
-          = "feedback/" + .key | .value.name = .key)')], 'add') }}
-        session: ${{ state_output('answer','session',{}) }}
+        documents: ${{ states.correction.outputs.reply.documents }}
+        read_only: true
         agent_settings: ${{ inputs.agent_settings }}
-        decision: ${{ inputs.decision }}
-      outputs:
-        response: ${{ sequence.agent.outputs.response }}
-        session: ${{ sequence.agent.outputs.session }}
       transitions:
       - to: done
-        when: states.ask.outputs.fields.decision != 'question' && outputs.response.status in ['changes','stuck']
+        when: outputs.response.status == 'changes' && (states.correction.outputs.reply.native.response.settings.?return_to.orValue('auto')
+          == 'auto' || outputs.response.?stage.orValue(null) == null || outputs.response.stage == states.correction.outputs.reply.native.response.settings.return_to)
         payload:
-          result: ${{ jq([outputs.response, {'human':states.ask.outputs,'documents':jq(states.ask.outputs.?artifact_refs.orValue({}),
-            'with_entries(.key = "feedback/" + .key | .value.name = .key)')}], 'add') }}
-      - to: ask
+          result: ${{ jq([outputs.response,states.correction.outputs.reply,inputs.purpose], '.[1] as $d | .[2] as
+            $stage | .[0] + {human:$d.native,documents:$d.documents,conversation:$d.conversation,review_id:$d.review_id}
+            + (if ($d.native.response.settings.return_to // "auto") != "auto" then {stage:$d.native.response.settings.return_to}
+            else {} end)') }}
+      - to: clarification
         when: 'true'
+    clarification:
+      include: ./discussion.yaml
+      inputs:
+        request: '${{ jq([{''review_id'':states.correction.outputs.reply.review_id,''title'':states.setup.outputs.text.title,
+          ''question'':states.resolve.outputs.response.summary + ''\nChoose Request changes with a compatible destination
+          or clarify the conflict.'',''documents'':inputs.documents,''document_metadata'':inputs.document_metadata,
+          ''directions'':states.setup.outputs.text.directions.filter(d,d.id != ''accept'' && d.id != ''decline''),
+          ''feedback'':{''label'':states.setup.outputs.text.message},''settings'':[states.setup.outputs.setting],
+          ''conversation'':states.correction.outputs.reply.conversation},inputs.primary],
+          ''.[0] + (if .[1] != "" then {overview_document_id:.[1]} else {} end)'') }}'
+        prompt: ${{ states.setup.outputs.text.task }}
+        schema: ${{ states.setup.outputs.schema }}
+        documents: ${{ states.correction.outputs.reply.documents }}
+        agent_settings: ${{ inputs.agent_settings }}
+      transitions:
+      - to: correction
+        when: 'true'
+        payload:
+          reply: ${{ outputs }}
     done:
       sequence: []
       outputs:
@@ -166,7 +171,16 @@ state:
         when: outputs.result.equivalent
         payload:
           result: ${{ inputs.feedback.approval.result }}
-      - to: ask
+      - to: discuss
+        when: 'true'
+    correction:
+      inputs:
+        reply: ${{ transition.payload.reply }}
+      sequence: []
+      outputs:
+        reply: ${{ inputs.reply }}
+      transitions:
+      - to: resolve
         when: 'true'
 outputs:
   result: ${{ states.done.outputs.result }}

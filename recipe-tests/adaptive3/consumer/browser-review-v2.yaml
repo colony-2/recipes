@@ -1,0 +1,195 @@
+{
+  "schema_version": 2,
+  "id": "browser-input",
+  "input_schema": {
+    "prompt": {
+      "type": "string",
+      "default_value": ""
+    },
+    "external_document": {
+      "type": "object",
+      "default_value": {}
+    }
+  },
+  "inputs": {
+    "external_document": "${{ inputs.external_document }}"
+  },
+  "sequence": [
+    {
+      "id": "draft",
+      "op": "command_execution",
+      "inputs": {
+        "env": {
+          "OUTBOX": "${{ context.environment.op.outbox }}"
+        },
+        "run": "mkdir -p \"$OUTBOX/review\"\nprintf \"# Keep saved drafts\\n\\nOriginal material remains readable while questions are answered.\\n\" > \"$OUTBOX/review/design.md\"\nprintf \"# Recovery\\n\\nSaved drafts survive a restart.\\n\" > \"$OUTBOX/review/recovery.md\""
+      }
+    },
+    {
+      "id": "declaration",
+      "sequence": [],
+      "outputs": {
+        "request": "${{ inputs.request }}"
+      },
+      "inputs": {
+        "request": {
+          "title": "Direction — Keep saved drafts after a restart",
+          "question": "Approve this direction so detailed planning can begin?",
+          "documents": {
+            "review/design.md": "${{ sequence.draft.artifacts['review/design.md'] }}",
+            "review/recovery.md": "${{ sequence.draft.artifacts['review/recovery.md'] }}"
+          },
+          "overview_document_id": "review/design.md",
+          "document_metadata": {
+            "review/design.md": {
+              "title": "Proposed direction",
+              "description": "Read the saving behavior before approving the direction.",
+              "role": "primary",
+              "order": 0
+            },
+            "review/recovery.md": {
+              "title": "Recovery notes",
+              "description": "Check the supporting recovery evidence.",
+              "role": "supporting",
+              "order": 1
+            }
+          },
+          "directions": [
+            {
+              "id": "accept",
+              "label": "Approve direction",
+              "feedback_mode": "forbidden",
+              "allow_attachments": false,
+              "continues_review": false
+            },
+            {
+              "id": "question",
+              "label": "Ask a question",
+              "feedback_mode": "required",
+              "allow_attachments": true,
+              "continues_review": true
+            },
+            {
+              "id": "revise",
+              "label": "Request changes",
+              "feedback_mode": "required",
+              "allow_attachments": true,
+              "continues_review": false
+            },
+            {
+              "id": "annotate",
+              "label": "Review doc comments",
+              "feedback_mode": "required",
+              "allow_attachments": true,
+              "continues_review": false
+            }
+          ],
+          "feedback": {
+            "label": "Question or requested change"
+          },
+          "settings": [
+            {
+              "id": "fixture_phrase",
+              "control": "text",
+              "label": "Fixture phrase",
+              "value": "saved",
+              "default": null,
+              "reset_label": "Use fixture default",
+              "schema": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "minLength": 1
+              },
+              "applies_to": [
+                "question"
+              ],
+              "effect": "Changes the fixture report phrase; no stage work is authorized."
+            }
+          ],
+          "conversation": []
+        }
+      }
+    },
+    {
+      "id": "first_form",
+      "include": "review-v2.yaml",
+      "inputs": {
+        "request": "${{ jq([sequence.declaration.outputs.request,inputs.external_document], '.[1] as $external | .[0] | if ($external|length)>0 then .documents[\"review/external.md\"]=$external else . end') }}"
+      }
+    },
+    {
+      "id": "first",
+      "op": "input",
+      "inputs": {
+        "form": "${{ sequence.first_form.outputs.form }}"
+      }
+    },
+    {
+      "id": "first_answer",
+      "op": "command_execution",
+      "inputs": {
+        "run": "printf '%s' 'Saved drafts return when you reopen the app.'"
+      }
+    },
+    {
+      "id": "second_form",
+      "include": "review-v2.yaml",
+      "inputs": {
+        "request": "${{ jq([sequence.first_form.outputs.form.request,[],sequence.first.outputs,sequence.first_answer.outputs.stdout], '.[2] as $native | .[0] + {conversation:(.[1] + [{role:\"human\",direction:$native.response.direction,text:$native.response.feedback,attachments:($native.response.attachments|to_entries|map(.value.name=(\"feedback/\"+$native.receipt.request_id+\"/\"+(.key|tostring)+\"/\"+((.value.name // .value.stored.key.name)|split(\"/\")|last))|.value)),settings:$native.response.settings,receipt:$native.receipt},{role:\"agent\",text:.[3],attachments:[]}])}') }}"
+      }
+    },
+    {
+      "id": "second",
+      "op": "input",
+      "inputs": {
+        "form": "${{ sequence.second_form.outputs.form }}"
+      }
+    },
+    {
+      "id": "second_answer",
+      "op": "command_execution",
+      "inputs": {
+        "run": "printf '%s' 'Earlier notes keep their original producer references.'"
+      }
+    },
+    {
+      "id": "final_form",
+      "include": "review-v2.yaml",
+      "inputs": {
+        "request": "${{ jq([sequence.first_form.outputs.form.request,sequence.second_form.outputs.form.request.conversation,sequence.second.outputs,sequence.second_answer.outputs.stdout], '.[2] as $native | .[0] + {conversation:(.[1] + [{role:\"human\",direction:$native.response.direction,text:$native.response.feedback,attachments:($native.response.attachments|to_entries|map(.value.name=(\"feedback/\"+$native.receipt.request_id+\"/\"+(.key|tostring)+\"/\"+((.value.name // .value.stored.key.name)|split(\"/\")|last))|.value)),settings:$native.response.settings,receipt:$native.receipt},{role:\"agent\",text:.[3],attachments:[]}])}') }}"
+      }
+    },
+    {
+      "id": "final",
+      "op": "input",
+      "inputs": {
+        "form": "${{ sequence.final_form.outputs.form }}"
+      }
+    },
+    {
+      "id": "revision_form",
+      "include": "review-v2.yaml",
+      "when": "sequence.final.outputs.response.direction != 'accept'",
+      "inputs": {
+        "request": "${{ jq(sequence.first_form.outputs.form.request, 'del(.review_id) | .title=\"Direction — Revised saved drafts\" | .conversation=[]') }}"
+      }
+    },
+    {
+      "id": "revision",
+      "op": "input",
+      "when": "sequence.final.outputs.response.direction != 'accept'",
+      "inputs": {
+        "form": "${{ sequence.revision_form.outputs.form }}"
+      }
+    }
+  ],
+  "outputs": {
+    "first": "${{ sequence.first.outputs }}",
+    "second": "${{ sequence.second.outputs }}",
+    "final": "${{ sequence.final.outputs }}",
+    "report": "${{ sequence.first.outputs.response.settings.?fixture_phrase.orValue('saved') }}",
+    "artifact_refs": "${{ sequence.draft.artifacts }}"
+  }
+}

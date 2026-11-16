@@ -1,0 +1,32 @@
+# External agent decisions are scripted; review/discussion code executes unchanged.
+id: scripted-browser-agent
+inputs:
+  prompt: ${{ inputs.prompt }}
+  documents: ${{ inputs.?documents.orValue({}) }}
+sequence:
+- id: read
+  op: command_execution
+  artifacts:
+    work/: ${{ inputs.documents }}
+  inputs:
+    env:
+      AGENT_INBOX: ${{ context.environment.op.inbox }}
+      AGENT_PROMPT: ${{ inputs.prompt }}
+    run: |
+      python3 - <<'PY'
+      import pathlib,json,os
+      root=pathlib.Path(os.environ['AGENT_INBOX'])/'work'
+      assert (root/'review/design.md').read_text()=='# Saved drafts\n\nOriginal bytes 日本語.\n'
+      notes=sorted(p.read_text() for p in (root/'feedback').rglob('notes.md'))
+      assert notes==['first note'] or notes==['first note','second note']
+      text=os.environ['AGENT_PROMPT']
+      if 'The human explicitly requested changes.' in text:
+          response={'status':'changes','stage':'direction','summary':'Revise Direction as explicitly selected.'}
+      else:
+          response={'status':'changes','stage':'direction','summary':'Actual first answer.' if 'Second question?' not in text else 'Actual second answer.'}
+      print(json.dumps(response))
+      PY
+outputs:
+  response: ${{ json_parse(sequence.read.outputs.stdout) }}
+  session: {}
+  artifacts: {}
