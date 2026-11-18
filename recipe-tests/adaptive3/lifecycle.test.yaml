@@ -575,6 +575,10 @@ cases:
   - type: cel_true
     expr: calls.exists(c,(c.op=="extension_execution" && has(c.inputs.inputs.prompt)) && c.node_path.contains("/execute/")
       && has(c.artifacts) && c.artifacts.exists(k,k.contains("error/hooks/verify/") && c.artifacts[k].contains("missing-fixed")))
+  - type: cel_true
+    expr: size(calls.filter(c,c.node_path.endsWith("/probe")))==2
+  - type: cel_true
+    expr: size(calls.filter(c,c.op=="extension_execution" && c.node_path.contains("/execute/")))==2
 - id: human-scope-feedback-reaches-review-and-execute
   type: integration_case
   runtime:
@@ -1251,3 +1255,163 @@ cases:
       document_details for review/README.md"))
   - type: cel_true
     expr: reviews[0].form.request.document_metadata["review/README.md"].title=="Revised draft saving"
+# These scripted decisions test routing; both required commands execute natively.
+- id: passing-implementation-needs-no-outcome-report
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          README.md: |
+            A project.
+          feature.txt: |
+            corrected
+        file_sources: &id003
+          .c2/recipes/hooks/build/verify.yaml: fixtures/change-count-verify.yaml
+    responses: &id004 []
+  inputs:
+    purpose: implementation
+    request: Implement the requested local feature behavior.
+    require_verification: true
+  mocks:
+    ops:
+    - &id005
+      match: &id001
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs: &id006
+          status: completed
+          output_schema_valid: true
+          response:
+            status: ready
+            summary: Current work is ready.
+            title: Review the requested outcome
+            primary: review/README.md
+            work_kind: feature
+            document_details:
+            - document_id: review/README.md
+              title: Requested outcome
+              description: Read the proposed result and decision.
+              role: primary
+              order: 10
+        effects:
+          objects: &id007
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: Current work is ready.
+        artifacts: &id008
+          review/README.md: |
+            # Local implementation
+
+            Required checks and behavior are ready for assessment.
+    - &id009
+      match: *id001
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: passed
+            summary: Checked the assignment.
+        effects: &id002
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: Checked the assignment.
+    - &id010
+      match: *id001
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: accepted
+            summary: Checked the assignment.
+        effects: *id002
+    - &id011
+      match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - &id012
+    type: cel_true
+    expr: outputs.result.status=="accepted"
+  - type: cel_true
+    expr: size(calls.filter(c,c.node_path.endsWith("/check_one")))==1
+  - type: cel_true
+    expr: size(calls.filter(c,c.node_path.endsWith("/check_two")))==1
+  - type: cel_true
+    expr: size(calls.filter(c,c.op=="extension_execution" && c.node_path.contains("/execute/")))==1
+  - &id013
+    type: cel_true
+    expr: '!calls.exists(c,c.node_path.contains("/approved_change/"))'
+  - &id014
+    type: cel_true
+    expr: calls.filter(c,c.op=="extension_execution" && has(c.inputs.inputs.prompt)).filter(c,c.node_path.contains("/validate/")).all(c,!c.inputs.inputs.prompt.contains("change-counts.tsv")
+      && !("work/error/change-counts.tsv" in c.artifacts))
+- id: genuine-repository-defect-repeats-every-check
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          README.md: |
+            A project.
+          feature.txt: |
+            incorrect
+        file_sources: *id003
+    responses: *id004
+  inputs:
+    purpose: implementation
+    request: Restore corrected feature behavior.
+    require_verification: true
+  mocks:
+    ops:
+    - *id005
+    - match: *id001
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: changes
+            summary: feature.txt returns incorrect; restore corrected behavior.
+        effects: *id002
+    - match: *id001
+      behavior:
+        mode: return
+        outputs: *id006
+        effects:
+          objects: *id007
+          worktree:
+            feature.txt: |
+              corrected
+        artifacts: *id008
+    - *id009
+    - *id010
+    - *id011
+  assertions:
+  - *id012
+  - type: cel_true
+    expr: size(calls.filter(c,c.node_path.endsWith("/check_one")))==2
+  - type: cel_true
+    expr: size(calls.filter(c,c.node_path.endsWith("/check_two")))==2
+  - type: cel_true
+    expr: size(calls.filter(c,c.op=="extension_execution" && c.node_path.contains("/execute/")))==2
+  - *id013
+  - *id014
+  - type: cel_true
+    expr: calls.exists(c,c.op=="extension_execution" && c.node_path.contains("/execute/") && c.inputs.inputs.prompt.contains("feature.txt
+      returns incorrect; restore corrected behavior."))
+  - type: cel_true
+    expr: >-
+      calls.filter(c,c.node_path.endsWith("/check_two"))[0].outputs.stdout=="incorrect"
+      && calls.filter(c,c.node_path.endsWith("/check_two"))[1].outputs.stdout=="corrected"

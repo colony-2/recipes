@@ -34,6 +34,14 @@ child waits; its submission fixture creates a disposable local child in place
 of the remote, unpublished adaptive3 selector. This tests result consumption,
 not deployment of that selector.
 
+`change-count-scope.test.yaml` inspects resolved prompts for all six purposes,
+both directly and through real validation routes, including configured specialists.
+Only Outcome receives change-count report requirements. `reporting.test.yaml`
+compares the native measurements and candidate patch delivered to each assessor
+with independent Git output, and covers complete, missing, invented and inconsistent
+reports. Lifecycle controls retain full rechecking for actual defects and required
+command failures. Scripted agent responses test routing, not live model judgment.
+
 `context-routing.test.yaml` checks shared guidance delivery to fresh agent sessions.
 `publication-ref.test.yaml` checks actual independent-child startup content for
 implicit same-cell, explicit same-cell and cross-cell requests, saved caller edits,

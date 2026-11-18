@@ -10,11 +10,40 @@ sequence:
       printf 'test harness\n' > harness/runner.py
       printf 'Usage\n' > docs/guide.md
       printf '\000binary' > image.bin
+- id: reference
+  op: command_execution
+  const: true
+  inputs:
+    env:
+      BASE: ${{ context.git.execution.base_hash }}
+    run: |-
+      python3 - <<'PYTHON'
+      import json, os, subprocess
+      base=os.environ['BASE']
+      def diff(*args):
+          return subprocess.check_output(['git','diff',*args,base,'HEAD'],text=True)
+      print(json.dumps({'counts':diff('--numstat','--no-renames'),
+                        'patch':diff('--binary','--full-index','--no-renames')}))
+      PYTHON
 - id: outcome
   include: ../../recipes/adaptive3/lifecycle.yaml
   inputs:
     purpose: outcome
     request: Report the actual root changes and the completed storage work separately. Test harnesses count as tests.
+    documents:
+      evidence/completed-storage.md:
+        kind: value
+        name: evidence/completed-storage.md
+        format: text
+        value: |
+          Completed storage result: api.go +4/-2; api_test.go +3/-0. Required checks passed.
+      evidence/pending-search.md:
+        kind: value
+        name: evidence/pending-search.md
+        format: text
+        value: |
+          Search work is still pending. No completed result or measurements are available.
 outputs:
   result: ${{ sequence.outcome.outputs.result }}
   documents: ${{ sequence.outcome.outputs.documents }}
+  reference: ${{ json_parse(sequence.reference.outputs.stdout) }}

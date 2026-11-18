@@ -98,3 +98,23 @@ Agent decisions are scripted unless a case is explicitly marked live.
 | Tool and recovery reviews require checked details; failed preparation remains a document-free question. | `packages.test.yaml`, `backstop.test.yaml`, `resume.test.yaml` | critical | integration; c2j |
 | Generated forms display explicit titles, purposes and roles through the real reader while preserving drafts. | `consumer/feedback.test.tsx` | critical | integration; Cortex, locked UI tools |
 | Independent validation rejects misleading titles and irrelevant purposes with concrete rewrites, then accepts corrected descriptions. | `../../guides/repros/misleading-document-details-check.yaml` | critical | live worker integration; c2j, Codex |
+
+
+## Outcome-only change-count validation
+
+Defined in the approved preparation before implementation. Scripted assessments test routing, not live model judgment.
+
+| Expectation | Priority | Level / dependencies | Files |
+| --- | --- | --- | --- |
+| Non-Outcome general and specialist assessors receive no requirement to supply the Outcome change-count report. | Critical | Integration / c2j, Nix | `recipes/adaptive3/prompts/validate.yaml`; `recipe-tests/adaptive3/change-count-scope.test.yaml` |
+| Outcome assessors require measured per-file totals, cell/category classification, honest binary entries and verified delegated results. | Critical | Integration / c2j, Nix | `recipes/adaptive3/prompts/validate.yaml`; `recipe-tests/adaptive3/change-count-scope.test.yaml` |
+| Outcome's general assessor receives native measurements matching the candidate's text changes and binary entries. | Critical | Integration / c2j, Git, Nix | `recipes/adaptive3/validate.yaml`; `recipes/adaptive3/tools.yaml`; `recipe-tests/adaptive3/reporting.test.yaml` |
+| Missing, invented or inconsistent Outcome reports require concrete correction before acceptance. | Critical | Integration / c2j, Nix; scripted assessment | `recipes/adaptive3/prompts/validate.yaml`; `recipe-tests/adaptive3/reporting.test.yaml` |
+| Implementation with passing required checks can advance without an Outcome change-count artifact. | Critical | Integration / c2j, Git, Nix; scripted assessment | `recipes/adaptive3/validate.yaml`; `recipe-tests/adaptive3/change-count-scope.test.yaml` |
+| Genuine Implementation findings repeat all required checks after correction. | Critical | Integration / c2j, Git, Nix; scripted assessment | `recipes/adaptive3/lifecycle.yaml`; `recipe-tests/adaptive3/lifecycle.test.yaml` |
+| Failed required verification prevents acceptance even when the assessor reports success. | Critical | Integration / c2j, Git, Nix | `recipes/adaptive3/validate.yaml`; `recipe-tests/adaptive3/lifecycle.test.yaml` |
+| Every phase retains factual, behavioral, dependency and required-check validation in its generated assessor instructions. | Critical | Integration / c2j, Nix | `recipes/adaptive3/prompts/validate.yaml`; `recipe-tests/adaptive3/change-count-scope.test.yaml` |
+| Direction continues requiring its per-cell scope table without requiring Outcome measurements. | High | Integration / c2j, Nix | `recipes/adaptive3/prompts/validate.yaml`; `recipe-tests/adaptive3/change-count-scope.test.yaml` |
+| A complete, consistent Outcome report reaches human review without a reporting correction. | Critical | Integration / c2j, Git, Nix; scripted assessment | `recipes/adaptive3/validate.yaml`; `recipe-tests/adaptive3/reporting.test.yaml` |
+| Corrected Outcome reports are assessed against freshly delivered candidate measurements before acceptance. | Critical | Integration / c2j, Git, Nix; scripted assessment | `recipes/adaptive3/validate.yaml`; `recipe-tests/adaptive3/reporting.test.yaml` |
+| Candidate measurements preserve exact text additions and removals while leaving binary line counts uncountable. | High | Unit / Python, PyYAML, Git | `recipes/adaptive3/tools.yaml`; `recipe-tests/adaptive3/test_tools.py` |
