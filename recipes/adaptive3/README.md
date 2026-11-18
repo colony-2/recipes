@@ -91,10 +91,11 @@ validation continues to use explicit workspace submission.
 
 ## Merge queue
 
-Set the public build input `merge_queue: true` to enable grouped integration.
-Enable it on workers and a JobDB with grouped recipe submission support. Publish
-`build.yaml`, `adaptive3.yaml`, `merge-batch.yaml`, `merge-check.yaml`, their
-includes, and the [queue extension](../merge-queue/op.yaml) together. The op
+Adaptive3 builds use grouped integration by default. Set `merge_queue: false`
+to merge directly. Grouped integration requires workers and a JobDB that support
+grouped recipe submission. Publish `build.yaml`, `adaptive3.yaml`,
+`merge-batch.yaml`, `merge-check.yaml`, their includes, and the
+[queue extension](../merge-queue/op.yaml) together. The op
 requires Git, uv, and Python 3.10 or newer on the worker. Its manifest declares
 an isolated Python environment with an empty library set. Git-backed jobs
 resolve the extension from the recipe's source revision.

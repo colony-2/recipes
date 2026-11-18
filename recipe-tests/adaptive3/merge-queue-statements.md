@@ -6,6 +6,15 @@ Production filenames below are relative to `recipes/adaptive3/`, except `./adapt
 
 Use a compatible c2j runtime and disposable repositories with real Git bundles and artifact storage. Nix is required for packaged agent ops, and uv with a compatible interpreter is required for the queue's Python op. Script agent decisions only. Integration cases run native workspaces, children, waits, the packaged Python op and merges. A negative case must reach its intended failure with unrelated prerequisites satisfied and have a passing control.
 
+## Build defaults
+
+Suite: `recipe-tests/adaptive3/default-build.test.yaml`.
+
+| ID | Expectation | Files | Priority | Level / dependencies |
+| --- | --- | --- | --- | --- |
+| MQ-69 | A build that omits the queue setting verifies and merges through the queue and publishes its confirmed commit. | `./build.yaml`, `./adaptive3.yaml`, `merge-queue-submit.yaml` | Critical | Integration / grouped c2j, Git, uv |
+| MQ-70 | A build with `merge_queue: false` merges directly without submitting to the queue. | `./build.yaml`, `./adaptive3.yaml`, `integration.yaml` | High | Integration / c2j, Git |
+
 ## Python op boundary
 
 Run the unit tests with `python3 -B -m unittest discover -s recipe-tests -p test_merge_queue.py`. The native replay, caller and selection suites also execute the extension.

@@ -1,4 +1,4 @@
-recipe: ../../build.yaml
+recipe: default-build.yaml
 cases:
 - id: default-public-explanation
   type: integration_case
@@ -7,7 +7,16 @@ cases:
       root:
         files:
           README.md: A small project.
-        file_sources:
+        file_sources: &build_sources
+          build.yaml: ../../build.yaml
+          adaptive3.yaml: ../../adaptive3.yaml
+          merge-batch.yaml: ../../merge-batch.yaml
+          merge-check.yaml: ../../merge-check.yaml
+          recipes/adaptive3: ../../recipes/adaptive3
+          recipes/merge-queue: ../../recipes/merge-queue
+          recipes/adaptive: ../../recipes/adaptive
+          recipes/kernel: ../../recipes/kernel
+          recipes/review-v2.yaml: ../../recipes/review-v2.yaml
           recipes/review-v2/op.yaml: ../../recipes/review-v2/op.yaml
           recipes/review-v2.py: ../../recipes/review-v2.py
     responses:
@@ -18,9 +27,10 @@ cases:
         attachments: []
         settings: {}
   inputs:
-    prompt: Explain this project.
-    title: Review the requested default build
-    type: build
+    build_inputs:
+      prompt: Explain this project.
+      title: Review the requested default build
+      type: build
   mocks:
     ops:
     - match:
@@ -82,22 +92,52 @@ cases:
     path: work_kind
     value: explanation
   - type: cel_true
-    expr: '!calls.exists(c,c.op=="merge")'
+    expr: '!calls.exists(c,c.op=="merge" || has(c.inputs.grouping))'
   - type: cel_true
     expr: calls.exists(c,c.node_path.startsWith("build/workflow/adaptive3/")) && !calls.exists(c,c.node_path.contains("adaptive2"))
   - type: cel_true
     expr: calls.exists(c,(c.op=="extension_execution" && has(c.inputs.inputs.prompt)) && c.inputs.inputs.prompt.contains("Review
       the requested default build"))
-- id: default-public-feature-native-merge
+- id: default-public-feature-queued-merge
   type: integration_case
   runtime:
+    backend: sqlite
     cells:
       root:
         files:
           README.md: A small project.
-        file_sources:
-          recipes/review-v2/op.yaml: ../../recipes/review-v2/op.yaml
-          recipes/review-v2.py: ../../recipes/review-v2.py
+          .c2/recipes/hooks/build/verify.yaml: |
+            id: verify
+            sequence:
+            - id: verify_marker
+              op: command_execution
+              inputs:
+                run: test "$(cat marker.txt)" = done
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: Marker verified.
+              artifact_refs: {}
+          .c2/recipes/hooks/build/publish.yaml: |
+            id: publish
+            inputs:
+              candidate: ${{ inputs.candidate }}
+            sequence:
+            - id: publish_marker
+              op: command_execution
+              inputs:
+                env:
+                  CANDIDATE: ${{ inputs.candidate }}
+                run: |
+                  set -eu
+                  test "$(git rev-parse HEAD)" = "$CANDIDATE"
+                  test "$(cat marker.txt)" = done
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: Published the caller commit.
+              artifact_refs: {}
+        file_sources: *build_sources
     responses:
     - node_path: build/workflow/adaptive3/direction/direction/adaptive3-lifecycle/cycle/cycle/adaptive3-cycle/review/review/adaptive3-review/discuss/discuss/adaptive3-discussion/ask/ask
       response:
@@ -120,12 +160,15 @@ cases:
     observe_files:
     - marker.txt
   inputs:
-    prompt: Add a marker file.
-    title: Review the requested default build
-    type: build
-  mocks: &feature_mocks
+    build_inputs:
+      prompt: Add a marker file.
+      title: Review the requested default build
+      type: build
+      require_verification: true
+  mocks:
     ops:
-    - match:
+    - &write_direction
+      match:
         selector: nix:github:colony-2/c2ops/published#codex
       behavior:
         mode: return
@@ -153,7 +196,8 @@ cases:
         artifacts:
           review/README.md: |
             # Requested outcome
-    - match:
+    - &assess_direction
+      match:
         selector: nix:github:colony-2/c2ops/published#codex
       behavior:
         mode: return
@@ -169,7 +213,8 @@ cases:
               type: c2ops.codex.session/v1
               metadata:
                 label: Checked the assignment.
-    - match:
+    - &answer_question
+      match:
         selector: nix:github:colony-2/c2ops/published#codex
       behavior:
         mode: return
@@ -185,7 +230,8 @@ cases:
               type: c2ops.codex.session/v1
               metadata:
                 label: Planning discussion.
-    - match:
+    - &prepare_plan
+      match:
         selector: nix:github:colony-2/c2ops/published#codex
       behavior:
         mode: return
@@ -212,7 +258,8 @@ cases:
                 label: Current work is ready.
         artifacts:
           review/README.md: '# Test plan'
-    - match:
+    - &assess_plan
+      match:
         selector: nix:github:colony-2/c2ops/published#codex
       behavior:
         mode: return
@@ -228,7 +275,8 @@ cases:
               type: c2ops.codex.session/v1
               metadata:
                 label: Checked the assignment.
-    - match:
+    - &implement_change
+      match:
         selector: nix:github:colony-2/c2ops/published#codex
       behavior:
         mode: return
@@ -258,7 +306,8 @@ cases:
               done
         artifacts:
           review/README.md: '# Implementation'
-    - match:
+    - &assess_implementation
+      match:
         selector: nix:github:colony-2/c2ops/published#codex
       behavior:
         mode: return
@@ -274,7 +323,8 @@ cases:
               type: c2ops.codex.session/v1
               metadata:
                 label: Checked the assignment.
-    - match:
+    - &write_outcome
+      match:
         selector: nix:github:colony-2/c2ops/published#codex
       behavior:
         mode: return
@@ -303,7 +353,8 @@ cases:
           review/README.md: |-
             # Outcome
             A marker was added.
-    - match:
+    - &assess_outcome
+      match:
         selector: nix:github:colony-2/c2ops/published#codex
       behavior:
         mode: return
@@ -319,28 +370,38 @@ cases:
               type: c2ops.codex.session/v1
               metadata:
                 label: Checked the assignment.
-    - match:
+    - &run_commands
+      match:
         op: command_execution
       repeat: true
       behavior:
         mode: passthrough
-    - match:
+    - &run_rebase
+      match:
         op: rebase
       repeat: true
       behavior:
         mode: passthrough
-    - match:
+    - &run_squash
+      match:
         op: squash
       repeat: true
       behavior:
         mode: passthrough
-    - match:
+    - &run_merge
+      match:
         op: merge
       repeat: true
       behavior:
         mode: passthrough
-    - match:
+    - &run_review
+      match:
         selector: ./recipes/review-v2
+      repeat: true
+      behavior:
+        mode: passthrough
+    - match:
+        selector: ./recipes/merge-queue
       repeat: true
       behavior:
         mode: passthrough
@@ -355,7 +416,13 @@ cases:
   - type: cel_true
     expr: calls.filter(c,c.op=="extension_execution" && has(c.inputs.inputs.prompt)).all(c,!c.node_path.contains("/integration/"))
   - type: cel_true
-    expr: outputs.merge.merged_hash != ""
+    expr: outputs.merge.merged_hash.matches("^[0-9a-f]{40}$") && outputs.publication.status=="passed"
+  - type: cel_true
+    expr: size(calls.filter(c,c.op=="recipe.run_and_get_result" && has(c.inputs.grouping)))==1
+  - type: cel_true
+    expr: size(calls.filter(c,c.op=="merge"))==1 && calls.exists(c,c.op=="merge" && c.node_path.startsWith("adaptive3-merge-batch/"))
+  - type: cel_true
+    expr: size(calls.filter(c,c.node_path.endsWith("/verify_marker")))==2
   - type: cel_true
     expr: repositories.root.files["marker.txt"] == "done\n"
   - type: cel_true
@@ -392,9 +459,7 @@ cases:
               status: passed
               summary: Candidate verified.
               artifact_refs: {}
-        file_sources:
-          recipes/review-v2/op.yaml: ../../recipes/review-v2/op.yaml
-          recipes/review-v2.py: ../../recipes/review-v2.py
+        file_sources: *build_sources
     responses:
     - node_path: build/workflow/adaptive3/direction/direction/adaptive3-lifecycle/cycle/cycle/adaptive3-cycle/review/review/adaptive3-review/discuss/discuss/adaptive3-discussion/ask/ask
       response:
@@ -418,11 +483,28 @@ cases:
     - marker.txt
     - upstream.txt
   inputs:
-    prompt: Add a marker file.
-    require_verification: true
-    title: Review the requested default build
-    type: build
-  mocks: *feature_mocks
+    build_inputs:
+      prompt: Add a marker file.
+      require_verification: true
+      title: Review the requested default build
+      type: build
+      merge_queue: false
+  mocks:
+    ops:
+    - *write_direction
+    - *assess_direction
+    - *answer_question
+    - *prepare_plan
+    - *assess_plan
+    - *implement_change
+    - *assess_implementation
+    - *write_outcome
+    - *assess_outcome
+    - *run_commands
+    - *run_rebase
+    - *run_squash
+    - *run_merge
+    - *run_review
   assertions:
   - type: cel_true
     expr: calls.filter(c,c.node_path.contains("/adaptive3-discussion/answer/") && c.op=="extension_execution")[0].inputs.inputs.session ==
@@ -430,7 +512,9 @@ cases:
   - type: cel_true
     expr: outputs.merge.merged_hash != "" && repositories.root.files["upstream.txt"] == "concurrent upstream change\n"
   - type: cel_true
-    expr: size(reviews) == 3 && size(calls.filter(c,c.op=="merge")) == 2
+    expr: size(reviews) == 3 && size(calls.filter(c,c.op=="merge" && c.node_path.startsWith("build/workflow/adaptive3/"))) == 2
+  - type: cel_true
+    expr: '!calls.exists(c,has(c.inputs.grouping))'
   - type: cel_true
     expr: size(calls.filter(c,c.node_path.endsWith("/verify_candidate"))) == 2
   - type: cel_true
@@ -471,6 +555,7 @@ cases:
               summary: Backgrounders are available and verification ran.
               artifact_refs: {}
         file_sources:
+          <<: *build_sources
           guides/self-improvement/README.md: ../../guides/self-improvement/README.md
           guides/self-improvement/BACKGROUND.md: ../../guides/self-improvement/BACKGROUND.md
           guides/self-improvement/AUDITING.md: ../../guides/self-improvement/AUDITING.md
@@ -481,8 +566,6 @@ cases:
           guides/RECIPE_IMPROVEMENT_GUIDE.md: ../../guides/RECIPE_IMPROVEMENT_GUIDE.md
           .agents/skills/audit-recipe-jobs/SKILL.md: ../../.agents/skills/audit-recipe-jobs/SKILL.md
           .agents/skills/audit-recipe-jobs/agents/openai.yaml: ../../.agents/skills/audit-recipe-jobs/agents/openai.yaml
-          recipes/review-v2/op.yaml: ../../recipes/review-v2/op.yaml
-          recipes/review-v2.py: ../../recipes/review-v2.py
     responses:
     - node_path: build/workflow/adaptive3/direction/direction/adaptive3-lifecycle/cycle/cycle/adaptive3-cycle/review/review/adaptive3-review/discuss/discuss/adaptive3-discussion/ask/ask
       response:
@@ -499,23 +582,25 @@ cases:
     observe_files:
     - marker.txt
   inputs:
-    prompt: |-
-      Use $audit-recipe-jobs to audit job behavior and implement justified recipe improvements.
+    build_inputs:
+      prompt: |-
+        Use $audit-recipe-jobs to audit job behavior and implement justified recipe improvements.
 
-      JobDB: http://audit.invalid/c2
-      Scope: Jobs created from 2026-11-07T00:00:00Z to 2026-11-08T00:00:00Z; include failed and successful jobs.
-      Constraints: Preserve 100% of accepted scope.
-      Do not modify audited jobs.
-      Inspect review questions and child recovery.
-    title: Recipe improvement fixture
-    type: build
-    documents:
-      previous-audit.md:
-        kind: value
-        name: previous-audit.md
-        format: text
-        value: 'Prior cohort: repeated requests for retained inputs.'
-    require_verification: true
+        JobDB: http://audit.invalid/c2
+        Scope: Jobs created from 2026-11-07T00:00:00Z to 2026-11-08T00:00:00Z; include failed and successful jobs.
+        Constraints: Preserve 100% of accepted scope.
+        Do not modify audited jobs.
+        Inspect review questions and child recovery.
+      title: Recipe improvement fixture
+      type: build
+      documents:
+        previous-audit.md:
+          kind: value
+          name: previous-audit.md
+          format: text
+          value: 'Prior cohort: repeated requests for retained inputs.'
+      require_verification: true
+      merge_queue: false
   mocks:
     ops:
     - match:
