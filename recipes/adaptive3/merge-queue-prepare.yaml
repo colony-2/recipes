@@ -4,56 +4,24 @@ inputs:
   previous: ${{ inputs.?previous.orValue({}) }}
 sequence:
 - id: identify
-  op: command_execution
+  op: ./recipes/merge-queue
   const: true
-  execution_needs:
-    packages:
-    - nix:github:NixOS/nixpkgs/e7439b6b14ad3cc35d05608ebca9bce01a25f5f8#python3
   inputs:
-    env:
-      BASE: ${{ context.git.execution.base_hash }}
-      MESSAGE: ${{ inputs.message }}
-      PREVIOUS: ${{ json_stringify(inputs.previous) }}
-    run: |
-      python3 - <<'PY'
-      import json
-      import os
-      import re
-      import secrets
-      import subprocess
-      import time
-
-      def git(*args):
-          return subprocess.check_output(["git", *args], text=True).strip()
-
-      base, head = os.environ["BASE"], git("rev-parse", "HEAD")
-      previous = json.loads(os.environ["PREVIOUS"])
-      changed = git("rev-parse", base + "^{tree}") != git("rev-parse", head + "^{tree}")
-      existing = previous.get("head_hash") == head and previous.get("base_hash") == base
-      result = {"changed": changed, "existing": existing}
-      if changed and not existing:
-          value = int.from_bytes((int(time.time()) - 1400000000).to_bytes(4, "big") + secrets.token_bytes(16), "big")
-          alphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
-          encoded = ""
-          while value:
-              value, remainder = divmod(value, 62)
-              encoded = alphabet[remainder] + encoded
-          change_id = encoded.rjust(27, "0")
-          lines = os.environ["MESSAGE"].splitlines()
-          message = "\n".join(line for line in lines if not re.match(r"^Change-Id:", line, flags=re.I)).strip()
-          result.update(changeid=change_id, message=f"{message}\n\nChange-Id: {change_id}")
-      print(json.dumps(result))
-      PY
+    action: prepare
+    request:
+      base: ${{ context.git.execution.base_hash }}
+      message: ${{ inputs.message }}
+      previous: ${{ inputs.previous }}
 - id: squash
   op: squash
-  when: json_parse(sequence.identify.outputs.stdout).changed && !json_parse(sequence.identify.outputs.stdout).existing
+  when: sequence.identify.outputs.result.changed && !sequence.identify.outputs.result.existing
   inputs:
-    commit_message: ${{ json_parse(sequence.identify.outputs.stdout).message }}
+    commit_message: ${{ sequence.identify.outputs.result.message }}
 outputs:
   candidate: >-
-    ${{ json_parse(sequence.identify.outputs.stdout).changed && !json_parse(sequence.identify.outputs.stdout).existing ? {
-      'changeid':json_parse(sequence.identify.outputs.stdout).changeid,
+    ${{ sequence.identify.outputs.result.changed && !sequence.identify.outputs.result.existing ? {
+      'changeid':sequence.identify.outputs.result.changeid,
       'base_hash':sequence.squash.outputs.squashed_commits.base_hash,
       'head_hash':sequence.squash.outputs.squashed_hash,
       'thinpack_ref':sequence.squash.artifacts['__git_state_thin_pack__']
-    } : (json_parse(sequence.identify.outputs.stdout).existing ? inputs.previous : {}) }}
+    } : (sequence.identify.outputs.result.existing ? inputs.previous : {}) }}

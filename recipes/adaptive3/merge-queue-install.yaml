@@ -6,61 +6,13 @@ inputs:
 sequence:
 - id: install
   when: inputs.head != inputs.base
-  op: command_execution
-  execution_needs:
-    packages:
-    - nix:github:NixOS/nixpkgs/e7439b6b14ad3cc35d05608ebca9bce01a25f5f8#python3
+  op: ./recipes/merge-queue
   artifacts:
     assembled.bundle: ${{ inputs.bundle }}
   inputs:
-    env:
-      ASSEMBLED_BASE: ${{ inputs.base }}
-      ASSEMBLED_HEAD: ${{ inputs.head }}
-      INBOX: ${{ context.environment.op.inbox }}
-    run: |
-      python3 - <<'PY'
-      import os
-      import re
-      import signal
-      import subprocess
-      from pathlib import Path
-
-      def git(*args):
-          return subprocess.check_output(["git", "-c", "core.hooksPath=/dev/null", *args])
-
-      git_dir = Path(git("rev-parse", "--absolute-git-dir").decode().rstrip("\n"))
-
-      def require_clean(expected):
-          if (git("rev-parse", "HEAD").strip() != expected.encode() or
-              git("status", "--porcelain", "--untracked-files=all") or
-              any((git_dir / name).exists() for name in
-                  ("CHERRY_PICK_HEAD", "REVERT_HEAD", "MERGE_HEAD", "rebase-merge", "rebase-apply", "sequencer"))):
-              raise RuntimeError("Assembly installation requires the expected clean Git workspace")
-
-      def interrupted(signum, _frame):
-          raise InterruptedError(f"Merge queue installation interrupted by signal {signum}")
-
-      base, head = (os.environ[name] for name in ("ASSEMBLED_BASE", "ASSEMBLED_HEAD"))
-      if not all(re.fullmatch("[0-9a-f]{40}", commit) for commit in (base, head)):
-          raise RuntimeError("Merge queue installation requires full Git commit hashes")
-      require_clean(base)
-      bundle = str(Path(os.environ["INBOX"]) / "assembled.bundle")
-      advertised = git("bundle", "list-heads", bundle).splitlines()
-      if advertised != [f"{head} refs/heads/merge-queue-assembled".encode()]:
-          raise RuntimeError("Assembled bundle does not advertise the expected head")
-      git("bundle", "verify", bundle)
-      git("bundle", "unbundle", bundle)
-      git("merge-base", "--is-ancestor", base, head)
-
-      for signum in (signal.SIGINT, signal.SIGTERM):
-          signal.signal(signum, interrupted)
-      try:
-          git("reset", "--hard", head)
-          require_clean(head)
-      except BaseException:
-          git("reset", "--hard", base)
-          require_clean(base)
-          raise
-      PY
+    action: install
+    request:
+      base: ${{ inputs.base }}
+      head: ${{ inputs.head }}
 outputs:
   head: ${{ inputs.head }}

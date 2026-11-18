@@ -5,125 +5,15 @@ inputs:
   appends: ${{ inputs.appends }}
 sequence:
 - id: inspect
-  op: command_execution
+  op: ./recipes/merge-queue
   const: true
-  execution_needs:
-    packages:
-    - nix:github:NixOS/nixpkgs/e7439b6b14ad3cc35d05608ebca9bce01a25f5f8#python3
-  artifacts:
-    queue-input.json:
-      kind: value
-      name: queue-input.json
-      format: json
-      value:
-        appends: ${{ inputs.appends }}
-        policy: ${{ inputs.policy }}
-        branch: ${{ inputs.branch }}
-        repository: ${{ context.git.repo }}
   inputs:
-    env:
-      INBOX: ${{ context.environment.op.inbox }}
-      OUTBOX: ${{ context.environment.op.outbox }}
-    run: |
-      python3 - <<'PY'
-      import datetime
-      import json
-      import os
-      import posixpath
-      import re
-      import subprocess
-      from pathlib import Path
-
-      def git(*args):
-          return subprocess.check_output(["git", *args])
-
-      def policy_key(policy):
-          if (type(policy) is not dict or set(policy) !=
-              {"version", "require_verification", "target_directory", "settings"} or
-              type(policy["version"]) is not int or policy["version"] != 1 or
-              type(policy["require_verification"]) is not bool or type(policy["settings"]) is not dict):
-              raise ValueError("Invalid verification policy")
-          directory = policy["target_directory"]
-          if (type(directory) is not str or not directory or posixpath.normpath(directory) != directory or
-              directory.startswith(("/", "../")) or directory == ".." or "\0" in directory or "\\" in directory):
-              raise ValueError("Verification directory must be normalized and inside the cell")
-          return json.dumps(policy, sort_keys=True, separators=(",", ":"))
-
-      def saved_hashes(ids, base, branch):
-          if not ids:
-              return {}
-          if git("rev-parse", "--is-shallow-repository").strip() == b"true":
-              git("fetch", "--unshallow", "--no-tags", "origin", branch)
-          history = git("log", "-z", "--format=%H%x00%(trailers:key=Change-Id,valueonly,separator=%x1f)", base)
-          parts = history.split(b"\0")
-          found = {}
-          for raw_hash, value in zip(parts[::2], parts[1::2]):
-              for raw_id in value.strip().split(b"\x1f"):
-                  change_id = raw_id.decode(errors="replace")
-                  if change_id not in ids:
-                      continue
-                  if change_id in found:
-                      raise RuntimeError(f"Upstream contains multiple Change-Id trailers for {change_id}")
-                  found[change_id] = raw_hash.decode()
-          if ids - found.keys() and git("rev-parse", "--is-shallow-repository").strip() != b"false":
-              raise RuntimeError("Incomplete published history cannot establish whether candidate IDs already landed")
-          return found
-
-      data = json.loads((Path(os.environ["INBOX"]) / "queue-input.json").read_text())
-      output = Path(os.environ["OUTBOX"])
-      authority = policy_key(data["policy"])
-      branch = data["branch"]
-      if not branch.startswith("refs/heads/"):
-          raise ValueError("Queue requires a canonical branch ref")
-      git("check-ref-format", branch)
-      base = git("rev-parse", "HEAD").decode().strip()
-      accepted, rejected = {}, {}
-      for append in data["appends"]:
-          content = append.get("content")
-          if type(content) is not dict or not re.fullmatch("[0-9A-Za-z]{27}", str(content.get("changeid", ""))):
-              raise ValueError("Queue append does not identify a usable Change-Id")
-          change_id = content["changeid"]
-          try:
-              if type(content.get("version")) is not int or content["version"] != 1:
-                  raise ValueError("Unknown merge queue contribution version")
-              if content.get("repository") != data["repository"] or content.get("branch") != branch:
-                  raise ValueError("Contribution target differs from the batch target")
-              if policy_key(content.get("verification_policy")) != authority:
-                  raise ValueError("Contribution verification policy differs from the batch policy")
-              if any(not re.fullmatch("[0-9a-f]{40}", str(content.get(key, ""))) for key in ("base_hash", "head_hash")):
-                  raise ValueError("Contribution requires full Git hashes")
-              age = content.get("initial_submitted_at")
-              if type(age) is not str or not re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{9}Z", age):
-                  raise ValueError("Contribution is missing its initial UTC submission time")
-              datetime.datetime.fromisoformat(age[:-1] + "+00:00")
-              refs = append.get("artifacts", [])
-              ref = content.get("thinpack_ref")
-              if (type(refs) is not list or len(refs) != 1 or type(refs[0]) is not dict or
-                  type(ref) is not dict or ref.get("kind") != "stored" or
-                  refs[0].get("stored") != ref.get("stored") or
-                  not ref.get("stored", {}).get("key", {}).get("jobId") or
-                  ref["stored"]["key"]["jobId"] != content.get("job_id")):
-                  raise ValueError("Contribution bundle must be bound to its originating job")
-              item = {key: content[key] for key in
-                      ("changeid", "repository", "base_hash", "head_hash", "initial_submitted_at", "thinpack_ref")}
-              previous = accepted.get(change_id)
-              if previous and any(previous[key] != item[key] for key in
-                                  ("repository", "base_hash", "head_hash", "initial_submitted_at")):
-                  raise ValueError("Duplicate Change-Id names different source commits or submission times")
-              accepted.setdefault(change_id, item)
-          except ValueError as error:
-              (output / f"{change_id}.log").write_text(str(error) + "\n")
-              rejected[change_id] = {"changeid": change_id, "status": "fail-validation"}
-      for change_id in rejected:
-          accepted.pop(change_id, None)
-      landed = saved_hashes(accepted.keys(), base, branch)
-      results = list(rejected.values()) + [
-          {"changeid": change_id, "status": "success", "hash": commit} for change_id, commit in landed.items()
-      ]
-      queued = sorted((value for key, value in accepted.items() if key not in landed),
-                      key=lambda value: (value["initial_submitted_at"], value["changeid"]))
-      print(json.dumps({"base": base, "pending": queued, "results": results}, separators=(",", ":")))
-      PY
+    action: intake
+    request:
+      branch: ${{ inputs.branch }}
+      policy: ${{ inputs.policy }}
+      appends: ${{ inputs.appends }}
+      repository: ${{ context.git.repo }}
 outputs:
-  intake: ${{ json_parse(sequence.inspect.outputs.stdout) }}
+  intake: ${{ sequence.inspect.outputs.result }}
   artifacts: ${{ sequence.inspect.artifacts }}

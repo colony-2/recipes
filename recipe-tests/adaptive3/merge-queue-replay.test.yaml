@@ -2,10 +2,18 @@ recipe: merge-queue-replay.yaml
 cases:
 - id: preserves-ordered-commit-sequence
   type: integration_case
-  runtime: {}
+  runtime: &cell
+    cells:
+      root:
+        file_sources:
+          recipes/merge-queue: ../../recipes/merge-queue
   inputs: {scenario: ordinary}
   mocks:
     ops:
+    - &queue_op
+      match: {selector: ./recipes/merge-queue}
+      repeat: true
+      behavior: {mode: passthrough}
     - &command
       match: {op: command_execution}
       repeat: true
@@ -16,12 +24,16 @@ cases:
   - type: cel_true
     expr: outputs.assembly.results[1].previous_head==outputs.assembly.results[0].hash &&
       outputs.assembly.results[2].previous_head==outputs.assembly.results[1].hash
+  - type: cel_true
+    expr: calls.filter(c,c.op=='extension_execution' && c.inputs.selector=='./recipes/merge-queue')
+      .map(c,c.inputs.inputs.action)==['assemble','install']
 - id: conflict-leaves-older-and-younger-changes
   type: integration_case
-  runtime: {}
+  runtime: *cell
   inputs: {scenario: conflict}
   mocks:
     ops:
+    - *queue_op
     - *command
   assertions:
   - type: cel_true
@@ -30,20 +42,22 @@ cases:
     expr: outputs.assembly.results[0].hash==outputs.assembly.results[2].previous_head
 - id: empty-source-preserves-commit
   type: integration_case
-  runtime: {}
+  runtime: *cell
   inputs: {scenario: empty}
   mocks:
     ops:
+    - *queue_op
     - *command
   assertions:
   - type: cel_true
     expr: outputs.verified && outputs.assembly.results[1].status=="applied" && outputs.assembly.results[1].empty
 - id: malformed-bundle-is-rejected-without-a-conflict-or-residual-edits
   type: integration_case
-  runtime: {}
+  runtime: *cell
   inputs: {scenario: malformed}
   mocks:
     ops:
+    - *queue_op
     - *command
   assertions:
   - type: cel_true

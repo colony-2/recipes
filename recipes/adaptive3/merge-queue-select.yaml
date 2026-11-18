@@ -15,61 +15,15 @@ state:
         evidence: ${{ transition.payload.?evidence.orValue([inputs.full_check,{'ids':[],'passed':true,'logs':{},'summary':''}]) }}
       sequence:
       - id: decide
-        op: command_execution
+        op: ./recipes/merge-queue
         const: true
-        execution_needs:
-          packages:
-          - nix:github:NixOS/nixpkgs/e7439b6b14ad3cc35d05608ebca9bce01a25f5f8#python3
         inputs:
-          env:
-            IDS: ${{ json_stringify(inputs.ids) }}
-            CHECKS: ${{ json_stringify(inputs.evidence.map(c,{'ids':c.ids,'passed':c.passed})) }}
-          run: |
-            python3 - <<'PY'
-            import json
-            import os
-
-            ids = json.loads(os.environ["IDS"])
-            checks = {tuple(check["ids"]): check["passed"] for check in json.loads(os.environ["CHECKS"])}
-            full = tuple(ids)
-
-            def priority(group):
-                return tuple(item in group for item in ids)
-
-            def unseen(groups):
-                return sorted(set(groups) - checks.keys(), key=priority, reverse=True)
-
-            def split(group):
-                if group not in checks:
-                    yield group
-                elif not checks[group] and len(group) > 1:
-                    middle = len(group) // 2
-                    yield from split(group[:middle])
-                    yield from split(group[middle:])
-
-            def combine(left, right):
-                return tuple(item for item in ids if item in left or item in right)
-
-            if frontier := unseen(split(full)):
-                plan = {"probes": frontier[:4]}
-            else:
-                passing = [group for group, passed in checks.items() if passed]
-                best = max(passing, key=priority)
-                trials = []
-                for offset, item in enumerate(ids):
-                    if item in best:
-                        continue
-                    older = tuple(previous for previous in ids[:offset] if previous in best)
-                    for support in [(item,)] + [group for group in passing if item in group]:
-                        trials += [combine(best, support), combine(older, support)]
-                probes = unseen(group for group in trials if priority(group) > priority(best))
-                plan = {"probes": probes[:4]} if probes else {"probes": [], "selected": best}
-            if plan["probes"] and len(checks) + len(plan["probes"]) > 4 * len(ids) + 1:
-                raise RuntimeError("Bounded merge queue subset search needs more evidence")
-            print(json.dumps(plan))
-            PY
+          action: plan_probes
+          request:
+            ids: ${{ inputs.ids }}
+            evidence: ${{ inputs.evidence.map(c,{'ids':c.ids,'passed':c.passed}) }}
       outputs:
-        decision: ${{ json_parse(sequence.decide.outputs.stdout) }}
+        decision: ${{ sequence.decide.outputs.result }}
         evidence: ${{ inputs.evidence }}
       transitions:
       - to: probe
@@ -115,25 +69,17 @@ state:
         base: ${{ inputs.base }}
       sequence:
       - id: validate
-        op: command_execution
+        op: ./recipes/merge-queue
         const: true
         inputs:
-          env:
-            VALID: >-
-              ${{ string(size(inputs.cases)==size(inputs.children) && inputs.children.all(c,
-                c.status=='completed' && c.outputs.policy==inputs.policy && c.outputs.assembly.base==inputs.base &&
-                (c.outputs.assembly.head==inputs.base || c.outputs.verified_head==c.outputs.assembly.head) &&
-                !c.outputs.verification.?failure.hasValue() &&
-                c.outputs.verification.status in ['passed','skipped','changes'])) }}
-          run: test "$VALID" = true
+          action: record_probes
+          request:
+            cases: ${{ inputs.cases }}
+            children: ${{ inputs.children }}
+            policy: ${{ inputs.policy }}
+            base: ${{ inputs.base }}
       outputs:
-        checks: >-
-          ${{ inputs.children.map(c,{
-            'ids':inputs.cases[int(c.key)],
-            'passed':c.outputs.verification.status in ['passed','skipped'] &&
-              c.outputs.assembly.results.all(r,r.status=='applied'),
-            'logs':c.outputs.artifacts,
-            'summary':c.outputs.verification.summary}) }}
+        checks: ${{ sequence.validate.outputs.result.checks }}
       transitions:
       - to: plan
         when: 'true'

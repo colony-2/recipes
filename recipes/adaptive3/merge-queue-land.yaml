@@ -123,46 +123,21 @@ state:
         evidence: ${{ state_output('select','evidence',[]) }}
       sequence:
       - id: record
-        op: command_execution
+        op: ./recipes/merge-queue
         const: true
-        execution_needs:
-          packages:
-          - nix:github:NixOS/nixpkgs/e7439b6b14ad3cc35d05608ebca9bce01a25f5f8#python3
         inputs:
-          env:
-            REPLAY: ${{ json_stringify(inputs.replay) }}
-            LANDED: ${{ json_stringify(inputs.landed) }}
-            EVIDENCE: ${{ json_stringify(inputs.evidence.map(e,{'ids':e.ids,'passed':e.passed,'summary':e.summary})) }}
-            OUTBOX: ${{ context.environment.op.outbox }}
-          run: |
-            python3 - <<'PY'
-            import json
-            import os
-            from pathlib import Path
-
-            landed = {row["changeid"] for row in json.loads(os.environ["LANDED"])}
-            evidence = json.loads(os.environ["EVIDENCE"])
-            outbox = Path(os.environ["OUTBOX"])
-            for row in json.loads(os.environ["REPLAY"]):
-                change_id = row["changeid"]
-                if change_id in landed or row["status"] != "applied":
-                    continue
-                failures = [probe["summary"] for probe in evidence if not probe["passed"] and change_id in probe["ids"]]
-                if not failures:
-                    raise RuntimeError(f"Missing validation evidence for {change_id}")
-                (outbox / f"{change_id}.log").write_text("\n".join(dict.fromkeys(failures)) + "\n")
-            PY
+          action: landing_results
+          request:
+            landed: ${{ inputs.landed }}
+            replay: ${{ inputs.replay }}
+            replay_logs: ${{ inputs.replay_logs }}
+            evidence: ${{ inputs.evidence }}
       outputs:
         results: >-
-          ${{ inputs.landed +
-            inputs.replay.filter(r,!inputs.landed.exists(l,l.changeid==r.changeid)).map(r,
-              r.status=='fail-conflict'
-              ? {'changeid':r.changeid,'status':r.status,'failure_logs':[inputs.replay_logs[r.changeid+'.log']]}
-              : {'changeid':r.changeid,'status':'fail-validation','failure_logs':
-                (r.status=='fail-validation' ? [inputs.replay_logs[r.changeid+'.log']] :
-                  [sequence.record.artifacts[r.changeid+'.log']] +
-                  jq(inputs.evidence.filter(e,!e.passed && r.changeid in e.ids).map(e,
-                    e.logs.filter(k,k!='assembled.bundle').map(k,e.logs[k])), "flatten"))}) }}
+          ${{ sequence.record.outputs.result.results.map(r,
+            r.?log_name.hasValue()
+              ? jq([r,{'failure_logs':[sequence.record.artifacts[r.log_name]]+r.failure_logs}],'add | del(.log_name)')
+              : r) }}
     operational:
       op: command_execution
       const: true

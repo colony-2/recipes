@@ -63,38 +63,15 @@ sequence:
           maxLength: 4096
 - id: capture
   when: sequence.repair.outputs.response.status=='resolved'
-  op: command_execution
+  op: ./recipes/merge-queue
   const: true
-  execution_needs:
-    packages:
-    - nix:github:NixOS/nixpkgs/e7439b6b14ad3cc35d05608ebca9bce01a25f5f8#python3
   artifacts:
     original.paths: ${{ inputs.artifacts[inputs.conflict.changeid+'.paths'] }}
   inputs:
-    env:
-      PREFIX: ${{ inputs.conflict.previous_head }}
-      INBOX: ${{ context.environment.op.inbox }}
-      OUTBOX: ${{ context.environment.op.outbox }}
-      SUMMARY: ${{ sequence.repair.outputs.response.summary }}
-    run: |
-      python3 - <<'PY'
-      import os
-      import subprocess
-      from pathlib import Path
-
-      def git(*args):
-          return subprocess.check_output(["git", *args])
-
-      prefix = os.environ["PREFIX"]
-      permitted = set((Path(os.environ["INBOX"]) / "original.paths").read_bytes().split(b"\0"))
-      touched = set(git("diff", "--no-renames", "--name-only", "-z", prefix, "HEAD", "--").split(b"\0"))
-      if touched <= permitted and subprocess.call(["git", "merge-base", "--is-ancestor", prefix, "HEAD"]) == 0:
-          output = Path(os.environ["OUTBOX"])
-          patch = git("diff", "--binary", "--full-index", "--no-renames", "--no-ext-diff", "--no-textconv",
-                      prefix, "HEAD", "--")
-          (output / "repair.diff").write_bytes(patch)
-          (output / "repair.txt").write_text(os.environ["SUMMARY"] + "\n")
-      PY
+    action: capture_repair
+    request:
+      prefix: ${{ inputs.conflict.previous_head }}
+      summary: ${{ sequence.repair.outputs.response.summary }}
 outputs:
   repair: >-
     ${{ sequence[?'capture'].orValue({}).?artifacts.orValue({})[?'repair.diff'].hasValue()

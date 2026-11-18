@@ -4,7 +4,18 @@ These expectations are defined before implementation. None is a passing test res
 
 Production filenames below are relative to `recipes/adaptive3/`, except `./adaptive3.yaml` at repository root. Each section names its planned suite under `recipe-tests/adaptive3/`; that suite applies to every row in the section. Proposed filenames do not imply delivered code.
 
-Use the compatible pinned c2j runtime and disposable repositories with real Git bundles and artifact storage. Nix is also required wherever retained selector-backed operations resolve, including scripted agent cases. Script agent decisions only. Integration cases run native workspaces, children, waits and merges; Git replay runs through Recipes-owned Python and command execution. A negative case must reach its intended failure with unrelated prerequisites satisfied, and have a passing control. Required acceptance reports failure when behavior fails.
+Use a compatible c2j runtime and disposable repositories with real Git bundles and artifact storage. Nix is required for packaged agent ops, and uv with a compatible interpreter is required for the queue's Python op. Script agent decisions only. Integration cases run native workspaces, children, waits, the packaged Python op and merges. A negative case must reach its intended failure with unrelated prerequisites satisfied and have a passing control.
+
+## Python op boundary
+
+Run the unit tests with `python3 -B -m unittest discover -s recipe-tests -p test_merge_queue.py`. The native replay, caller and selection suites also execute the extension.
+
+| ID | Expectation | Files | Priority | Level / dependencies |
+| --- | --- | --- | --- | --- |
+| MQ-65 | Native queue tasks exchange structured results and bundle artifacts through the packaged Python op. | `recipes/merge-queue/op.yaml`, `merge-queue-replay.yaml`, `merge-queue-install.yaml` | Critical | Integration / c2j, uv, Git |
+| MQ-66 | Missing, duplicate, stale or mismatched check results cannot establish passing subset evidence. | `recipes/merge-queue/policy.py`, `merge-queue-select.yaml` | Critical | Unit / Python |
+| MQ-67 | Subset planning prioritizes older compatible work within its probe budget and surfaces exhaustion as an operational failure. | `recipes/merge-queue/policy.py` | High | Unit / Python |
+| MQ-68 | A caller accepts only its own uniquely identified result in a complete receipt for the expected branch. | `recipes/merge-queue/policy.py`, `merge-queue-submit.yaml` | Critical | Unit and integration / Python, c2j |
 
 ## Candidate preparation
 
@@ -138,5 +149,5 @@ Finish with a real grouped receiving flow on the selected supported local backen
 
 Scripted repair choices verify routing and rollback, not Codex confidence or semantic equivalence. Exact optimum, global oldest-first scheduling and starvation freedom across sealed generations are not asserted. If exact optimization is selected, add acceptance for discovering feasible older-dependent combinations before claiming that stronger guarantee.
 
-The replay helper runs through command execution in the recipes cell. The
+The replay helper runs through the Recipes-owned Python extension op. The
 statements describe acceptance requirements for the queue.

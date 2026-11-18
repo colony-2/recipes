@@ -93,9 +93,13 @@ validation continues to use explicit workspace submission.
 
 Set the public build input `merge_queue: true` to enable grouped integration.
 Enable it on workers and a JobDB with grouped recipe submission support. Publish
-`build.yaml`, `adaptive3.yaml`, `merge-batch.yaml`, `merge-check.yaml`, and their
-includes together so a caller and its receiver can use the same recipe revision.
-See the [grouping contract](https://github.com/colony-2/c2j/blob/12cee9e70f04826adf073ba4b5e34deb388df691/GUIDE-Recipe-Grouping.md).
+`build.yaml`, `adaptive3.yaml`, `merge-batch.yaml`, `merge-check.yaml`, their
+includes, and the [queue extension](../merge-queue/op.yaml) together. The op
+requires Git, uv, and Python 3.10 or newer on the worker. Its manifest declares
+an isolated Python environment with an empty library set. Git-backed jobs
+resolve the extension from the recipe's source revision.
+[Extension Python environments](https://github.com/colony-2/c2j/blob/main/EXTENSION_OPS.md#python-libraries) ·
+[Grouping contract](https://github.com/colony-2/c2j/blob/12cee9e70f04826adf073ba4b5e34deb388df691/GUIDE-Recipe-Grouping.md)
 
 The caller refreshes retained work before implementation. After preparation it
 squashes changes into one commit with a durable KSUID Change-Id, verifies the
@@ -104,13 +108,13 @@ same change retains its initial submission time on retry. The queue groups by
 cell and canonical branch ref, with up to 50 contributions per serial batch.
 Each batch uses the creator's verification policy.
 
-Python replays each source commit in a disposable Git checkout, preserving its
-author, message, and Change-Id. The receiver can try one narrow conflict repair
-against the older accepted prefix. It verifies the complete stack and, if
-needed, tests subsets in groups of up to four using isolated check jobs.
-Selection prefers older verified work within the batch. The bounded search
-can miss combinations, so exhaustion leaves an operational failure with
-evidence for recovery.
+The Python op screens contributions, replays bundles in a disposable Git
+checkout, plans subset probes, and produces per-change receipts. Replay retains
+the original commit metadata and Change-Id. The receiver can try one narrow
+conflict repair against the older accepted prefix. It verifies the complete
+stack and, if needed, tests subsets in groups of up to four using isolated
+check jobs. Selection prefers older verified work within the batch. Search
+exhaustion returns an operational failure with evidence for recovery.
 
 The batch publishes only its verified commit sequence through the native merge
 operation. The caller confirms its individual receipt against target-branch
