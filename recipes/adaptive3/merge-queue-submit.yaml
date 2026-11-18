@@ -1,0 +1,212 @@
+id: adaptive3-merge-queue-submit
+inputs:
+  contribution: ${{ inputs.?contribution.orValue({}) }}
+  queue_history: ${{ inputs.?queue_history.orValue({}) }}
+  initial_submitted_at: ${{ inputs.?initial_submitted_at.orValue(inputs.?queue_history.orValue({}).?initial_submitted_at.orValue('')) }}
+  require_verification: ${{ inputs.require_verification }}
+  target_directory: ${{ inputs.target_directory }}
+  settings: ${{ inputs.settings }}
+  receiver: ${{ inputs.?receiver.orValue('') }}
+state:
+  initial:
+  - to: unchanged_rejection
+    when: nonempty(inputs.contribution.?changeid.orValue('')) &&
+      inputs.contribution.changeid==inputs.queue_history.?rejected_changeid.orValue('')
+  - to: identify
+    when: 'true'
+  states:
+    unchanged_rejection:
+      sequence: []
+      transitions:
+      - to: done
+        when: 'true'
+        payload:
+          result:
+            status: stuck
+            summary: The candidate still matches the rejected merge queue contribution. Update the work before resubmitting.
+            rejected_changeid: ${{ inputs.contribution.changeid }}
+            errors: ${{ inputs.queue_history.?errors.orValue({}) }}
+    identify:
+      op: command_execution
+      const: true
+      execution_needs:
+        packages:
+        - nix:github:NixOS/nixpkgs/e7439b6b14ad3cc35d05608ebca9bce01a25f5f8#python3
+      inputs:
+        env:
+          HEAD_EXPECTED: ${{ inputs.contribution.?head_hash.orValue('') }}
+          BASE_EXPECTED: ${{ inputs.contribution.?base_hash.orValue('') }}
+          BASE: ${{ context.git.execution.base_hash }}
+          REF: ${{ context.git.ref }}
+          TARGET_DIRECTORY: ${{ inputs.target_directory }}
+          SUBMITTED_AT: ${{ inputs.initial_submitted_at }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import posixpath
+          import re
+          import subprocess
+          import time
+
+          head = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+          if head != os.environ["HEAD_EXPECTED"] or os.environ["BASE"] != os.environ["BASE_EXPECTED"]:
+              print(json.dumps({"verified": False}))
+          else:
+              ref = os.environ["REF"]
+              if re.fullmatch("[0-9a-fA-F]{40}", ref) or (ref.startswith("refs/") and not ref.startswith("refs/heads/")):
+                  raise ValueError("A merge queue requires a target branch")
+              branch = ref if ref.startswith("refs/heads/") else "refs/heads/" + ref
+              subprocess.run(["git", "check-ref-format", branch], check=True)
+              directory = posixpath.normpath(os.environ["TARGET_DIRECTORY"])
+              if directory.startswith(("/", "../")) or directory == ".." or "\\" in directory:
+                  raise ValueError("Verification directory must stay inside the cell")
+              age = os.environ["SUBMITTED_AT"]
+              if not age:
+                  seconds, nanos = divmod(time.time_ns(), 1000000000)
+                  age = f"{time.strftime('%Y-%m-%dT%H:%M:%S', time.gmtime(seconds))}.{nanos:09d}Z"
+              print(json.dumps({"verified": True, "branch": branch, "directory": directory, "age": age}))
+          PY
+      transitions:
+      - to: submit
+        when: json_parse(outputs.stdout).verified
+      - to: done
+        when: 'true'
+        payload:
+          result:
+            status: changes
+            stage: implementation
+            summary: The prepared merge queue candidate must be refreshed, verified, and reviewed before submission.
+    submit:
+      sequence:
+      - id: batch
+        op: recipe.run_and_get_result
+        retry:
+          maximum_attempts: 1
+        inputs:
+          name: ${{ inputs.receiver }}
+          cell_name: ${{ inputs.cell }}
+          git_ref: ${{ inputs.branch }}
+          inputs:
+            branch: ${{ inputs.branch }}
+            verification_policy: ${{ inputs.policy }}
+          grouping:
+            key: ${{ inputs.key }}
+            max_items: 50
+            content: ${{ inputs.content }}
+            artifacts:
+            - ${{ inputs.content.thinpack_ref }}
+      inputs:
+        receiver: >-
+          ${{ nonempty(inputs.receiver) ? inputs.receiver :
+            'git+' + context.recipe_source.?repo.orValue('https://github.com/colony-2/recipes.git') + '//merge-batch.yaml@' + context.recipe_source.?ref.orValue('main') }}
+        cell: ${{ context.workflow.cell }}
+        branch: ${{ json_parse(states.identify.outputs.stdout).branch }}
+        key: >-
+          ${{ context.workflow.?cell_id.orValue(context.workflow.cell) + '/' +
+            json_parse(states.identify.outputs.stdout).branch + '/merge' }}
+        policy:
+          version: 1
+          require_verification: ${{ inputs.require_verification }}
+          target_directory: ${{ json_parse(states.identify.outputs.stdout).directory }}
+          settings: ${{ inputs.settings }}
+        content: >-
+          ${{ jq([inputs.contribution,{
+            'version':1, 'repository':context.git.repo, 'job_id':context.workflow.job_id,
+            'branch':json_parse(states.identify.outputs.stdout).branch,
+            'initial_submitted_at':json_parse(states.identify.outputs.stdout).age,
+            'verification_policy':{'version':1,'require_verification':inputs.require_verification,
+               'target_directory':json_parse(states.identify.outputs.stdout).directory,'settings':inputs.settings}
+          }], 'add | .thinpack_ref.name = "candidate.bundle"') }}
+      outputs:
+        receipt: ${{ sequence.batch.outputs.outputs }}
+      catch:
+      - when: failure.kind!='cancellation'
+        to: done
+        payload:
+          result:
+            status: stuck
+            summary: ${{ failure.message }}
+            failure: ${{ json_parse(json_stringify(failure)) }}
+      transitions:
+      - to: receipt
+        when: 'true'
+    receipt:
+      sequence: []
+      inputs:
+        result: ${{ states.submit.outputs.receipt }}
+        own: ${{ inputs.contribution.changeid }}
+        branch: ${{ json_parse(states.identify.outputs.stdout).branch }}
+      outputs:
+        own: ${{ inputs.result.?results.orValue([]).filter(r,r.?changeid.orValue('')==inputs.own) }}
+        branch: ${{ inputs.branch }}
+        valid: >-
+          ${{ inputs.result.?version.orValue(0)==1 && inputs.result.?branch.orValue('')==inputs.branch &&
+            inputs.result.?requested.orValue([]).all(id,id.matches('^[0-9A-Za-z]{27}$')) &&
+            inputs.result.?results.orValue([]).all(r,r.changeid.matches('^[0-9A-Za-z]{27}$') &&
+              (r.status=='success' ? r.hash.matches('^[0-9a-f]{40}$') :
+                r.status=='fail-conflict' || (r.status=='fail-validation' && size(r.failure_logs)>0))) &&
+            size(inputs.result.?results.orValue([]))==size(inputs.result.?requested.orValue([])) &&
+            jq(inputs.result.?results.orValue([]).map(r,r.changeid),'unique')==inputs.result.?requested.orValue([]) }}
+      transitions:
+      - to: confirm
+        when: outputs.valid && size(outputs.own)==1 && outputs.own[0].status=='success'
+        payload:
+          hash: ${{ outputs.own[0].hash }}
+      - to: done
+        when: outputs.valid && size(outputs.own)==1
+        payload:
+          result:
+            status: changes
+            stage: implementation
+            rejected_changeid: ${{ outputs.own[0].changeid }}
+            summary: ${{ 'The merge queue returned '+outputs.own[0].status+' for this change. Repair and reverify the candidate.' }}
+            errors: ${{ jq(outputs.own[0].?failure_logs.orValue([]),'to_entries | map({key:("error/merge-queue/"+(.key|tostring)+".log"),value:(.value + {name:("error/merge-queue/"+(.key|tostring)+".log")})}) | from_entries') }}
+      - to: done
+        when: 'true'
+        payload:
+          result:
+            status: stuck
+            summary: The merge queue did not return a valid receipt for this change.
+    confirm:
+      op: command_execution
+      const: true
+      workspace:
+        cell: ${{ context.workflow.cell }}
+        ref: ${{ states.receipt.outputs.branch }}
+      inputs:
+        continue_on_error: true
+        env:
+          LANDED: ${{ transition.payload.hash }}
+          BRANCH: ${{ states.receipt.outputs.branch }}
+          CHANGE_ID: ${{ inputs.contribution.changeid }}
+        run: |
+          set -eu
+          if [ "$(git rev-parse --is-shallow-repository)" = true ] && [ "$LANDED" != "$(git rev-parse HEAD)" ]; then
+            git fetch --unshallow --no-tags origin "$BRANCH"
+          fi
+          git merge-base --is-ancestor "$LANDED" HEAD
+          test "$(git log -1 --format='%(trailers:key=Change-Id,valueonly)' "$LANDED")" = "$CHANGE_ID"
+      transitions:
+      - to: done
+        when: outputs.success
+        payload:
+          result:
+            status: passed
+            publication:
+              merged_hash: ${{ states.receipt.outputs.own[0].hash }}
+              target_branch: ${{ states.receipt.outputs.branch }}
+      - to: done
+        when: 'true'
+        payload:
+          result:
+            status: stuck
+            summary: The queue receipt could not be confirmed on the target branch.
+    done:
+      sequence: []
+      outputs:
+        result: ${{ transition.payload.result }}
+outputs:
+  result: >-
+    ${{ jq([states.done.outputs.result,{'initial_submitted_at':
+      json_parse(state_output('identify','stdout','{}')).?age.orValue(inputs.initial_submitted_at)}],'add') }}

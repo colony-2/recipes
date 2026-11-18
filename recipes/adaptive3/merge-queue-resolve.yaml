@@ -1,0 +1,73 @@
+id: adaptive3-merge-queue-resolve
+inputs:
+  base: ${{ inputs.base }}
+  branch: ${{ inputs.branch }}
+  contributions: ${{ inputs.contributions }}
+state:
+  initial: assemble
+  states:
+    assemble:
+      include: ./merge-queue-replay.yaml
+      inputs:
+        base: ${{ inputs.base }}
+        branch: ${{ inputs.branch }}
+        contributions: ${{ transition.payload.?contributions.orValue(inputs.contributions) }}
+      transitions:
+      - to: next_conflict
+        when: 'true'
+        payload:
+          assembly: ${{ outputs.assembly }}
+          artifacts: ${{ outputs.artifacts }}
+          contributions: ${{ transition.payload.?contributions.orValue(inputs.contributions) }}
+          attempted: ${{ transition.payload.?attempted.orValue([]) }}
+    next_conflict:
+      sequence: []
+      inputs:
+        assembly: ${{ transition.payload.assembly }}
+        artifacts: ${{ transition.payload.artifacts }}
+        contributions: ${{ transition.payload.contributions }}
+        attempted: ${{ transition.payload.attempted }}
+      outputs:
+        assembly: ${{ inputs.assembly }}
+        artifacts: ${{ inputs.artifacts }}
+        contributions: ${{ inputs.contributions }}
+        attempted: ${{ inputs.attempted }}
+        conflicts: ${{ inputs.assembly.results.filter(r,r.status=='fail-conflict' && !(r.changeid in inputs.attempted)) }}
+      transitions:
+      - to: repair
+        when: size(outputs.conflicts)>0
+      - to: done
+        when: 'true'
+    repair:
+      workspace:
+        cell: ${{ context.workspace.cell }}
+        ref: ${{ inputs.base }}
+      include: ./merge-queue-repair.yaml
+      inputs:
+        base: ${{ inputs.base }}
+        branch: ${{ inputs.branch }}
+        conflict: ${{ states.next_conflict.outputs.conflicts[0] }}
+        earlier: ${{ states.next_conflict.outputs.contributions.filter(c,c.changeid in states.next_conflict.outputs.conflicts[0].prefix) }}
+        artifacts: ${{ states.next_conflict.outputs.artifacts }}
+      transitions:
+      - to: assemble
+        when: size(outputs.repair)>0
+        payload:
+          contributions: >-
+            ${{ states.next_conflict.outputs.contributions.map(c,
+              c.changeid==states.next_conflict.outputs.conflicts[0].changeid
+                ? jq([c,{'repair':outputs.repair}],'add') : c) }}
+          attempted: ${{ states.next_conflict.outputs.attempted + [states.next_conflict.outputs.conflicts[0].changeid] }}
+      - to: next_conflict
+        when: 'true'
+        payload:
+          contributions: ${{ states.next_conflict.outputs.contributions }}
+          assembly: ${{ states.next_conflict.outputs.assembly }}
+          artifacts: ${{ states.next_conflict.outputs.artifacts }}
+          attempted: ${{ states.next_conflict.outputs.attempted + [states.next_conflict.outputs.conflicts[0].changeid] }}
+    done:
+      sequence: []
+outputs:
+  assembly: ${{ states.next_conflict.outputs.assembly }}
+  contributions: ${{ states.next_conflict.outputs.contributions }}
+  artifacts: ${{ states.next_conflict.outputs.artifacts }}

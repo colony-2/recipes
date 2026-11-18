@@ -1,0 +1,142 @@
+recipe: merge-queue-selection.yaml
+cases:
+- id: oldest-passing-change-wins-over-a-larger-younger-set
+  type: integration_case
+  runtime:
+    backend: sqlite
+    cells:
+      root:
+        file_sources: &sources
+          merge-check.yaml: ../../merge-check.yaml
+          recipes/adaptive3: ../../recipes/adaptive3
+        files:
+          .c2/recipes/hooks/build/verify.yaml: |
+            id: verify
+            sequence:
+            - id: test
+              op: command_execution
+              inputs:
+                run: |
+                  if [ -f change.txt ] && { [ -f program ] || [ -f third.txt ]; }; then
+                    echo failed
+                  else
+                    echo passed
+                  fi
+            outputs:
+              api_version: c2.build-hook/v1
+              status: ${{ sequence.test.outputs.stdout }}
+              summary: Older work and younger work are incompatible.
+              artifact_refs: {}
+  inputs: {scenario: ordinary}
+  mocks: &native
+    ops:
+    - {match: {op: command_execution}, repeat: true, behavior: {mode: passthrough}}
+    - {match: {op: merge}, repeat: true, behavior: {mode: passthrough}}
+  assertions:
+  - type: cel_true
+    expr: outputs.results.size()==3 && outputs.results.filter(r,r.status=='success').map(r,r.changeid)==['000000000000000000000000001']
+  - type: cel_true
+    expr: outputs.results.filter(r,r.status=='fail-validation').size()==2 &&
+      outputs.results.filter(r,r.status=='fail-validation').all(r,size(r.failure_logs)>0)
+  - type: cel_true
+    expr: outputs.published[0]==outputs.results.filter(r,r.status=='success')[0].hash
+- id: mismatched-policy-cannot-join-compatible-candidates
+  type: integration_case
+  runtime:
+    backend: sqlite
+    cells:
+      root:
+        file_sources: *sources
+        files:
+          .c2/recipes/hooks/build/verify.yaml: &pass |
+            id: verify
+            sequence: []
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: Verified the compatible stack.
+              artifact_refs: {}
+  inputs: {scenario: mixed-policy}
+  mocks: *native
+  assertions:
+  - type: cel_true
+    expr: outputs.results.filter(r,r.status=='success').map(r,r.changeid)==['000000000000000000000000001','000000000000000000000000003']
+  - type: cel_true
+    expr: outputs.results.exists(r,r.status=='fail-validation' && r.changeid=='000000000000000000000000002' && size(r.failure_logs)>0)
+- id: bounded-repair-keeps-original-position-and-change-id
+  type: integration_case
+  runtime:
+    backend: sqlite
+    cells:
+      root:
+        file_sources: *sources
+        files:
+          .c2/recipes/hooks/build/verify.yaml: *pass
+  inputs: {scenario: repair}
+  mocks:
+    ops:
+    - match: {selector: 'nix:github:colony-2/c2ops/published#codex'}
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: resolved
+            summary: Preserve both compatible fixture changes on the older prefix.
+        effects:
+          worktree:
+            change.txt: "1 and 2\n"
+    - {match: {op: command_execution}, repeat: true, behavior: {mode: passthrough}}
+    - {match: {op: merge}, repeat: true, behavior: {mode: passthrough}}
+  assertions:
+  - type: cel_true
+    expr: outputs.results.size()==3 && outputs.results.all(r,r.status=='success')
+  - type: cel_true
+    expr: outputs.published==outputs.results.map(r,r.hash)
+  - type: cel_true
+    expr: calls.filter(c,c.op=='extension_execution' && c.node_path.contains('/repair/')).size()==1
+- id: rebuilds-and-reverifies-after-real-upstream-advance
+  type: integration_case
+  runtime:
+    backend: sqlite
+    cells:
+      root:
+        file_sources: *sources
+        files:
+          .c2/recipes/hooks/build/verify.yaml: |
+            id: verify
+            sequence:
+            - id: check
+              op: command_execution
+              inputs:
+                env:
+                  CELL_REPO: ${{ context.git.repo }}
+                run: |
+                  set -eu
+                  test -f change.txt
+                  case "$CELL_REPO" in https://example.test/fixture-*) ;; *) exit 1 ;; esac
+                  work=$(mktemp -d)
+                  trap 'rm -r "$work"' EXIT
+                  git clone --quiet --branch main "$(git remote get-url origin)" "$work"
+                  if [ ! -f "$work/upstream.txt" ]; then
+                    printf 'unrelated advance\n' > "$work/upstream.txt"
+                    git -C "$work" add upstream.txt
+                    git -C "$work" -c user.name=Test -c user.email=test@example.test commit --quiet -m "Advance the fixture branch"
+                    git -C "$work" push --quiet origin HEAD:refs/heads/main
+                  fi
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: Checked the exact stack.
+              artifact_refs: {}
+  inputs: {scenario: ordinary}
+  mocks: *native
+  assertions:
+  - type: cel_true
+    expr: outputs.results.size()==3 && outputs.results.all(r,r.status=='success')
+  - type: cel_true
+    expr: outputs.published.size()==4 &&
+      outputs.published[1]==outputs.results[0].hash && outputs.published[3]==outputs.results[2].hash
+  - type: cel_true
+    expr: calls.filter(c,c.node_path.endsWith('/verify/verify/root/check')).size()==2

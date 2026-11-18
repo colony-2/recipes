@@ -1,0 +1,176 @@
+id: adaptive3-merge-queue-land
+inputs:
+  branch: ${{ inputs.branch }}
+  base: ${{ inputs.base }}
+  contributions: ${{ inputs.contributions }}
+  policy: ${{ inputs.policy }}
+  check_recipe: ${{ inputs.check_recipe }}
+state:
+  initial: full
+  states:
+    full:
+      workspace:
+        cell: ${{ context.workspace.cell }}
+        ref: ${{ inputs.base }}
+      include: ./merge-queue-check.yaml
+      inputs:
+        base: ${{ inputs.base }}
+        branch: ${{ inputs.branch }}
+        contributions: ${{ inputs.contributions }}
+        repair_conflicts: true
+        policy: ${{ inputs.policy }}
+      transitions:
+      - to: operational
+        when: outputs.assembly.head!=inputs.base && outputs.verified_head!=outputs.assembly.head
+        payload:
+          reason: Verification did not identify the assembled head.
+      - to: operational
+        when: outputs.verification.?failure.hasValue()
+        payload:
+          reason: ${{ outputs.verification.summary }}
+      - to: install
+        when: outputs.verification.status in ['passed','skipped']
+        payload:
+          check: ${{ outputs }}
+      - to: baseline
+        when: outputs.assembly.results.exists(r,r.status=='applied')
+      - to: operational
+        when: 'true'
+        payload:
+          reason: ${{ outputs.verification.summary }}
+    baseline:
+      workspace:
+        cell: ${{ context.workspace.cell }}
+        ref: ${{ inputs.base }}
+      include: ./merge-queue-check.yaml
+      inputs:
+        base: ${{ inputs.base }}
+        branch: ${{ inputs.branch }}
+        contributions: []
+        policy: ${{ inputs.policy }}
+      transitions:
+      - to: select
+        when: outputs.verification.status in ['passed','skipped']
+      - to: operational
+        when: 'true'
+        payload:
+          reason: ${{ 'Verification failed on the published baseline. ' + outputs.verification.summary }}
+    select:
+      include: ./merge-queue-select.yaml
+      inputs:
+        base: ${{ inputs.base }}
+        branch: ${{ inputs.branch }}
+        contributions: ${{ states.full.outputs.contributions.filter(c,states.full.outputs.assembly.results.exists(r,r.changeid==c.changeid && r.status=='applied')) }}
+        policy: ${{ inputs.policy }}
+        check_recipe: ${{ inputs.check_recipe }}
+        full_check:
+          ids: ${{ states.full.outputs.assembly.results.filter(r,r.status=='applied').map(r,r.changeid) }}
+          passed: false
+          logs: ${{ states.full.outputs.artifacts }}
+          summary: ${{ states.full.outputs.verification.summary }}
+      transitions:
+      - to: final
+        when: 'true'
+    final:
+      workspace:
+        cell: ${{ context.workspace.cell }}
+        ref: ${{ inputs.base }}
+      include: ./merge-queue-check.yaml
+      inputs:
+        base: ${{ inputs.base }}
+        branch: ${{ inputs.branch }}
+        contributions: ${{ states.full.outputs.contributions.filter(c,c.changeid in states.select.outputs.selected) }}
+        policy: ${{ inputs.policy }}
+      transitions:
+      - to: install
+        when: outputs.verification.status in ['passed','skipped'] && outputs.assembly.results.all(r,r.status=='applied') &&
+          (outputs.assembly.head==inputs.base || outputs.verified_head==outputs.assembly.head)
+        payload:
+          check: ${{ outputs }}
+      - to: operational
+        when: 'true'
+        payload:
+          reason: ${{ 'The selected stack failed its final verification. ' + outputs.verification.summary }}
+    install:
+      inputs:
+        check: ${{ transition.payload.check }}
+        branch: ${{ inputs.branch }}
+      sequence:
+      - id: install
+        include: ./merge-queue-install.yaml
+        inputs:
+          base: ${{ inputs.check.assembly.base }}
+          head: ${{ inputs.check.assembly.head }}
+          bundle: ${{ inputs.check.artifacts[?'assembled.bundle'].orValue(null) }}
+      - id: merge
+        op: merge
+        when: inputs.check.assembly.head != inputs.check.assembly.base
+        retry:
+          maximum_attempts: 1
+        inputs:
+          upstream_branch: ${{ inputs.branch }}
+          prepared_base_hash: ${{ inputs.check.assembly.base }}
+      outputs:
+        landed: ${{ inputs.check.assembly.results.filter(r,r.status=='applied').map(r,{'changeid':r.changeid,'status':'success','hash':r.hash}) }}
+      transitions:
+      - to: results
+        when: 'true'
+    results:
+      inputs:
+        landed: ${{ states.install.outputs.landed }}
+        replay: ${{ states.full.outputs.assembly.results }}
+        replay_logs: ${{ states.full.outputs.artifacts }}
+        evidence: ${{ state_output('select','evidence',[]) }}
+      sequence:
+      - id: record
+        op: command_execution
+        const: true
+        execution_needs:
+          packages:
+          - nix:github:NixOS/nixpkgs/e7439b6b14ad3cc35d05608ebca9bce01a25f5f8#python3
+        inputs:
+          env:
+            REPLAY: ${{ json_stringify(inputs.replay) }}
+            LANDED: ${{ json_stringify(inputs.landed) }}
+            EVIDENCE: ${{ json_stringify(inputs.evidence.map(e,{'ids':e.ids,'passed':e.passed,'summary':e.summary})) }}
+            OUTBOX: ${{ context.environment.op.outbox }}
+          run: |
+            python3 - <<'PY'
+            import json
+            import os
+            from pathlib import Path
+
+            landed = {row["changeid"] for row in json.loads(os.environ["LANDED"])}
+            evidence = json.loads(os.environ["EVIDENCE"])
+            outbox = Path(os.environ["OUTBOX"])
+            for row in json.loads(os.environ["REPLAY"]):
+                change_id = row["changeid"]
+                if change_id in landed or row["status"] != "applied":
+                    continue
+                failures = [probe["summary"] for probe in evidence if not probe["passed"] and change_id in probe["ids"]]
+                if not failures:
+                    raise RuntimeError(f"Missing validation evidence for {change_id}")
+                (outbox / f"{change_id}.log").write_text("\n".join(dict.fromkeys(failures)) + "\n")
+            PY
+      outputs:
+        results: >-
+          ${{ inputs.landed +
+            inputs.replay.filter(r,!inputs.landed.exists(l,l.changeid==r.changeid)).map(r,
+              r.status=='fail-conflict'
+              ? {'changeid':r.changeid,'status':r.status,'failure_logs':[inputs.replay_logs[r.changeid+'.log']]}
+              : {'changeid':r.changeid,'status':'fail-validation','failure_logs':
+                (r.status=='fail-validation' ? [inputs.replay_logs[r.changeid+'.log']] :
+                  [sequence.record.artifacts[r.changeid+'.log']] +
+                  jq(inputs.evidence.filter(e,!e.passed && r.changeid in e.ids).map(e,
+                    e.logs.filter(k,k!='assembled.bundle').map(k,e.logs[k])), "flatten"))}) }}
+    operational:
+      op: command_execution
+      const: true
+      inputs:
+        env:
+          REASON: ${{ transition.payload.reason }}
+        run: |
+          printf '%s\n' "$REASON" >&2
+          exit 1
+outputs:
+  results: ${{ states.results.outputs.results }}

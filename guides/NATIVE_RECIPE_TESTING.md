@@ -10,8 +10,8 @@ c2j version
 ```
 
 `.c2j-version` accepts an npm release or `source:<full Git commit ID>`.
-The current pin selects the public c2j commit containing native child bindings,
-terminal ordering and response gates needed by dependency regressions. The
+The current pin includes native child bindings, terminal ordering, response
+gates, and grouped submission used by the merge queue integration tests. The
 installer fetches that exact commit, checks its identity and builds with readonly
 module resolution. It labels the CLI as a source build; it does not manufacture
 a release number or require deployment. CI uses the same installer and records

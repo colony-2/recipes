@@ -89,6 +89,36 @@ configuration. Ask the owner when its publication route is unknown. Consultation
 and public build input schemas do not expose a ref override. Intentional candidate
 validation continues to use explicit workspace submission.
 
+## Merge queue
+
+Set the public build input `merge_queue: true` to enable grouped integration.
+Enable it on workers and a JobDB with grouped recipe submission support. Publish
+`build.yaml`, `adaptive3.yaml`, `merge-batch.yaml`, `merge-check.yaml`, and their
+includes together so a caller and its receiver can use the same recipe revision.
+See the [grouping contract](https://github.com/colony-2/c2j/blob/12cee9e70f04826adf073ba4b5e34deb388df691/GUIDE-Recipe-Grouping.md).
+
+The caller refreshes retained work before implementation. After preparation it
+squashes changes into one commit with a durable KSUID Change-Id, verifies the
+candidate, and waits for its outcome approval before entering the queue. The
+same change retains its initial submission time on retry. The queue groups by
+cell and canonical branch ref, with up to 50 contributions per serial batch.
+Each batch uses the creator's verification policy.
+
+Python replays each source commit in a disposable Git checkout, preserving its
+author, message, and Change-Id. The receiver can try one narrow conflict repair
+against the older accepted prefix. It verifies the complete stack and, if
+needed, tests subsets in groups of up to four using isolated check jobs.
+Selection prefers older verified work within the batch. The bounded search
+can miss combinations, so exhaustion leaves an operational failure with
+evidence for recovery.
+
+The batch publishes only its verified commit sequence through the native merge
+operation. The caller confirms its individual receipt against target-branch
+history, then runs the publish hook at that commit. A failed publish retries at
+the same commit. Candidate rejections return their diagnostics to implementation.
+The [merge queue test statements](../../recipe-tests/adaptive3/merge-queue-statements.md)
+describe the acceptance checks.
+
 ## Recovery and local hooks
 
 An ordinary caught failure reports `stuck` and enters Backstop in the same

@@ -1,0 +1,63 @@
+id: adaptive3-merge-queue-batch
+inputs:
+  branch: ${{ inputs.branch }}
+  policy: ${{ inputs.policy }}
+  appends: ${{ inputs.appends }}
+  check_recipe: ${{ inputs.check_recipe }}
+state:
+  initial: intake
+  states:
+    intake:
+      workspace:
+        cell: ${{ context.workflow.cell }}
+        ref: ${{ inputs.branch }}
+      include: ./merge-queue-intake.yaml
+      inputs:
+        branch: ${{ inputs.branch }}
+        policy: ${{ inputs.policy }}
+        appends: ${{ inputs.appends }}
+      transitions:
+      - to: land
+        when: size(outputs.intake.pending)>0
+      - to: done
+        when: 'true'
+    land:
+      workspace:
+        cell: ${{ context.workflow.cell }}
+        ref: ${{ states.intake.outputs.intake.base }}
+      include: ./merge-queue-land.yaml
+      inputs:
+        branch: ${{ inputs.branch }}
+        base: ${{ states.intake.outputs.intake.base }}
+        contributions: ${{ states.intake.outputs.intake.pending }}
+        policy: ${{ inputs.policy }}
+        check_recipe: ${{ inputs.check_recipe }}
+      catch:
+      - when: failure.kind=='task_error' && failure.code=='MERGE_UPSTREAM_ADVANCED' &&
+          (!state_exists('chase') || states.chase.outputs.attempts<3)
+        to: chase
+      transitions:
+      - to: done
+        when: 'true'
+    chase:
+      sequence: []
+      outputs:
+        attempts: ${{ state_output('chase','attempts',0)+1 }}
+      transitions:
+      - to: intake
+        when: 'true'
+    done:
+      sequence: []
+      inputs:
+        results: >-
+          ${{ states.intake.outputs.intake.results.map(r,
+            r.status=='fail-validation'
+            ? jq([r,{'failure_logs':[states.intake.outputs.artifacts[r.changeid+'.log']]}],'add')
+            : r) + state_output('land','results',[]) }}
+      outputs:
+        results: ${{ inputs.results }}
+outputs:
+  version: 1
+  branch: ${{ inputs.branch }}
+  requested: ${{ jq(inputs.appends.map(a,a.content.changeid),'unique') }}
+  results: ${{ states.done.outputs.results }}

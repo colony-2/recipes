@@ -1,0 +1,50 @@
+schema_version: 2
+id: merge-queue-replay-test
+input_schema:
+  scenario:
+    type: string
+inputs:
+  scenario: ${{ inputs.scenario }}
+sequence:
+- id: seed
+  include: ./merge-queue-source.yaml
+  inputs:
+    scenario: ${{ inputs.scenario }}
+- id: replay
+  include: ../../recipes/adaptive3/merge-queue-replay.yaml
+  inputs:
+    base: ${{ sequence.seed.outputs.hashes[3] }}
+    contributions: >-
+      ${{ [0,1,2].map(i,{
+        'changeid':['000000000000000000000000001','000000000000000000000000002','000000000000000000000000003'][i],
+        'repository':context.git.repo,
+        'base_hash':sequence.seed.outputs.hashes[3],
+        'head_hash':sequence.seed.outputs.hashes[i],
+        'thinpack_ref':sequence.seed.outputs.packs[string(i+1)+'.bundle']}) }}
+- id: install
+  include: ../../recipes/adaptive3/merge-queue-install.yaml
+  inputs:
+    base: ${{ sequence.replay.outputs.assembly.base }}
+    head: ${{ sequence.replay.outputs.assembly.head }}
+    bundle: ${{ sequence.replay.outputs.artifacts['assembled.bundle'] }}
+- id: verify
+  op: command_execution
+  const: true
+  inputs:
+    env:
+      BASE: ${{ sequence.replay.outputs.assembly.base }}
+      HEAD_EXPECTED: ${{ sequence.replay.outputs.assembly.head }}
+      SCENARIO: ${{ inputs.scenario }}
+    run: |
+      set -eu
+      test "$(git rev-parse HEAD)" = "$HEAD_EXPECTED"
+      test "$(git log -1 --format=%ae)" = queue@example.test
+      case "$SCENARIO" in conflict|malformed) count=2 ;; *) count=3 ;; esac
+      test "$(git rev-list --count "$BASE..HEAD")" = "$count"
+      test -z "$(git status --porcelain)"
+      test "$(cat change.txt)" = 1
+      test "$(cat third.txt)" = third
+      if [ "$SCENARIO" = ordinary ]; then test "$(git ls-tree HEAD program | cut -d " " -f 1)" = 100755; test "$(wc -c < program | tr -d " ")" = 4; fi
+outputs:
+  assembly: ${{ sequence.replay.outputs.assembly }}
+  verified: ${{ sequence.verify.outputs.success }}

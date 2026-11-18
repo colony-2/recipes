@@ -1,0 +1,156 @@
+recipe: merge-queue-caller.yaml
+cases:
+- id: grouped-receiver-verifies-and-returns-the-callers-landed-hash
+  type: integration_case
+  runtime: &cell
+    backend: sqlite
+    cells:
+      root:
+        file_sources:
+          merge-batch.yaml: ../../merge-batch.yaml
+          merge-check.yaml: ../../merge-check.yaml
+          recipes/adaptive3: ../../recipes/adaptive3
+        files:
+          README.md: A merge queue test cell.
+          .c2/recipes/hooks/build/verify.yaml: |
+            id: verify
+            inputs:
+              candidate: ${{ inputs.candidate }}
+            sequence:
+            - id: check
+              op: command_execution
+              inputs:
+                env:
+                  EXPECTED: ${{ inputs.candidate }}
+                run: |
+                  test "$(git rev-parse HEAD)" = "$EXPECTED"
+                  test "$(cat contribution.txt)" = queue-ready
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: Verified the assembled commit.
+              artifact_refs: {}
+  mocks: &native
+    ops:
+    - match: {op: command_execution}
+      repeat: true
+      behavior: {mode: passthrough}
+    - match: {op: squash}
+      repeat: true
+      behavior: {mode: passthrough}
+    - match: {op: merge}
+      repeat: true
+      behavior: {mode: passthrough}
+  assertions:
+  - type: cel_true
+    expr: outputs.verified && outputs.result.status=='passed' && outputs.result.publication.merged_hash==outputs.candidate.head_hash
+  - type: cel_true
+    expr: outputs.result.initial_submitted_at.matches('^[0-9A-Z:.\\-]+$')
+- id: retry-recognizes-a-landed-id-behind-a-newer-tip
+  type: integration_case
+  inputs: {retry_after_advance: true}
+  runtime: *cell
+  mocks: *native
+  assertions:
+  - type: cel_true
+    expr: outputs.repeated.status=='passed' && outputs.repeated.publication==outputs.result.publication
+  - type: cel_true
+    expr: outputs.repeated.initial_submitted_at==outputs.result.initial_submitted_at
+  - type: cel_true
+    expr: calls.filter(c,c.op=='merge' && c.node_path.startsWith('adaptive3-merge-batch/')).size()==1
+- id: another-items-success-cannot-release-publication
+  type: integration_case
+  runtime:
+    backend: sqlite
+    cells:
+      root:
+        files:
+          merge-batch.yaml: |
+            schema_version: 2
+            id: foreign-receipt
+            input_schema:
+              branch: {type: string}
+              verification_policy: {type: object}
+            inputs:
+              branch: ${{ inputs.branch }}
+            sequence: []
+            outputs:
+              version: 1
+              branch: ${{ inputs.branch }}
+              requested: ${{ context.grouping.appends.map(a,a.content.changeid) }}
+              results:
+              - changeid: '000000000000000000000000001'
+                status: success
+                hash: '0123456789abcdef0123456789abcdef01234567'
+  mocks: &without_merge
+    ops:
+    - match: {op: command_execution}
+      repeat: true
+      behavior: {mode: passthrough}
+    - match: {op: squash}
+      repeat: true
+      behavior: {mode: passthrough}
+  assertions:
+  - type: cel_true
+    expr: outputs.result.status=='stuck' && !has(outputs.result.publication) && !outputs.verified
+- id: an-unreachable-hash-cannot-release-publication
+  type: integration_case
+  runtime:
+    backend: sqlite
+    cells:
+      root:
+        files:
+          merge-batch.yaml: |
+            schema_version: 2
+            id: unreachable-receipt
+            input_schema:
+              branch: {type: string}
+              verification_policy: {type: object}
+            inputs:
+              branch: ${{ inputs.branch }}
+            sequence: []
+            outputs:
+              version: 1
+              branch: ${{ inputs.branch }}
+              requested: ${{ context.grouping.appends.map(a,a.content.changeid) }}
+              results:
+              - changeid: ${{ context.grouping.appends[0].content.changeid }}
+                status: success
+                hash: '0123456789abcdef0123456789abcdef01234567'
+  mocks: *without_merge
+  assertions:
+  - type: cel_true
+    expr: outputs.result.status=='stuck' && !has(outputs.result.publication) && !outputs.verified
+  - type: cel_true
+    expr: outputs.result.summary.contains('could not be confirmed')
+- id: unchanged-rejection-does-not-resubmit
+  type: integration_case
+  inputs: {retry_rejection: true}
+  runtime:
+    backend: sqlite
+    cells:
+      root:
+        files:
+          merge-batch.yaml: |
+            schema_version: 2
+            id: conflict-receipt
+            input_schema:
+              branch: {type: string}
+              verification_policy: {type: object}
+            inputs:
+              branch: ${{ inputs.branch }}
+            sequence: []
+            outputs:
+              version: 1
+              branch: ${{ inputs.branch }}
+              requested: ${{ context.grouping.appends.map(a,a.content.changeid) }}
+              results:
+              - changeid: ${{ context.grouping.appends[0].content.changeid }}
+                status: fail-conflict
+  mocks: *without_merge
+  assertions:
+  - type: cel_true
+    expr: outputs.result.status=='changes' && outputs.result.stage=='implementation' &&
+      outputs.repeated.status=='stuck' && outputs.result.rejected_changeid==outputs.repeated.rejected_changeid
+  - type: cel_true
+    expr: '!calls.exists(c,c.node_path.contains("/repeat/") && c.node_path.endsWith("/submit/sequence/batch"))'

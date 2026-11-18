@@ -1,0 +1,50 @@
+schema_version: 2
+id: merge-queue-selection-test
+input_schema:
+  scenario:
+    type: string
+inputs:
+  scenario: ${{ inputs.scenario }}
+sequence:
+- id: seed
+  include: ./merge-queue-source.yaml
+  inputs:
+    scenario: "${{ inputs.scenario=='repair' || inputs.scenario=='uncertain' ? 'conflict' : 'ordinary' }}"
+- id: batch
+  include: ../../recipes/adaptive3/merge-queue-batch.yaml
+  inputs:
+    branch: refs/heads/main
+    policy:
+      version: 1
+      require_verification: true
+      target_directory: .
+      settings: {}
+    check_recipe: ${{ 'git+' + context.git.repo + '//merge-check.yaml@main' }}
+    appends: >-
+      ${{ [2,1,0].map(i,{
+        'artifacts':[sequence.seed.outputs.packs[string(i+1)+'.bundle']],
+        'content':{
+          'version':1, 'repository':context.git.repo, 'branch':'refs/heads/main',
+          'job_id':context.workflow.job_id, 'base_hash':sequence.seed.outputs.hashes[3],
+          'head_hash':sequence.seed.outputs.hashes[i],
+          'changeid':['000000000000000000000000001','000000000000000000000000002','000000000000000000000000003'][i],
+          'initial_submitted_at':['2026-11-18T08:00:01.000000000Z','2026-11-18T08:00:02.000000000Z','2026-11-18T08:00:03.000000000Z'][i],
+          'thinpack_ref':sequence.seed.outputs.packs[string(i+1)+'.bundle'],
+          'verification_policy':{'version':1,'require_verification':!(inputs.scenario=='mixed-policy' && i==1),
+                                 'target_directory':'.','settings':{} }
+        } }) }}
+- id: observed
+  op: command_execution
+  const: true
+  workspace:
+    cell: ${{ context.workflow.cell }}
+    ref: main
+  inputs:
+    env:
+      BASE: ${{ sequence.seed.outputs.hashes[3] }}
+    run: |
+      if [ "$(git rev-parse --is-shallow-repository)" = true ]; then git fetch --unshallow origin main; fi
+      git log --reverse --format=%H --no-decorate "$BASE..HEAD"
+outputs:
+  results: ${{ sequence.batch.outputs.results }}
+  published: ${{ jq(sequence.observed.outputs.stdout,'split("\n")') }}

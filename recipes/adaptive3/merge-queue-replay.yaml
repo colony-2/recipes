@@ -1,0 +1,180 @@
+id: adaptive3-merge-queue-replay
+inputs:
+  base: ${{ inputs.base }}
+  branch: ${{ inputs.?branch.orValue('main') }}
+  contributions: ${{ inputs.contributions }}
+sequence:
+- id: replay
+  op: command_execution
+  const: true
+  execution_needs:
+    packages:
+    - nix:github:NixOS/nixpkgs/e7439b6b14ad3cc35d05608ebca9bce01a25f5f8#python3
+  artifacts:
+    ./: ${{ jq(inputs.contributions,vars.paths) }}
+  inputs:
+    env:
+      BASE: ${{ inputs.base }}
+      BRANCH: ${{ inputs.branch }}
+      CONTRIBUTIONS: ${{ json_stringify(inputs.contributions.map(c,{'changeid':c.changeid,'base_hash':c.base_hash,'head_hash':c.head_hash,'repository':c.repository,'repair_base':c.?repair.orValue({}).?base.orValue('')})) }}
+      REPOSITORY: ${{ context.git.repo }}
+      INBOX: ${{ context.environment.op.inbox }}
+      OUTBOX: ${{ context.environment.op.outbox }}
+    run: |
+      python3 - <<'PY'
+      import json
+      import os
+      import re
+      import subprocess
+      import tempfile
+      from pathlib import Path
+
+      HASH = re.compile(r"[0-9a-f]{40}")
+      CHANGE_ID = re.compile(r"[0-9A-Za-z]{27}")
+
+      class InvalidContribution(Exception):
+          pass
+
+      def git(repo, *args, data=None, check=True):
+          command = ["git", "-C", str(repo), "-c", "core.hooksPath=/dev/null", *args]
+          result = subprocess.run(command, input=data, capture_output=True)
+          if check and result.returncode:
+              raise RuntimeError(f"git {args[0]}: " + result.stderr.decode(errors="replace").strip())
+          return result
+
+      def head(repo):
+          return git(repo, "rev-parse", "HEAD").stdout.decode().strip()
+
+      def require_clean(repo, expected):
+          git_dir = Path(git(repo, "rev-parse", "--absolute-git-dir").stdout.decode().rstrip("\n"))
+          in_progress = ("CHERRY_PICK_HEAD", "REVERT_HEAD", "REBASE_HEAD", "MERGE_HEAD",
+                         "rebase-merge", "rebase-apply", "sequencer")
+          if (head(repo) != expected or
+              git(repo, "status", "--porcelain", "--untracked-files=all").stdout or
+              any((git_dir / name).exists() for name in in_progress)):
+              raise RuntimeError("Git workspace differs from the expected clean, inactive checkout")
+
+      def source_parts(repo, source, parent, change_id):
+          commit = git(repo, "cat-file", "commit", source).stdout
+          headers, message = commit.split(b"\n\n", 1)
+          lines = headers.split(b"\n")
+          if [line for line in lines if line.startswith(b"parent ")] != [b"parent " + parent.encode()]:
+              raise InvalidContribution("Advertised source must have the declared base as its sole parent")
+          trailers = git(repo, "interpret-trailers", "--parse", data=message).stdout.splitlines()
+          keys = [line for line in trailers if line.lower().startswith(b"change-id:")]
+          if keys != [b"Change-Id: " + change_id.encode()]:
+              raise InvalidContribution("Source commit must carry exactly one matching Change-Id trailer")
+          metadata = [line for line in lines if line.startswith((b"author ", b"committer ", b"encoding "))]
+          return metadata, message
+
+      def replay(repo, published, previous, contribution, bundle, diagnostic, patch, repair):
+          source, base, change_id = (contribution[key] for key in ("head_hash", "base_hash", "changeid"))
+          if (contribution["repository"] != os.environ["REPOSITORY"] or
+              not HASH.fullmatch(source) or not HASH.fullmatch(base)):
+              raise InvalidContribution("Repository or source hashes do not match the contribution contract")
+          if git(repo, "cat-file", "-t", base).stdout != b"commit\n":
+              raise InvalidContribution("Declared base must be a commit")
+          ancestry = git(repo, "merge-base", "--is-ancestor", base, published, check=False)
+          if ancestry.returncode == 1:
+              raise InvalidContribution("Source base is outside the pinned branch history")
+          if ancestry.returncode:
+              raise RuntimeError("Could not establish source base history")
+          with bundle.open("rb"):
+              advertised = git(repo, "bundle", "list-heads", str(bundle), check=False)
+          heads = advertised.stdout.splitlines()
+          if advertised.returncode or len(heads) != 1 or heads[0].split(b" ", 1)[0] != source.encode():
+              raise InvalidContribution("Bundle must advertise exactly the declared source commit")
+          git(repo, "bundle", "verify", str(bundle))
+          git(repo, "bundle", "unbundle", str(bundle))
+          if git(repo, "cat-file", "-t", source).stdout != b"commit\n":
+              raise InvalidContribution("Advertised source is not a commit")
+          metadata, message = source_parts(repo, source, base, change_id)
+          use_repair = contribution["repair_base"] == previous
+          if use_repair and repair.stat().st_size:
+              git(repo, "apply", "--index", "--binary", str(repair))
+          picked = None if use_repair else git(repo, "cherry-pick", "--no-commit", source, check=False)
+          if picked and picked.returncode:
+              unmerged = git(repo, "ls-files", "--unmerged", "-z").stdout
+              if not unmerged:
+                  raise RuntimeError("Replay failed without Git conflict entries: " +
+                                     picked.stderr.decode(errors="replace").strip())
+              diagnostic.write_bytes(picked.stdout + picked.stderr + b"\n" +
+                                     git(repo, "status", "--porcelain=v1").stdout)
+              patch.write_bytes(git(repo, "diff", "--binary", "--full-index", "--no-ext-diff",
+                                    "--no-textconv", base, source, "--").stdout)
+              patch.with_suffix(".paths").write_bytes(
+                  git(repo, "diff", "--name-only", "--no-renames", "-z", base, source, "--").stdout)
+              git(repo, "reset", "--hard", previous)
+              require_clean(repo, previous)
+              return {"changeid": change_id, "status": "fail-conflict", "previous_head": previous}
+
+          tree = git(repo, "write-tree").stdout.strip()
+          parent_tree = git(repo, "rev-parse", previous + "^{tree}").stdout.strip()
+          # Preserve the original author, committer, encoding, and exact message bytes.
+          commit = b"\n".join([b"tree " + tree, b"parent " + previous.encode(), *metadata])
+          applied = git(repo, "hash-object", "-t", "commit", "-w", "--stdin",
+                        data=commit + b"\n\n" + message).stdout.decode().strip()
+          git(repo, "reset", "--hard", applied)
+          require_clean(repo, applied)
+          return {"changeid": change_id, "status": "applied", "previous_head": previous,
+                  "source_head": source, "hash": applied, "empty": tree == parent_tree,
+                  "repaired": use_repair}
+
+      def assemble():
+          published = os.environ["BASE"]
+          if not HASH.fullmatch(published):
+              raise RuntimeError("Expected a full, pinned base hash")
+          inbox, outbox = (Path(os.environ[key]) for key in ("INBOX", "OUTBOX"))
+          contributions = json.loads(os.environ["CONTRIBUTIONS"]) or []
+          ids = [contribution["changeid"] for contribution in contributions]
+          if len(ids) != len(set(ids)) or not all(CHANGE_ID.fullmatch(value) for value in ids):
+              raise RuntimeError("Replay requires unique, validated change IDs")
+          receiving = Path.cwd()
+          require_clean(receiving, published)
+          older_source = any(item["base_hash"] != published for item in contributions)
+          if older_source and git(receiving, "rev-parse", "--is-shallow-repository").stdout.strip() == b"true":
+              git(receiving, "fetch", "--unshallow", "--no-tags", "origin", os.environ["BRANCH"])
+          results = []
+          with tempfile.TemporaryDirectory(prefix="merge-queue-") as scratch:
+              repo = Path(scratch) / "assembly"
+              git(receiving, "clone", "--quiet", "--shared", "--no-checkout", str(receiving), str(repo))
+              git(repo, "checkout", "--quiet", "--detach", published)
+              previous = published
+              for contribution in contributions:
+                  change_id = contribution["changeid"]
+                  diagnostic = outbox / f"{change_id}.log"
+                  patch = outbox / f"{change_id}.diff"
+                  try:
+                      result = replay(repo, published, previous, contribution,
+                                      inbox / "contributions" / f"{change_id}.bundle", diagnostic, patch,
+                                      inbox / "repairs" / f"{change_id}.diff")
+                  except InvalidContribution as error:
+                      diagnostic.write_text(str(error) + "\n")
+                      result = {"changeid": change_id, "status": "fail-validation"}
+                  if result["status"] == "fail-conflict":
+                      result["prefix"] = [entry["changeid"] for entry in results if entry["status"] == "applied"]
+                  results.append(result)
+                  if result["status"] == "applied":
+                      previous = result["hash"]
+              if previous != published:
+                  git(repo, "update-ref", "refs/heads/merge-queue-assembled", previous)
+                  git(repo, "bundle", "create", str(outbox / "assembled.bundle"),
+                      "refs/heads/merge-queue-assembled", "^" + published)
+          require_clean(receiving, published)
+          print(json.dumps({"base": published, "head": previous, "results": results}))
+
+      try:
+          assemble()
+      except (OSError, RuntimeError, ValueError) as error:
+          (Path(os.environ["OUTBOX"]) / "replay-error.log").write_text(str(error) + "\n")
+          raise
+      PY
+outputs:
+  assembly: ${{ json_parse(sequence.replay.outputs.stdout) }}
+  artifacts: ${{ sequence.replay.artifacts }}
+vars:
+  paths: |
+    [(. // [])[] | .changeid as $id |
+      {key:("contributions/"+$id+".bundle"),value:(.thinpack_ref + {name:("contributions/"+$id+".bundle")})},
+      (select(.repair != null) | {key:("repairs/"+$id+".diff"),value:(.repair.patch + {name:("repairs/"+$id+".diff")})})] |
+    from_entries

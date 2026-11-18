@@ -1,0 +1,42 @@
+id: merge-queue-test-source
+inputs:
+  scenario: ${{ inputs.scenario }}
+sequence:
+- id: seed
+  op: command_execution
+  const: true
+  inputs:
+    env:
+      SCENARIO: ${{ inputs.scenario }}
+      OUTBOX: ${{ context.environment.op.outbox }}
+    run: |
+      set -eu
+      base=$(git rev-parse HEAD)
+      work=$(mktemp -d)
+      trap 'rm -rf "$work"' EXIT
+      git clone --quiet --shared . "$work"
+      git -C "$work" config user.name "Queue author"
+      git -C "$work" config user.email "queue@example.test"
+      for index in 1 2 3; do
+        git -C "$work" checkout --quiet -B contribution "$base"
+        case "$index:$SCENARIO" in
+          1:*|2:conflict) printf '%s\n' "$index" > "$work/change.txt" ;;
+          2:empty) ;;
+          2:*) printf '\001\002\000\377' > "$work/program"; chmod +x "$work/program" ;;
+          3:*) printf 'third\n' > "$work/third.txt" ;;
+        esac
+        id=$(printf '%027d' "$index")
+        git -C "$work" add .
+        if [ "$index:$SCENARIO" = 2:ordinary ]; then git -C "$work" update-index --chmod=+x program; fi
+        printf 'Candidate %s\n\nExact message\n\nChange-Id: %s\n' "$index" "$id" > "$work/.git/message"
+        git -C "$work" commit --quiet --allow-empty --cleanup=verbatim -F "$work/.git/message"
+        git -C "$work" rev-parse HEAD
+        git -C "$work" bundle create "$OUTBOX/$index.bundle" contribution "^$base"
+        if [ "$index:$SCENARIO" = 2:malformed ]; then
+          printf 'not a Git bundle\n' > "$OUTBOX/$index.bundle"
+        fi
+      done
+      printf '%s\n' "$base"
+outputs:
+  hashes: ${{ jq(sequence.seed.outputs.stdout, 'split("\n")') }}
+  packs: ${{ sequence.seed.artifacts }}

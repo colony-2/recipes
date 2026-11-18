@@ -1,12 +1,38 @@
 id: adaptive3-prepare-candidate
 inputs:
+  merge_queue: ${{ inputs.?merge_queue.orValue(false) }}
+  refresh_only: ${{ inputs.?refresh_only.orValue(false) }}
+  previous: ${{ inputs.?previous.orValue({}) }}
   request: ${{ inputs.request }}
   target_directory: ${{ inputs.target_directory }}
   documents: ${{ inputs.documents }}
   settings: ${{ inputs.settings }}
 state:
-  initial: upstream
+  initial:
+  - to: condense
+    when: inputs.refresh_only
+  - to: upstream
+    when: 'true'
   states:
+    condense:
+      inputs:
+        message: ${{ inputs.request }}
+      sequence:
+      - id: inspect
+        op: command_execution
+        const: true
+        inputs:
+          env:
+            BASE: ${{ context.git.execution.base_hash }}
+          run: git rev-list --count "$BASE..HEAD"
+      - id: squash
+        op: squash
+        when: int(sequence.inspect.outputs.stdout)>1
+        inputs:
+          commit_message: ${{ inputs.message }}
+      transitions:
+      - to: upstream
+        when: 'true'
     upstream:
       op: command_execution
       const: true
@@ -38,6 +64,11 @@ state:
         payload:
           failure: ${{ json_parse(json_stringify(failure)) }}
       transitions:
+      - to: done
+        when: inputs.refresh_only
+        payload:
+          result:
+            status: passed
       - to: prepare
         when: 'true'
     conflict:
@@ -68,6 +99,19 @@ state:
         payload:
           result: ${{ jq([outputs.result,{'status':'changes'}], 'add') }}
           artifacts: ${{ outputs.artifacts }}
+      - to: squash
+        when: inputs.merge_queue
+      - to: done
+        when: 'true'
+        payload:
+          result:
+            status: passed
+    squash:
+      include: ./merge-queue-prepare.yaml
+      inputs:
+        message: ${{ inputs.request }}
+        previous: ${{ inputs.previous }}
+      transitions:
       - to: done
         when: 'true'
         payload:
@@ -84,3 +128,4 @@ state:
 outputs:
   result: ${{ states.done.outputs.result }}
   artifacts: ${{ states.done.outputs.artifacts }}
+  contribution: ${{ state_output('squash','candidate',{}) }}

@@ -1,0 +1,103 @@
+id: adaptive3-merge-queue-repair
+inputs:
+  base: ${{ inputs.base }}
+  branch: ${{ inputs.branch }}
+  earlier: ${{ inputs.earlier }}
+  conflict: ${{ inputs.conflict }}
+  artifacts: ${{ inputs.artifacts }}
+sequence:
+- id: reconstruct
+  include: ./merge-queue-replay.yaml
+  inputs:
+    base: ${{ inputs.base }}
+    branch: ${{ inputs.branch }}
+    contributions: ${{ inputs.earlier }}
+- id: confirm
+  op: command_execution
+  const: true
+  inputs:
+    env:
+      EXPECTED: ${{ inputs.conflict.previous_head }}
+      ACTUAL: ${{ sequence.reconstruct.outputs.assembly.head }}
+    run: test "$ACTUAL" = "$EXPECTED"
+- id: install
+  include: ./merge-queue-install.yaml
+  inputs:
+    base: ${{ inputs.base }}
+    branch: ${{ inputs.branch }}
+    head: ${{ sequence.reconstruct.outputs.assembly.head }}
+    bundle: ${{ sequence.reconstruct.outputs.artifacts[?'assembled.bundle'].orValue(null) }}
+- id: repair
+  include: ./agent.yaml
+  perms:
+    inherit: true
+    jobdb:
+      jobs:
+        submit: false
+  inputs:
+    read_only: false
+    prompt: |
+      Replay one previously approved change on this exact older queue prefix.
+      Read inbox/work/original.diff and inbox/work/conflict.log. Attempt to apply
+      the original diff, then resolve only mechanical conflicts. Preserve the
+      original requested behavior and all older work. A high-confidence result
+      requires a specific explanation of why the edits are equivalent. If the
+      change requires a new decision, broadening scope, or a behavior change,
+      return uncertain. Do not submit jobs, run deployment, merge, push, or
+      edit files outside the paths in the original diff. Leave work in this
+      checkout for the recipe to save and verify.
+    documents:
+      original.diff: ${{ inputs.artifacts[inputs.conflict.changeid+'.diff'] }}
+      conflict.log: ${{ inputs.artifacts[inputs.conflict.changeid+'.log'] }}
+    schema:
+      type: object
+      additionalProperties: false
+      required: [status, summary]
+      properties:
+        status:
+          type: string
+          enum: [resolved, uncertain]
+        summary:
+          type: string
+          minLength: 1
+          maxLength: 4096
+- id: capture
+  when: sequence.repair.outputs.response.status=='resolved'
+  op: command_execution
+  const: true
+  execution_needs:
+    packages:
+    - nix:github:NixOS/nixpkgs/e7439b6b14ad3cc35d05608ebca9bce01a25f5f8#python3
+  artifacts:
+    original.paths: ${{ inputs.artifacts[inputs.conflict.changeid+'.paths'] }}
+  inputs:
+    env:
+      PREFIX: ${{ inputs.conflict.previous_head }}
+      INBOX: ${{ context.environment.op.inbox }}
+      OUTBOX: ${{ context.environment.op.outbox }}
+      SUMMARY: ${{ sequence.repair.outputs.response.summary }}
+    run: |
+      python3 - <<'PY'
+      import os
+      import subprocess
+      from pathlib import Path
+
+      def git(*args):
+          return subprocess.check_output(["git", *args])
+
+      prefix = os.environ["PREFIX"]
+      permitted = set((Path(os.environ["INBOX"]) / "original.paths").read_bytes().split(b"\0"))
+      touched = set(git("diff", "--no-renames", "--name-only", "-z", prefix, "HEAD", "--").split(b"\0"))
+      if touched <= permitted and subprocess.call(["git", "merge-base", "--is-ancestor", prefix, "HEAD"]) == 0:
+          output = Path(os.environ["OUTBOX"])
+          patch = git("diff", "--binary", "--full-index", "--no-renames", "--no-ext-diff", "--no-textconv",
+                      prefix, "HEAD", "--")
+          (output / "repair.diff").write_bytes(patch)
+          (output / "repair.txt").write_text(os.environ["SUMMARY"] + "\n")
+      PY
+outputs:
+  repair: >-
+    ${{ sequence[?'capture'].orValue({}).?artifacts.orValue({})[?'repair.diff'].hasValue()
+      ? {'base':inputs.conflict.previous_head,'patch':sequence.capture.artifacts['repair.diff'],
+         'evidence':sequence.capture.artifacts['repair.txt']}
+      : {} }}

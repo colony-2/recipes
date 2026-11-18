@@ -1,6 +1,11 @@
 id: adaptive3-execute
 inputs:
+  merge_queue: ${{ inputs.?merge_queue.orValue(false) }}
+  refresh: ${{ inputs.?refresh.orValue(false) }}
+  require_verification: ${{ inputs.?require_verification.orValue(false) }}
   purpose: ${{ inputs.purpose }}
+  contribution: ${{ inputs.?contribution.orValue({}) }}
+  queue_history: ${{ inputs.?queue_history.orValue({}) }}
   request: ${{ inputs.request }}
   target_directory: ${{ inputs.?target_directory.orValue('.') }}
   documents: ${{ inputs.?documents.orValue({}) }}
@@ -36,10 +41,27 @@ state:
       transitions:
       - to: publish
         when: inputs.purpose == 'integration' && has(inputs.feedback.publication)
+      - to: queue
+        when: inputs.purpose == 'integration' && inputs.merge_queue
       - to: merge
         when: inputs.purpose == 'integration'
+      - to: refresh
+        when: inputs.purpose == 'implementation' && inputs.refresh
       - to: before_design
         when: inputs.purpose == 'direction'
+      - to: work
+        when: 'true'
+    refresh:
+      include: ./prepare-candidate.yaml
+      inputs:
+        refresh_only: true
+        request: ${{ inputs.request }}
+        target_directory: ${{ inputs.target_directory }}
+        documents: ${{ inputs.documents }}
+        settings: ${{ inputs.settings }}
+      transitions:
+      - to: done
+        when: outputs.result.status == 'stuck'
       - to: work
         when: 'true'
     before_design:
@@ -56,14 +78,30 @@ state:
     work:
       include: ./agent.yaml
       inputs:
-        prompt: '{{ states.context.outputs.task }}'
+        prompt: >-
+          ${{ state_output('refresh','result',{}).?status.orValue('') == 'changes'
+            ? states.context.outputs.task + "\n\n" + states.refresh.outputs.result.summary
+            : states.context.outputs.task }}
         schema: ${{ states.context.outputs.schema }}
-        documents: ${{ jq([inputs.documents,inputs.feedback.?documents.orValue({}),inputs.feedback.?errors.orValue({}),state_output('before_design','artifacts',{})],
+        documents: ${{ jq([inputs.documents,inputs.feedback.?documents.orValue({}),inputs.feedback.?errors.orValue({}),state_output('before_design','artifacts',{}),state_output('refresh','artifacts',{})],
           'add') }}
         session: ${{ inputs.session }}
         read_only: ${{ inputs.purpose != 'implementation' }}
         agent_settings: ${{ inputs.agent_settings }}
       transitions:
+      - to: done
+        when: 'true'
+    queue:
+      include: ./merge-queue-submit.yaml
+      inputs:
+        contribution: ${{ inputs.contribution }}
+        queue_history: ${{ inputs.queue_history }}
+        require_verification: ${{ inputs.require_verification }}
+        target_directory: ${{ inputs.target_directory }}
+        settings: ${{ inputs.settings }}
+      transitions:
+      - to: publish
+        when: outputs.result.status == 'passed'
       - to: done
         when: 'true'
     merge:
@@ -82,19 +120,29 @@ state:
         documents: ${{ inputs.documents }}
         settings: ${{ inputs.settings }}
         hook: publish
-        publication: '${{ has(inputs.feedback.publication) ? inputs.feedback.publication : states.merge.outputs.result
-          }}'
+        publication: >-
+          ${{ has(inputs.feedback.publication) ? inputs.feedback.publication :
+            (state_exists('queue') ? states.queue.outputs.result.publication : states.merge.outputs.result) }}
       transitions:
       - to: done
         when: 'true'
     done:
       sequence: []
 outputs:
-  response: '${{ inputs.purpose == ''integration'' ? {''status'':states.publish.outputs.result.status == ''failed'' ? ''stuck'':''ready'',''summary'':states.publish.outputs.result.summary,''publication'':has(inputs.feedback.publication)
-    ? inputs.feedback.publication : states.merge.outputs.result,''publish'':states.publish.outputs.result,''errors'':states.publish.outputs.artifacts}
-    : (state_output(''before_design'',''result'',{}).?status.orValue('''') == ''failed'' && states.work.outputs.response.status
-    == ''ready'' ? {''status'':''changes'',''summary'':states.before_design.outputs.result.summary,''errors'':states.before_design.outputs.artifacts}
-    : states.work.outputs.response) }}'
+  response: >-
+    ${{ inputs.purpose == 'integration'
+      ? (state_exists('publish')
+        ? {'status':states.publish.outputs.result.status == 'failed' ? 'stuck' : 'ready',
+           'summary':states.publish.outputs.result.summary,
+           'publication':has(inputs.feedback.publication) ? inputs.feedback.publication :
+             (state_exists('queue') ? states.queue.outputs.result.publication : states.merge.outputs.result),
+           'initial_submitted_at':state_output('queue','result',{}).?initial_submitted_at.orValue(inputs.queue_history.?initial_submitted_at.orValue('')),
+           'publish':states.publish.outputs.result,'errors':states.publish.outputs.artifacts}
+        : states.queue.outputs.result)
+      : (state_output('refresh','result',{}).?status.orValue('') == 'stuck' ? states.refresh.outputs.result :
+        (state_output('before_design','result',{}).?status.orValue('') == 'failed' && states.work.outputs.response.status == 'ready'
+          ? {'status':'changes','summary':states.before_design.outputs.result.summary,'errors':states.before_design.outputs.artifacts}
+          : states.work.outputs.response)) }}
   documents: '${{ state_exists(''work'') && size(jq(states.work.outputs.artifacts,''with_entries(select(.key|startswith("review/")))''))>0
     ? jq(states.work.outputs.artifacts,''with_entries(select(.key|startswith("review/")))'') : inputs.documents
     }}'

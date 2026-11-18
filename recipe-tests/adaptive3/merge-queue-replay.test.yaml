@@ -1,0 +1,50 @@
+recipe: merge-queue-replay.yaml
+cases:
+- id: preserves-ordered-commit-sequence
+  type: integration_case
+  runtime: {}
+  inputs: {scenario: ordinary}
+  mocks:
+    ops:
+    - &command
+      match: {op: command_execution}
+      repeat: true
+      behavior: {mode: passthrough}
+  assertions:
+  - type: cel_true
+    expr: outputs.verified && outputs.assembly.results.all(r,r.status=="applied")
+  - type: cel_true
+    expr: outputs.assembly.results[1].previous_head==outputs.assembly.results[0].hash &&
+      outputs.assembly.results[2].previous_head==outputs.assembly.results[1].hash
+- id: conflict-leaves-older-and-younger-changes
+  type: integration_case
+  runtime: {}
+  inputs: {scenario: conflict}
+  mocks:
+    ops:
+    - *command
+  assertions:
+  - type: cel_true
+    expr: outputs.verified && outputs.assembly.results.map(r,r.status)==["applied","fail-conflict","applied"]
+  - type: cel_true
+    expr: outputs.assembly.results[0].hash==outputs.assembly.results[2].previous_head
+- id: empty-source-preserves-commit
+  type: integration_case
+  runtime: {}
+  inputs: {scenario: empty}
+  mocks:
+    ops:
+    - *command
+  assertions:
+  - type: cel_true
+    expr: outputs.verified && outputs.assembly.results[1].status=="applied" && outputs.assembly.results[1].empty
+- id: malformed-bundle-is-rejected-without-a-conflict-or-residual-edits
+  type: integration_case
+  runtime: {}
+  inputs: {scenario: malformed}
+  mocks:
+    ops:
+    - *command
+  assertions:
+  - type: cel_true
+    expr: outputs.verified && outputs.assembly.results.map(r,r.status)==["applied","fail-validation","applied"]

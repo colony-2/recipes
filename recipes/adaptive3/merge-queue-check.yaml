@@ -1,0 +1,53 @@
+id: adaptive3-merge-queue-check
+inputs:
+  base: ${{ inputs.base }}
+  branch: ${{ inputs.?branch.orValue('main') }}
+  repair_conflicts: ${{ inputs.?repair_conflicts.orValue(false) }}
+  contributions: ${{ inputs.contributions }}
+  policy: ${{ inputs.policy }}
+sequence:
+- id: resolve
+  when: inputs.repair_conflicts
+  include: ./merge-queue-resolve.yaml
+  inputs:
+    base: ${{ inputs.base }}
+    branch: ${{ inputs.branch }}
+    contributions: ${{ inputs.contributions }}
+- id: assemble
+  when: '!inputs.repair_conflicts'
+  include: ./merge-queue-replay.yaml
+  inputs:
+    base: ${{ inputs.base }}
+    branch: ${{ inputs.branch }}
+    contributions: ${{ inputs.contributions }}
+- id: resolved
+  inputs:
+    result: '${{ inputs.repair_conflicts ? sequence.resolve.outputs : sequence.assemble.outputs }}'
+  sequence: []
+  outputs:
+    result: ${{ inputs.result }}
+- id: install
+  include: ./merge-queue-install.yaml
+  inputs:
+    base: ${{ sequence.resolved.outputs.result.assembly.base }}
+    head: ${{ sequence.resolved.outputs.result.assembly.head }}
+    bundle: ${{ sequence.resolved.outputs.result.artifacts[?'assembled.bundle'].orValue(null) }}
+- id: verify
+  when: size(inputs.contributions)==0 || sequence.resolved.outputs.result.assembly.head!=inputs.base
+  include: ./verify-candidate.yaml
+  inputs:
+    request: Verify the combined merge queue candidate.
+    target_directory: ${{ inputs.policy.target_directory }}
+    settings: ${{ inputs.policy.settings }}
+    documents: {}
+    require_verification: ${{ inputs.policy.require_verification }}
+outputs:
+  contributions: ${{ sequence.resolved.outputs.result.?contributions.orValue(inputs.contributions) }}
+  assembly: ${{ sequence.resolved.outputs.result.assembly }}
+  artifacts: ${{ jq([sequence.resolved.outputs.result.artifacts,sequence[?'verify'].orValue({}).?outputs.orValue({}).?artifacts.orValue({})],'add') }}
+  policy: ${{ inputs.policy }}
+  verified_head: >-
+    ${{ sequence[?'verify'].orValue({}).?outputs.orValue({}).?receipt.orValue({}).?identity.orValue({}).?candidate.orValue('') }}
+  verification: >-
+    ${{ sequence[?'verify'].orValue({}).?outputs.orValue({}).?result.orValue({
+      'status':'skipped','summary':'The batch contains no eligible contributions to verify.'}) }}
