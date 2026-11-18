@@ -1,11 +1,22 @@
 schema_version: 2
 id: reuse-permissions
+input_schema:
+  scenario:
+    type: string
+    default_value: advice
+inputs:
+  scenario: ${{ inputs.scenario }}
 sequence:
 - id: launch
   op: command_execution
   inputs:
+    env:
+      SCENARIO: ${{ inputs.scenario }}
     run: |
       set -eu
+      if [ "$SCENARIO" != advice ]; then
+        exec python3 .test/continuation-permissions.py setup "$SCENARIO"
+      fi
       fixture_repo=$(mktemp -d)
       trap 'rm -rf "$fixture_repo"' EXIT
       cp -R .test/library/. "$fixture_repo/"
@@ -33,6 +44,15 @@ sequence:
       'on': job
       condition: complete
     return_when: terminal
+- id: inspect_probe
+  op: command_execution
+  const: true
+  when: inputs.scenario != 'advice'
+  inputs:
+    env:
+      FIXTURE: ${{ sequence.launch.outputs.stdout }}
+    run: python3 "$FIXTURE/probe.py" finish "$FIXTURE"
 outputs:
   result: ${{ sequence.?wait.orValue({}).?outputs.orValue({'status':'rejected'}) }}
   submission_error: ${{ sequence.launch.outputs.stderr }}
+  probe: "${{ inputs.scenario == 'advice' ? {} : json_parse(sequence.inspect_probe.outputs.stdout) }}"
