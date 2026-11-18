@@ -15,6 +15,9 @@ without changing adaptive behavior; no compatibility entrypoints are retained.
 | LR08 | Critical | Integration / native cell registry and Git | `recipes/create/publish.yaml` | Initialization selects the approved cell and repository; registration rejects conflicting identities before publication begins. |
 | LR09 | Critical | Integration / c2j, Git, Nix | `build.yaml`, `recipe-tests/adaptive3/default-build.test.yaml` | Default builds complete through Adaptive3 after the Adaptive2 entrypoint and its cases are removed. |
 | LR10 | Critical | Integration / c2j, native human input | `recipes/adaptive/limit-review/`, `recipe-tests/adaptive/limit-escalation.test.yaml`, `recipe-tests/adaptive/recovery.test.yaml` | Retained Adaptive requests the same human decisions when implementation or response correction exhausts its allowance. |
+| LR11 | Critical | Integration / c2j, native human input | `recipe-tests/adaptive/{artifact-selection,consultation,direct-state,flow,recovery}.test.yaml` | Exhausted work offers supported resolutions. A fresh or continued attempt requires a human decision and preserves current evidence. |
+| LR12 | Critical | Integration / c2j, child jobs | `recipe-tests/adaptive/{build-coordination,inspection-recovery,parent-recovery}.test.yaml` | Delivery receives a scoped handoff. Failed child attempts preserve diagnostics, while a corrected replacement starts fresh and runs once. |
+| LR13 | Critical | Integration / c2j, native human input | `recipe-tests/adaptive3/backstop-resume.test.yaml` | Backstop offers continuation only after a valid correction is available. Approved recovery resumes implementation without restarting configuration or planning. |
 
 The retired heavy/light and superpowers expectations are removed with those
 workflows. Shared creation, artifact, review, and registration coverage remains.

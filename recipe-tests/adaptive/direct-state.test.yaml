@@ -13,7 +13,7 @@ cases:
     responses:
     - node_path: build/workflow/adaptive-build/run/adaptive-develop/response_repair_exhausted/sequence/decision/adaptive2-limit-decision/ask/sequence/review/adaptive2-review/request_human_review
       fields:
-        action: stop
+        action: continue
   inputs:
     prompt: Explain why no changes are needed.
   mocks:
@@ -126,6 +126,24 @@ cases:
         outputs:
           status: failed
           errorMessage: Explanation unavailable
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            next: fail
+            summary: The required evidence is unavailable after the authorized attempt.
+            files: []
+            questions: []
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                turn: review
     - repeat: true
       match:
         op: command_execution
@@ -133,8 +151,11 @@ cases:
         mode: passthrough
   assertions:
   - type: cel_true
-    expr: size(reviews)==1
-  expect_error: The human stopped this attempt
+    expr: size(reviews)==1 && reviews[0].node_path.contains("/response_repair_exhausted/")
+  - type: cel_true
+    expr: calls.filter(c,c.op=="extension_execution" && c.node_path.contains("/work/") &&
+      c.node_path.contains("/resume_read_only_session/")).size()==3
+  expect_error: The required evidence is unavailable after the authorized attempt.
 - id: malformed-response-does-not-replace-completed-documents
   type: integration_case
   runtime:
