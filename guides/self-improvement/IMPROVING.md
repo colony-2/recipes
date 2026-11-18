@@ -78,11 +78,10 @@ responses to validate orchestration. Test output schemas independently of mocked
 `output_schema_valid` flags. Do not add assertions that simply repeat prompt
 wording or claim that scripted decisions prove an LLM's reasoning quality.
 
-Run focused cases first, then affected regression suites. Broad shared adaptive
-changes normally warrant the adaptive suite. Existing CI supplies wider coverage.
-The current repository verification hook checks purpose-document structure only;
-native test results must be run and reported separately. Record c2j version, recipe
-revision, commands, outcomes, and any genuinely unavailable coverage.
+Run focused native cases while implementing and report their results. The Recipes
+verify hook runs the repository-wide CI checks before merge and returns failures
+for repair. Record the c2j version, recipe revision, commands, outcomes, and
+any genuinely unavailable coverage.
 Use [native recipe testing](../NATIVE_RECIPE_TESTING.md) for the current harness,
 the [testing CLI reference](../RECIPE_TESTING_CLI_USER_GUIDE.md) for case formats,
 and the [testing-gap assessment](../ASSESSMENT_RECIPE_TEST_GAP_CLOSURE.md) when

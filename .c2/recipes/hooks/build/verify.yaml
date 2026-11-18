@@ -21,21 +21,36 @@ input_schema:
   settings:
     type: artifact
     required: false
-inputs:
-  target_directory: ${{ inputs.target_directory }}
 sequence:
 - id: run_repository_suite
   op: command_execution
   const: true
+  execution_needs:
+    packages:
+      # Go 1.26.8 builds the same source pin used in CI.
+      - nix:github:NixOS/nixpkgs/e7439b6b14ad3cc35d05608ebca9bce01a25f5f8#go
   inputs:
     env:
-      TARGET: '{{ context.environment.op.worktree_path }}/{{ inputs.target_directory }}'
+      REPO: ${{ context.environment.op.worktree_path }}
       OUTBOX: ${{ context.environment.op.outbox }}
     run: |
-      cd "$TARGET" || exit 1
-      if bash ./build.sh > "$OUTBOX/tests.log" 2>&1; then printf passed; else printf failed; fi
+      set -eu
+      cd "$REPO"
+      scratch=$(mktemp -d)
+      trap 'rm -rf "$scratch"' EXIT
+      if (
+        bash scripts/install-c2j.sh "$scratch" &&
+        PATH="$scratch/bin:$PATH" bash scripts/test-recipes.sh "$scratch/results"
+      ) > "$OUTBOX/tests.log" 2>&1; then
+        printf passed
+      else
+        if [ -d "$scratch/results" ]; then
+          tar -czf "$OUTBOX/test-reports.tar.gz" -C "$scratch/results" .
+        fi
+        printf failed
+      fi
 outputs:
   api_version: c2.build-hook/v1
   status: ${{ sequence.run_repository_suite.outputs.stdout }}
-  summary: Repository suite completed; inspect tests.log.
-  artifact_refs: "${{ {'tests.log': sequence.run_repository_suite.artifacts['tests.log']} }}"
+  summary: "${{ 'Repository checks ' + sequence.run_repository_suite.outputs.stdout + '. See tests.log.' }}"
+  artifact_refs: ${{ jq(sequence.run_repository_suite.artifacts, 'with_entries(select(.key == "tests.log" or .key == "test-reports.tar.gz"))') }}

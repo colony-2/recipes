@@ -56,6 +56,13 @@ responses are deterministic; package resolution, secrets, workspaces, checkpoint
 artifact binding, and nested parent restoration execute normally. Rewriting selectors or
 removing declared tool requirements is not equivalent to this smoke test.
 
+The [Recipes verify hook](../.c2/recipes/hooks/build/verify.yaml) installs the same
+pinned c2j and runs the [shared checks](../scripts/test-recipes.sh) from the candidate
+repository root, including for assignments targeting a subdirectory. The hook returns
+`tests.log` and archives any generated reports on failure. While editing, run focused
+cases locally.
+A verify-hook change follows this same candidate verification path.
+
 For executable examples, see the
 [verification cases](../recipe-tests/adaptive/verification.test.yaml) and their
 [recipe fixture](../recipe-tests/adaptive/verification.yaml). They use repository

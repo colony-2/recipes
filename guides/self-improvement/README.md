@@ -91,10 +91,9 @@ The skill and AGENTS pointer provide document discovery. Existing hooks still ap
 - `before_design` can collect deterministic research if a reusable collector is
   later justified. It runs again on redesign, so preserve the identified observation
   window rather than silently selecting a new cohort each time.
-- `verify` runs the cell's automated checks. The current hook invokes `build.sh`,
-  which checks purpose-document structure and evidence paths. It does **not** run
-  native recipe suites; implementation must run and report the affected cases and
-  relevant regressions. [Native testing](../NATIVE_RECIPE_TESTING.md) describes that flow.
+- Run focused checks locally while implementing. Before merge, the Recipes `verify` hook
+  runs the repository-wide CI checks and returns failures to the implementer.
+  [Native testing](../NATIVE_RECIPE_TESTING.md) describes the suite.
 - `prepare` and `publish` retain their normal build meanings.
 
 See [hook authoring](../BUILD_HOOKS_USER_GUIDE.md) and

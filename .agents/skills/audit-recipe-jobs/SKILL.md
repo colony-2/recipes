@@ -48,7 +48,7 @@ evidence when needed; do not repeat the census merely because the session is new
 Apply the requested recipe-owned fixes using existing mechanisms when sufficient.
 Run meaningful native regressions; report changes versus plan, deviations, tests,
 and remaining external gaps in `implementation.md` and `test-results.md`.
-The current `build.sh` hook checks purpose-document structure, not recipe behavior.
+The Recipes verify hook runs the repository-wide CI checks before merge and returns failures for repair.
 
 **During assessment or summary:** judge this assignment's outcomes. A requested
 investigation can finish with precise unavailability without certifying an
