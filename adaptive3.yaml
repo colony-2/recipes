@@ -54,6 +54,7 @@ state:
     configure:
       id: configure
       inputs:
+        sessions: ${{ transition.payload.?sessions.orValue({}) }}
         request: ${{ inputs.prompt }}
         target_directory: ${{ inputs.target_directory }}
         documents: ${{ transition.payload.?documents.orValue(inputs.documents) }}
@@ -68,6 +69,7 @@ state:
           target_directory: ${{ inputs.target_directory }}
           documents: ${{ inputs.documents }}
       outputs:
+        sessions: ${{ inputs.sessions }}
         result: ${{ sequence.hook.outputs.result }}
         settings: ${{ sequence.hook.outputs.settings }}
         destination: ${{ inputs.destination }}
@@ -77,31 +79,37 @@ state:
       - to: direction
         when: outputs.result.status in ['passed','skipped'] && outputs.destination == 'direction'
         payload:
+          sessions: ${{ outputs.sessions }}
           documents: ${{ outputs.documents }}
           feedback: ${{ outputs.feedback }}
       - to: preparation
         when: outputs.result.status in ['passed','skipped'] && outputs.destination == 'preparation'
         payload:
+          sessions: ${{ outputs.sessions }}
           documents: ${{ outputs.documents }}
           feedback: ${{ outputs.feedback }}
       - to: implementation
         when: outputs.result.status in ['passed','skipped'] && outputs.destination == 'implementation'
         payload:
+          sessions: ${{ outputs.sessions }}
           documents: ${{ outputs.documents }}
           feedback: ${{ outputs.feedback }}
       - to: outcome
         when: outputs.result.status in ['passed','skipped'] && outputs.destination == 'outcome'
         payload:
+          sessions: ${{ outputs.sessions }}
           documents: ${{ outputs.documents }}
           feedback: ${{ outputs.feedback }}
       - to: integration
         when: outputs.result.status in ['passed','skipped'] && outputs.destination == 'integration'
         payload:
+          sessions: ${{ outputs.sessions }}
           documents: ${{ outputs.documents }}
           feedback: ${{ outputs.feedback }}
       - to: backstop
         when: 'true'
         payload:
+          sessions: ${{ outputs.sessions }}
           stage: configure
           problem: ${{ outputs.result }}
           documents: ${{ outputs.documents }}
@@ -109,6 +117,7 @@ state:
       id: direction
       include: ./recipes/adaptive3/lifecycle.yaml
       inputs:
+        sessions: ${{ transition.payload.?sessions.orValue({}) }}
         purpose: direction
         request: |-
           {{ inputs.title }}
@@ -124,6 +133,7 @@ state:
       - to: backstop
         when: outputs.result.status == 'stuck'
         payload:
+          sessions: ${{ outputs.sessions }}
           stage: direction
           problem: ${{ outputs.result }}
           documents: ${{ outputs.documents }}
@@ -134,9 +144,12 @@ state:
           result: ${{ outputs }}
       - to: preparation
         when: outputs.result.status == 'accepted'
+        payload:
+          sessions: ${{ outputs.sessions }}
       - to: backstop
         when: 'true'
         payload:
+          sessions: ${{ outputs.sessions }}
           stage: direction
           problem: ${{ outputs.result }}
           documents: ${{ outputs.documents }}
@@ -145,6 +158,7 @@ state:
       id: preparation
       include: ./recipes/adaptive3/lifecycle.yaml
       inputs:
+        sessions: ${{ transition.payload.?sessions.orValue({}) }}
         purpose: preparation
         request: |-
           {{ inputs.title }}
@@ -162,6 +176,7 @@ state:
       - to: backstop
         when: outputs.result.status == 'stuck'
         payload:
+          sessions: ${{ outputs.sessions }}
           stage: preparation
           problem: ${{ outputs.result }}
           documents: ${{ outputs.documents }}
@@ -169,13 +184,17 @@ state:
       - to: direction
         when: outputs.result.status == 'changes' && outputs.result.?stage.orValue('') == 'direction'
         payload:
+          sessions: ${{ outputs.sessions }}
           documents: ${{ outputs.documents }}
           feedback: ${{ outputs.result }}
       - to: implementation
         when: outputs.result.status == 'accepted'
+        payload:
+          sessions: ${{ outputs.sessions }}
       - to: backstop
         when: 'true'
         payload:
+          sessions: ${{ outputs.sessions }}
           stage: preparation
           problem: ${{ outputs.result }}
           documents: ${{ outputs.documents }}
@@ -184,7 +203,9 @@ state:
       id: implementation
       include: ./recipes/adaptive3/lifecycle.yaml
       inputs:
+        sessions: ${{ transition.payload.?sessions.orValue({}) }}
         purpose: implementation
+        verification: ${{ state_output('implementation','verification',{}) }}
         request: |-
           {{ inputs.title }}
           {{ inputs.prompt }}
@@ -201,6 +222,7 @@ state:
       - to: backstop
         when: outputs.result.status == 'stuck'
         payload:
+          sessions: ${{ outputs.sessions }}
           stage: implementation
           problem: ${{ outputs.result }}
           documents: ${{ outputs.documents }}
@@ -208,18 +230,29 @@ state:
       - to: direction
         when: outputs.result.status == 'changes' && outputs.result.?stage.orValue('') == 'direction'
         payload:
+          sessions: ${{ outputs.sessions }}
           documents: ${{ outputs.documents }}
           feedback: ${{ outputs.result }}
       - to: preparation
         when: outputs.result.status == 'changes' && outputs.result.?stage.orValue('') == 'preparation'
         payload:
+          sessions: ${{ outputs.sessions }}
           documents: ${{ outputs.documents }}
           feedback: ${{ outputs.result }}
+      - to: integration
+        when: outputs.result.status == 'accepted' && outputs.result.?approval_reused.orValue(false)
+        payload:
+          sessions: ${{ outputs.sessions }}
+          documents: ${{ outputs.documents }}
+          feedback: {}
       - to: outcome
         when: outputs.result.status == 'accepted'
+        payload:
+          sessions: ${{ outputs.sessions }}
       - to: backstop
         when: 'true'
         payload:
+          sessions: ${{ outputs.sessions }}
           stage: implementation
           problem: ${{ outputs.result }}
           documents: ${{ outputs.documents }}
@@ -228,6 +261,7 @@ state:
       id: outcome
       include: ./recipes/adaptive3/lifecycle.yaml
       inputs:
+        sessions: ${{ transition.payload.?sessions.orValue({}) }}
         purpose: outcome
         request: |-
           {{ inputs.title }}
@@ -249,6 +283,7 @@ state:
       - to: backstop
         when: outputs.result.status == 'stuck'
         payload:
+          sessions: ${{ outputs.sessions }}
           stage: outcome
           problem: ${{ outputs.result }}
           documents: ${{ outputs.documents }}
@@ -256,23 +291,29 @@ state:
       - to: direction
         when: outputs.result.status == 'changes' && outputs.result.?stage.orValue('') == 'direction'
         payload:
+          sessions: ${{ outputs.sessions }}
           documents: ${{ outputs.documents }}
           feedback: ${{ outputs.result }}
       - to: preparation
         when: outputs.result.status == 'changes' && outputs.result.?stage.orValue('') == 'preparation'
         payload:
+          sessions: ${{ outputs.sessions }}
           documents: ${{ outputs.documents }}
           feedback: ${{ outputs.result }}
       - to: implementation
         when: outputs.result.status == 'changes' && outputs.result.?stage.orValue('') == 'implementation'
         payload:
+          sessions: ${{ outputs.sessions }}
           documents: ${{ outputs.documents }}
           feedback: ${{ outputs.result }}
       - to: integration
         when: outputs.result.status == 'accepted'
+        payload:
+          sessions: ${{ outputs.sessions }}
       - to: backstop
         when: 'true'
         payload:
+          sessions: ${{ outputs.sessions }}
           stage: outcome
           problem: ${{ outputs.result }}
           documents: ${{ outputs.documents }}
@@ -281,6 +322,7 @@ state:
       id: integration
       include: ./recipes/adaptive3/lifecycle.yaml
       inputs:
+        sessions: ${{ transition.payload.?sessions.orValue({}) }}
         purpose: integration
         request: |-
           {{ inputs.title }}
@@ -297,9 +339,13 @@ state:
       transitions:
       - to: chase
         when: outputs.result.?failure.orValue({}).?code.orValue('') == 'MERGE_UPSTREAM_ADVANCED'
+          && outputs.result.failure.?node.orValue({}).?id.orValue('') == 'merge'
+        payload:
+          sessions: ${{ outputs.sessions }}
       - to: backstop
         when: outputs.result.status == 'stuck'
         payload:
+          sessions: ${{ outputs.sessions }}
           stage: integration
           problem: ${{ outputs.result }}
           documents: ${{ outputs.documents }}
@@ -307,21 +353,25 @@ state:
       - to: direction
         when: outputs.result.status == 'changes' && outputs.result.?stage.orValue('') == 'direction'
         payload:
+          sessions: ${{ outputs.sessions }}
           documents: ${{ outputs.documents }}
           feedback: ${{ outputs.result }}
       - to: preparation
         when: outputs.result.status == 'changes' && outputs.result.?stage.orValue('') == 'preparation'
         payload:
+          sessions: ${{ outputs.sessions }}
           documents: ${{ outputs.documents }}
           feedback: ${{ outputs.result }}
       - to: implementation
         when: outputs.result.status == 'changes' && outputs.result.?stage.orValue('') == 'implementation'
         payload:
+          sessions: ${{ outputs.sessions }}
           documents: ${{ outputs.documents }}
           feedback: ${{ outputs.result }}
       - to: outcome
         when: outputs.result.status == 'changes' && outputs.result.?stage.orValue('') == 'outcome'
         payload:
+          sessions: ${{ outputs.sessions }}
           documents: ${{ outputs.documents }}
           feedback: ${{ outputs.result }}
       - to: complete
@@ -331,12 +381,14 @@ state:
       - to: backstop
         when: 'true'
         payload:
+          sessions: ${{ outputs.sessions }}
           stage: integration
           problem: ${{ outputs.result }}
           documents: ${{ outputs.documents }}
           feedback: ${{ outputs.feedback }}
     backstop:
       inputs:
+        sessions: ${{ transition.payload.?sessions.orValue({}) }}
         stage: ${{ transition.payload.stage }}
         problem: ${{ transition.payload.problem }}
         documents: ${{ transition.payload.documents }}
@@ -357,8 +409,10 @@ state:
           feedback: ${{ inputs.feedback }}
           agent_settings: ${{ inputs.agent_settings }}
           prior_job: ${{ inputs.prior_job }}
+          session: ${{ inputs.sessions.?backstop.orValue({}) }}
           automatic: ${{ inputs.automatic_used < 2 }}
       outputs:
+        sessions: ${{ jq([inputs.sessions,{'backstop':sequence.backstop.outputs.session}], 'add') }}
         result: ${{ jq([sequence.backstop.outputs.result,inputs.problem],'.[0] as $r | .[1] as $p | $r + (if $p.budget
           then {budget:($p.budget | .limits[$p.loop] += ([$r.additional_attempts // 4,1] | max | [.,20] | min))}
           else {} end)') }}
@@ -372,37 +426,44 @@ state:
       - to: configure
         when: '!state_exists(''configure'') && outputs.result.stage != ''configure'''
         payload:
+          sessions: ${{ outputs.sessions }}
           destination: ${{ outputs.result.stage }}
           documents: ${{ outputs.documents }}
           feedback: ${{ jq([outputs.problem,outputs.result], 'add') }}
       - to: configure
         when: outputs.result.stage == 'configure'
         payload:
+          sessions: ${{ outputs.sessions }}
           documents: ${{ outputs.documents }}
           feedback: ${{ jq([outputs.problem,outputs.result], 'add') }}
       - to: direction
         when: outputs.result.stage == 'direction'
         payload:
+          sessions: ${{ outputs.sessions }}
           documents: ${{ outputs.documents }}
           feedback: ${{ jq([outputs.problem,outputs.result], 'add') }}
       - to: preparation
         when: outputs.result.stage == 'preparation'
         payload:
+          sessions: ${{ outputs.sessions }}
           documents: ${{ outputs.documents }}
           feedback: ${{ jq([outputs.problem,outputs.result], 'add') }}
       - to: implementation
         when: outputs.result.stage == 'implementation'
         payload:
+          sessions: ${{ outputs.sessions }}
           documents: ${{ outputs.documents }}
           feedback: ${{ jq([outputs.problem,outputs.result], 'add') }}
       - to: outcome
         when: outputs.result.stage == 'outcome'
         payload:
+          sessions: ${{ outputs.sessions }}
           documents: ${{ outputs.documents }}
           feedback: ${{ jq([outputs.problem,outputs.result], 'add') }}
       - to: integration
         when: outputs.result.stage == 'integration'
         payload:
+          sessions: ${{ outputs.sessions }}
           documents: ${{ outputs.documents }}
           feedback: ${{ jq([outputs.problem,outputs.result], 'add') }}
     complete:
@@ -411,6 +472,7 @@ state:
         result: ${{ transition.payload.result }}
     chase:
       inputs:
+        sessions: ${{ transition.payload.?sessions.orValue({}) }}
         used: ${{ state_output('chase','used',0)+1 }}
         limit: ${{ state_output('backstop','merge_limit',3) }}
         documents: ${{ states.integration.outputs.documents }}
@@ -419,25 +481,66 @@ state:
           }}'
       sequence: []
       outputs:
+        sessions: ${{ inputs.sessions }}
         used: ${{ inputs.used }}
         limit: ${{ inputs.limit }}
         documents: ${{ inputs.documents }}
         feedback: ${{ inputs.feedback }}
       transitions:
-      - to: implementation
+      - to: recheck_merge
         when: outputs.used <= outputs.limit
         payload:
+          sessions: ${{ outputs.sessions }}
           documents: ${{ outputs.documents }}
           feedback: ${{ outputs.feedback }}
       - to: backstop
         when: 'true'
         payload:
+          sessions: ${{ outputs.sessions }}
           stage: implementation
           documents: ${{ outputs.documents }}
           problem: ${{ jq([outputs.feedback,{'status':'stuck','loop':'merge','summary':'Repeated upstream changes
             have used the merge allowance. Decide the next correction before trying another complete cycle.'}],'add')
             }}
           feedback: ${{ outputs.feedback }}
+    recheck_merge:
+      include: ./recipes/adaptive3/recheck-merge.yaml
+      inputs:
+        request: |-
+          {{ inputs.title }}
+          {{ inputs.prompt }}
+        target_directory: ${{ inputs.target_directory }}
+        settings: ${{ states.configure.outputs.settings }}
+        documents: ${{ states.chase.outputs.documents }}
+        feedback: ${{ states.chase.outputs.feedback }}
+        require_verification: ${{ inputs.require_verification }}
+      transitions:
+      - to: integration
+        when: outputs.result.status == 'equivalent'
+        payload:
+          sessions: ${{ states.chase.outputs.sessions }}
+          documents: ${{ states.chase.outputs.documents }}
+          feedback: ${{ {'approval':states.chase.outputs.feedback.approval} }}
+      - to: outcome
+        when: outputs.result.status == 'review'
+        payload:
+          sessions: ${{ states.chase.outputs.sessions }}
+          documents: ${{ states.chase.outputs.documents }}
+          feedback: ${{ outputs.result }}
+      - to: implementation
+        when: outputs.result.status == 'changes'
+        payload:
+          sessions: ${{ states.chase.outputs.sessions }}
+          documents: ${{ states.chase.outputs.documents }}
+          feedback: ${{ jq([{'approval':states.chase.outputs.feedback.approval},outputs.result], 'add') }}
+      - to: backstop
+        when: 'true'
+        payload:
+          sessions: ${{ states.chase.outputs.sessions }}
+          stage: implementation
+          problem: ${{ outputs.result }}
+          documents: ${{ states.chase.outputs.documents }}
+
 outputs:
   summary: ${{ states.complete.outputs.result.work.summary }}
   work_kind: ${{ states.complete.outputs.result.work.?work_kind.orValue(state_output('outcome','work',{}).?work_kind.orValue(state_output('implementation','work',{}).?work_kind.orValue(state_output('preparation','work',{}).?work_kind.orValue(state_output('direction','work',{}).?work_kind.orValue('oversight')))))

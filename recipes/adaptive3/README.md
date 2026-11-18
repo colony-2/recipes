@@ -1,12 +1,17 @@
 # Adaptive3
 
-The default development recipe, built around one cycle:
-**Execute → full Validate → Review**. Corrections repeat the whole cycle.
-Questions stay in Review. Accepted work advances directly to the next stage.
+Adaptive3 uses two author sessions and one independent assessor for the standard
+build. Direction and Preparation share a planning author. Implementation and
+Outcome share a core implementer. Direction and Outcome retain human approval.
+Review questions resume the author in a read-only turn. Autonomous acceptance
+uses the independent assessment result.
 
-The five stages are Direction, Preparation, Implementation, Outcome acceptance,
-and Integration/publication. Direction and Outcome have human review. The other
-stages use independent agent review. An accepted explanation can finish at Direction.
+Check outputs before verification or assessment. Rebase and prepare the
+candidate before managed verification. Send failed checks to the implementer
+with original diagnostics. A merge retry after upstream advancement can reuse
+human approval when the prepared change matches the approved patch and fresh
+verification passes. Successful integration completes from merge and any
+configured publication work.
 
 Use root `build.yaml` for the default entrypoint, or `adaptive3.yaml` explicitly.
 See the [rollout notes](../../guides/adaptive3/ROLLOUT.md) for the public contract.
@@ -47,7 +52,8 @@ job inspection. Diagnostics stay in files, with concise findings in responses.
 For more detail, use the [job inspection playbook](../../guides/JOB_INSPECTION_PLAYBOOK.md).
 Owner questions and replies appear as task responses in the receiving cell's
 workspace. The receiver writes any delivery assignment. Consultation advice is
-inline; delivery uses a child adaptive3 job and a native wait.
+inline between different cells. Delivery uses a child adaptive3 job and a native
+wait. A request addressed to the current cell returns to the existing worker.
 
 ## Dependency publication
 
@@ -58,7 +64,8 @@ delivery job, but B depends on A’s API. B needs no additional coordinator or l
 implementation job for this reason alone.
 
 Provider-initiated adoption: A needs B to adopt A’s new API as part of A’s request. A
-can coordinate a same-cell implementation job through review and publication, then
+can submit a distinct same-cell implementation assignment directly through review
+and publication, then
 request B’s delivery against the published API. That implementation job handles the
 prerequisite; A retains the adoption request. If a new data format is involved,
 publish and, where required, deploy compatible reader support before activating

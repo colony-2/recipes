@@ -8,6 +8,8 @@ inputs:
   document_metadata: ${{ inputs.?document_metadata.orValue({}) }}
   validation: ${{ inputs.?validation.orValue({}) }}
   feedback: ${{ inputs.?feedback.orValue({}) }}
+  session: ${{ inputs.?session.orValue({}) }}
+  assessor: ${{ inputs.?assessor.orValue({}) }}
   agent_settings: ${{ inputs.?agent_settings.orValue({}) }}
   decision: ${{ inputs.?decision.orValue(inputs.purpose) }}
 state:
@@ -40,6 +42,10 @@ state:
           && inputs.feedback.approval.?patch.orValue(null) != null
       - to: discuss
         when: inputs.decision in ['direction','answer','merge','outcome','packages']
+      - to: done
+        when: inputs.validation.?status.orValue('') == 'passed' && inputs.purpose in ['preparation','implementation','advice']
+        payload:
+          result: ${{ {'status':'accepted','stage':inputs.purpose,'summary':inputs.validation.summary} }}
       - to: assess
         when: 'true'
       inputs:
@@ -55,6 +61,7 @@ state:
         prompt: ${{ states.setup.outputs.text.task }}
         schema: ${{ states.setup.outputs.schema }}
         documents: ${{ inputs.documents }}
+        session: ${{ inputs.assessor }}
         read_only: true
         agent_settings: ${{ inputs.agent_settings }}
       transitions:
@@ -74,6 +81,7 @@ state:
         prompt: ${{ states.setup.outputs.text.task }}
         schema: ${{ states.setup.outputs.schema }}
         documents: ${{ inputs.documents }}
+        session: ${{ inputs.session }}
         agent_settings: ${{ inputs.agent_settings }}
       transitions:
       - to: done
@@ -124,6 +132,7 @@ state:
           Full ordered discussion: ${{ json_stringify(states.correction.outputs.reply.conversation) }}
         schema: ${{ states.setup.outputs.schema }}
         documents: ${{ states.correction.outputs.reply.documents }}
+        session: ${{ state_output('resolve','session',inputs.assessor) }}
         read_only: true
         agent_settings: ${{ inputs.agent_settings }}
       transitions:
@@ -150,6 +159,7 @@ state:
         prompt: ${{ states.setup.outputs.text.task }}
         schema: ${{ states.setup.outputs.schema }}
         documents: ${{ states.correction.outputs.reply.documents }}
+        session: ${{ states.correction.outputs.reply.session }}
         agent_settings: ${{ inputs.agent_settings }}
       transitions:
       - to: correction
@@ -161,14 +171,12 @@ state:
       outputs:
         result: ${{ transition.payload.result }}
     compare:
-      include: ./tools.yaml
+      include: ./compare-approval.yaml
       inputs:
-        check: approved_change
-        documents:
-          approved.diff: ${{ jq([inputs.feedback.approval.patch,{'name':'approved.diff'}], 'add') }}
+        approval: ${{ inputs.feedback.approval }}
       transitions:
       - to: done
-        when: outputs.result.equivalent
+        when: outputs.equivalent
         payload:
           result: ${{ inputs.feedback.approval.result }}
       - to: discuss
@@ -184,3 +192,5 @@ state:
         when: 'true'
 outputs:
   result: ${{ states.done.outputs.result }}
+  session: ${{ state_output('clarification','session',state_output('discuss','session',inputs.session)) }}
+  assessor: ${{ state_output('resolve','session',state_output('assess','session',inputs.assessor)) }}

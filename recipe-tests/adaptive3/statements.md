@@ -6,7 +6,7 @@ Agent decisions are scripted unless a case is explicitly marked live.
 | ID | Expectation | Priority | Level / dependencies | Files |
 | --- | --- | --- | --- | --- |
 | A3-01 | Each accepted delivery stage advances directly after Execute, complete validation and Review. | Critical | Integration / c2j, Nix | adaptive3.yaml, lifecycle.yaml, cycle.yaml |
-| A3-02 | A correction reruns all checks before review, even when only one check failed. | Critical | Integration / c2j, Nix | lifecycle.yaml, validate.yaml |
+| A3-02 | A correction rechecks affected work and reuses passing verification only when its inputs remain current. | Critical | Integration / c2j, Nix | lifecycle.yaml, validate.yaml |
 | A3-03 | Human questions retain the pending item without executing work or consuming automatic attempts. | Critical | Integration / c2j, Nix | review.yaml |
 | A3-04 | Human changes reach Execute with original wording and supersede conflicting generated plans. | Critical | Integration / c2j, Nix | review.yaml, prompts/execute.yaml |
 | A3-05 | Validation and human review receive the same corrected artifact identities without historical overlays. | Critical | Integration / c2j, Nix | cycle.yaml, tools.yaml, review.yaml |
@@ -22,14 +22,14 @@ Agent decisions are scripted unless a case is explicitly marked live.
 | A3-15 | Prompt includes create no worker tasks and preserve literal caller text. | High | Integration / c2j | prompts/ |
 | A3-16 | Cancellation retains its meaning and never silently recreates cancelled work. | Critical | Integration / c2j | lifecycle.yaml, consultation.yaml |
 | A3-17 | Real UI reviews contain readable captures linked from the selected human document. | High | Live integration / Codex, browser | validate.yaml, tools.yaml |
-| A3-18 | Default build uses adaptive3; the explicit adaptive2 entrypoint remains available. | Critical | Integration / c2j | build.yaml, adaptive3.yaml, recipes/adaptive2/build.yaml |
+| A3-18 | Default build uses Adaptive3 for explanations, delivery, and repository improvements. | Critical | Integration / c2j | build.yaml, adaptive3.yaml, default-build.test.yaml |
 | A3-19 | A failed backstop correction asks for human direction before another automatic attempt, even when the error message changes. | Critical | Integration / c2j, Nix | backstop.yaml, adaptive3.yaml |
 | A3-20 | Review actions expose feedback entry and preserve questions, changes and uploads through submission. | Critical | Integration / c2j, Cortex renderer | review.yaml, backstop.yaml |
 | A3-21 | Required specialist findings prevent acceptance until full validation passes; optional advice has no independent veto. | Critical | Integration / c2j, Nix | validate.yaml, specialists.yaml |
 | A3-22 | Configured assessment guidance reaches general and specialist assessors with current human scope and original diagnostic references. | High | Integration / c2j, Nix | validate.yaml, prompts/validate.yaml |
 | A3-23 | Repeated backstop discussion preserves the previous proposal and human context without executing work before explicit continuation. | High | Integration / c2j, Nix | backstop.yaml |
 
-| A3-24 | Incomplete receiver titles return through full validation before child submission. | consultation.test.yaml | critical | integration, c2j |
+| A3-24 | Incomplete receiver titles return to the author before independent assessment or child submission. | consultation.test.yaml | critical | integration, c2j |
 | A3-25 | Missing change measurements return to the writer; final reviews separate cells and include test frameworks. | reporting.test.yaml | high | integration, c2j |
 | A3-26 | Candidate measurements preserve per-file additions/removals and mark binaries uncountable. | test_tools.py | high | unit, Git |
 | A3-27 | Job inspection follows pagination and retrieves exact output beyond previews. | inspection.test.yaml | high | integration, c2j |
@@ -118,3 +118,13 @@ Defined in the approved preparation before implementation. Scripted assessments 
 | A complete, consistent Outcome report reaches human review without a reporting correction. | Critical | Integration / c2j, Git, Nix; scripted assessment | `recipes/adaptive3/validate.yaml`; `recipe-tests/adaptive3/reporting.test.yaml` |
 | Corrected Outcome reports are assessed against freshly delivered candidate measurements before acceptance. | Critical | Integration / c2j, Git, Nix; scripted assessment | `recipes/adaptive3/validate.yaml`; `recipe-tests/adaptive3/reporting.test.yaml` |
 | Candidate measurements preserve exact text additions and removals while leaving binary line counts uncountable. | High | Unit / Python, PyYAML, Git | `recipes/adaptive3/tools.yaml`; `recipe-tests/adaptive3/test_tools.py` |
+
+| ID | Expectation | Priority | Level / dependencies | Files |
+| --- | --- | --- | --- | --- |
+| A3-75 | Delivery reuses two author sessions and one independent assessor across phases, questions, and corrections. | Critical | Integration / c2j | default-build.test.yaml, discussion-context.test.yaml |
+| A3-76 | Invalid review output returns to its author before rebase, verification, or assessment. | Critical | Integration / c2j | reporting.test.yaml, lifecycle.test.yaml |
+| A3-77 | Failed verification reaches the implementer with the original evidence before independent assessment. | Critical | Integration / c2j | hook-recovery.test.yaml |
+| A3-78 | Verification starts from the prepared latest upstream candidate and retains matching passing evidence after a report correction. | Critical | Integration / c2j, Git | candidate-flow.test.yaml, candidate-conflict.test.yaml |
+| A3-79 | After upstream advancement, an equivalent rebased change with fresh passing verification merges under the original approval. | Critical | Integration / c2j, Git | integration.test.yaml |
+| A3-80 | A same-cell consultation returns to the requester without launching an owner session. | Critical | Integration / c2j | publication-ref.test.yaml |
+| A3-81 | Successful merge and skipped publication complete from native results without further assessment. | Critical | Integration / c2j, Git | default-build.test.yaml |

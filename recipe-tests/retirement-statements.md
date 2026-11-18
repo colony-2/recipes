@@ -13,6 +13,8 @@ without changing adaptive behavior; no compatibility entrypoints are retained.
 | LR06 | High | Integration / mocked inference, native validation | `recipes/kernel/review-synthesis.yaml` | Enabled synthesis accepts valid citations, retries correctable failures, and falls back for invalid or unavailable results. |
 | LR07 | High | Integration / native review artifacts | `recipes/kernel/review.yaml`, `recipes/create/review.yaml` | Clarification includes a current decision brief without requiring the agent to invent supporting documents. |
 | LR08 | Critical | Integration / native cell registry and Git | `recipes/create/publish.yaml` | Initialization selects the approved cell and repository; registration rejects conflicting identities before publication begins. |
+| LR09 | Critical | Integration / c2j, Git, Nix | `build.yaml`, `recipe-tests/adaptive3/default-build.test.yaml` | Default builds complete through Adaptive3 after the Adaptive2 entrypoint and its cases are removed. |
+| LR10 | Critical | Integration / c2j, native human input | `recipes/adaptive/limit-review/`, `recipe-tests/adaptive/limit-escalation.test.yaml`, `recipe-tests/adaptive/recovery.test.yaml` | Retained Adaptive requests the same human decisions when implementation or response correction exhausts its allowance. |
 
 The retired heavy/light and superpowers expectations are removed with those
 workflows. Shared creation, artifact, review, and registration coverage remains.

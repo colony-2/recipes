@@ -64,36 +64,8 @@ state:
         read_only: ${{ inputs.purpose != 'implementation' }}
         agent_settings: ${{ inputs.agent_settings }}
       transitions:
-      - to: rebase
-        when: inputs.purpose == 'implementation' && outputs.response.status == 'ready' && inputs.feedback.?failure.orValue({}).?attrs.orValue({}).?upstream_hash.hasValue()
-      - to: prepare
-        when: inputs.purpose == 'implementation' && outputs.response.status == 'ready'
       - to: done
         when: 'true'
-    rebase:
-      include: ./integration.yaml
-      inputs:
-        operation: rebase
-        target: ${{ inputs.feedback.failure.attrs.upstream_hash }}
-      transitions:
-      - to: prepare
-        when: 'true'
-    prepare:
-      include: ./hooks.yaml
-      inputs:
-        request: ${{ inputs.request }}
-        target_directory: ${{ inputs.target_directory }}
-        documents: ${{ inputs.documents }}
-        settings: ${{ inputs.settings }}
-        hook: prepare
-      transitions:
-      - to: done
-        when: outputs.result.status != 'failed'
-      - to: problem
-        when: 'true'
-        payload:
-          problem: ${{ outputs.result }}
-          errors: ${{ outputs.artifacts }}
     merge:
       include: ./integration.yaml
       inputs:
@@ -115,20 +87,14 @@ state:
       transitions:
       - to: done
         when: 'true'
-    problem:
-      sequence: []
-      outputs:
-        problem: ${{ transition.payload.problem }}
-        errors: ${{ transition.payload.errors }}
     done:
       sequence: []
 outputs:
-  response: '${{ state_exists(''problem'') ? {''status'':''changes'',''summary'':states.problem.outputs.problem.summary,''failure'':states.problem.outputs.problem,''errors'':states.problem.outputs.errors}
-    : (inputs.purpose == ''integration'' ? {''status'':states.publish.outputs.result.status == ''failed'' ? ''stuck'':''ready'',''summary'':states.publish.outputs.result.summary,''publication'':has(inputs.feedback.publication)
+  response: '${{ inputs.purpose == ''integration'' ? {''status'':states.publish.outputs.result.status == ''failed'' ? ''stuck'':''ready'',''summary'':states.publish.outputs.result.summary,''publication'':has(inputs.feedback.publication)
     ? inputs.feedback.publication : states.merge.outputs.result,''publish'':states.publish.outputs.result,''errors'':states.publish.outputs.artifacts}
     : (state_output(''before_design'',''result'',{}).?status.orValue('''') == ''failed'' && states.work.outputs.response.status
     == ''ready'' ? {''status'':''changes'',''summary'':states.before_design.outputs.result.summary,''errors'':states.before_design.outputs.artifacts}
-    : states.work.outputs.response)) }}'
+    : states.work.outputs.response) }}'
   documents: '${{ state_exists(''work'') && size(jq(states.work.outputs.artifacts,''with_entries(select(.key|startswith("review/")))''))>0
     ? jq(states.work.outputs.artifacts,''with_entries(select(.key|startswith("review/")))'') : inputs.documents
     }}'

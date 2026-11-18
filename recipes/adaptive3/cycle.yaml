@@ -8,6 +8,10 @@ inputs:
   settings: ${{ inputs.?settings.orValue({}) }}
   require_verification: ${{ inputs.?require_verification.orValue(false) }}
   session: ${{ inputs.?session.orValue({}) }}
+  assessor: ${{ inputs.?assessor.orValue({}) }}
+  specialists: ${{ inputs.?specialists.orValue({}) }}
+  verification: ${{ inputs.?verification.orValue({}) }}
+  approval: ${{ inputs.?approval.orValue({}) }}
   agent_settings: ${{ inputs.?agent_settings.orValue({}) }}
 state:
   initial: execute
@@ -26,6 +30,12 @@ state:
       transitions:
       - to: children
         when: size(outputs.jobs)>0
+      - to: done
+        when: inputs.purpose == 'integration' && outputs.response.status == 'ready'
+        payload:
+          result: ${{ jq([outputs.response,{'status':'accepted'}], 'add') }}
+          documents: ${{ outputs.documents }}
+          session: ${{ inputs.session }}
       - to: validate
         when: outputs.response.status == 'ready'
       - to: done
@@ -45,8 +55,18 @@ state:
         require_verification: ${{ inputs.require_verification }}
         feedback: ${{ inputs.feedback }}
         work: ${{ states.execute.outputs.response }}
+        session: ${{ inputs.assessor }}
+        specialists: ${{ inputs.specialists }}
+        verification: ${{ inputs.verification }}
+        approval: ${{ inputs.approval }}
         agent_settings: ${{ inputs.agent_settings }}
       transitions:
+      - to: done
+        when: outputs.result.status == 'approved_rebase'
+        payload:
+          result: ${{ jq([outputs.result,{'status':'accepted','approval_reused':true}], 'add') }}
+          documents: ${{ states.execute.outputs.documents }}
+          session: ${{ states.execute.outputs.session }}
       - to: review
         when: outputs.result.status == 'passed'
       - to: done
@@ -66,6 +86,8 @@ state:
         primary: ${{ states.execute.outputs.response.?primary.orValue('') }}
         validation: ${{ states.validate.outputs.result }}
         document_metadata: ${{ states.validate.outputs.document_metadata }}
+        session: ${{ states.execute.outputs.session }}
+        assessor: ${{ states.validate.outputs.session }}
         feedback: ${{ inputs.feedback }}
         agent_settings: ${{ inputs.agent_settings }}
         decision: '${{ inputs.purpose == ''direction'' && states.execute.outputs.response.?work_kind.orValue('''')
@@ -78,7 +100,7 @@ state:
           result: '${{ jq([outputs.result,states.execute.outputs.response.?publication.hasValue() ? {''publication'':states.execute.outputs.response.publication}
             : {}], ''add'') }}'
           documents: ${{ states.execute.outputs.documents }}
-          session: ${{ states.execute.outputs.session }}
+          session: ${{ outputs.session }}
     done:
       sequence: []
       outputs:
@@ -115,11 +137,14 @@ state:
         payload:
           result: ${{ outputs.result }}
           documents: ${{ state_output('execute','documents',inputs.documents) }}
-          session: {}
+          session: ${{ state_output('execute','session',inputs.session) }}
 outputs:
   result: ${{ states.done.outputs.result }}
   documents: ${{ states.done.outputs.documents }}
-  session: ${{ states.done.outputs.session }}
+  session: '${{ size(states.done.outputs.session)>0 ? states.done.outputs.session : inputs.session }}'
+  specialists: ${{ state_output('validate','specialists',inputs.specialists) }}
+  verification: ${{ state_output('validate','verification',inputs.verification) }}
+  assessor: ${{ state_output('review','assessor',state_output('validate','session',inputs.assessor)) }}
   work: ${{ state_output('execute','response',{}) }}
   patch: ${{ state_output('validate','patch',null) }}
   candidate: ${{ state_output('validate','candidate',{}) }}

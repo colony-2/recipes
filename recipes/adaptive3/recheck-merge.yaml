@@ -1,0 +1,71 @@
+id: adaptive3-recheck-merge
+inputs:
+  request: ${{ inputs.request }}
+  target_directory: ${{ inputs.target_directory }}
+  settings: ${{ inputs.settings }}
+  documents: ${{ inputs.documents }}
+  approval: ${{ inputs.feedback.?approval.orValue({}) }}
+  require_verification: ${{ inputs.require_verification }}
+state:
+  initial: prepare
+  states:
+    prepare:
+      include: ./prepare-candidate.yaml
+      inputs:
+        request: ${{ inputs.request }}
+        target_directory: ${{ inputs.target_directory }}
+        settings: ${{ inputs.settings }}
+        documents: ${{ inputs.documents }}
+      transitions:
+      - to: verify
+        when: outputs.result.status == 'passed'
+      - to: done
+        when: 'true'
+        payload:
+          result: ${{ jq([outputs.result,{'errors':outputs.artifacts}], 'add') }}
+    verify:
+      include: ./verify-candidate.yaml
+      inputs:
+        request: ${{ inputs.request }}
+        target_directory: ${{ inputs.target_directory }}
+        settings: ${{ inputs.settings }}
+        documents: ${{ inputs.documents }}
+        require_verification: ${{ inputs.require_verification }}
+      transitions:
+      - to: done
+        when: outputs.result.status == 'changes'
+        payload:
+          result: ${{ jq([outputs.result,{'errors':outputs.artifacts}], 'add') }}
+      - to: compare
+        when: 'true'
+    compare:
+      include: ./compare-approval.yaml
+      inputs:
+        approval: ${{ inputs.approval }}
+      transitions:
+      - to: done
+        when: outputs.equivalent
+        payload:
+          result:
+            status: equivalent
+            summary: The verified candidate carries the previously approved change.
+      - to: done
+        when: 'true'
+        payload:
+          result:
+            status: review
+            summary: Review the rebased candidate. The earlier approval could not be applied to this change.
+    done:
+      sequence: []
+      outputs:
+        result: ${{ transition.payload.result }}
+outputs:
+  result: ${{ jq([states.done.outputs.result,{'errors':states.done.outputs.result.?errors.orValue(state_output('verify','artifacts',{}))}], 'add') }}
+catch:
+- when: failure.kind != 'cancellation'
+  continue:
+    outputs:
+      result:
+        status: stuck
+        summary: ${{ failure.message }}
+        failure: ${{ json_parse(json_stringify(failure)) }}

@@ -1,7 +1,7 @@
 # Adaptive build
 
-This is the previous adaptive flow. Root `build.yaml` now selects
-[adaptive2](../adaptive2/README.md), which shares unchanged helpers here.
+This is the previous Adaptive flow. Root `build.yaml` selects
+[Adaptive3](../adaptive3/README.md), which uses shared helpers here.
 The flow described below remains covered by its own regression tests.
 Execution, artifact, Git, and
 serving-consultation helpers are owned here; there are no kernel recipe includes.
@@ -13,7 +13,7 @@ When supplied, the title precedes the request in classification and agent contex
 and is preserved in the build's `title` output. Omitting it keeps the request
 unchanged and returns an empty title.
 
-See [the current adaptive2 process](../../ADAPTIVE_BUILD_PROCESS.md) for the default workflow,
+See [the default Adaptive3 process](../../ADAPTIVE_BUILD_PROCESS.md) for the current workflow,
 focused execution handoffs, native rebase recovery, and approval reuse.
 
 ```mermaid

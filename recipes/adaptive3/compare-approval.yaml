@@ -1,0 +1,29 @@
+id: adaptive3-compare-approval
+inputs:
+  approval: ${{ inputs.?approval.orValue({}) }}
+state:
+  initial:
+  - to: compare
+    when: inputs.approval.?result.orValue({}).?status.orValue('') == 'accepted'
+      && inputs.approval.result.?receipt.hasValue() && inputs.approval.?patch.orValue(null) != null
+  - to: done
+    when: 'true'
+  states:
+    compare:
+      include: ./tools.yaml
+      inputs:
+        check: approved_change
+        documents:
+          approved.diff: ${{ jq([inputs.approval.patch,{'name':'approved.diff'}], 'add') }}
+      transitions:
+      - to: done
+        when: 'true'
+    done:
+      sequence: []
+outputs:
+  equivalent: ${{ state_output('compare','result',{}).?equivalent.orValue(false) }}
+catch:
+- when: failure.kind != 'cancellation'
+  continue:
+    outputs:
+      equivalent: false

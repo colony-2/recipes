@@ -1,0 +1,46 @@
+recipe: candidate-conflict.yaml
+cases:
+- id: native-conflict-preserves-patch-and-prepares-resolved-tree
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          candidate.txt: "original\n"
+          .c2/recipes/hooks/build/verify.yaml: |
+            id: candidate-verification
+            sequence:
+            - id: verify_resolution
+              op: command_execution
+              inputs:
+                run: |
+                  set -eu
+                  grep -Fx implementation candidate.txt
+                  grep -Fx 'upstream behavior' candidate.txt
+                  grep -Fx 'latest upstream' upstream.txt
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: The prepared resolution includes both changes.
+              artifact_refs: {}
+  mocks:
+    ops:
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+    - match:
+        op: rebase
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.conflict.status == "changes" && outputs.conflict.summary.contains("Reconcile the saved candidate changes")
+  - type: cel_true
+    expr: outputs.diagnostics.exists(k,k.endsWith("conflict.diff")) && outputs.diagnostics.exists(k,k.endsWith("candidate.diff"))
+  - type: cel_true
+    expr: outputs.prepared.status == "passed" && outputs.verified.status == "passed"
+  - type: cel_true
+    expr: size(calls.filter(c,c.node_path.endsWith("/adopt_recorded_target")))==1

@@ -1,0 +1,86 @@
+id: adaptive3-prepare-candidate
+inputs:
+  request: ${{ inputs.request }}
+  target_directory: ${{ inputs.target_directory }}
+  documents: ${{ inputs.documents }}
+  settings: ${{ inputs.settings }}
+state:
+  initial: upstream
+  states:
+    upstream:
+      op: command_execution
+      const: true
+      workspace:
+        cell: ${{ context.workspace.cell }}
+        ref: ${{ context.git.ref }}
+      inputs:
+        run: git rev-parse HEAD
+      transitions:
+      - to: replay
+        when: outputs.success
+      - to: done
+        when: 'true'
+        payload:
+          result:
+            status: stuck
+            summary: Could not resolve the latest upstream commit.
+    replay:
+      op: rebase
+      retry:
+        maximum_attempts: 1
+      inputs:
+        target_base_hash: ${{ jq(states.upstream.outputs.stdout,'split("\n")[0]') }}
+      catch:
+      - when: failure.kind == 'task_error' && failure.code == 'REBASE_CONFLICT' && failure.attrs.?rebase.orValue({}).?workspace_restored.orValue(false)
+          && failure.attrs.rebase.?version.orValue(0) == 1 && failure.attrs.rebase.?phase.orValue('') == 'replay'
+          && failure.attrs.rebase.?diagnostics.orValue({}).exists(k,k == '_c2j/rebase/conflict.diff')
+        to: conflict
+        payload:
+          failure: ${{ json_parse(json_stringify(failure)) }}
+      transitions:
+      - to: prepare
+        when: 'true'
+    conflict:
+      # The pinned runtime supports saving the complete patch and restoring a
+      # clean target before repair, with the conflict evidence retained.
+      include: ../adaptive/rebase-recovery.yaml
+      inputs:
+        failure: ${{ transition.payload.failure }}
+      transitions:
+      - to: done
+        when: 'true'
+        payload:
+          result:
+            status: changes
+            summary: Reconcile the saved candidate changes on the latest upstream in this workspace. Resolve conflicts and persist the result.
+          artifacts: ${{ outputs.documents }}
+    prepare:
+      include: ./hooks.yaml
+      inputs:
+        hook: prepare
+        request: ${{ inputs.request }}
+        target_directory: ${{ inputs.target_directory }}
+        documents: ${{ inputs.documents }}
+        settings: ${{ inputs.settings }}
+      transitions:
+      - to: done
+        when: outputs.result.status == 'failed'
+        payload:
+          result: ${{ jq([outputs.result,{'status':'changes'}], 'add') }}
+          artifacts: ${{ outputs.artifacts }}
+      - to: done
+        when: 'true'
+        payload:
+          result:
+            status: passed
+    done:
+      sequence: []
+      inputs:
+        result: ${{ transition.payload.result }}
+        artifacts: ${{ transition.payload.?artifacts.orValue({}) }}
+      outputs:
+        result: ${{ inputs.result }}
+        artifacts: ${{ inputs.artifacts }}
+outputs:
+  result: ${{ states.done.outputs.result }}
+  artifacts: ${{ states.done.outputs.artifacts }}

@@ -1,0 +1,54 @@
+recipe: candidate-flow.yaml
+cases:
+- id: current-rebased-verification-is-reused
+  type: integration_case
+  runtime: &runtime
+    cells:
+      root:
+        files:
+          README.md: A small project.
+          .c2/recipes/hooks/build/verify.yaml: |
+            id: candidate-verification
+            sequence:
+            - id: verify_latest
+              op: command_execution
+              inputs:
+                run: |
+                  set -eu
+                  test "$(cat upstream.txt)" = 'latest upstream'
+                  head -1 candidate.txt | grep -Fx implementation
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: The candidate includes the latest upstream.
+              artifact_refs: {}
+  mocks: &mocks
+    ops:
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+    - match:
+        op: rebase
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.prepared.status == "passed" && outputs.first.result.status == "passed"
+  - type: cel_true
+    expr: outputs.first.identity.candidate != "" && outputs.first.identity == outputs.second.identity
+  - type: cel_true
+    expr: size(calls.filter(c,c.node_path.endsWith("/verify_latest"))) == 1
+- id: changed-rebased-candidate-is-verified-again
+  type: integration_case
+  runtime: *runtime
+  inputs:
+    edit_again: true
+  mocks: *mocks
+  assertions:
+  - type: cel_true
+    expr: outputs.second.result.status == "passed" && outputs.first.identity.candidate != outputs.second.identity.candidate
+  - type: cel_true
+    expr: size(calls.filter(c,c.node_path.endsWith("/verify_latest"))) == 2

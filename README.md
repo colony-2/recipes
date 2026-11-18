@@ -62,9 +62,9 @@ See [creation behavior and failure handling](recipes/create/README.md).
 
 The helpers still needed by creation remain in [`recipes/kernel/`](recipes/kernel/README.md).
 The old heavy/light build, ticket/job workflows, superpowers family, and their
-exclusive helpers and tests have been removed. Adaptive3 is the default build path. Adaptive2 remains explicitly available at
-`recipes/adaptive2/build.yaml`, with its shared `recipes/adaptive/` helpers and
-separate regression tests.
+exclusive helpers and tests have been removed.
+Adaptive3 is the default build path. The retained Adaptive workflow and shared
+helpers live in `recipes/adaptive/`. Adaptive2 has been retired.
 
 ## Tests
 
@@ -81,9 +81,8 @@ c2j test run --directory . --case-timeout 10m --out-dir .c2/test-results
 Deterministic suites mock model responses and declare human answers while exercising
 native artifacts, Git, reviews, child jobs and publication. Public build coverage
 lives in `recipe-tests/adaptive3/`, including repository-improvement hook coverage.
-Retained adaptive2 tests use its explicit entrypoint; older adaptive and shared-helper
-regressions live in `recipe-tests/adaptive/`. Creation coverage is in
-`recipe-tests/`. Documentation examples are also discovered. Live model/skill checks
+Older Adaptive and shared-helper regressions live in `recipe-tests/adaptive/`.
+Creation coverage is in `recipe-tests/`. Documentation examples are also discovered. Live model/skill checks
 are opt-in with `--include-live` and require configured authentication.
 
 See [retirement expectations](recipe-tests/retirement-statements.md),

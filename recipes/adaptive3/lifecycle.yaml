@@ -8,6 +8,8 @@ inputs:
   settings: ${{ inputs.?settings.orValue({}) }}
   require_verification: ${{ inputs.?require_verification.orValue(false) }}
   max_iterations: ${{ inputs.?max_iterations.orValue(4) }}
+  sessions: ${{ inputs.?sessions.orValue({}) }}
+  verification: ${{ inputs.?verification.orValue({}) }}
   agent_settings: ${{ inputs.?agent_settings.orValue({}) }}
 state:
   initial: execute
@@ -16,7 +18,7 @@ state:
       inputs:
         documents: ${{ transition.payload.?documents.orValue(inputs.documents) }}
         feedback: ${{ transition.payload.?feedback.orValue(inputs.feedback) }}
-        session: ${{ transition.payload.?session.orValue({}) }}
+        session: ${{ transition.payload.?session.orValue(inputs.sessions[?vars.author].orValue({})) }}
         used: ${{ transition.payload.?used.orValue(state_output('execute','used',vars.prior.?counts.orValue({}).?work.orValue(0)))
           }}
         consulted: ${{ transition.payload.?consulted.orValue(state_output('execute','consulted',vars.prior.?counts.orValue({}).?consultation.orValue(0)))
@@ -56,6 +58,10 @@ state:
         documents: ${{ states.execute.outputs.documents }}
         feedback: ${{ states.execute.outputs.feedback }}
         session: ${{ states.execute.outputs.session }}
+        verification: ${{ state_output('cycle','verification',inputs.verification) }}
+        approval: ${{ inputs.feedback.?approval.orValue({}) }}
+        specialists: ${{ state_output('cycle','specialists',inputs.sessions.?specialists.orValue({})) }}
+        assessor: ${{ state_output('cycle','assessor',inputs.sessions.?assessor.orValue({})) }}
         agent_settings: ${{ inputs.agent_settings }}
       transitions:
       - to: execute
@@ -83,7 +89,7 @@ state:
         payload:
           documents: ${{ outputs.documents }}
           feedback: ${{ outputs.result }}
-          session: '${{ has(outputs.result.human) ? {} : outputs.session }}'
+          session: ${{ outputs.session }}
           used: '${{ has(outputs.result.human) ? 0 : states.execute.outputs.used+1 }}'
       - to: done
         when: 'true'
@@ -116,6 +122,7 @@ state:
         reason: ${{ states.cycle.outputs.result.summary }}
         agent_settings: ${{ inputs.agent_settings }}
         purpose: ${{ inputs.purpose }}
+        session: ${{ state_output('packages','session',inputs.sessions.?packages.orValue({})) }}
       transitions:
       - to: done
         when: outputs.result.status == 'changes' && has(outputs.result.stage) && outputs.result.stage != inputs.purpose
@@ -127,7 +134,7 @@ state:
         payload:
           documents: ${{ states.cycle.outputs.documents }}
           feedback: ${{ outputs.result }}
-          session: '${{ has(outputs.result.human) ? {} : states.cycle.outputs.session }}'
+          session: ${{ states.cycle.outputs.session }}
           used: ${{ states.execute.outputs.used }}
           packages: ${{ states.execute.outputs.packages+1 }}
     limit:
@@ -166,9 +173,11 @@ outputs:
   result: '${{ state_exists(''done'') ? states.done.outputs.result : states.limit.outputs.result }}'
   documents: '${{ state_exists(''done'') ? states.done.outputs.documents : states.limit.outputs.documents }}'
   work: ${{ state_output('cycle','work',{}) }}
+  verification: ${{ state_output('cycle','verification',inputs.verification) }}
   patch: ${{ state_output('cycle','patch',null) }}
   candidate: ${{ state_output('cycle','candidate',{}) }}
   feedback: ${{ state_output('execute','feedback',inputs.?feedback.orValue({})) }}
+  sessions: ${{ jq([inputs.sessions,{vars.author:state_output('cycle','session',inputs.sessions[?vars.author].orValue({})),'assessor':state_output('cycle','assessor',inputs.sessions.?assessor.orValue({})),'packages':state_output('packages','session',inputs.sessions.?packages.orValue({})),'specialists':state_output('cycle','specialists',inputs.sessions.?specialists.orValue({}))}], 'add') }}
 catch:
 - when: failure.kind != 'cancellation'
   continue:
@@ -179,10 +188,13 @@ catch:
         failure: ${{ failure }}
       documents: ${{ inputs.documents }}
       work: {}
+      verification: ${{ inputs.verification }}
       candidate: {}
       patch: null
       feedback: ${{ inputs.?feedback.orValue({}) }}
+      sessions: ${{ inputs.sessions }}
 vars:
+  author: '${{ inputs.purpose in [''direction'',''preparation''] ? ''planning'' : ''implementation'' }}'
   prior: '${{ inputs.feedback.?budget.orValue({}).?stage.orValue('''') == inputs.purpose ? inputs.feedback.budget
     : {} }}'
   work_limit: '${{ inputs.feedback.?budget.orValue({}).?stage.orValue('''') == inputs.purpose ? inputs.feedback.budget.?limits.orValue({}).?work.orValue((inputs.max_iterations

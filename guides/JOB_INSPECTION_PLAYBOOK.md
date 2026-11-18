@@ -140,7 +140,7 @@ approval when they differ. The coordinator waits for active work and reuses a
 successful result; it does not import the earlier parent's coordination history.
 Consult when the assignment changes or agreement is unclear, rather than merely
 to recreate records. The receiving build still checks approval against the current
-assignment. See [adaptive2 recovery guidance](../recipes/adaptive2/README.md).
+assignment. See [Adaptive3 recovery guidance](../recipes/adaptive3/README.md).
 
 Check `c2j self`, actual command help, and matching task helper capability on the
 supplied route. Parent help or a successful exit alone does not establish support:

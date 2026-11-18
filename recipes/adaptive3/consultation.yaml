@@ -12,6 +12,8 @@ state:
   initial:
   - to: wait
     when: inputs.job != ''
+  - to: local
+    when: inputs.cell == context.workspace.cell
   - to: call
     when: 'true'
   states:
@@ -62,6 +64,19 @@ state:
       transitions:
       - to: existing_child
         when: outputs.result.status == 'consult' && nonempty(outputs.result.consultation.?job.orValue(''))
+      - to: call
+        when: outputs.result.status == 'consult' && outputs.result.consultation.cell == states.call.outputs.cell
+        payload:
+          cell: ${{ states.call.outputs.cell }}
+          request: ${{ states.call.outputs.request }}
+          mode: ${{ states.call.outputs.mode }}
+          parents: ${{ states.call.outputs.parents }}
+          documents: ${{ outputs.documents }}
+          feedback:
+            status: changes
+            summary: Resolve the request locally. This cell already owns the work.
+          session: ${{ outputs.session }}
+          used: ${{ states.call.outputs.used+1 }}
       - to: call
         when: outputs.result.status == 'consult'
         payload:
@@ -163,6 +178,16 @@ state:
         payload:
           result: ${{ outputs.result }}
           documents: ${{ outputs.documents }}
+    local:
+      sequence: []
+      transitions:
+      - to: done
+        when: 'true'
+        payload:
+          result:
+            status: changes
+            summary: Resolve the request locally. This cell already owns the work.
+          documents: {}
     done:
       sequence: []
       outputs:

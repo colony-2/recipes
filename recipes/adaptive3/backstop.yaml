@@ -5,6 +5,7 @@ inputs:
   problem: ${{ inputs.problem }}
   documents: ${{ inputs.?documents.orValue({}) }}
   feedback: ${{ inputs.?feedback.orValue({}) }}
+  session: ${{ inputs.?session.orValue({}) }}
   agent_settings: ${{ inputs.?agent_settings.orValue({}) }}
   prior_job: ${{ inputs.?prior_job.orValue('') }}
   automatic: ${{ inputs.?automatic.orValue(true) }}
@@ -14,7 +15,7 @@ state:
     turn:
       inputs:
         feedback: ${{ transition.payload.?feedback.orValue(inputs.feedback) }}
-        session: ${{ transition.payload.?session.orValue({}) }}
+        session: ${{ transition.payload.?session.orValue(inputs.session) }}
         allow_resume: ${{ transition.payload.?allow_resume.orValue(inputs.automatic) }}
         human: ${{ transition.payload.?human.orValue({}) }}
       sequence: []
@@ -85,7 +86,7 @@ state:
               title: Agent could not start
               primary: null
             artifacts: {}
-            session: {}
+            session: ${{ states.turn.outputs.session }}
     assess:
       sequence: []
       inputs:
@@ -102,17 +103,20 @@ state:
         payload:
           result: '${{ size(states.turn.outputs.human)>0 ? jq([states.investigate.outputs.response,{''human'':states.turn.outputs.human,''documents'':states.turn.outputs.feedback.?documents.orValue({})}],
             ''add'') : states.investigate.outputs.response }}'
+          session: ${{ states.investigate.outputs.session }}
       - to: prepare_review
         when: 'true'
     done:
       sequence: []
       outputs:
+        session: ${{ inputs.session }}
         result: ${{ jq(inputs.result, 'if .approval then .approval as $a | .approval = {result:{status:"accepted",receipt:$a.receipt,source_job:$a.source_job,source_task:$a.source_task},patch:$a.patch}
           else . end') }}
         documents: ${{ jq([inputs.artifacts,inputs.result], '(.[1].approval.patch // "") as $patch | .[0] | with_entries(select((.key
           | startswith("review/")) or .key == $patch))') }}
       inputs:
         result: ${{ transition.payload.result }}
+        session: ${{ transition.payload.session }}
         artifacts: ${{ states.investigate.outputs.artifacts }}
     prepare_review:
       sequence:
@@ -173,6 +177,7 @@ state:
         schema: ${{ states.setup.outputs.schema }}
         documents: ${{ jq([inputs.documents,states.prepare_review.outputs.documents], "add") }}
         agent_settings: ${{ inputs.agent_settings }}
+        session: ${{ states.investigate.outputs.session }}
       transitions:
       - to: done
         when: outputs.native.response.direction == 'continue' && states.assess.outputs.eligible && states.prepare_review.outputs.result.status
@@ -180,15 +185,17 @@ state:
         payload:
           result: ${{ jq([states.investigate.outputs.response,{'status':'resume','human':outputs.native,'documents':outputs.documents,'conversation':outputs.conversation,'review_id':outputs.review_id}],
             'add') }}
+          session: ${{ outputs.session }}
       - to: turn
         when: 'true'
         payload:
           feedback: ${{ jq([outputs.native,{'validation':states.prepare_review.outputs.result,'documents':outputs.documents,'conversation':outputs.conversation,'review_id':outputs.review_id}],
             'add') }}
           human: ${{ outputs.native }}
-          session: ${{ states.investigate.outputs.session }}
+          session: ${{ outputs.session }}
           allow_resume: false
 outputs:
+  session: ${{ states.done.outputs.session }}
   result: ${{ jq([states.done.outputs.result,states.done.outputs.documents], '.[1] as $files | .[0] | if .approval.patch
     then .approval.patch = $files[.approval.patch] else . end') }}
   documents: '${{ size(states.done.outputs.documents)>0 ? states.done.outputs.documents : inputs.documents }}'

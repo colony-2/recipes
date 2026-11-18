@@ -1,0 +1,55 @@
+schema_version: 2
+id: candidate-flow
+input_schema:
+  edit_again:
+    type: boolean
+    default_value: false
+inputs:
+  edit_again: ${{ inputs.edit_again }}
+sequence:
+- id: edit
+  op: command_execution
+  inputs:
+    run: printf 'implementation\n' > candidate.txt
+- id: advance
+  op: command_execution
+  const: true
+  inputs:
+    run: |
+      set -eu
+      upstream=$(git remote get-url origin)
+      printf 'latest upstream\n' > "$upstream/upstream.txt"
+      git -C "$upstream" add upstream.txt
+      git -C "$upstream" commit -m 'Advance upstream before verification'
+- id: prepare
+  include: ../../recipes/adaptive3/prepare-candidate.yaml
+  inputs: &candidate_inputs
+    request: Verify the rebased candidate.
+    target_directory: .
+    documents: {}
+    settings: {}
+- id: first
+  include: ../../recipes/adaptive3/verify-candidate.yaml
+  inputs:
+    <<: *candidate_inputs
+    require_verification: true
+- id: correct
+  op: command_execution
+  inputs:
+    env:
+      EDIT: ${{ string(inputs.edit_again) }}
+    run: |
+      if [ "$EDIT" = true ]; then printf 'repair\n' >> candidate.txt; fi
+- id: prepare_again
+  include: ../../recipes/adaptive3/prepare-candidate.yaml
+  inputs: *candidate_inputs
+- id: second
+  include: ../../recipes/adaptive3/verify-candidate.yaml
+  inputs:
+    <<: *candidate_inputs
+    require_verification: true
+    previous: ${{ sequence.first.outputs.receipt }}
+outputs:
+  prepared: ${{ sequence.prepare.outputs.result }}
+  first: ${{ sequence.first.outputs.receipt }}
+  second: ${{ sequence.second.outputs.receipt }}

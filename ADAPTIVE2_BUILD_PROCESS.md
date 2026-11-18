@@ -1,6 +1,6 @@
 # Adaptive2 build process
 
-Retained flow selected explicitly through [adaptive2/build.yaml](recipes/adaptive2/build.yaml).
+Historical description of the retired Adaptive2 workflow.
 The current default is documented in [Adaptive build process](ADAPTIVE_BUILD_PROCESS.md). Like the [original diagram](BUILD_PROCESS.md),
 boxes group work and diamonds show decisions. Agents determine how to do the work;
 the recipe controls phase transitions, prerequisite coordination, validation gates,
@@ -272,8 +272,8 @@ an agent-maintained approval record.
 
 ## Agent instructions, files, and recipe data
 
-Authored prompts and human-review wording live in
-[prompts.yaml](recipes/adaptive2/prompts.yaml), an empty-sequence include that adds
+Authored prompts and human-review wording lived in
+`recipes/adaptive2/prompts.yaml`, an empty-sequence include that added
 no worker tasks. Named inputs render ordinary templates. Standing instructions
 are supplied when a new session starts; resumed turns receive the current task
 and artifact-directory paths. Agents use `c2j self` at task start and recheck after

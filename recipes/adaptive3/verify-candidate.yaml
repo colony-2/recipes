@@ -1,0 +1,63 @@
+id: adaptive3-verify-candidate
+inputs:
+  request: ${{ inputs.request }}
+  target_directory: ${{ inputs.target_directory }}
+  documents: ${{ inputs.documents }}
+  settings: ${{ inputs.settings }}
+  required: ${{ inputs.require_verification }}
+  previous: ${{ inputs.?previous.orValue({}) }}
+state:
+  initial: identify
+  states:
+    identify:
+      sequence: []
+      inputs:
+        identity:
+          candidate: ${{ context.git.hash }}
+          base: ${{ context.git.execution.base_hash }}
+          request: ${{ inputs.request }}
+          target_directory: ${{ inputs.target_directory }}
+          documents: ${{ inputs.documents }}
+          settings: ${{ inputs.settings }}
+          required: ${{ inputs.required }}
+      outputs:
+        identity: ${{ inputs.identity }}
+      transitions:
+      - to: done
+        when: nonempty(outputs.identity.candidate) && inputs.previous.?result.orValue({}).?status.orValue('') == 'passed'
+          && json_stringify(outputs.identity) == json_stringify(inputs.previous.?identity.orValue({}))
+        payload:
+          result: ${{ inputs.previous.result }}
+          artifacts: ${{ inputs.previous.artifacts }}
+      - to: run
+        when: 'true'
+    run:
+      include: ./hooks.yaml
+      inputs:
+        hook: verify
+        request: ${{ inputs.request }}
+        target_directory: ${{ inputs.target_directory }}
+        documents: ${{ inputs.documents }}
+        settings: ${{ inputs.settings }}
+      transitions:
+      - to: done
+        when: 'true'
+        payload:
+          result: ${{ outputs.result }}
+          artifacts: ${{ outputs.artifacts }}
+    done:
+      sequence: []
+      inputs:
+        result: ${{ transition.payload.result }}
+        artifacts: ${{ transition.payload.artifacts }}
+      outputs:
+        result: ${{ inputs.result }}
+        artifacts: ${{ inputs.artifacts }}
+outputs:
+  result: '${{ states.done.outputs.result.status == ''failed'' || (inputs.required && states.done.outputs.result.status != ''passed'')
+    ? jq([states.done.outputs.result,{''status'':''changes''}], ''add'') : states.done.outputs.result }}'
+  artifacts: ${{ states.done.outputs.artifacts }}
+  receipt:
+    identity: ${{ states.identify.outputs.identity }}
+    result: ${{ states.done.outputs.result }}
+    artifacts: ${{ states.done.outputs.artifacts }}

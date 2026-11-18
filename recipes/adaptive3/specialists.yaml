@@ -7,6 +7,7 @@ inputs:
   purpose: ${{ inputs.purpose }}
   guidance: ${{ inputs.?guidance.orValue('') }}
   feedback: ${{ inputs.?feedback.orValue({}) }}
+  sessions: ${{ inputs.?sessions.orValue({}) }}
   agent_settings: ${{ inputs.?agent_settings.orValue({}) }}
 state:
   initial: next
@@ -14,14 +15,16 @@ state:
     next:
       inputs:
         index: ${{ transition.payload.?index.orValue(0) }}
+        sessions: ${{ transition.payload.?sessions.orValue(inputs.sessions) }}
         results: ${{ transition.payload.?results.orValue([]) }}
       sequence: []
       outputs:
         index: ${{ inputs.index }}
+        sessions: ${{ inputs.sessions }}
         results: ${{ inputs.results }}
       transitions:
       - to: review
-        when: outputs.index < size(inputs.settings.?consultations.orValue([]).filter(c,c.checkpoint == inputs.checkpoint))
+        when: outputs.index < size(vars.requests)
       - to: done
         when: 'true'
     review:
@@ -31,9 +34,8 @@ state:
         documents: ${{ inputs.documents }}
         guidance: ${{ inputs.guidance }}
         feedback: ${{ inputs.feedback }}
-        specialist: '${{ inputs.settings.consultations.filter(c,c.checkpoint == inputs.checkpoint)[states.next.outputs.index].role
-          + '': '' + inputs.settings.consultations.filter(c,c.checkpoint == inputs.checkpoint)[states.next.outputs.index].request
-          }}'
+        specialist: ${{ vars.requests[states.next.outputs.index] }}
+        session: ${{ states.next.outputs.sessions[?vars.requests[states.next.outputs.index].key].orValue({}) }}
         agent_settings: ${{ inputs.agent_settings }}
       sequence:
       - id: schemas
@@ -45,7 +47,7 @@ state:
           request: ${{ inputs.request }}
           guidance: ${{ inputs.guidance }}
           feedback: ${{ inputs.feedback }}
-          specialist: ${{ inputs.specialist }}
+          specialist: '${{ inputs.specialist.role + '': '' + inputs.specialist.request }}'
       - id: agent
         include: ./agent.yaml
         inputs:
@@ -53,16 +55,18 @@ state:
           schema: ${{ sequence.schemas.outputs.validate }}
           documents: ${{ inputs.documents }}
           read_only: true
+          session: ${{ inputs.session }}
           agent_settings: ${{ inputs.agent_settings }}
       outputs:
         result: ${{ sequence.agent.outputs.response }}
+        session: ${{ sequence.agent.outputs.session }}
       transitions:
       - to: next
         when: 'true'
         payload:
           index: ${{ states.next.outputs.index+1 }}
-          results: ${{ states.next.outputs.results + [{'required':inputs.settings.consultations.filter(c,c.checkpoint
-            == inputs.checkpoint)[states.next.outputs.index].required,'result':outputs.result}] }}
+          results: ${{ states.next.outputs.results + [{'required':vars.requests[states.next.outputs.index].required,'result':outputs.result}] }}
+          sessions: '${{ size(outputs.?session.orValue({}))>0 ? jq([states.next.outputs.sessions,{vars.requests[states.next.outputs.index].key:outputs.session}], ''add'') : states.next.outputs.sessions }}'
       catch:
       - when: failure.kind != 'cancellation'
         continue:
@@ -76,7 +80,10 @@ state:
       inputs:
         directory: error/specialists
         failure: ${{ states.next.outputs.results }}
+vars:
+  requests: ${{ inputs.settings.?consultations.orValue([]).filter(c,c.checkpoint == inputs.checkpoint) }}
 outputs:
+  sessions: ${{ states.next.outputs.sessions }}
   result: ${{ {'status':states.next.outputs.results.all(r,!r.required || r.result.status == 'passed') ? 'passed':'changes','summary':jq(states.next.outputs.results.map(r,r.result.summary),
     'join("\n")'),'assessments':states.next.outputs.results} }}
   artifacts: ${{ states.done.outputs.documents }}

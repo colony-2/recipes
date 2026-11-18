@@ -1,0 +1,46 @@
+id: candidate-conflict
+sequence:
+- id: edit
+  op: command_execution
+  inputs:
+    run: printf 'implementation\n' > candidate.txt
+- id: advance
+  op: command_execution
+  const: true
+  inputs:
+    run: |
+      set -eu
+      upstream=$(git remote get-url origin)
+      printf 'upstream behavior\n' > "$upstream/candidate.txt"
+      printf 'latest upstream\n' > "$upstream/upstream.txt"
+      git -C "$upstream" add candidate.txt upstream.txt
+      git -C "$upstream" commit -m 'Conflict with candidate and add unrelated work'
+- id: first
+  include: ../../recipes/adaptive3/prepare-candidate.yaml
+  inputs: &candidate_inputs
+    request: Prepare a rebased candidate.
+    target_directory: .
+    documents: {}
+    settings: {}
+- id: resolve
+  op: command_execution
+  inputs:
+    run: |
+      set -eu
+      test "$(cat candidate.txt)" = 'upstream behavior'
+      test "$(cat upstream.txt)" = 'latest upstream'
+      printf 'implementation\n' >> candidate.txt
+- id: prepare
+  include: ../../recipes/adaptive3/prepare-candidate.yaml
+  inputs:
+    <<: *candidate_inputs
+- id: verify
+  include: ../../recipes/adaptive3/verify-candidate.yaml
+  inputs:
+    <<: *candidate_inputs
+    require_verification: true
+outputs:
+  conflict: ${{ sequence.first.outputs.result }}
+  diagnostics: ${{ sequence.first.outputs.artifacts }}
+  prepared: ${{ sequence.prepare.outputs.result }}
+  verified: ${{ sequence.verify.outputs.result }}

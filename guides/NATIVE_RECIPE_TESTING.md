@@ -34,7 +34,7 @@ Runtime cases still resolve op manifests when model responses are mocked.
 ```sh
 c2j test validate --directory .
 c2j test run --directory . --case-timeout 10m --out-dir .c2/test-results
-c2j test run --file recipe-tests/adaptive2/direction-review.test.yaml --case explanation-finishes-without-approval
+c2j test run --file recipe-tests/adaptive3/default-build.test.yaml --case default-public-explanation
 ```
 
 Discovery recursively finds `*.test.yaml`, `*.test.yml`, `*.test.json`, and
@@ -141,13 +141,13 @@ open. Mocked goal status cases cover recipe branching; they do not
 exercise an open goal's replacement/wakeup lifecycle. These checks need
 additional native fixture controls.
 
-## Child report recovery ordering checks
+## Child report recovery checks
 
-`recipe-tests/adaptive2/report-child-ordering.test.yaml` exercises terminal
-ordering and an input-held child across report correction. Run it explicitly:
+`recipe-tests/adaptive3/child-recovery.test.yaml` exercises child results,
+invalid reports, and child retry. Run it explicitly:
 
 ```sh
-c2j test run --file recipe-tests/adaptive2/report-child-ordering.test.yaml --case-timeout 3m
+c2j test run --file recipe-tests/adaptive3/child-recovery.test.yaml --case-timeout 3m
 ```
 
 The pinned public source runtime supports `effects.children[].await: terminal`,

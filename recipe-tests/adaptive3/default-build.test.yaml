@@ -101,6 +101,12 @@ cases:
     responses:
     - node_path: build/workflow/adaptive3/direction/direction/adaptive3-lifecycle/cycle/cycle/adaptive3-cycle/review/review/adaptive3-review/discuss/discuss/adaptive3-discussion/ask/ask
       response:
+        direction: question
+        feedback: Why add this marker?
+        attachments: []
+        settings: {}
+    - node_path: build/workflow/adaptive3/direction/direction/adaptive3-lifecycle/cycle/cycle/adaptive3-cycle/review/review/adaptive3-review/discuss/discuss/adaptive3-discussion/ask/ask
+      response:
         direction: accept
         feedback: ''
         attachments: []
@@ -117,7 +123,7 @@ cases:
     prompt: Add a marker file.
     title: Review the requested default build
     type: build
-  mocks:
+  mocks: &feature_mocks
     ops:
     - match:
         selector: nix:github:colony-2/c2ops/published#codex
@@ -171,6 +177,22 @@ cases:
           status: completed
           output_schema_valid: true
           response:
+            status: answer
+            summary: The marker makes the requested outcome observable.
+        effects:
+          objects:
+            session:
+              type: c2ops.codex.session/v1
+              metadata:
+                label: Planning discussion.
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
             document_details:
             - document_id: review/README.md
               title: Requested outcome
@@ -199,22 +221,6 @@ cases:
           output_schema_valid: true
           response:
             status: passed
-            summary: Checked the assignment.
-        effects:
-          objects:
-            session:
-              type: c2ops.codex.session/v1
-              metadata:
-                label: Checked the assignment.
-    - match:
-        selector: nix:github:colony-2/c2ops/published#codex
-      behavior:
-        mode: return
-        outputs:
-          status: completed
-          output_schema_valid: true
-          response:
-            status: accepted
             summary: Checked the assignment.
         effects:
           objects:
@@ -276,22 +282,6 @@ cases:
           status: completed
           output_schema_valid: true
           response:
-            status: accepted
-            summary: Checked the assignment.
-        effects:
-          objects:
-            session:
-              type: c2ops.codex.session/v1
-              metadata:
-                label: Checked the assignment.
-    - match:
-        selector: nix:github:colony-2/c2ops/published#codex
-      behavior:
-        mode: return
-        outputs:
-          status: completed
-          output_schema_valid: true
-          response:
             document_details:
             - document_id: review/README.md
               title: Requested outcome
@@ -330,39 +320,12 @@ cases:
               metadata:
                 label: Checked the assignment.
     - match:
-        selector: nix:github:colony-2/c2ops/published#codex
-      behavior:
-        mode: return
-        outputs:
-          status: completed
-          output_schema_valid: true
-          response:
-            status: passed
-            summary: Checked the assignment.
-        effects:
-          objects:
-            session:
-              type: c2ops.codex.session/v1
-              metadata:
-                label: Checked the assignment.
-    - match:
-        selector: nix:github:colony-2/c2ops/published#codex
-      behavior:
-        mode: return
-        outputs:
-          status: completed
-          output_schema_valid: true
-          response:
-            status: accepted
-            summary: Checked the assignment.
-        effects:
-          objects:
-            session:
-              type: c2ops.codex.session/v1
-              metadata:
-                label: Checked the assignment.
-    - match:
         op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+    - match:
+        op: rebase
       repeat: true
       behavior:
         mode: passthrough
@@ -383,6 +346,15 @@ cases:
         mode: passthrough
   assertions:
   - type: cel_true
+    expr: calls.filter(c,c.node_path.contains("/adaptive3-discussion/answer/") && c.op=="extension_execution")[0].inputs.inputs.session ==
+      calls.filter(c,c.node_path.contains("/direction/") && c.node_path.contains("/adaptive3-execute/work/") && c.op=="extension_execution")[0].outputs.session
+  - type: cel_true
+    expr: size(calls.filter(c,c.op=="extension_execution" && has(c.inputs.inputs.prompt) && has(c.inputs.inputs.instructions)))==3
+  - type: cel_true
+    expr: size(calls.filter(c,c.op=="extension_execution" && has(c.inputs.inputs.prompt) && has(c.inputs.inputs.session)))==6
+  - type: cel_true
+    expr: calls.filter(c,c.op=="extension_execution" && has(c.inputs.inputs.prompt)).all(c,!c.node_path.contains("/integration/"))
+  - type: cel_true
     expr: outputs.merge.merged_hash != ""
   - type: cel_true
     expr: repositories.root.files["marker.txt"] == "done\n"
@@ -393,6 +365,78 @@ cases:
       the requested default build"))
   - type: cel_true
     expr: calls.exists(c,c.op=="squash" && c.inputs.commit_message.contains("Add a marker file."))
+- id: equivalent-merge-retry-uses-original-approval
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          README.md: A small project.
+          .c2/recipes/hooks/build/verify.yaml: |
+            id: concurrent-upstream
+            sequence:
+            - id: verify_candidate
+              op: command_execution
+              inputs:
+                run: |
+                  set -eu
+                  grep -Fx done marker.txt
+                  upstream=$(git remote get-url origin)
+                  if [ ! -f "$upstream/upstream.txt" ]; then
+                    printf 'concurrent upstream change\n' > "$upstream/upstream.txt"
+                    git -C "$upstream" add upstream.txt
+                    git -C "$upstream" commit -m 'Advance upstream during first verification'
+                  fi
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: Candidate verified.
+              artifact_refs: {}
+        file_sources:
+          recipes/review-v2/op.yaml: ../../recipes/review-v2/op.yaml
+          recipes/review-v2.py: ../../recipes/review-v2.py
+    responses:
+    - node_path: build/workflow/adaptive3/direction/direction/adaptive3-lifecycle/cycle/cycle/adaptive3-cycle/review/review/adaptive3-review/discuss/discuss/adaptive3-discussion/ask/ask
+      response:
+        direction: question
+        feedback: Why add this marker?
+        attachments: []
+        settings: {}
+    - node_path: build/workflow/adaptive3/direction/direction/adaptive3-lifecycle/cycle/cycle/adaptive3-cycle/review/review/adaptive3-review/discuss/discuss/adaptive3-discussion/ask/ask
+      response:
+        direction: accept
+        feedback: ''
+        attachments: []
+        settings: {}
+    - node_path: build/workflow/adaptive3/outcome/outcome/adaptive3-lifecycle/cycle/cycle/adaptive3-cycle/review/review/adaptive3-review/discuss/discuss/adaptive3-discussion/ask/ask
+      response:
+        direction: accept
+        feedback: ''
+        attachments: []
+        settings: {}
+    observe_files:
+    - marker.txt
+    - upstream.txt
+  inputs:
+    prompt: Add a marker file.
+    require_verification: true
+    title: Review the requested default build
+    type: build
+  mocks: *feature_mocks
+  assertions:
+  - type: cel_true
+    expr: calls.filter(c,c.node_path.contains("/adaptive3-discussion/answer/") && c.op=="extension_execution")[0].inputs.inputs.session ==
+      calls.filter(c,c.node_path.contains("/direction/") && c.node_path.contains("/adaptive3-execute/work/") && c.op=="extension_execution")[0].outputs.session
+  - type: cel_true
+    expr: outputs.merge.merged_hash != "" && repositories.root.files["upstream.txt"] == "concurrent upstream change\n"
+  - type: cel_true
+    expr: size(reviews) == 3 && size(calls.filter(c,c.op=="merge")) == 2
+  - type: cel_true
+    expr: size(calls.filter(c,c.node_path.endsWith("/verify_candidate"))) == 2
+  - type: cel_true
+    expr: calls.exists(c,c.node_path.contains("/recheck_merge/") && c.node_path.endsWith("/approved_change"))
+  - type: cel_true
+    expr: size(calls.filter(c,c.op=="extension_execution" && has(c.inputs.inputs.prompt))) == 9
 - id: default-repository-improvement-hooks
   type: integration_case
   runtime:
@@ -569,22 +613,6 @@ cases:
           status: completed
           output_schema_valid: true
           response:
-            status: accepted
-            summary: Checked the assignment.
-        effects:
-          objects:
-            session:
-              type: c2ops.codex.session/v1
-              metadata:
-                label: Checked the assignment.
-    - match:
-        selector: nix:github:colony-2/c2ops/published#codex
-      behavior:
-        mode: return
-        outputs:
-          status: completed
-          output_schema_valid: true
-          response:
             document_details:
             - document_id: review/README.md
               title: Requested outcome
@@ -616,22 +644,6 @@ cases:
           output_schema_valid: true
           response:
             status: passed
-            summary: Checked the assignment.
-        effects:
-          objects:
-            session:
-              type: c2ops.codex.session/v1
-              metadata:
-                label: Checked the assignment.
-    - match:
-        selector: nix:github:colony-2/c2ops/published#codex
-      behavior:
-        mode: return
-        outputs:
-          status: completed
-          output_schema_valid: true
-          response:
-            status: accepted
             summary: Checked the assignment.
         effects:
           objects:
@@ -685,38 +697,6 @@ cases:
               metadata:
                 label: Checked the assignment.
     - match:
-        selector: nix:github:colony-2/c2ops/published#codex
-      behavior:
-        mode: return
-        outputs:
-          status: completed
-          output_schema_valid: true
-          response:
-            status: passed
-            summary: Checked the assignment.
-        effects:
-          objects:
-            session:
-              type: c2ops.codex.session/v1
-              metadata:
-                label: Checked the assignment.
-    - match:
-        selector: nix:github:colony-2/c2ops/published#codex
-      behavior:
-        mode: return
-        outputs:
-          status: completed
-          output_schema_valid: true
-          response:
-            status: accepted
-            summary: Checked the assignment.
-        effects:
-          objects:
-            session:
-              type: c2ops.codex.session/v1
-              metadata:
-                label: Checked the assignment.
-    - match:
         op: command_execution
       repeat: true
       behavior:
@@ -737,6 +717,12 @@ cases:
       behavior:
         mode: passthrough
   assertions:
+  - type: cel_true
+    expr: size(calls.filter(c,c.op=="extension_execution" && has(c.inputs.inputs.prompt) && has(c.inputs.inputs.instructions)))==3
+  - type: cel_true
+    expr: size(calls.filter(c,c.op=="extension_execution" && has(c.inputs.inputs.prompt) && has(c.inputs.inputs.session)))==5
+  - type: cel_true
+    expr: calls.filter(c,c.op=="extension_execution" && has(c.inputs.inputs.prompt)).all(c,!c.node_path.contains("/integration/"))
   - type: cel_true
     expr: outputs.merge.merged_hash != ""
   - type: cel_true

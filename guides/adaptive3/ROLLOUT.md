@@ -18,10 +18,8 @@ Outputs are `summary`, `work_kind`, `artifact_refs`, `reviews`, `merge`, and
 
 The old public fields for sessions, annotations, root selection and injected
 child recipe selectors are no longer accepted by default build. Callers using
-those fields must adopt the adaptive3 contract or explicitly select
-[`recipes/adaptive2/build.yaml`](../../recipes/adaptive2/build.yaml). For a retained
-adaptive2 workflow that also needs adaptive2 delivery children, explicitly set
-its `build_recipe` to that adaptive2 selector; the name `build` now means adaptive3.
+those fields must adopt the Adaptive3 contract. The Adaptive2 entrypoint and its
+regression suites were retired after this rollout.
 
 Adaptive3's own delivery children already select `adaptive3.yaml` explicitly.
 Package probes select its dedicated probe recipe. Publish the corresponding
@@ -42,11 +40,9 @@ title reaches the working agent. The existing 42 adaptive3 cases cover the
 underlying activity and recovery behavior; their results are recorded in
 [TEST_RESULTS.md](TEST_RESULTS.md).
 
-Adaptive2 suites and fixtures now target its existing explicit entrypoint. Their
-native paths and named-child fixture layouts were updated accordingly. Source
-validation passed for all 228 retained adaptive2 cases. Focused native checks cover the
-retained direction-cancellation path and named receiving-cell child submission.
-Public default coverage is owned by adaptive3's suite.
+At rollout, source validation passed for all 228 Adaptive2 cases. Focused native
+checks covered direction cancellation and named receiving-cell child submission.
+The Adaptive3 suite covers the current public build.
 
 Execution used the same preinstalled-tool test environment described in
 [TEST_RESULTS.md](TEST_RESULTS.md). The named adaptive2 child check also needed

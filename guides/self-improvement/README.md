@@ -120,13 +120,12 @@ and sessions; merging a fix does not restart or repair their earlier handoffs.
 
 ## Validation
 
-[Native cases](../../recipe-tests/self-improvement/build.test.yaml) exercise ordinary
-build with selected audit evidence, fresh phase sessions, existing local hooks,
-no-change outcomes, ordinary non-audit work, and explicit failure for essential
-missing coverage. They script agent decisions; they do not test model intelligence
-or access a production JobDB. The [test statements](../../recipe-tests/self-improvement/statements.md)
-record the contract. Skill structure and documentation references are checked separately.
+[The default-build case](../../recipe-tests/adaptive3/default-build.test.yaml)
+exercises repository-improvement inputs, backgrounders, and the local verification
+hook through the public build. It scripts agent decisions and uses a disposable
+runtime. [Adaptive3 test statements](../../recipe-tests/adaptive3/statements.md)
+record the build contract.
 
 ```sh
-c2j test run --directory recipe-tests/self-improvement --parallelism 2 --case-timeout 180s
+c2j test run --file recipe-tests/adaptive3/default-build.test.yaml --case default-repository-improvement-hooks --case-timeout 3m
 ```

@@ -29,10 +29,10 @@ seeded repository references, scripted model/review decisions and local Git.
 | P0 | Integration / Native | `recipes/create/publish.yaml` → `registered-cell-publication.test.yaml` | Repository assertions reject mismatched identities before initialization while retaining registration evidence. |
 | P0 | Integration / Native, Git | `recipes/create/initialize.yaml` → `create-handoff.test.yaml` | Initial publication preserves exact approved PURPOSE bytes, independent initial history and configured author and committer. |
 | P0 | Integration / Native, Git | `recipes/create/initialize.yaml` → `create.test.yaml` | Existing destination branches fail initialization without overwriting history or reporting readiness. |
-| P0 | Integration / Native | `recipes/adaptive/route-target.yaml`, `recipes/adaptive2/route-target.yaml` → `creation-routing.test.yaml` | Both routers accept matching successful publication with merged true and an empty merged_hash and permit continuation. |
-| P0 | Integration / Native | `recipes/adaptive/route-target.yaml`, `recipes/adaptive2/route-target.yaml` → `creation-routing.test.yaml` | Both routers reject incomplete, failed, cancelled, timed-out and mismatched results, including targets already present in the registry. |
-| P0 | Integration / Native | `recipes/adaptive/route-target.yaml`, `recipes/adaptive2/route-target.yaml` → `creation-routing.test.yaml` | Neither router passes creation's empty hash to thinpackrebase. |
-| P1 | Integration / Native | `recipes/adaptive/prompts.yaml`, `recipes/adaptive2/prompts.yaml` → `creation-routing.test.yaml` | Creation instructions request names, repository identities and exact purposes without promising root configuration approval or catalog edits. |
+| P0 | Integration / Native | `recipes/adaptive/route-target.yaml` → `creation-routing.test.yaml` | The router accepts matching successful publication with merged true and an empty merged_hash and permit continuation. |
+| P0 | Integration / Native | `recipes/adaptive/route-target.yaml` → `creation-routing.test.yaml` | The router rejects incomplete, failed, cancelled, timed-out and mismatched results, including targets already present in the registry. |
+| P0 | Integration / Native | `recipes/adaptive/route-target.yaml` → `creation-routing.test.yaml` | Creation's empty hash is never passed to thinpackrebase. |
+| P1 | Integration / Native | `recipes/adaptive/prompts.yaml` → `creation-routing.test.yaml` | Creation instructions request names, repository identities and exact purposes without promising root configuration approval or catalog edits. |
 
 Publication diagnostics and partial results have additional
 [expectations](creation-publication-statements.md).

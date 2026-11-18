@@ -91,5 +91,4 @@ See the [implementation assessment](guides/adaptive3/IMPLEMENTATION.md),
 [actual review examples](guides/adaptive3/results/README.md), and
 [default rollout](guides/adaptive3/ROLLOUT.md).
 
-The previous [adaptive2 process](ADAPTIVE2_BUILD_PROCESS.md) and explicit
-[adaptive2 entrypoint](recipes/adaptive2/build.yaml) remain available.
+The [Adaptive2 process](ADAPTIVE2_BUILD_PROCESS.md) documents the retired workflow.
