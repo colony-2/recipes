@@ -1,0 +1,218 @@
+recipe: merge-queue-fast-forward.yaml
+cases:
+- id: exact-head-reuses-original-context-and-readable-collision-safe-evidence
+  type: integration_case
+  runtime: &cell
+    backend: sqlite
+    cells:
+      root:
+        file_sources:
+          merge-check.yaml: ../../merge-check.yaml
+          recipes/adaptive3: ../../recipes/adaptive3
+          recipes/merge-queue: ../../recipes/merge-queue
+        files:
+          README.md: A disposable merge queue test cell.
+          .c2/recipes/hooks/build/verify.yaml: &hook |
+            id: verify
+            inputs:
+              request: ${{ inputs.request }}
+              candidate: ${{ inputs.candidate }}
+            sequence:
+            - id: verify_marker
+              op: command_execution
+              inputs:
+                env:
+                  REQUEST: ${{ inputs.request }}
+                  CANDIDATE: ${{ inputs.candidate }}
+                  OUTBOX: ${{ context.environment.op.outbox }}
+                run: |
+                  set -eu
+                  test "$(git rev-parse HEAD)" = "$CANDIDATE"
+                  if [ -f contribution.txt ]; then test "$(cat contribution.txt)" = queue-ready; fi
+                  printf 'original-hook-evidence\n' > "$OUTBOX/assembled.bundle"
+                  printf 'original-conflict-name\n' > "$OUTBOX/000000000000000000000000001.log"
+                  printf 'original-repair-name\n' > "$OUTBOX/repair.txt"
+                  if [ "$REQUEST" = 'Verify the combined merge queue candidate.' ] && [ -f fail-receiving ]; then
+                    printf failed
+                  elif [ -f optional-skip ]; then
+                    printf skipped
+                  elif [ -f selection-control ] && [ -f change.txt ]; then
+                    printf failed
+                  else
+                    printf passed
+                  fi
+            outputs:
+              api_version: c2.build-hook/v1
+              status: ${{ sequence.verify_marker.outputs.stdout }}
+              summary: Verified the requested commit and retained the hook logs.
+              artifact_refs:
+                assembled.bundle: ${{ sequence.verify_marker.artifacts['assembled.bundle'] }}
+                000000000000000000000000001.log: ${{ sequence.verify_marker.artifacts['000000000000000000000000001.log'] }}
+                repair.txt: ${{ sequence.verify_marker.artifacts['repair.txt'] }}
+  mocks: &native
+    ops:
+    - {match: {selector: ./recipes/merge-queue}, repeat: true, behavior: {mode: passthrough}}
+    - {match: {op: command_execution}, repeat: true, behavior: {mode: passthrough}}
+    - {match: {op: squash}, repeat: true, behavior: {mode: passthrough}}
+    - {match: {op: merge}, repeat: true, behavior: {mode: passthrough}}
+  assertions:
+  - type: cel_true
+    expr: outputs.confirmed && outputs.results.size()==1 && outputs.results[0].hash==outputs.candidate.head_hash
+  - type: cel_true
+    expr: calls.filter(c,c.node_path.endsWith('/verify_marker')).size()==1
+  - type: cel_true
+    expr: outputs.probe.reused_receipt.identity.base==outputs.candidate.base_hash && outputs.probe.reused_receipt.identity.request=='Original caller request with its own documents' && outputs.probe.reused_receipt.identity.documents['original.md'].value=='Original document context' && outputs.probe.verified_head==outputs.candidate.head_hash && outputs.probe.verification.status=='passed'
+  - type: cel_true
+    expr: calls.exists(c,c.node_path.endsWith('/evidence') && c.outputs.success) &&
+      outputs.probe.artifacts.size()>=4 && outputs.probe.verification.summary.contains('Reused verification from job ')
+- id: duplicate-appends-still-publish-the-exact-head
+  type: integration_case
+  inputs: {scenario: duplicate}
+  runtime: *cell
+  mocks: *native
+  assertions:
+  - type: cel_true
+    expr: outputs.confirmed && outputs.results.size()==1 && outputs.results[0].hash==outputs.candidate.head_hash
+  - type: cel_true
+    expr: calls.filter(c,c.node_path.endsWith('/verify_marker')).size()==1
+- id: missing-evidence-runs-the-receiving-hook
+  type: integration_case
+  inputs: {scenario: missing}
+  runtime: *cell
+  mocks: *native
+  assertions: &fallback
+  - type: cel_true
+    expr: outputs.confirmed && outputs.results[0].hash==outputs.candidate.head_hash
+  - type: cel_true
+    expr: calls.filter(c,c.node_path.endsWith('/verify_marker')).size()==2 &&
+      calls.exists(c,c.node_path.endsWith('/verify_marker') && c.inputs.env.REQUEST=='Verify the combined merge queue candidate.')
+- id: malformed-evidence-runs-the-receiving-hook
+  type: integration_case
+  inputs: {scenario: malformed}
+  runtime: *cell
+  mocks: *native
+  assertions: *fallback
+- id: foreign-producer-runs-the-receiving-hook
+  type: integration_case
+  inputs: {scenario: foreign}
+  runtime: *cell
+  mocks: *native
+  assertions: *fallback
+- id: failed-original-result-runs-the-receiving-hook
+  type: integration_case
+  inputs: {scenario: failed}
+  runtime: *cell
+  mocks: *native
+  assertions: *fallback
+- id: changed-policy-runs-the-receiving-hook
+  type: integration_case
+  inputs: {scenario: policy}
+  runtime: *cell
+  mocks: *native
+  assertions: *fallback
+- id: rewritten-head-receives-fresh-verification
+  type: integration_case
+  inputs: {scenario: rebase}
+  runtime: *cell
+  mocks: *native
+  assertions:
+  - type: cel_true
+    expr: outputs.confirmed && outputs.results[0].hash!=outputs.candidate.head_hash
+  - type: cel_true
+    expr: calls.filter(c,c.node_path.endsWith('/verify_marker')).size()==2 &&
+      calls.exists(c,c.node_path.endsWith('/verify_marker') && c.inputs.env.CANDIDATE==outputs.results[0].hash)
+- id: fresh-verification-failure-prevents-landing
+  type: integration_case
+  inputs: {scenario: fallback-fails}
+  runtime: *cell
+  mocks: &without_merge
+    ops:
+    - {match: {selector: ./recipes/merge-queue}, repeat: true, behavior: {mode: passthrough}}
+    - {match: {op: command_execution}, repeat: true, behavior: {mode: passthrough}}
+    - {match: {op: squash}, repeat: true, behavior: {mode: passthrough}}
+  assertions:
+  - type: cel_true
+    expr: '!outputs.confirmed && outputs.results[0].status=="fail-validation" && outputs.results[0].failure_logs.size()>0'
+  - type: cel_true
+    expr: calls.exists(c,c.node_path.endsWith('/verify_marker') && c.outputs.stdout=='failed') && !calls.exists(c,c.op=='merge')
+- id: combined-stack-cannot-use-an-individual-receipt
+  type: integration_case
+  inputs: {scenario: combined}
+  runtime: *cell
+  mocks: *native
+  assertions:
+  - type: cel_true
+    expr: outputs.confirmed && outputs.results.size()==2 && outputs.results.all(r,r.status=='success') && outputs.results[1].hash!=outputs.candidate.head_hash
+  - type: cel_true
+    expr: outputs.probe.reused_receipt=={} && calls.filter(c,c.node_path.endsWith('/verify_marker')).size()==3
+- id: optional-skipped-result-remains-visibly-skipped
+  type: integration_case
+  inputs: {scenario: optional, required: false}
+  runtime: *cell
+  mocks: *native
+  assertions:
+  - type: cel_true
+    expr: outputs.confirmed && outputs.results[0].hash==outputs.candidate.head_hash && outputs.probe.verification.status=='skipped'
+  - type: cel_true
+    expr: outputs.probe.reused_receipt.identity.base==outputs.candidate.base_hash && outputs.probe.reused_receipt.identity.request=='Original caller request with its own documents' && outputs.probe.reused_receipt.identity.documents['original.md'].value=='Original document context' && calls.filter(c,c.node_path.endsWith('/verify_marker')).size()==1
+- id: subset-and-final-checks-reuse-the-selected-exact-head
+  type: integration_case
+  inputs: {scenario: selection}
+  runtime: *cell
+  mocks: *native
+  assertions:
+  - type: cel_true
+    expr: outputs.confirmed && outputs.results[0].status=='success' && outputs.results[0].hash==outputs.candidate.head_hash && outputs.results[1].status=='fail-validation'
+  - type: cel_true
+    expr: calls.filter(c,c.node_path.endsWith('/verify_marker')).size()==4
+  - type: cel_true
+    expr: calls.exists(c,c.node_path.startsWith('adaptive3-merge-check/') && has(c.outputs.result) && has(c.outputs.result.reused) && c.outputs.result.reused) &&
+      calls.exists(c,c.node_path.contains('/final/') && has(c.outputs.result) && has(c.outputs.result.reused) && c.outputs.result.reused)
+- id: upstream-race-rejects-the-old-base-and-verifies-the-rewritten-retry
+  type: integration_case
+  inputs: {scenario: race}
+  runtime: *cell
+  mocks: *native
+  assertions:
+  - type: cel_true
+    expr: outputs.race_rejected && outputs.confirmed && outputs.results[0].hash!=outputs.candidate.head_hash && outputs.probe.reused_receipt.identity.base==outputs.candidate.base_hash && outputs.probe.reused_receipt.identity.request=='Original caller request with its own documents' && outputs.probe.reused_receipt.identity.documents['original.md'].value=='Original document context'
+  - type: cel_true
+    expr: calls.filter(c,c.node_path.endsWith('/verify_marker')).size()==2 &&
+      calls.exists(c,c.node_path.endsWith('/verify_marker') && c.inputs.env.CANDIDATE==outputs.results[0].hash)
+- id: passing-receipt-cannot-override-source-validation
+  type: integration_case
+  inputs: {scenario: invalid-source}
+  runtime: *cell
+  mocks: *without_merge
+  assertions:
+  - type: cel_true
+    expr: '!outputs.confirmed && outputs.results[0].status=="fail-validation" && outputs.probe.reused_receipt=={} && !calls.exists(c,c.op=="merge")'
+  - type: cel_true
+    expr: calls.filter(c,c.node_path.endsWith('/verify_marker')).size()==1
+- id: unreadable-reused-logs-fail-when-materialized
+  type: integration_case
+  inputs: {scenario: unreadable}
+  runtime: *cell
+  mocks: *without_merge
+  expect_error: 'save failed: chapter not found'
+  assertions:
+  - type: cel_true
+    expr: calls.exists(c,c.node_path.endsWith('/reuse') && has(c.outputs.result) && has(c.outputs.result.reused) && c.outputs.result.reused) && !calls.exists(c,c.op=='merge')
+- id: native-reuse-action-retains-the-entire-resolved-receipt
+  type: integration_case
+  runtime: *cell
+  mocks: *native
+  assertions:
+  - type: cel_true
+    expr: calls.exists(c,c.node_path.contains('/probe/') && has(c.outputs.result) && has(c.outputs.result.reused) && c.outputs.result.reused && c.outputs.result.receipt==c.inputs.inputs.request.contributions[0].verification)
+- id: already-landed-append-does-not-block-an-exact-pending-head
+  type: integration_case
+  inputs: {scenario: landed}
+  runtime: *cell
+  mocks: *native
+  assertions:
+  - type: cel_true
+    expr: outputs.confirmed && outputs.results.size()==2 && outputs.results.all(r,r.status=='success') && outputs.results[1].hash==outputs.candidate.head_hash
+  - type: cel_true
+    expr: calls.filter(c,c.node_path.endsWith('/verify_marker')).size()==1 &&
+      calls.exists(c,has(c.outputs.result) && has(c.outputs.result.reused) && c.outputs.result.reused)

@@ -1,0 +1,216 @@
+schema_version: 2
+id: merge-queue-fast-forward-test
+input_schema:
+  scenario: {type: string, default_value: exact}
+  required: {type: boolean, default_value: true}
+inputs:
+  scenario: ${{ inputs.scenario }}
+  required: ${{ inputs.required }}
+sequence:
+- id: bootstrap
+  when: inputs.scenario=='landed'
+  workspace:
+    cell: ${{ context.workflow.cell }}
+    ref: main
+  sequence:
+  - id: work
+    op: command_execution
+    inputs:
+      run: printf 'already landed\n' > prelanded.txt
+  - id: prepare
+    include: ../../recipes/adaptive3/merge-queue-prepare.yaml
+    inputs:
+      message: Add the already landed fixture
+  - id: merge
+    op: merge
+  outputs:
+    candidate: ${{ sequence.prepare.outputs.candidate }}
+- id: work
+  op: command_execution
+  inputs:
+    env:
+      SCENARIO: ${{ inputs.scenario }}
+    run: |
+      printf 'queue-ready\n' > contribution.txt
+      if [ "$SCENARIO" = fallback-fails ]; then touch fail-receiving; fi
+      if [ "$SCENARIO" = optional ]; then touch optional-skip; fi
+      if [ "$SCENARIO" = selection ]; then touch selection-control; fi
+- id: prepare
+  include: ../../recipes/adaptive3/merge-queue-prepare.yaml
+  inputs:
+    message: Add the already verified contribution
+- id: original
+  include: ../../recipes/adaptive3/verify-candidate.yaml
+  inputs:
+    request: Original caller request with its own documents
+    target_directory: .
+    documents:
+      original.md: {kind: value, name: original.md, format: text, value: Original document context}
+    settings: {}
+    require_verification: ${{ inputs.required }}
+- id: extra
+  when: inputs.scenario=='combined' || inputs.scenario=='selection'
+  workspace:
+    cell: ${{ context.workflow.cell }}
+    ref: ${{ sequence.prepare.outputs.candidate.base_hash }}
+  include: ./merge-queue-source.yaml
+  inputs:
+    scenario: ordinary
+- id: advance
+  when: inputs.scenario=='rebase'
+  workspace:
+    cell: ${{ context.workflow.cell }}
+    ref: main
+  sequence:
+  - id: work
+    op: command_execution
+    inputs:
+      run: printf 'upstream\n' > upstream.txt
+  - id: merge
+    op: merge
+- id: content
+  sequence: []
+  inputs:
+    candidate: ${{ sequence.prepare.outputs.candidate }}
+    required: ${{ inputs.required }}
+    receipt: >-
+      ${{ jq([sequence.original.outputs.receipt, {'job_id':context.workflow.job_id}], 'add') }}
+  outputs:
+    receipt: ${{ inputs.receipt }}
+    content: >-
+      ${{ jq([inputs.candidate, {
+        'version':1, 'repository':context.git.repo, 'branch':'refs/heads/main',
+        'job_id':context.workflow.job_id, 'initial_submitted_at':'2026-11-18T08:00:01.000000000Z',
+        'verification_policy':{'version':1,'require_verification':inputs.required,'target_directory':'.','settings':{} },
+        'verification':inputs.receipt
+      }], 'add') }}
+- id: appends
+  sequence: []
+  inputs:
+    content: ${{ sequence.content.outputs.content }}
+    scenario: ${{ inputs.scenario }}
+    extra: ${{ sequence[?'extra'].orValue({}).?outputs.orValue({}) }}
+    bootstrap: ${{ sequence[?'bootstrap'].orValue({}).?outputs.orValue({}) }}
+  outputs:
+    values: >-
+      ${{ [{'artifacts':[inputs.content.thinpack_ref], 'content':
+        jq({'content':inputs.content,'scenario':inputs.scenario}, vars.mutate)}] +
+        (inputs.scenario=='landed' ? [{
+          'artifacts':[inputs.bootstrap.candidate.thinpack_ref],
+          'content':jq([inputs.content,inputs.bootstrap.candidate], 'add | del(.verification) | .initial_submitted_at = "2026-11-18T08:00:00.000000000Z"')}] : []) +
+        (inputs.scenario=='duplicate' ? [{'artifacts':[inputs.content.thinpack_ref], 'content':inputs.content}] : []) +
+        (inputs.scenario in ['combined','selection'] ? [{
+          'artifacts':[inputs.extra.packs['1.bundle']],
+          'content':{
+            'version':1, 'repository':context.git.repo, 'branch':'refs/heads/main',
+            'job_id':context.workflow.job_id, 'base_hash':inputs.content.base_hash,
+            'head_hash':inputs.extra.hashes[0], 'changeid':'000000000000000000000000001',
+            'initial_submitted_at':'2026-11-18T08:00:02.000000000Z',
+            'thinpack_ref':inputs.extra.packs['1.bundle'],
+            'verification_policy':inputs.content.verification_policy
+          } }] : []) }}
+- id: probe
+  when: inputs.scenario in ['exact','optional','combined','race','unreadable','invalid-source']
+  workspace:
+    cell: ${{ context.workflow.cell }}
+    ref: ${{ sequence.prepare.outputs.candidate.base_hash }}
+  include: ../../recipes/adaptive3/merge-queue-check.yaml
+  inputs:
+    base: ${{ sequence.prepare.outputs.candidate.base_hash }}
+    branch: refs/heads/main
+    contributions: ${{ sequence.appends.outputs.values.map(a,a.content).filter(c,c.changeid!= '000000000000000000000000001' || inputs.scenario=='combined') }}
+    policy: ${{ sequence.content.outputs.content.verification_policy }}
+- id: evidence
+  when: inputs.scenario in ['exact','optional','unreadable']
+  op: command_execution
+  const: true
+  artifacts:
+    ./: ${{ sequence.probe.outputs.artifacts }}
+  inputs:
+    env:
+      INBOX: ${{ context.environment.op.inbox }}
+    run: |
+      set -eu
+      test -s "$INBOX/assembled.bundle"
+      reused_log=$(find "$INBOX/verification" -type f -name assembled.bundle)
+      test "$(cat "$reused_log")" = original-hook-evidence
+      conflict_log=$(find "$INBOX/verification" -type f -name 000000000000000000000000001.log)
+      test "$(cat "$conflict_log")" = original-conflict-name
+      repair_log=$(find "$INBOX/verification" -type f -name repair.txt)
+      test "$(cat "$repair_log")" = original-repair-name
+      test "$(find "$INBOX/verification" -type f | wc -l | tr -d ' ')" = 3
+- id: race_advance
+  when: inputs.scenario=='race'
+  workspace:
+    cell: ${{ context.workflow.cell }}
+    ref: main
+  sequence:
+  - id: work
+    op: command_execution
+    inputs:
+      run: printf 'racing upstream\n' > upstream.txt
+  - id: merge
+    op: merge
+- id: guard
+  when: inputs.scenario=='race'
+  workspace:
+    cell: ${{ context.workflow.cell }}
+    ref: ${{ sequence.prepare.outputs.candidate.base_hash }}
+  inputs:
+    check: ${{ sequence.probe.outputs }}
+  sequence:
+  - id: install
+    include: ../../recipes/adaptive3/merge-queue-install.yaml
+    inputs:
+      base: ${{ inputs.check.assembly.base }}
+      head: ${{ inputs.check.assembly.head }}
+      bundle: ${{ inputs.check.artifacts['assembled.bundle'] }}
+  - id: merge
+    op: merge
+    retry: {maximum_attempts: 1}
+    inputs:
+      upstream_branch: refs/heads/main
+      prepared_base_hash: ${{ inputs.check.assembly.base }}
+  catch:
+  - when: failure.code=='MERGE_UPSTREAM_ADVANCED'
+    continue:
+      outputs:
+        rejected: true
+- id: batch
+  include: ../../recipes/adaptive3/merge-queue-batch.yaml
+  inputs:
+    branch: refs/heads/main
+    policy: ${{ sequence.content.outputs.content.verification_policy }}
+    appends: ${{ sequence.appends.outputs.values }}
+    check_recipe: ${{ 'git+' + context.git.repo + '//merge-check.yaml@main' }}
+- id: confirm
+  when: sequence.batch.outputs.results.exists(r,r.changeid==sequence.prepare.outputs.candidate.changeid)
+  op: ./recipes/merge-queue
+  const: true
+  workspace:
+    cell: ${{ context.workflow.cell }}
+    ref: main
+  inputs:
+    action: confirm_landed
+    request:
+      landed: ${{ sequence.batch.outputs.results.filter(r,r.changeid==sequence.prepare.outputs.candidate.changeid)[0].?hash.orValue(sequence.prepare.outputs.candidate.head_hash) }}
+      branch: refs/heads/main
+      change_id: ${{ sequence.prepare.outputs.candidate.changeid }}
+outputs:
+  candidate: ${{ sequence.prepare.outputs.candidate }}
+  results: ${{ sequence.batch.outputs.results }}
+  confirmed: ${{ sequence[?'confirm'].orValue({}).?outputs.orValue({}).?result.orValue({}).?confirmed.orValue(false) }}
+  race_rejected: ${{ sequence[?'guard'].orValue({}).?outputs.orValue({}).?rejected.orValue(false) }}
+  probe: ${{ sequence[?'probe'].orValue({}).?outputs.orValue({}) }}
+
+vars:
+  mutate: |-
+    .scenario as $s | .content |
+    if $s == "missing" then del(.verification)
+    elif $s == "malformed" or $s == "fallback-fails" then .verification = {result:{status:"passed"}}
+    elif $s == "foreign" then .verification.job_id = "foreign"
+    elif $s == "failed" then .verification.result.status = "failed"
+    elif $s == "policy" then .verification.identity.settings = {changed:true}
+    elif $s == "unreadable" then .verification.artifacts |= with_entries(.value.stored.key.taskOrdinal = 999999)
+    elif $s == "invalid-source" then .changeid = "000000000000000000000000099"
+    else . end

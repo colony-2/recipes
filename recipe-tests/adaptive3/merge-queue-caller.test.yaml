@@ -13,6 +13,22 @@ cases:
           recipes/merge-queue: ../../recipes/merge-queue
         files:
           README.md: A merge queue test cell.
+          .c2/recipes/hooks/build/publish.yaml: |
+            id: publish
+            inputs:
+              merged_hash: ${{ inputs.merged_hash }}
+            sequence:
+            - id: publish_marker
+              op: command_execution
+              inputs:
+                env:
+                  LANDED: ${{ inputs.merged_hash }}
+                run: test "$(git rev-parse HEAD)" = "$LANDED" && test "$(cat contribution.txt)" = queue-ready
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: Published at the confirmed hash.
+              artifact_refs: {}
           .c2/recipes/hooks/build/verify.yaml: |
             id: verify
             inputs:
@@ -167,3 +183,15 @@ cases:
       outputs.repeated.status=='stuck' && outputs.result.rejected_changeid==outputs.repeated.rejected_changeid
   - type: cel_true
     expr: '!calls.exists(c,c.node_path.contains("/repeat/") && c.node_path.endsWith("/submit/sequence/batch"))'
+- id: grouped-caller-forwards-saved-verification-and-publishes-once
+  type: integration_case
+  inputs: {saved_receipt: true}
+  runtime: *cell
+  mocks: *native
+  assertions:
+  - type: cel_true
+    expr: outputs.verified && outputs.result.status=='passed' && outputs.result.publication.merged_hash==outputs.candidate.head_hash
+  - type: cel_true
+    expr: calls.filter(c,c.node_path.endsWith('/verify/root/check')).size()==1 &&
+      calls.filter(c,c.node_path.endsWith('/publish_marker')).size()==1 &&
+      calls.exists(c,c.node_path.startsWith('adaptive3-merge-batch/') && has(c.outputs.result) && has(c.outputs.result.reused) && c.outputs.result.reused)

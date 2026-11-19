@@ -117,12 +117,30 @@ stack and, if needed, tests subsets in groups of up to four using isolated
 check jobs. Selection prefers older verified work within the batch. Search
 exhaustion returns an operational failure with evidence for recovery.
 
+Queue submissions optionally carry `verification`: the originating `job_id`
+and the saved verifier's `identity`, `result`, and `artifacts` (without its
+`contribution`). The queue reuses this evidence only when an applied supplied
+commit, its checked candidate, and the installed publication head are identical,
+the clean workspace can fast-forward from the pinned target, and the original
+base, directory, settings and verification requirement match. There is no
+batch-size gate. Rebase, repair or reconstruction that changes the hash needs
+fresh verification, even with the same tree. Missing, malformed, foreign or
+contradictory evidence falls back to ordinary verification. Duplicate receipts
+are checked against their own producers before deduplication.
+
+Qualifying full, subset and final checks retain the original receipt and status,
+identify the reused job and commit in the summary, and preserve log identities
+under `verification/<producer>/`. An optional skip remains skipped. Older callers
+without receipts still work. Custom hooks do not receive a separate queue-context
+invocation on qualifying paths: the original candidate check is authoritative.
+The general verifier's receipt cache and publication guards are unchanged.
+
 The batch publishes only its verified commit sequence through the native merge
 operation. The caller confirms its individual receipt against target-branch
 history, then runs the publish hook at that commit. A failed publish retries at
 the same commit. Candidate rejections return their diagnostics to implementation.
 The [merge queue test statements](../../recipe-tests/adaptive3/merge-queue-statements.md)
-describe the acceptance checks.
+describe the existing acceptance checks; [exact-commit reuse expectations](../../recipe-tests/adaptive3/exact-commit-fast-forward-statements.md) cover verification reuse.
 
 ## Recovery and local hooks
 

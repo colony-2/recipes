@@ -7,8 +7,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "recipes" / "merge-queue"))
 
-from git_work import Git, install
-from policy import UnidentifiedContribution, caller_receipt, landing_results, plan_probes, record_probes, screen_contributions
+from git_work import Git, GitError, install, reuse_verification
+from policy import UnidentifiedContribution, caller_receipt, landing_results, plan_probes, record_probes, screen_contributions, reusable_receipt
 
 
 BASE = "a" * 40
@@ -24,7 +24,7 @@ def evidence(results):
 
 
 def append(change_id, age, *, policy=POLICY, head=HEAD):
-    bundle = {"kind": "stored", "stored": {"key": {"jobId": "producer", "index": 0}}}
+    bundle = {"kind": "stored", "stored": {"key": {"jobId": "producer", "taskOrdinal": 0, "name": "candidate.bundle", "sizeBytes": 1}}}
     return {
         "artifacts": [bundle],
         "content": {
@@ -174,3 +174,167 @@ class MergeQueueInstallTest(unittest.TestCase):
             self.assertEqual(binary.read_bytes(), b"\x00\xfe\xff\x00")
             self.assertTrue(binary.stat().st_mode & 0o100)
             repo.require_clean(head)
+
+
+def saved_receipt(content, policy=POLICY, status="passed"):
+    return {
+        "job_id": content["job_id"],
+        "identity": {"candidate": content["head_hash"], "base": content["base_hash"],
+                     "request": "Check the original request", "target_directory": policy["target_directory"],
+                     "documents": {}, "settings": policy["settings"], "required": policy["require_verification"]},
+        "result": {"api_version": "c2.build-hook/v1", "status": status,
+                   "summary": "Original verification", "artifact_refs": {}},
+        "artifacts": {},
+    }
+
+
+class ExactCommitReceiptTest(unittest.TestCase):
+    def setUp(self):
+        self.append = append(OLDER, "2026-11-18T12:00:00.000000001Z")
+        self.append["content"]["verification"] = saved_receipt(self.append["content"])
+        self.assembly = {"base": BASE, "head": HEAD,
+                         "results": [{"changeid": OLDER, "status": "applied", "hash": HEAD}]}
+
+    def select(self, appends=None, policy=POLICY, assembly=None):
+        items, rejected = screen_contributions(appends or [self.append], REPOSITORY, BRANCH, policy)
+        self.assertFalse(rejected)
+        return reusable_receipt(assembly or self.assembly, items, policy)
+
+    def test_exact_head_without_count_or_receipt_base_equality_gate(self):
+        self.assertEqual(self.select(), self.append["content"]["verification"])
+        assembly = copy.deepcopy(self.assembly)
+        assembly["base"] = "c" * 40
+        self.assertIsNotNone(self.select(assembly=assembly))
+        second = append(NEWER, "2026-11-18T12:00:01.000000001Z", head="d" * 40)
+        assembly["results"].append({"changeid": NEWER, "status": "applied", "hash": "d" * 40})
+        self.assertIsNotNone(self.select([self.append, second], assembly=assembly))
+        assembly["head"] = "d" * 40
+        self.assertIsNone(self.select([self.append, second], assembly=assembly))
+
+    def test_complete_original_identity_and_policy_are_required(self):
+        receipt = self.append["content"]["verification"]
+        for field in list(receipt["identity"]):
+            with self.subTest(missing=field):
+                candidate = copy.deepcopy(self.append)
+                del candidate["content"]["verification"]["identity"][field]
+                self.assertIsNone(self.select([candidate]))
+        for field, value in {"candidate": "c" * 40, "base": "c" * 40, "required": False,
+                             "target_directory": "other", "settings": {"changed": True},
+                             "documents": [], "request": None}.items():
+            with self.subTest(field=field):
+                candidate = copy.deepcopy(self.append)
+                candidate["content"]["verification"]["identity"][field] = value
+                self.assertIsNone(self.select([candidate]))
+        policy = dict(POLICY, settings={"b": {"y": 2, "x": 1}, "a": True})
+        candidate = copy.deepcopy(self.append)
+        candidate["content"]["verification"] = saved_receipt(candidate["content"], policy)
+        candidate["content"]["verification"]["identity"]["settings"] = {"a": True, "b": {"x": 1, "y": 2}}
+        candidate["content"]["verification_policy"] = policy
+        self.assertIsNotNone(self.select([candidate], policy))
+
+    def test_missing_malformed_and_failed_evidence_falls_back(self):
+        for value in (None, {}, [], "passed", {"result": {"status": "passed"}}):
+            with self.subTest(value=value):
+                candidate = copy.deepcopy(self.append)
+                candidate["content"]["verification"] = value
+                self.assertIsNone(self.select([candidate]))
+        for field, value in {"job_id": "foreign", "artifacts": [],
+                             "result": {"status": "passed"}}.items():
+            candidate = copy.deepcopy(self.append)
+            candidate["content"]["verification"][field] = value
+            self.assertIsNone(self.select([candidate]))
+        for status in ("failed", "changes", "skipped", [], {}):
+            candidate = copy.deepcopy(self.append)
+            candidate["content"]["verification"]["result"]["status"] = status
+            self.assertIsNone(self.select([candidate]))
+        for field, value in (("failure", {}), ("artifact_refs", {"bad": {}})):
+            candidate = copy.deepcopy(self.append)
+            candidate["content"]["verification"]["result"][field] = value
+            self.assertIsNone(self.select([candidate]))
+
+    def test_optional_skip_stays_skipped(self):
+        policy = dict(POLICY, require_verification=False)
+        candidate = copy.deepcopy(self.append)
+        candidate["content"]["verification_policy"] = policy
+        candidate["content"]["verification"] = saved_receipt(candidate["content"], policy, "skipped")
+        self.assertEqual(self.select([candidate], policy)["result"]["status"], "skipped")
+
+    def test_duplicates_validate_each_producer_and_disable_conflicting_receipts(self):
+        duplicate = copy.deepcopy(self.append)
+        duplicate["content"]["job_id"] = "other-producer"
+        duplicate["content"]["thinpack_ref"]["stored"]["key"]["jobId"] = "other-producer"
+        duplicate["content"]["verification"]["job_id"] = "other-producer"
+        duplicate["content"]["verification"]["result"]["summary"] = "Different log location"
+        duplicate["content"]["verification"]["artifacts"] = {
+            "test.log": {"kind": "stored", "stored": {"key": {"jobId": "other-producer", "taskOrdinal": 1, "name": "test.log", "sizeBytes": 1}}}}
+        for pair in ([self.append, duplicate], [duplicate, self.append]):
+            self.assertEqual(self.select(pair), pair[0]["content"]["verification"])
+        for mutation in ("failed", "foreign", "identity", "malformed"):
+            changed = copy.deepcopy(duplicate)
+            receipt = changed["content"]["verification"]
+            if mutation == "failed": receipt["result"]["status"] = "failed"
+            if mutation == "foreign": receipt["job_id"] = "foreign"
+            if mutation == "identity": receipt["identity"]["request"] = "Another request"
+            if mutation == "malformed": del receipt["identity"]
+            for pair in ([self.append, changed], [changed, self.append]):
+                with self.subTest(mutation=mutation, first=pair[0]["content"]["job_id"]):
+                    self.assertIsNone(self.select(pair))
+        missing = copy.deepcopy(duplicate)
+        del missing["content"]["verification"]
+        for pair in ([missing, self.append], [self.append, missing]):
+            self.assertEqual(self.select(pair), self.append["content"]["verification"])
+
+    def test_accounting_and_exact_publication_identity_are_required(self):
+        for rows in ([], [{"changeid": NEWER, "status": "applied", "hash": HEAD}],
+                     [{"changeid": OLDER, "status": "fail-validation"}],
+                     [{"changeid": OLDER, "status": "applied", "hash": BASE}]):
+            self.assertIsNone(self.select(assembly=dict(self.assembly, results=rows)))
+        for head in (BASE, "c" * 40):
+            self.assertIsNone(self.select(assembly=dict(self.assembly, head=head)))
+        rewritten = copy.deepcopy(self.assembly)
+        rewritten["head"] = rewritten["results"][0]["hash"] = "c" * 40
+        self.assertIsNone(self.select(assembly=rewritten))
+
+
+class ExactCommitGitTest(unittest.TestCase):
+    def test_git_checks_recompute_and_preserve_original_evidence(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            repo = Git(root)
+            repo.run("init", "--quiet")
+            repo.run("config", "user.name", "Test")
+            repo.run("config", "user.email", "test@example.test")
+            repo.run("commit", "--quiet", "--allow-empty", "-m", "Base")
+            base = repo.head()
+            repo.run("commit", "--quiet", "--allow-empty", "-m", "Candidate")
+            head = repo.head()
+            item = append(OLDER, "2026-11-18T12:00:00.000000001Z")["content"]
+            item.update(base_hash=base, head_hash=head)
+            item["verification"] = saved_receipt(item)
+            item["verification"]["artifacts"] = {"assembled.bundle": item["thinpack_ref"]}
+            original = copy.deepcopy(item["verification"])
+            assembly = {"base": base, "head": head,
+                        "results": [{"changeid": OLDER, "status": "applied", "hash": head}]}
+            result = reuse_verification(repo, assembly, [item], POLICY)
+            self.assertTrue(result["reused"])
+            self.assertEqual(result["receipt"], original)
+            self.assertEqual(result["verification"]["status"], "passed")
+            self.assertIn(head, result["verification"]["summary"])
+            ref = result["artifacts"]["verification/producer/assembled.bundle"]
+            self.assertEqual(ref["stored"], original["artifacts"]["assembled.bundle"]["stored"])
+            (root / "dirty").write_text("dirty")
+            with self.assertRaises(GitError): reuse_verification(repo, assembly, [item], POLICY)
+            (root / "dirty").unlink()
+            with self.assertRaises(GitError):
+                reuse_verification(repo, dict(assembly, base="f" * 40), [item], POLICY)
+            repo.run("checkout", "--quiet", "--detach", base)
+            repo.run("commit", "--quiet", "--allow-empty", "-m", "Diverged")
+            other = repo.head()
+            repo.run("checkout", "--quiet", "--detach", head)
+            self.assertFalse(reuse_verification(repo, dict(assembly, base=other), [item], POLICY)["reused"])
+            repo.run("commit", "--quiet", "--allow-empty", "-m", "New candidate")
+            new = repo.head()
+            rewritten = {"base": base, "head": new,
+                         "results": [{"changeid": OLDER, "status": "applied", "hash": new}]}
+            self.assertFalse(reuse_verification(repo, rewritten, [item], POLICY)["reused"])
+            with self.assertRaises(GitError): reuse_verification(repo, assembly, [item], POLICY)

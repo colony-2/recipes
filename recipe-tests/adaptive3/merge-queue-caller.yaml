@@ -1,6 +1,9 @@
 schema_version: 2
 id: merge-queue-caller-test
 input_schema:
+  saved_receipt:
+    type: boolean
+    default_value: false
   retry_after_advance:
     type: boolean
     default_value: false
@@ -8,6 +11,7 @@ input_schema:
     type: boolean
     default_value: false
 inputs:
+  saved_receipt: ${{ inputs.saved_receipt }}
   retry_after_advance: ${{ inputs.retry_after_advance }}
   retry_rejection: ${{ inputs.retry_rejection }}
 sequence:
@@ -19,14 +23,34 @@ sequence:
   include: ../../recipes/adaptive3/merge-queue-prepare.yaml
   inputs:
     message: Add the queue fixture
+- id: verify
+  when: inputs.saved_receipt
+  include: ../../recipes/adaptive3/verify-candidate.yaml
+  inputs:
+    request: Check the caller candidate before queue submission.
+    target_directory: .
+    documents: {}
+    settings: {}
+    require_verification: true
 - id: submit
   include: ../../recipes/adaptive3/merge-queue-submit.yaml
   inputs:
     contribution: ${{ sequence.prepare.outputs.candidate }}
+    verification: ${{ sequence[?'verify'].orValue({}).?outputs.orValue({}).?receipt.orValue({}) }}
     receiver: ${{ 'git+' + context.git.repo + '//merge-batch.yaml@main' }}
     require_verification: true
     target_directory: .
     settings: {}
+- id: publish
+  when: inputs.saved_receipt && sequence.submit.outputs.result.status=='passed'
+  include: ../../recipes/adaptive3/hooks.yaml
+  inputs:
+    hook: publish
+    request: Publish the confirmed caller candidate.
+    target_directory: .
+    documents: {}
+    settings: {}
+    publication: ${{ sequence.submit.outputs.result.publication }}
 - id: read_target
   when: sequence.submit.outputs.result.status=='passed'
   op: command_execution
@@ -60,6 +84,7 @@ sequence:
   include: ../../recipes/adaptive3/merge-queue-submit.yaml
   inputs:
     contribution: ${{ sequence.prepare.outputs.candidate }}
+    verification: ${{ sequence[?'verify'].orValue({}).?outputs.orValue({}).?receipt.orValue({}) }}
     queue_history: ${{ sequence.submit.outputs.result }}
     receiver: ${{ 'git+' + context.git.repo + '//merge-batch.yaml@main' }}
     require_verification: true

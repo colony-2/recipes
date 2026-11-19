@@ -33,6 +33,70 @@ def policy_key(policy):
     return json.dumps(policy, sort_keys=True, separators=(",", ":"))
 
 
+def artifact_ref(ref):
+    if type(ref) is not dict:
+        return False
+    if ref.get("kind") == "value":
+        return ("value" in ref and ref.get("format") in ("json", "text") and
+                (ref["format"] == "json" or isinstance(ref["value"], str)))
+    if ref.get("kind") != "stored" or type(ref.get("stored")) is not dict:
+        return False
+    key = ref["stored"].get("key")
+    return (type(key) is dict and isinstance(key.get("jobId"), str) and bool(key["jobId"]) and
+            type(key.get("taskOrdinal")) is int and key["taskOrdinal"] >= 0 and
+            isinstance(key.get("name"), str) and bool(key["name"]) and
+            type(key.get("sizeBytes")) is int and key["sizeBytes"] >= 0)
+
+
+def artifact_map(value):
+    return (type(value) is dict and all(
+        isinstance(name, str) and name and not name.startswith("/") and
+        ".." not in name.split("/") and artifact_ref(ref) for name, ref in value.items()))
+
+
+def receipt_key(receipt, contribution, policy):
+    """Validate optional saved evidence before deduplication, preserving its producer."""
+    if type(receipt) is not dict or set(receipt) != {"job_id", "identity", "result", "artifacts"}:
+        return None
+    identity, result = receipt["identity"], receipt["result"]
+    if (not isinstance(receipt["job_id"], str) or
+            re.fullmatch(r"[A-Za-z0-9_-]+", receipt["job_id"]) is None or
+            receipt["job_id"] != contribution["job_id"] or type(identity) is not dict or
+            set(identity) != {"candidate", "base", "request", "target_directory", "documents", "settings", "required"} or
+            identity["candidate"] != contribution["head_hash"] or
+            identity["base"] != contribution["base_hash"] or
+            not isinstance(identity["request"], str) or not artifact_map(identity["documents"]) or
+            type(identity["required"]) is not bool or identity["required"] != policy["require_verification"] or
+            identity["target_directory"] != policy["target_directory"] or
+            type(identity["settings"]) is not dict or
+            json.dumps(identity["settings"], sort_keys=True) != json.dumps(policy["settings"], sort_keys=True) or
+            type(result) is not dict or result.get("api_version") != "c2.build-hook/v1" or
+            result.get("status") not in ("passed", "failed", "skipped", "changes") or
+            not isinstance(result.get("summary"), str) or not result["summary"] or
+            not artifact_map(result.get("artifact_refs")) or not artifact_map(receipt["artifacts"])):
+        return None
+    # Log names, summaries and producers may differ between equivalent checks.
+    return json.dumps([identity, result["status"], "failure" in result], sort_keys=True)
+
+
+def reusable_receipt(assembly, contributions, policy):
+    """Select evidence only for an accounted, applied, exact supplied publication head."""
+    policy_key(policy)
+    rows = assembly["results"]
+    if ([row["changeid"] for row in rows] != [item["changeid"] for item in contributions] or
+            assembly["head"] == assembly["base"]):
+        return None
+    for item, row in zip(contributions, rows):
+        receipt = item.get("verification")
+        if (row["status"] == "applied" and row.get("hash") == assembly["head"] == item["head_hash"] and
+                receipt_key(receipt, item, policy) is not None and
+                "failure" not in receipt["result"] and
+                (receipt["result"]["status"] == "passed" or
+                 (receipt["result"]["status"] == "skipped" and not policy["require_verification"]))):
+            return receipt
+    return None
+
+
 def validate_contribution(append, content, repository, branch, authority):
     if type(content.get("version")) is not int or content["version"] != 1:
         raise ValueError("Unknown merge queue contribution version")
@@ -63,6 +127,8 @@ def screen_contributions(appends, repository, branch, policy):
     authority = policy_key(policy)
     accepted = {}
     rejected = {}
+    evidence = {}
+    ambiguous = set()
     source_fields = ("repository", "base_hash", "head_hash", "initial_submitted_at")
     for append in appends:
         content = append.get("content") if isinstance(append, dict) else None
@@ -74,12 +140,25 @@ def screen_contributions(appends, repository, branch, policy):
             previous = accepted.get(change_id)
             if previous and any(previous[key] != content[key] for key in source_fields):
                 raise ValueError("Duplicate Change-Id names different source commits or submission times")
-            accepted.setdefault(change_id, {key: content[key] for key in
-                                           ("changeid", *source_fields, "thinpack_ref")})
+            item = accepted.setdefault(change_id, {key: content[key] for key in
+                                                  ("changeid", *source_fields, "thinpack_ref", "job_id")})
+            if "verification" in content:
+                receipt = content["verification"]
+                key = receipt_key(receipt, content, policy)
+                if key is None or (change_id in evidence and evidence[change_id] != key):
+                    ambiguous.add(change_id)
+                elif change_id not in evidence:
+                    evidence[change_id] = key
+                    item["verification"] = receipt
+                    # Evidence remains bound to its producer even if the first append had none.
+                    item["job_id"] = content["job_id"]
         except ValueError as error:
             rejected[change_id] = str(error)
 
     eligible = [item for change_id, item in accepted.items() if change_id not in rejected]
+    for item in eligible:
+        if item["changeid"] in ambiguous:
+            item.pop("verification", None)
     eligible.sort(key=lambda item: (item["initial_submitted_at"], item["changeid"]))
     return eligible, rejected
 

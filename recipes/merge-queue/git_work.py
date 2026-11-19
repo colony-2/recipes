@@ -10,7 +10,7 @@ import tempfile
 import time
 from pathlib import Path
 
-from policy import UnidentifiedContribution, is_change_id, is_hash, screen_contributions
+from policy import UnidentifiedContribution, is_change_id, is_hash, screen_contributions, reusable_receipt
 
 
 class GitError(RuntimeError):
@@ -275,6 +275,28 @@ def install(repo, inbox, base, head):
         for signum, handler in handlers.items():
             signal.signal(signum, handler)
     return {"head": head}
+
+
+def reuse_verification(repo, assembly, contributions, policy):
+    base, head = assembly["base"], assembly["head"]
+    if not is_hash(base) or not is_hash(head):
+        raise ValueError("Verification reuse requires full Git commit hashes")
+    repo.require_clean(head)
+    for commit in (base, head):
+        if repo.read("cat-file", "-t", commit) != b"commit\n":
+            raise GitError("Verification reuse requires readable commits")
+    ancestry = repo.run("merge-base", "--is-ancestor", base, head, check=False)
+    if ancestry.returncode not in (0, 1):
+        raise GitError("Could not establish fast-forward ancestry")
+    receipt = reusable_receipt(assembly, contributions, policy)
+    if ancestry.returncode or receipt is None:
+        return {"reused": False}
+    prefix = f"verification/{receipt['job_id']}/"
+    artifacts = {prefix + name: dict(ref, name=prefix + name) for name, ref in receipt["artifacts"].items()}
+    result = dict(receipt["result"], summary=(
+        f"Reused verification from job {receipt['job_id']} for exact commit {head}. " + receipt["result"]["summary"]))
+    return {"reused": True, "receipt": receipt, "verified_head": head,
+            "verification": result, "artifacts": artifacts}
 
 
 def capture_repair(repo, inbox, outbox, prefix, summary):

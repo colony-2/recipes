@@ -32,8 +32,17 @@ sequence:
     base: ${{ sequence.resolved.outputs.result.assembly.base }}
     head: ${{ sequence.resolved.outputs.result.assembly.head }}
     bundle: ${{ sequence.resolved.outputs.result.artifacts[?'assembled.bundle'].orValue(null) }}
+- id: reuse
+  op: ./recipes/merge-queue
+  const: true
+  inputs:
+    action: reuse_verification
+    request:
+      assembly: ${{ sequence.resolved.outputs.result.assembly }}
+      contributions: ${{ sequence.resolved.outputs.result.?contributions.orValue(inputs.contributions) }}
+      policy: ${{ inputs.policy }}
 - id: verify
-  when: size(inputs.contributions)==0 || sequence.resolved.outputs.result.assembly.head!=inputs.base
+  when: '!sequence.reuse.outputs.result.reused && (size(inputs.contributions)==0 || sequence.resolved.outputs.result.assembly.head!=inputs.base)'
   include: ./verify-candidate.yaml
   inputs:
     request: Verify the combined merge queue candidate.
@@ -44,10 +53,13 @@ sequence:
 outputs:
   contributions: ${{ sequence.resolved.outputs.result.?contributions.orValue(inputs.contributions) }}
   assembly: ${{ sequence.resolved.outputs.result.assembly }}
-  artifacts: ${{ jq([sequence.resolved.outputs.result.artifacts,sequence[?'verify'].orValue({}).?outputs.orValue({}).?artifacts.orValue({})],'add') }}
+  artifacts: ${{ jq([sequence.resolved.outputs.result.artifacts,sequence.reuse.outputs.result.?artifacts.orValue({}),sequence[?'verify'].orValue({}).?outputs.orValue({}).?artifacts.orValue({})],'add') }}
   policy: ${{ inputs.policy }}
   verified_head: >-
-    ${{ sequence[?'verify'].orValue({}).?outputs.orValue({}).?receipt.orValue({}).?identity.orValue({}).?candidate.orValue('') }}
+    ${{ sequence.reuse.outputs.result.reused ? sequence.reuse.outputs.result.verified_head :
+      sequence[?'verify'].orValue({}).?outputs.orValue({}).?receipt.orValue({}).?identity.orValue({}).?candidate.orValue('') }}
+  reused_receipt: ${{ sequence.reuse.outputs.result.?receipt.orValue({}) }}
   verification: >-
-    ${{ sequence[?'verify'].orValue({}).?outputs.orValue({}).?result.orValue({
+    ${{ sequence.reuse.outputs.result.reused ? sequence.reuse.outputs.result.verification :
+      sequence[?'verify'].orValue({}).?outputs.orValue({}).?result.orValue({
       'status':'skipped','summary':'The batch contains no eligible contributions to verify.'}) }}

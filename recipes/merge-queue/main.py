@@ -21,6 +21,7 @@ def main():
         "intake": functools.partial(git_work.intake, repo, outbox),
         "assemble": functools.partial(git_work.assemble, repo, inbox, outbox),
         "install": functools.partial(git_work.install, repo, inbox),
+        "reuse_verification": functools.partial(git_work.reuse_verification, repo),
         "capture_repair": functools.partial(git_work.capture_repair, repo, inbox, outbox),
         "plan_probes": policy.plan_probes,
         "record_probes": policy.record_probes,
