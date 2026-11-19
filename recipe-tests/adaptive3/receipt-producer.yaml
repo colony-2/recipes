@@ -1,0 +1,120 @@
+schema_version: 2
+id: receipt-producer
+input_schema:
+  scenario:
+    type: string
+    default_value: valid
+inputs:
+  scenario: ${{ inputs.scenario }}
+sequence:
+- id: pad
+  when: inputs.scenario == 'pages'
+  state:
+    initial: tick
+    states:
+      tick:
+        inputs:
+          count: ${{ transition.payload.?count.orValue(0) }}
+        sequence:
+        - id: noop
+          op: command_execution
+          const: true
+          inputs:
+            run: printf page
+        outputs:
+          count: ${{ inputs.count+1 }}
+        transitions:
+        - to: tick
+          when: outputs.count < 102
+          payload:
+            count: ${{ outputs.count }}
+        - to: done
+          when: 'true'
+      done:
+        sequence: []
+- id: edit
+  op: command_execution
+  inputs:
+    env:
+      OUTBOX: ${{ context.environment.op.outbox }}
+    run: |
+      printf 'accepted change\n' > marker.txt
+      git add marker.txt
+      git diff --cached --binary --full-index HEAD > "$OUTBOX/approved.diff"
+- id: prepare_source
+  when: inputs.scenario in ['batch','batch-wrong-id'] || inputs.scenario.startsWith('direct-')
+  op: squash
+  inputs:
+    commit_message: |
+      Add the accepted marker.
+
+      Change-Id: 000000000000000000000000001
+- id: form
+  op: ./recipes/review-v2
+  const: true
+  inputs:
+    request:
+      title: Accept the marker change
+      question: Accept this change?
+      documents: {}
+      directions:
+      - id: accept
+        label: Accept
+        feedback_mode: forbidden
+        allow_attachments: false
+        continues_review: false
+      feedback:
+        label: Feedback
+      settings: []
+      conversation: []
+- id: approve
+  op: input
+  inputs:
+    form: ${{ sequence.form.outputs.form }}
+- id: unrelated
+  when: inputs.scenario in ['unrelated','forged']
+  op: command_execution
+  inputs:
+    env:
+      OUTBOX: ${{ context.environment.op.outbox }}
+      BASE: ${{ context.git.execution.base_hash }}
+    run: |
+      printf 'not accepted\n' > unrelated.txt
+      git add unrelated.txt
+      git diff --cached --binary --full-index "$BASE" > "$OUTBOX/forged.diff"
+- id: squash
+  op: squash
+  inputs:
+    commit_message: >-
+      ${{ inputs.scenario == 'truncated' ? 'Accepted marker with retained native producer context. Accepted marker with retained native producer context. Accepted marker with retained native producer context. Accepted marker with retained native producer context. Accepted marker with retained native producer context. Accepted marker with retained native producer context. Accepted marker with retained native producer context. Accepted marker with retained native producer context. ' : inputs.scenario in ['batch','batch-wrong-id'] || inputs.scenario.startsWith('direct-') ? 'Add the accepted marker.\n\nChange-Id: 000000000000000000000000001' : 'Add the accepted marker.' }}
+- id: batch_neighbor
+  when: inputs.scenario in ['batch','batch-wrong-id']
+  op: command_execution
+  inputs:
+    run: printf 'another queued contribution\n' > neighbor.txt
+- id: merge
+  op: merge
+- id: agent
+  when: inputs.scenario == 'agent'
+  op: ./receipt-proxy
+  inputs:
+    receipt: ${{ sequence.merge.outputs }}
+- id: failed_merge
+  when: inputs.scenario == 'failed'
+  op: merge
+  inputs:
+    upstream_repo: /nonexistent/receipt-test.git
+  catch:
+  - when: failure.kind != 'cancellation'
+    continue:
+      outputs: {}
+- id: failed_hook
+  when: inputs.scenario == 'failed-job'
+  op: command_execution
+  inputs:
+    run: echo 'publication failed after native merge' >&2; exit 7
+outputs:
+  source_job: ${{ context.workflow.job_id }}
+  approval: ${{ sequence.approve.outputs.receipt }}
+  patch: ${{ sequence.edit.artifacts['approved.diff'] }}
+  publication: ${{ sequence.merge.outputs }}

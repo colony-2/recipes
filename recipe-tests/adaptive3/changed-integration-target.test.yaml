@@ -1,0 +1,36 @@
+recipe: changed-integration-target.yaml
+cases:
+- id: another-target-requires-its-own-native-merge
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          README.md: Target repository
+        file_sources:
+          recipes/review-v2/op.yaml: ../../recipes/review-v2/op.yaml
+          recipes/review-v2.py: ../../recipes/review-v2.py
+    responses:
+    - node_path: changed-integration-target/approve
+      response: {direction: accept, feedback: '', attachments: [], settings: {}}
+  mocks:
+    ops:
+    - match: {op: command_execution}
+      repeat: true
+      behavior: {mode: passthrough}
+    - match: {op: squash}
+      repeat: true
+      behavior: {mode: passthrough}
+    - match: {op: merge}
+      repeat: true
+      behavior: {mode: passthrough}
+    - match: {selector: ./recipes/review-v2}
+      repeat: true
+      behavior: {mode: passthrough}
+  assertions:
+  - type: cel_true
+    expr: size(reviews)==1 && size(calls.filter(c,c.op=="merge"))==2
+  - type: cel_true
+    expr: outputs.first.status=="ready" && outputs.other.status=="ready" && outputs.other.publication.target_branch=="refs/heads/other"
+  - type: cel_true
+    expr: calls.filter(c,c.op=="merge")[0].outputs.target_branch=="refs/heads/main" && calls.filter(c,c.op=="merge")[1].outputs.target_branch=="refs/heads/other"

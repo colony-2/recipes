@@ -1,0 +1,104 @@
+{
+  "recipe": "repository-verify.yaml",
+  "cases": [
+    {
+      "id": "passed-suite-records-identities",
+      "type": "integration_case",
+      "runtime": {
+        "cells": {
+          "root": {
+            "files": {
+              ".c2j-version": "source:1111111111111111111111111111111111111111",
+              "scripts/install-c2j.sh": "#!/bin/sh\nmkdir -p \"$1/bin\"\nprintf \"fixture installer\\n\"\n",
+              "scripts/test-recipes.sh": "#!/bin/sh\nset -eu\ntest -f .c2j-version\ntest -f scripts/install-c2j.sh\nmkdir -p \"$1\"\nprintf \"report body\\n\" > \"$1/check.txt\"\nprintf \"candidate suite ran at repository root\\n\"\ntest ! -f fail-suite\n"
+            }
+          }
+        }
+      },
+      "mocks": {
+        "ops": [
+          {
+            "match": {
+              "op": "command_execution"
+            },
+            "repeat": true,
+            "behavior": {
+              "mode": "passthrough"
+            }
+          }
+        ]
+      },
+      "assertions": [
+        {
+          "type": "output_equals",
+          "path": "result.status",
+          "value": "passed"
+        },
+        {
+          "type": "cel_true",
+          "expr": "\"tests.log\" in outputs.result.artifact_refs"
+        },
+        {
+          "type": "cel_true",
+          "expr": "!(\"test-reports.tar.gz\" in outputs.result.artifact_refs)"
+        },
+        {
+          "type": "cel_true",
+          "expr": "outputs.diagnostics.contains(\"Candidate:\") && outputs.diagnostics.contains(\"Runtime pin: source:\") && outputs.diagnostics.contains(\"candidate suite ran at repository root\")"
+        }
+      ]
+    },
+    {
+      "id": "failed-suite-retains-diagnostics",
+      "type": "integration_case",
+      "runtime": {
+        "cells": {
+          "root": {
+            "files": {
+              ".c2j-version": "source:1111111111111111111111111111111111111111",
+              "scripts/install-c2j.sh": "#!/bin/sh\nmkdir -p \"$1/bin\"\nprintf \"fixture installer\\n\"\n",
+              "scripts/test-recipes.sh": "#!/bin/sh\nset -eu\ntest -f .c2j-version\ntest -f scripts/install-c2j.sh\nmkdir -p \"$1\"\nprintf \"report body\\n\" > \"$1/check.txt\"\nprintf \"candidate suite ran at repository root\\n\"\ntest ! -f fail-suite\n",
+              "fail-suite": "fail"
+            }
+          }
+        }
+      },
+      "mocks": {
+        "ops": [
+          {
+            "match": {
+              "op": "command_execution"
+            },
+            "repeat": true,
+            "behavior": {
+              "mode": "passthrough"
+            }
+          }
+        ]
+      },
+      "assertions": [
+        {
+          "type": "output_equals",
+          "path": "result.status",
+          "value": "failed"
+        },
+        {
+          "type": "cel_true",
+          "expr": "\"tests.log\" in outputs.result.artifact_refs"
+        },
+        {
+          "type": "cel_true",
+          "expr": "(\"test-reports.tar.gz\" in outputs.result.artifact_refs)"
+        },
+        {
+          "type": "cel_true",
+          "expr": "outputs.diagnostics.contains(\"Candidate:\") && outputs.diagnostics.contains(\"Runtime pin: source:\") && outputs.diagnostics.contains(\"candidate suite ran at repository root\")"
+        },
+        {
+          "type": "cel_true",
+          "expr": "outputs.diagnostics.contains(\"check.txt\")"
+        }
+      ]
+    }
+  ]
+}

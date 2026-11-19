@@ -249,6 +249,7 @@ state:
         when: outputs.result.status == 'accepted' && outputs.result.?approval_reused.orValue(false)
         payload:
           sessions: ${{ outputs.sessions }}
+          accepted: ${{ outputs.feedback.approval }}
           documents: ${{ outputs.documents }}
           feedback: {}
       - to: outcome
@@ -316,6 +317,7 @@ state:
         when: outputs.result.status == 'accepted'
         payload:
           sessions: ${{ outputs.sessions }}
+          accepted: ${{ {'result':outputs.result,'patch':outputs.patch,'contribution':state_output('implementation','verification',{}).?contribution.orValue({})} }}
       - to: backstop
         when: 'true'
         payload:
@@ -330,6 +332,14 @@ state:
       inputs:
         sessions: ${{ transition.payload.?sessions.orValue({}) }}
         purpose: integration
+        accepted: >-
+          ${{ transition.payload.?accepted.orValue(
+            !state_exists('outcome') && !state_exists('implementation') && inputs.resume_from != '' && size(state_output('integration','merge_state',{}))==0
+              ? transition.payload.?feedback.orValue(state_output('configure','feedback',{})).?approval.orValue(state_output('integration','accepted',{}))
+              : state_output('integration','accepted',{})) }}
+        merge_state: ${{ state_output('integration','merge_state',{}) }}
+        recovery: ${{ !state_exists('outcome') && !state_exists('implementation') && inputs.resume_from != '' }}
+        prior_publication: ${{ transition.payload.?feedback.orValue(state_output('configure','feedback',{})).?publication.orValue(null) }}
         merge_queue: ${{ inputs.merge_queue }}
         contribution: ${{ state_output('implementation','verification',{}).?contribution.orValue({}) }}
         verification: ${{ state_output('implementation','verification',{}) }}
@@ -342,8 +352,7 @@ state:
         target_directory: ${{ inputs.target_directory }}
         documents: ${{ transition.payload.?documents.orValue(state_output('outcome','documents',inputs.documents))
           }}
-        feedback: '${{ transition.payload.?feedback.orValue(state_output(''outcome'',''feedback'',{}).?approval.hasValue()
-          ? state_output(''outcome'',''feedback'',{}) : state_output(''outcome'',''result'',{})) }}'
+        feedback: ${{ transition.payload.?feedback.orValue(state_output('outcome','result',{})) }}
         settings: ${{ states.configure.outputs.settings }}
         require_verification: ${{ inputs.require_verification }}
         max_iterations: ${{ inputs.max_iterations }}
@@ -407,7 +416,9 @@ state:
         request: ${{ inputs.prompt }}
         feedback: ${{ transition.payload.?feedback.orValue(state_output('backstop','result',{})) }}
         agent_settings: ${{ jq({'model':inputs.model,'reasoning_effort':inputs.reasoning_effort},'with_entries(select(.value != ""))') }}
-        prior_job: '${{ transition.payload.stage == ''recovery'' ? inputs.resume_from : '''' }}'
+        prior_job: >-
+          ${{ transition.payload.stage == 'recovery' || (transition.payload.stage == 'integration' && !state_exists('outcome') && !state_exists('implementation'))
+            ? inputs.resume_from : '' }}
         automatic_used: ${{ state_output('backstop','automatic_used',0) }}
         merge_limit: ${{ state_output('backstop','merge_limit',3) }}
       sequence:
@@ -530,6 +541,7 @@ state:
       - to: integration
         when: outputs.result.status == 'equivalent'
         payload:
+          accepted: ${{ states.chase.outputs.feedback.approval }}
           sessions: ${{ states.chase.outputs.sessions }}
           documents: ${{ states.chase.outputs.documents }}
           feedback: ${{ {'approval':states.chase.outputs.feedback.approval} }}

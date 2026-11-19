@@ -1,0 +1,418 @@
+recipe: merge-receipt.yaml
+cases:
+- &receipt_case
+  id: valid-producer
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          README.md: Target repository
+        file_sources:
+          receipt-producer.yaml: receipt-producer.yaml
+          recipes/review-v2/op.yaml: ../../recipes/review-v2/op.yaml
+          recipes/review-v2.py: ../../recipes/review-v2.py
+          receipt-proxy/op.yaml: receipt-proxy/op.yaml
+    responses:
+      - node_path: receipt-producer/approve
+        response:
+          direction: accept
+          feedback: ""
+          attachments: []
+          settings: {}
+  inputs:
+    scenario: valid
+  mocks:
+    ops:
+      - match:
+          op: command_execution
+        repeat: true
+        behavior:
+          mode: passthrough
+      - match:
+          op: squash
+        repeat: true
+        behavior:
+          mode: passthrough
+      - match:
+          op: merge
+        repeat: true
+        behavior:
+          mode: passthrough
+      - match:
+          selector: ./recipes/review-v2
+        repeat: true
+        behavior:
+          mode: passthrough
+      - match:
+          op: recipes.run
+        repeat: true
+        behavior:
+          mode: passthrough
+      - match:
+          op: recipe.await_result_soft
+        repeat: true
+        behavior:
+          mode: passthrough
+  assertions:
+    - type: cel_true
+      expr: repositories.root.files["marker.txt"]=="accepted change\n"
+    - type: cel_true
+      expr: size(calls.filter(c,c.op=="merge"))==1
+    - type: cel_true
+      expr: outputs.result.status=="ready"
+    - type: cel_true
+      expr: outputs.result.publication.merged_hash==outputs.original.merged_hash
+- <<: *receipt_case
+  id: direct-contribution-producer
+  inputs:
+    scenario: direct-valid
+- <<: *receipt_case
+  id: direct-wrong-base-producer
+  inputs:
+    scenario: direct-wrong-base
+  assertions: &contradictory_direct
+    - type: cel_true
+      expr: repositories.root.files["marker.txt"]=="accepted change\n" && size(calls.filter(c,c.op=="merge"))==1
+    - type: cel_true
+      expr: outputs.result.status=="stuck" && outputs.result.summary.contains("Copied contribution contradicts the native accepted candidate")
+    - type: cel_true
+      expr: size(outputs.merge_state)==0 && !calls.exists(c,c.node_path.contains("adaptive3-execute/publish/"))
+- <<: *receipt_case
+  id: direct-wrong-head-producer
+  inputs:
+    scenario: direct-wrong-head
+  assertions: *contradictory_direct
+- <<: *receipt_case
+  id: direct-wrong-id-producer
+  inputs:
+    scenario: direct-wrong-id
+  assertions: *contradictory_direct
+- <<: *receipt_case
+  id: canonical-producer
+  inputs:
+    scenario: canonical
+- <<: *receipt_case
+  id: agent-producer
+  inputs:
+    scenario: agent
+  mocks:
+    ops:
+      - match:
+          op: command_execution
+        repeat: true
+        behavior:
+          mode: passthrough
+      - match:
+          op: squash
+        repeat: true
+        behavior:
+          mode: passthrough
+      - match:
+          op: merge
+        repeat: true
+        behavior:
+          mode: passthrough
+      - match:
+          selector: ./recipes/review-v2
+        repeat: true
+        behavior:
+          mode: passthrough
+      - match:
+          op: recipes.run
+        repeat: true
+        behavior:
+          mode: passthrough
+      - match:
+          op: recipe.await_result_soft
+        repeat: true
+        behavior:
+          mode: passthrough
+      - match:
+          selector: ./receipt-proxy
+        repeat: true
+        behavior:
+          mode: passthrough
+  assertions:
+    - type: cel_true
+      expr: repositories.root.files["marker.txt"]=="accepted change\n"
+    - type: cel_true
+      expr: size(calls.filter(c,c.op=="merge"))==1
+    - type: cel_true
+      expr: outputs.result.status=="stuck"
+    - type: cel_true
+      expr: '!calls.exists(c,c.node_path.contains("adaptive3-execute/publish/"))'
+- <<: *receipt_case
+  id: missing-producer
+  inputs:
+    scenario: missing
+  assertions:
+    - type: cel_true
+      expr: repositories.root.files["marker.txt"]=="accepted change\n"
+    - type: cel_true
+      expr: size(calls.filter(c,c.op=="merge"))==1
+    - type: cel_true
+      expr: outputs.result.status=="stuck"
+    - type: cel_true
+      expr: '!calls.exists(c,c.node_path.contains("adaptive3-execute/publish/"))'
+- <<: *receipt_case
+  id: branch-producer
+  inputs:
+    scenario: branch
+  assertions:
+    - type: cel_true
+      expr: repositories.root.files["marker.txt"]=="accepted change\n"
+    - type: cel_true
+      expr: size(calls.filter(c,c.op=="merge"))==1
+    - type: cel_true
+      expr: outputs.result.status=="stuck"
+    - type: cel_true
+      expr: '!calls.exists(c,c.node_path.contains("adaptive3-execute/publish/"))'
+- <<: *receipt_case
+  id: hash-producer
+  inputs:
+    scenario: hash
+  assertions:
+    - type: cel_true
+      expr: repositories.root.files["marker.txt"]=="accepted change\n"
+    - type: cel_true
+      expr: size(calls.filter(c,c.op=="merge"))==1
+    - type: cel_true
+      expr: outputs.result.status=="stuck"
+    - type: cel_true
+      expr: '!calls.exists(c,c.node_path.contains("adaptive3-execute/publish/"))'
+- <<: *receipt_case
+  id: approval-producer
+  inputs:
+    scenario: approval
+  assertions:
+    - type: cel_true
+      expr: repositories.root.files["marker.txt"]=="accepted change\n"
+    - type: cel_true
+      expr: size(calls.filter(c,c.op=="merge"))==1
+    - type: cel_true
+      expr: outputs.result.status=="stuck"
+    - type: cel_true
+      expr: '!calls.exists(c,c.node_path.contains("adaptive3-execute/publish/"))'
+- <<: *receipt_case
+  id: failed-producer
+  inputs:
+    scenario: failed
+  assertions:
+    - type: cel_true
+      expr: repositories.root.files["marker.txt"]=="accepted change\n"
+    - type: cel_true
+      expr: size(calls.filter(c,c.op=="merge"))==2
+    - type: cel_true
+      expr: outputs.result.status=="stuck"
+    - type: cel_true
+      expr: '!calls.exists(c,c.node_path.contains("adaptive3-execute/publish/"))'
+- <<: *receipt_case
+  id: failed-job-producer
+  inputs:
+    scenario: failed-job
+- <<: *receipt_case
+  id: unrelated-producer
+  inputs:
+    scenario: unrelated
+  assertions:
+    - type: cel_true
+      expr: repositories.root.files["marker.txt"]=="accepted change\n"
+    - type: cel_true
+      expr: size(calls.filter(c,c.op=="merge"))==1
+    - type: cel_true
+      expr: outputs.result.status=="stuck"
+    - type: cel_true
+      expr: '!calls.exists(c,c.node_path.contains("adaptive3-execute/publish/"))'
+- <<: *receipt_case
+  id: forged-producer
+  inputs:
+    scenario: forged
+  assertions:
+    - type: cel_true
+      expr: repositories.root.files["marker.txt"]=="accepted change\n"
+    - type: cel_true
+      expr: size(calls.filter(c,c.op=="merge"))==1
+    - type: cel_true
+      expr: outputs.result.status=="stuck"
+    - type: cel_true
+      expr: '!calls.exists(c,c.node_path.contains("adaptive3-execute/publish/"))'
+- <<: *receipt_case
+  id: cell-producer
+  runtime:
+    cells:
+      root:
+        files:
+          README.md: Target repository
+        file_sources:
+          receipt-producer.yaml: receipt-producer.yaml
+          recipes/review-v2/op.yaml: ../../recipes/review-v2/op.yaml
+          recipes/review-v2.py: ../../recipes/review-v2.py
+          receipt-proxy/op.yaml: receipt-proxy/op.yaml
+      upstream:
+        files:
+          README.md: Distinct upstream repository
+        file_sources:
+          receipt-producer.yaml: receipt-producer.yaml
+          recipes/review-v2/op.yaml: ../../recipes/review-v2/op.yaml
+          recipes/review-v2.py: ../../recipes/review-v2.py
+          receipt-proxy/op.yaml: receipt-proxy/op.yaml
+    responses:
+      - node_path: receipt-producer/approve
+        response:
+          direction: accept
+          feedback: ""
+          attachments: []
+          settings: {}
+        cell: upstream
+  inputs:
+    scenario: cell
+  assertions:
+    - type: cel_true
+      expr: '!("marker.txt" in repositories.root.files) && repositories.upstream.files["marker.txt"]=="accepted change\n"'
+    - type: cel_true
+      expr: size(calls.filter(c,c.op=="merge"))==1
+    - type: cel_true
+      expr: outputs.result.status=="stuck"
+    - type: cel_true
+      expr: '!calls.exists(c,c.node_path.contains("adaptive3-execute/publish/"))'
+- <<: *receipt_case
+  id: pages-producer
+  inputs:
+    scenario: pages
+- <<: *receipt_case
+  id: advanced-producer
+  inputs:
+    scenario: advanced
+  assertions:
+    - type: cel_true
+      expr: repositories.root.files["marker.txt"]=="accepted change\n"
+    - type: cel_true
+      expr: size(calls.filter(c,c.op=="merge"))==2
+    - type: cel_true
+      expr: outputs.result.status=="ready"
+    - type: cel_true
+      expr: outputs.result.publication.merged_hash==outputs.original.merged_hash
+- <<: *receipt_case
+  id: truncated-producer
+  inputs:
+    scenario: truncated
+- <<: *receipt_case
+  id: genuine-dependency-feedback-integrates-target
+  runtime:
+    cells:
+      root:
+        files:
+          README.md: Target repository
+        file_sources:
+          receipt-producer.yaml: receipt-producer.yaml
+          recipes/review-v2/op.yaml: ../../recipes/review-v2/op.yaml
+          recipes/review-v2.py: ../../recipes/review-v2.py
+          receipt-proxy/op.yaml: receipt-proxy/op.yaml
+      upstream:
+        files:
+          README.md: Distinct upstream repository
+        file_sources:
+          receipt-producer.yaml: receipt-producer.yaml
+          recipes/review-v2/op.yaml: ../../recipes/review-v2/op.yaml
+          recipes/review-v2.py: ../../recipes/review-v2.py
+          receipt-proxy/op.yaml: receipt-proxy/op.yaml
+    responses:
+      - node_path: receipt-producer/approve
+        response:
+          direction: accept
+          feedback: ""
+          attachments: []
+          settings: {}
+        cell: upstream
+  inputs:
+    scenario: dependency
+  assertions:
+    - type: cel_true
+      expr: repositories.root.files["marker.txt"]=="target accepted\n" && repositories.upstream.files["marker.txt"]=="accepted change\n"
+    - type: cel_true
+      expr: size(calls.filter(c,c.op=="merge" && c.cell=="root"))==1 && size(calls.filter(c,c.op=="merge" && c.cell=="upstream"))==1
+    - type: cel_true
+      expr: outputs.result.status=="ready" && outputs.result.publication.merged_hash!=outputs.original.merged_hash
+- <<: *receipt_case
+  id: batch-producer
+  inputs:
+    scenario: batch
+- <<: *receipt_case
+  id: batch-wrong-id-producer
+  inputs:
+    scenario: batch-wrong-id
+  assertions:
+    - type: cel_true
+      expr: repositories.root.files["marker.txt"]=="accepted change\n"
+    - type: cel_true
+      expr: size(calls.filter(c,c.op=="merge"))==1
+    - type: cel_true
+      expr: outputs.result.status=="stuck"
+    - type: cel_true
+      expr: '!calls.exists(c,c.node_path.contains("adaptive3-execute/publish/"))'
+- <<: *receipt_case
+  id: unreadable-producer
+  inputs:
+    scenario: unreadable
+  assertions:
+    - type: cel_true
+      expr: repositories.root.files["marker.txt"]=="accepted change\n"
+    - type: cel_true
+      expr: size(calls.filter(c,c.op=="merge"))==1
+    - type: cel_true
+      expr: outputs.result.status=="stuck"
+    - type: cel_true
+      expr: '!calls.exists(c,c.node_path.contains("adaptive3-execute/publish/"))'
+- <<: *receipt_case
+  id: null-producer
+  inputs:
+    scenario: "null"
+  assertions:
+    - type: cel_true
+      expr: repositories.root.files["marker.txt"]=="accepted change\n"
+    - type: cel_true
+      expr: size(calls.filter(c,c.op=="merge"))==1
+    - type: cel_true
+      expr: outputs.result.status=="stuck"
+    - type: cel_true
+      expr: '!calls.exists(c,c.node_path.contains("adaptive3-execute/publish/"))'
+- <<: *receipt_case
+  id: empty-producer
+  inputs:
+    scenario: empty
+  assertions:
+    - type: cel_true
+      expr: repositories.root.files["marker.txt"]=="accepted change\n"
+    - type: cel_true
+      expr: size(calls.filter(c,c.op=="merge"))==1
+    - type: cel_true
+      expr: outputs.result.status=="stuck"
+    - type: cel_true
+      expr: '!calls.exists(c,c.node_path.contains("adaptive3-execute/publish/"))'
+- <<: *receipt_case
+  id: scalar-producer
+  inputs:
+    scenario: scalar
+  assertions:
+    - type: cel_true
+      expr: repositories.root.files["marker.txt"]=="accepted change\n"
+    - type: cel_true
+      expr: size(calls.filter(c,c.op=="merge"))==1
+    - type: cel_true
+      expr: outputs.result.status=="stuck"
+    - type: cel_true
+      expr: '!calls.exists(c,c.node_path.contains("adaptive3-execute/publish/"))'
+- <<: *receipt_case
+  id: unreachable-producer
+  inputs:
+    scenario: unreachable
+  assertions:
+    - type: cel_true
+      expr: repositories.root.files["marker.txt"]=="accepted change\n"
+    - type: cel_true
+      expr: size(calls.filter(c,c.op=="merge"))==1
+    - type: cel_true
+      expr: outputs.result.status=="stuck"
+    - type: cel_true
+      expr: '!calls.exists(c,c.node_path.contains("adaptive3-execute/publish/"))'

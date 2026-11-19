@@ -1,0 +1,66 @@
+schema_version: 2
+id: changed-integration-target
+sequence:
+- id: seed_target
+  op: command_execution
+  const: true
+  inputs:
+    run: git push --quiet origin HEAD:refs/heads/other
+- id: edit
+  op: command_execution
+  inputs:
+    run: printf 'accepted change\n' > marker.txt
+- id: approved_patch
+  include: ../../recipes/adaptive3/tools.yaml
+  inputs:
+    check: approved_change
+- id: form
+  include: ../../recipes/review-v2.yaml
+  inputs:
+    request:
+      title: Accept the marker for both target branches
+      question: Accept this marker on main and other?
+      documents: {}
+      directions:
+      - id: accept
+        label: Accept
+        feedback_mode: forbidden
+        allow_attachments: false
+        continues_review: false
+      feedback: {label: Feedback}
+      settings: []
+      conversation: []
+- id: approve
+  op: input
+  inputs:
+    form: ${{ sequence.form.outputs.form }}
+- id: first
+  include: ../../recipes/adaptive3/execute.yaml
+  inputs:
+    purpose: integration
+    request: Land the accepted marker.
+    accepted: ${{ {'result':{'status':'accepted','receipt':sequence.approve.outputs.receipt},'patch':sequence.approved_patch.outputs.artifacts['candidate.diff']} }}
+- id: other
+  workspace:
+    cell: ${{ context.workflow.cell }}
+    ref: other
+  inputs:
+    accepted: ${{ {'result':{'status':'accepted','receipt':sequence.approve.outputs.receipt},'patch':sequence.approved_patch.outputs.artifacts['candidate.diff']} }}
+    merge_state: ${{ sequence.first.outputs.merge_state }}
+  sequence:
+  - id: edit
+    op: command_execution
+    inputs:
+      run: printf 'accepted change\n' > marker.txt
+  - id: integrate
+    include: ../../recipes/adaptive3/execute.yaml
+    inputs:
+      purpose: integration
+      request: Land the accepted marker on other.
+      accepted: ${{ inputs.accepted }}
+      merge_state: ${{ inputs.merge_state }}
+  outputs:
+    result: ${{ sequence.integrate.outputs.response }}
+outputs:
+  first: ${{ sequence.first.outputs.response }}
+  other: ${{ sequence.other.outputs.result }}

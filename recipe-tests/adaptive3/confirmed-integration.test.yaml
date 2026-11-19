@@ -1,0 +1,332 @@
+recipe: confirmed-integration.yaml
+cases:
+- &integration_case
+  id: missing-feedback-cannot-skip-merge
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          README.md: Target repository
+  inputs:
+    feedback: {}
+  mocks:
+    ops:
+      - match:
+          op: command_execution
+        repeat: true
+        behavior:
+          mode: passthrough
+      - match:
+          op: squash
+        repeat: true
+        behavior:
+          mode: passthrough
+      - match:
+          op: merge
+        repeat: true
+        behavior:
+          mode: passthrough
+  assertions:
+    - type: cel_true
+      expr: repositories.root.files["marker.txt"]=="accepted change\n"
+    - type: cel_true
+      expr: size(calls.filter(c,c.op=="merge"))==1
+    - type: cel_true
+      expr: outputs.result.status=="ready" && outputs.result.publication.merged_hash==calls.filter(c,c.op=="merge")[0].outputs.merged_hash
+- <<: *integration_case
+  id: null-feedback-cannot-skip-merge
+  inputs:
+    feedback:
+      publication: null
+- <<: *integration_case
+  id: empty-feedback-cannot-skip-merge
+  inputs:
+    feedback:
+      publication: {}
+- <<: *integration_case
+  id: scalar-feedback-cannot-skip-merge
+  inputs:
+    feedback:
+      publication: unverified
+- <<: *integration_case
+  id: dependency-feedback-cannot-skip-merge
+  inputs:
+    feedback:
+      publication:
+        source_job: upstream
+        merged_hash: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+        target_branch: main
+- <<: *integration_case
+  id: copied-trust-feedback-cannot-skip-merge
+  inputs:
+    feedback:
+      publication:
+        verified: true
+        merged_hash: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+        target_branch: main
+- <<: *integration_case
+  id: returned-failure-retains-merge
+  runtime:
+    cells:
+      root:
+        files:
+          README.md: Target repository
+          .c2/recipes/hooks/build/publish.yaml: |
+            id: publication-fixture
+            inputs:
+              request: ${{ inputs.request }}
+              merged_hash: ${{ inputs.merged_hash }}
+            sequence:
+            - id: effect
+              op: command_execution
+              inputs:
+                env:
+                  LANDED: ${{ inputs.merged_hash }}
+                run: >-
+                  printf '%s' '{"api_version":"c2.build-hook/v1","status":"passed","summary":"Published.","artifact_refs":{}}'
+            outputs:
+              api_version: ${{ json_parse(sequence.effect.outputs.stdout).api_version }}
+              status: ${{ json_parse(sequence.effect.outputs.stdout).status }}
+              summary: ${{ json_parse(sequence.effect.outputs.stdout).summary }}
+              artifact_refs: ${{ json_parse(sequence.effect.outputs.stdout).artifact_refs }}
+  inputs:
+    retry: true
+  mocks:
+    ops:
+      - match:
+          op: command_execution
+          node_path: confirmed-integration/integrate/adaptive3-execute/publish/publish/adaptive3-hooks/publish/publish/publication-fixture/effect
+        behavior:
+          mode: return
+          outputs:
+            stdout: '{"api_version": "c2.build-hook/v1", "status": "failed", "summary": "Retry publication.", "artifact_refs": {}}'
+            stderr: ""
+            exit_code: 0
+      - match:
+          op: command_execution
+        repeat: true
+        behavior:
+          mode: passthrough
+      - match:
+          op: squash
+        repeat: true
+        behavior:
+          mode: passthrough
+      - match:
+          op: merge
+        repeat: true
+        behavior:
+          mode: passthrough
+  assertions:
+    - type: cel_true
+      expr: outputs.first.status=="stuck" && outputs.final.status=="ready"
+    - type: cel_true
+      expr: size(calls.filter(c,c.op=="merge"))==1
+    - type: cel_true
+      expr: outputs.merge_state.publication==outputs.first.publication && outputs.first.publication==outputs.final.publication
+    - type: cel_true
+      expr: calls.filter(c,c.node_path.endsWith("/effect")).all(c,c.inputs.env.LANDED==outputs.final.publication.merged_hash)
+- <<: *integration_case
+  id: malformed-hook-retains-merge
+  runtime:
+    cells:
+      root:
+        files:
+          README.md: Target repository
+          .c2/recipes/hooks/build/publish.yaml: |
+            id: publication-fixture
+            inputs:
+              request: ${{ inputs.request }}
+              merged_hash: ${{ inputs.merged_hash }}
+            sequence:
+            - id: effect
+              op: command_execution
+              inputs:
+                env:
+                  LANDED: ${{ inputs.merged_hash }}
+                run: >-
+                  printf '%s' '{"api_version":"c2.build-hook/v1","status":"passed","summary":"Published.","artifact_refs":{}}'
+            outputs:
+              api_version: ${{ json_parse(sequence.effect.outputs.stdout).api_version }}
+              status: ${{ json_parse(sequence.effect.outputs.stdout).status }}
+              summary: ${{ json_parse(sequence.effect.outputs.stdout).summary }}
+              artifact_refs: ${{ json_parse(sequence.effect.outputs.stdout).artifact_refs }}
+  inputs:
+    retry: true
+  mocks:
+    ops:
+      - match:
+          op: command_execution
+          node_path: confirmed-integration/integrate/adaptive3-execute/publish/publish/adaptive3-hooks/publish/publish/publication-fixture/effect
+        behavior:
+          mode: return
+          outputs:
+            stdout: '{"api_version": "c2.build-hook/v1", "status": "invalid", "summary": "Retry publication.", "artifact_refs": {}}'
+            stderr: ""
+            exit_code: 0
+      - match:
+          op: command_execution
+        repeat: true
+        behavior:
+          mode: passthrough
+      - match:
+          op: squash
+        repeat: true
+        behavior:
+          mode: passthrough
+      - match:
+          op: merge
+        repeat: true
+        behavior:
+          mode: passthrough
+  assertions:
+    - type: cel_true
+      expr: outputs.first.status=="stuck" && outputs.final.status=="ready"
+    - type: cel_true
+      expr: size(calls.filter(c,c.op=="merge"))==1
+    - type: cel_true
+      expr: outputs.merge_state.publication==outputs.first.publication && outputs.first.publication==outputs.final.publication
+    - type: cel_true
+      expr: calls.filter(c,c.node_path.endsWith("/effect")).all(c,c.inputs.env.LANDED==outputs.final.publication.merged_hash)
+- <<: *integration_case
+  id: diagnostic-throw-retains-merge
+  runtime:
+    cells:
+      root:
+        files:
+          README.md: Target repository
+          .c2/recipes/hooks/build/publish.yaml: |
+            id: publication-fixture
+            inputs:
+              request: ${{ inputs.request }}
+              merged_hash: ${{ inputs.merged_hash }}
+            sequence:
+            - id: effect
+              op: command_execution
+              inputs:
+                env:
+                  LANDED: ${{ inputs.merged_hash }}
+                run: >-
+                  printf '%s' '{"api_version":"c2.build-hook/v1","status":"passed","summary":"Published.","artifact_refs":{}}'
+            outputs:
+              api_version: ${{ json_parse(sequence.effect.outputs.stdout).api_version }}
+              status: ${{ json_parse(sequence.effect.outputs.stdout).status }}
+              summary: ${{ json_parse(sequence.effect.outputs.stdout).summary }}
+              artifact_refs: ${{ json_parse(sequence.effect.outputs.stdout).artifact_refs }}
+  inputs:
+    retry: true
+  mocks:
+    ops:
+      - match:
+          op: command_execution
+          node_path: confirmed-integration/integrate/adaptive3-execute/publish/publish/adaptive3-hooks/publish/publish/publication-fixture/effect
+        behavior:
+          mode: return
+          outputs:
+            stdout: '{"api_version": "c2.build-hook/v1", "status": "passed", "summary": "Retry publication.", "artifact_refs": {"bad": {"stored": 2}}}'
+            stderr: ""
+            exit_code: 0
+      - match:
+          op: command_execution
+        repeat: true
+        behavior:
+          mode: passthrough
+      - match:
+          op: squash
+        repeat: true
+        behavior:
+          mode: passthrough
+      - match:
+          op: merge
+        repeat: true
+        behavior:
+          mode: passthrough
+  assertions:
+    - type: cel_true
+      expr: outputs.first.status=="stuck" && outputs.final.status=="ready"
+    - type: cel_true
+      expr: size(calls.filter(c,c.op=="merge"))==1
+    - type: cel_true
+      expr: outputs.merge_state.publication==outputs.first.publication && outputs.first.publication==outputs.final.publication
+    - type: cel_true
+      expr: calls.filter(c,c.node_path.endsWith("/effect")).all(c,c.inputs.env.LANDED==outputs.final.publication.merged_hash)
+- <<: *integration_case
+  id: before-first-command-retains-merge
+  runtime:
+    cells:
+      root:
+        files:
+          README.md: Target repository
+          .c2/recipes/hooks/build/publish.yaml: |
+            id: publication-fixture
+            inputs:
+              request: ${{ inputs.request }}
+              merged_hash: ${{ inputs.merged_hash }}
+            sequence:
+            - id: effect
+              op: command_execution
+              inputs:
+                env:
+                  READY: ${{ json_parse(inputs.request).ready }}
+                  LANDED: ${{ inputs.merged_hash }}
+                run: >-
+                  printf '%s' '{"api_version":"c2.build-hook/v1","status":"passed","summary":"Published.","artifact_refs":{}}'
+            outputs:
+              api_version: ${{ json_parse(sequence.effect.outputs.stdout).api_version }}
+              status: ${{ json_parse(sequence.effect.outputs.stdout).status }}
+              summary: ${{ json_parse(sequence.effect.outputs.stdout).summary }}
+              artifact_refs: ${{ json_parse(sequence.effect.outputs.stdout).artifact_refs }}
+  inputs:
+    retry: true
+    retry_request: '{"ready":"true"}'
+  assertions:
+    - type: cel_true
+      expr: outputs.first.status=="stuck" && outputs.final.status=="ready"
+    - type: cel_true
+      expr: size(calls.filter(c,c.op=="merge"))==1
+    - type: cel_true
+      expr: outputs.merge_state.publication==outputs.first.publication && outputs.first.publication==outputs.final.publication
+    - type: cel_true
+      expr: calls.filter(c,c.node_path.endsWith("/effect")).all(c,c.inputs.env.LANDED==outputs.final.publication.merged_hash)
+    - type: cel_true
+      expr: size(calls.filter(c,c.node_path.endsWith("/effect")))==1
+- <<: *integration_case
+  id: changed-accepted-work-cannot-reuse-old-state
+  inputs:
+    retry: true
+    review_changes: true
+  runtime:
+    cells:
+      root:
+        files:
+          README.md: Target repository
+        file_sources:
+          recipes/review-v2/op.yaml: ../../recipes/review-v2/op.yaml
+          recipes/review-v2.py: ../../recipes/review-v2.py
+    responses:
+    - node_path: confirmed-integration/approve
+      response: {direction: accept, feedback: '', attachments: [], settings: {}}
+    - node_path: confirmed-integration/approve_revision
+      response: {direction: accept, feedback: '', attachments: [], settings: {}}
+  mocks:
+    ops:
+    - match: {op: command_execution}
+      repeat: true
+      behavior: {mode: passthrough}
+    - match: {op: squash}
+      repeat: true
+      behavior: {mode: passthrough}
+    - match: {op: merge}
+      repeat: true
+      behavior: {mode: passthrough}
+    - match: {selector: ./recipes/review-v2}
+      repeat: true
+      behavior: {mode: passthrough}
+  assertions:
+  - type: cel_true
+    expr: size(reviews)==2 && size(calls.filter(c,c.op=="merge"))==2
+  - type: cel_true
+    expr: outputs.first.status=="ready" && outputs.final.status=="ready" && outputs.first.publication.merged_hash!=outputs.final.publication.merged_hash
+  - type: cel_true
+    expr: repositories.root.files["marker.txt"]=="new accepted change\n"

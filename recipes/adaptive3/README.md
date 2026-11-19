@@ -181,7 +181,24 @@ Configure, before-design, prepare, verify and publish retain the existing
 [build hook API](../../guides/BUILD_HOOKS_USER_GUIDE.md). Hook settings artifacts
 stay at that boundary. Agent prompts do not receive `build-settings.json`.
 Native workspace, permission and Git operations remain responsible for isolation
-and publication. Publication recovery carries the completed merge forward.
+and publication. Integration keeps `merge_state` independently of agent feedback.
+A completed native merge or the queue caller's confirmed landing establishes it
+before the publication include runs. The receipt supplied to the hook is also the
+final merge output. Returned hook failures and thrown resolution/collection errors
+retain that record through Cycle, Lifecycle, Backstop and human discussion.
+Retries reuse it while the target and accepted Outcome/patch remain unchanged.
+New accepted work uses normal Integration; older evidence stays at its producer.
+
+General `feedback.publication` never selects publication, including dependency,
+null, malformed and copied receipts. An explicit cross-job Integration recovery
+may propose that field as a producer lookup hint. `merge-receipt.yaml` checks the
+exact successful native merge task, source cell/repository/branch and native human
+acceptance. It binds the approved patch to the acceptance workspace, then checks
+the full landed edit and reachability in a fresh fetch of the target branch. Batch
+recovery can select an accepted contribution behind the native published tip with
+its original Change-Id and complete patch equivalence. Unavailable or contradictory
+evidence stops recovery before publication or a guessed second merge. No public
+build input or agent trust flag can establish the internal record.
 
 Package requests contain a `reference`, an argument-array `check`, and a reason.
 The package service prepares a proposed configuration, obtains policy or human

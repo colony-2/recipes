@@ -1,0 +1,282 @@
+id: adaptive3-merge-receipt
+inputs:
+  merge_state: ${{ inputs.?merge_state.orValue({}) }}
+  accepted: ${{ inputs.?accepted.orValue({}) }}
+  recovery: ${{ inputs.?recovery.orValue(false) }}
+  prior_publication: ${{ inputs.?prior_publication.orValue(null) }}
+  documents: ${{ inputs.?documents.orValue({}) }}
+sequence:
+- id: check
+  op: command_execution
+  const: true
+  execution_needs:
+    packages:
+    - nix:github:NixOS/nixpkgs/e7439b6b14ad3cc35d05608ebca9bce01a25f5f8#python3
+  artifacts:
+    approved.diff: >-
+      ${{ inputs.accepted.?patch.orValue(null) == null ? {} :
+        (type(inputs.accepted.patch) == string ? inputs.documents[?inputs.accepted.patch].orValue({}) : inputs.accepted.patch) }}
+  inputs:
+    env:
+      RECEIPT_REQUEST: >-
+        ${{ json_stringify({'target':{'cell':context.workflow.cell,'repository':context.git.repo,'branch':context.git.ref},
+          'accepted':inputs.accepted,'merge_state':inputs.merge_state,'recovery':inputs.recovery,
+          'reference':inputs.prior_publication,'worktree':context.environment.op.worktree_path,
+          'inbox':context.environment.op.inbox,'outbox':context.environment.op.outbox}) }}
+    run: |
+      python3 - <<'PY'
+      """Recipe-owned receipt check. References are lookup hints, never proof.
+
+      Use exact native task outputs and a fresh target fetch. Keep all downloads in
+      scratch; no source job, historical goal or candidate workspace is modified.
+      """
+      import hashlib
+      import json
+      import os
+      from pathlib import Path
+      import re
+      import subprocess
+      import sys
+      import tempfile
+
+
+      def run(*args, env=None, data=None):
+          p = subprocess.run(args, input=data, env=env, capture_output=True)
+          if p.returncode:
+              raise ValueError(p.stderr.decode(errors='replace').strip() or f'{args[0]} failed ({p.returncode})')
+          return p.stdout
+
+
+      def branch(value):
+          if not isinstance(value, str) or not value or re.fullmatch('[0-9a-fA-F]{40}', value):
+              raise ValueError('A target branch is required')
+          value = value if value.startswith('refs/') else 'refs/heads/' + value
+          if not value.startswith('refs/heads/'):
+              raise ValueError('The target must be a branch')
+          run('git', 'check-ref-format', value)
+          return value
+
+
+      def repository(value):
+          # Canonicalize ordinary GitHub transports; do not compare basenames.
+          if not isinstance(value, str) or not value:
+              raise ValueError('A target repository is required')
+          for prefix in ('https://', 'http://', 'ssh://git@', 'git@'):
+              if value.startswith(prefix):
+                  value = value[len(prefix):]
+                  break
+          if value.startswith('github.com:'):
+              value = 'github.com/' + value[len('github.com:'):]
+          return value.removesuffix('.git').rstrip('/')
+
+
+      class Inspection:
+          def __init__(self, scratch):
+              self.scratch = Path(scratch)
+              self.ordinal = 0
+              self.jobs = {}
+
+          def read(self, *args):
+              self.ordinal += 1
+              output = self.scratch / f'read-{self.ordinal}.json'
+              run('c2j', 'job', *args, '--output', str(output))
+              return json.loads(output.read_bytes())
+
+          def tasks(self, job):
+              if job not in self.jobs:
+                  identity = self.read('show', job, '--json')['job']
+                  tasks = []
+                  cursor = None
+                  seen = set()
+                  while True:
+                      args = ['log', job, '--json', '--limit', '100']
+                      if cursor:
+                          args += ['--cursor', cursor]
+                      page = self.read(*args)
+                      if page['job']['id'] != identity['id']:
+                          raise ValueError('Contradictory task identity')
+                      tasks.extend(page.get('tasks', []))
+                      cursor = page.get('next_cursor')
+                      if not cursor:
+                          break
+                      if cursor in seen:
+                          raise ValueError('Repeated inspection cursor')
+                      seen.add(cursor)
+                  self.jobs[job] = identity, tasks
+              return self.jobs[job]
+
+          def task(self, job, task, expected_type):
+              identity, tasks = self.tasks(job)
+              found = [t for t in tasks if t['id'] == task]
+              if len(found) != 1:
+                  raise ValueError('Exact producer task is missing or ambiguous')
+              t = found[0]
+              if t['type'] != expected_type or t['status'] != 'succeeded':
+                  raise ValueError('Producer must be a successful native ' + expected_type + ' task')
+              if t.get('cell', identity['cell']) != identity['cell']:
+                  raise ValueError('Producer task uses another cell')
+              output = self.read('log', job, '--task', task, '--attempt', str(t['attempt']), '--field', '')
+              return identity, output
+
+          def snapshot(self, job, task, target):
+              _, tasks = self.tasks(job)
+              attempt = next(t['attempt'] for t in tasks if t['id'] == task)
+              snapshot = self.read('snapshot', job, '--task', task, '--attempt', str(attempt), '--json')['snapshot']
+              matches = [w for w in snapshot['workspaces'] if w['cell'] == target['cell'] and
+                         repository(w['repository']) == target['repository'] and branch(w['base_ref']) == target['branch']]
+              if len(matches) != 1 or matches[0].get('availability') != 'available':
+                  raise ValueError('Exact producer target workspace is unavailable or ambiguous')
+              return matches[0]
+
+          def target(self, job, target):
+              identity, tasks = self.tasks(job)
+              if identity['cell'] != target['cell']:
+                  raise ValueError('Producer belongs to another cell')
+              contexts = [t for t in tasks if t['type'] == 'recipe_cell_context' and t['status'] == 'succeeded']
+              if len(contexts) != 1:
+                  raise ValueError('Producer repository metadata is unavailable or ambiguous')
+              _, cell = self.task(job, contexts[0]['id'], 'recipe_cell_context')
+              if cell['cell'] != target['cell'] or repository(cell['cellRepo']) != target['repository']:
+                  raise ValueError('Producer belongs to another repository')
+
+
+      def require_hash(value):
+          if not isinstance(value, str) or not re.fullmatch('[0-9a-f]{40}', value):
+              raise ValueError('Require a full landed commit hash')
+          return value
+
+
+      def import_receipt(request, binding, patch, scratch):
+          ref = request['reference']
+          if not isinstance(ref, dict):
+              raise ValueError('Publication-only recovery requires an exact native producer reference')
+          job, task = ref.get('source_job'), ref.get('source_task')
+          if not isinstance(job, str) or not job or not isinstance(task, str) or not task:
+              raise ValueError('Publication-only recovery requires an exact source job and task')
+          landed = require_hash(ref.get('merged_hash'))
+          target = binding['target']
+          inspect = Inspection(scratch)
+          inspect.target(job, target)
+          _, receipt = inspect.task(job, task, 'merge:merge')
+          inspect.snapshot(job, task, target)
+          published = require_hash(receipt.get('merged_hash'))
+          if branch(receipt.get('target_branch')) != target['branch']:
+              raise ValueError('Native producer targets another branch')
+          if branch(receipt.get('publication_branch')) != target['branch']:
+              raise ValueError('Native publication targets another branch')
+          if receipt.get('publication_disposition') not in ('published', 'already_present'):
+              raise ValueError('Native merge did not confirm publication')
+          if require_hash(receipt.get('candidate_sha')) != published:
+              raise ValueError('Native candidate and published commit contradict each other')
+          for key in ('target_branch', 'publication_branch'):
+              if ref.get(key) is not None and branch(ref[key]) != target['branch']:
+                  raise ValueError('Copied receipt contradicts native branch')
+          for key in ('candidate_sha', 'publication_disposition', 'candidate_subject'):
+              if ref.get(key) is not None and ref[key] != receipt.get(key):
+                  raise ValueError('Copied receipt contradicts native ' + key)
+
+          approval = request['accepted'].get('result', {})
+          if approval.get('status') != 'accepted' or not patch:
+              raise ValueError('Recovery requires the accepted Outcome and its approved patch')
+          approval_job, approval_task = approval.get('source_job'), approval.get('source_task')
+          if not approval_job or not approval_task:
+              raise ValueError('Recovery requires the exact native approval source')
+          inspect.target(approval_job, target)
+          _, accepted = inspect.task(approval_job, approval_task, 'input:collect_user_input')
+          if accepted.get('receipt') != approval.get('receipt') or accepted.get('response', {}).get('direction') != 'accept':
+              raise ValueError('Recovered approval does not match the native acceptance')
+
+          approved_workspace = inspect.snapshot(approval_job, approval_task, target)
+
+          # A fresh scratch repository does not inherit workspace objects or refs.
+          repo = Path(scratch) / 'target'
+          run('git', 'init', '--quiet', str(repo))
+          def git(*args, **kwargs):
+              return run('git', '-C', str(repo), '-c', 'core.hooksPath=/dev/null', *args, **kwargs)
+          # Use the runtime-configured origin, including its authenticated transport
+          # mapping. Cell metadata above establishes its logical repository identity.
+          origin = run('git', '-C', request['worktree'], 'remote', 'get-url', 'origin').decode().strip()
+          git('fetch', '--no-tags', origin, '+' + target['branch'] + ':refs/heads/target')
+          git('cat-file', '-e', landed + '^{commit}')
+          git('merge-base', '--is-ancestor', published, 'refs/heads/target')
+          git('merge-base', '--is-ancestor', landed, published)
+          # Tie the supplied patch to the actual native acceptance workspace.
+          # A genuine receipt paired with another patch must also fail.
+          approved_base = require_hash(approved_workspace['base_commit'])
+          approved_head = require_hash(approved_workspace['head_commit'])
+          if subprocess.run(['git', '-C', str(repo), 'cat-file', '-e', approved_head + '^{commit}'], capture_output=True).returncode:
+              bundle = approved_workspace.get('bundle', {})
+              if not bundle or bundle.get('availability') != 'stored':
+                  raise ValueError('Approved candidate Git evidence is unavailable')
+              bundle_path = Path(scratch) / 'approved.bundle'
+              run('c2j', 'job', 'artifact', approval_job, '--task', bundle['task'],
+                  '--attempt', str(bundle['attempt']), '--name', bundle['name'], '--output', str(bundle_path))
+              git('fetch', '--no-tags', str(bundle_path), approved_head)
+          approved_env = {**os.environ, 'GIT_INDEX_FILE': str(Path(scratch) / 'approved-index')}
+          git('read-tree', approved_base, env=approved_env)
+          git('apply', '--cached', '--3way', '--whitespace=nowarn', '-', env=approved_env, data=patch)
+          if git('write-tree', env=approved_env) != git('rev-parse', approved_head + '^{tree}'):
+              raise ValueError('Supplied patch differs from the native accepted change')
+          # Compare the complete approved edit (including binary bytes and file modes)
+          # on the landed parent in an isolated index, using the existing approval rule.
+          parents = git('show', '-s', '--format=%P', landed).decode().split()
+          if len(parents) != 1:
+              raise ValueError('Accepted landing must have one contribution parent')
+          env = {**os.environ, 'GIT_INDEX_FILE': str(Path(scratch) / 'index')}
+          git('read-tree', parents[0], env=env)
+          git('apply', '--cached', '--3way', '--whitespace=nowarn', '-', env=env, data=patch)
+          if git('write-tree', env=env) != git('rev-parse', landed + '^{tree}'):
+              raise ValueError('Landed contribution differs from the approved edit')
+          contribution = request['accepted'].get('contribution', {})
+          if not isinstance(contribution, dict):
+              raise ValueError('Copied contribution must be an object')
+          if contribution or landed != published:
+              # Recover identity from the native accepted candidate, not copied feedback.
+              original_ids = git('show', '-s', '--format=%(trailers:key=Change-Id,valueonly)', approved_head).decode().strip().splitlines()
+              landed_ids = git('show', '-s', '--format=%(trailers:key=Change-Id,valueonly)', landed).decode().strip().splitlines()
+              if len(original_ids) != 1 or not re.fullmatch('[0-9A-Za-z]{27}', original_ids[0]) or landed_ids != original_ids:
+                  raise ValueError('Landing does not identify the native accepted contribution')
+              if contribution and (contribution.get('changeid') != original_ids[0] or
+                                   contribution.get('base_hash') != approved_base or contribution.get('head_hash') != approved_head):
+                  raise ValueError('Copied contribution contradicts the native accepted candidate')
+          # Return authoritative native fields, selecting the proved contribution hash.
+          return {'binding': binding, 'publication': {**receipt, 'merged_hash': landed},
+                  'source': {'job': job, 'task': task}}
+
+
+      def check(request):
+          target = {**request['target']}
+          target['repository'] = repository(target['repository'])
+          target['branch'] = branch(target['branch'])
+          tree = run('git', '-C', request['worktree'], 'rev-parse', 'HEAD^{tree}').decode().strip()
+          patch_file = Path(request['inbox']) / 'approved.diff'
+          patch = patch_file.read_bytes() if patch_file.is_file() else b''
+          binding = {'target': target, 'accepted': request['accepted'],
+                     'tree': '' if request['accepted'].get('result', {}).get('receipt') else tree,
+                     'patch_sha256': hashlib.sha256(patch).hexdigest()}
+          state = request['merge_state']
+          if state and state.get('binding') == binding:
+              return {'result': {'status': 'passed'}, 'binding': binding, 'merge_state': state}
+          # Stale trusted state remains evidence at its producer. It cannot establish a
+          # merge of this newly accepted change/target. Ordinary Integration starts anew.
+          if request['recovery']:
+              try:
+                  with tempfile.TemporaryDirectory(prefix='adaptive3-receipt-') as scratch:
+                      state = import_receipt(request, binding, patch, scratch)
+              except (ValueError, KeyError, TypeError, OSError) as error:
+                  detail = 'Cannot reuse prior merge: ' + str(error)
+                  (Path(request['outbox']) / 'receipt-check.log').write_text(detail + '\n')
+                  return {'result': {'status': 'stuck', 'summary': detail[:8000]}, 'binding': binding, 'merge_state': {}}
+              return {'result': {'status': 'passed'}, 'binding': binding, 'merge_state': state}
+          return {'result': {'status': 'passed'}, 'binding': binding, 'merge_state': {}}
+
+
+      request = json.loads(os.environ["RECEIPT_REQUEST"])
+      print(json.dumps(check(request)))
+      PY
+outputs:
+  result: >-
+    ${{ jq([json_parse(sequence.check.outputs.stdout).result,
+      {'errors':jq(sequence.check.artifacts,'with_entries(select(.key == "receipt-check.log"))')}],'add') }}
+  binding: ${{ json_parse(sequence.check.outputs.stdout).binding }}
+  merge_state: ${{ json_parse(sequence.check.outputs.stdout).merge_state }}

@@ -1,0 +1,129 @@
+schema_version: 2
+id: receipt-import-test
+input_schema:
+  scenario:
+    type: string
+    default_value: valid
+inputs:
+  scenario: ${{ inputs.scenario }}
+sequence:
+- id: producer
+  op: recipes.run
+  workspace:
+    cell: >-
+      ${{ inputs.scenario in ['cell','dependency'] ? 'upstream' : context.workflow.cell }}
+    ref: main
+  inputs:
+    git_ref: main
+    recipes:
+    - name: ${{ 'git+' + context.git.repo + '//receipt-producer.yaml@main' }}
+      cell_name: >-
+        ${{ inputs.scenario in ['cell','dependency'] ? 'upstream' : context.workflow.cell }}
+      inputs:
+        scenario: ${{ inputs.scenario }}
+- id: await
+  op: recipe.await_result_soft
+  inputs:
+    target:
+      job: ${{ sequence.producer.outputs.job_ids[0] }}
+    wait: {on: job, condition: complete}
+    return_when: terminal
+  catch:
+  - when: failure.kind != 'cancellation'
+    continue:
+      outputs: {}
+- id: discover
+  op: command_execution
+  const: true
+  inputs:
+    env:
+      PRODUCER: ${{ sequence.producer.outputs.job_ids[0] }}
+      SCENARIO: ${{ inputs.scenario }}
+    run: |
+      python3 - <<'PY'
+      import json, os, subprocess, tempfile
+      job=os.environ['PRODUCER']; scenario=os.environ['SCENARIO']
+      with tempfile.TemporaryDirectory() as tmp:
+       n=0
+       def read(*args):
+        global n
+        n+=1; path=tmp+'/'+str(n)+'.json'
+        subprocess.run(['c2j','job',*args,'--output',path],check=True)
+        return json.load(open(path))
+       tasks=[]; cursor=None
+       while True:
+        page=read('log',job,'--json','--limit','100',*(['--cursor',cursor] if cursor else []))
+        tasks+=page['tasks']; cursor=page.get('next_cursor')
+        if not cursor: break
+       merge=next(t for t in tasks if t['type']=='merge:merge' and t['status']==('failed' if scenario=='failed' else 'succeeded'))
+       successful=next(t for t in tasks if t['type']=='merge:merge' and t['status']=='succeeded')
+       publication=read('log',job,'--task',successful['id'],'--field','')
+       approval=next(t for t in tasks if t['type']=='input:collect_user_input')
+       native=read('log',job,'--task',approval['id'],'--field','')
+       edit=next(t for t in tasks if t.get('path','').endswith('/'+('unrelated' if scenario=='forged' else 'edit')))
+       artifact=next(a['reference'] for a in edit['artifacts'] if a['name']==('forged.diff' if scenario=='forged' else 'approved.diff'))
+       if scenario in ['batch','batch-wrong-id'] or scenario.startswith('direct-'):
+        workspaces=read('snapshot',job,'--task',approval['id'],'--json')['snapshot']['workspaces']
+        assert len(workspaces)==1
+        source=workspaces[0]
+      ref={**publication,'source_job':job,'source_task':merge['id']}
+      accepted={'result':{'status':'accepted','receipt':native['receipt'],'source_job':job,'source_task':approval['id']},'patch':artifact}
+      if scenario in ['batch','batch-wrong-id'] or scenario.startswith('direct-'):
+       accepted['contribution']={'changeid':'000000000000000000000000001','base_hash':source['base_commit'],'head_hash':source['head_commit']}
+      if scenario=='direct-wrong-base': accepted['contribution']['base_hash']='a'*40
+      if scenario=='direct-wrong-head': accepted['contribution']['head_hash']='b'*40
+      if scenario=='direct-wrong-id': accepted['contribution']['changeid']='000000000000000000000000002'
+      if scenario=='truncated': assert any(f.get('truncated') for f in successful.get('fields',[])), 'Preview was not truncated'
+      if scenario in ['batch','batch-wrong-id']:
+       # The own contribution precedes the published batch tip.
+       with tempfile.TemporaryDirectory() as tmp2:
+        path=tmp2+'/squash.json'
+        squash=next(t for t in tasks if t['type']=='squash:squash' and t.get('path','').endswith('/squash'))
+        subprocess.run(['c2j','job','log',job,'--task',squash['id'],'--field','','--output',path],check=True)
+        ref['merged_hash']=json.load(open(path))['squashed_hash']
+       if scenario=='batch-wrong-id': accepted['contribution']['changeid']='000000000000000000000000002'
+      if scenario=='agent': ref['source_task']=next(t for t in tasks if t.get('path','').endswith('/agent'))['id']
+      if scenario=='missing': ref['source_task']='nonexistent'
+      if scenario=='branch': ref['target_branch']='other'
+      if scenario=='unreachable': ref['merged_hash']='b'*40
+      if scenario=='hash': ref['merged_hash']='main'
+      if scenario=='approval': accepted['result']['receipt']['submission_id']='unrelated'
+      if scenario=='unreadable': ref['source_job']='missing-producer-job'
+      if scenario=='null': ref=None
+      if scenario=='empty': ref={}
+      if scenario=='scalar': ref='unverified publication'
+      if scenario=='canonical': ref['target_branch']='main'
+      print(json.dumps({'reference':ref,'accepted':accepted}))
+      PY
+- id: advance
+  when: inputs.scenario == 'advanced'
+  workspace:
+    cell: ${{ context.workflow.cell }}
+    ref: main
+  sequence:
+  - id: edit
+    op: command_execution
+    inputs:
+      run: printf 'later unrelated change\n' > later.txt
+  - id: merge
+    op: merge
+- id: target_edit
+  when: inputs.scenario == 'dependency'
+  op: command_execution
+  inputs:
+    run: printf 'target accepted\n' > marker.txt
+- id: import
+  include: ../../recipes/adaptive3/execute.yaml
+  inputs:
+    purpose: integration
+    request: Publish the previously accepted marker.
+    recovery: ${{ inputs.scenario != 'dependency' }}
+    feedback:
+      publication: ${{ json_parse(sequence.discover.outputs.stdout).reference }}
+    accepted: >-
+      ${{ inputs.scenario == 'dependency' ? {} : json_parse(sequence.discover.outputs.stdout).accepted }}
+    prior_publication: ${{ json_parse(sequence.discover.outputs.stdout).reference }}
+outputs:
+  result: ${{ sequence.import.outputs.response }}
+  merge_state: ${{ sequence.import.outputs.merge_state }}
+  original: ${{ json_parse(sequence.discover.outputs.stdout).reference }}

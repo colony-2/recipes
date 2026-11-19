@@ -1,0 +1,96 @@
+schema_version: 2
+id: confirmed-integration
+input_schema:
+  feedback:
+    type: object
+    default_value: {}
+  retry:
+    type: boolean
+    default_value: false
+  review_changes:
+    type: boolean
+    default_value: false
+  retry_request:
+    type: string
+    default_value: Land the accepted marker.
+inputs:
+  review_changes: ${{ inputs.review_changes }}
+  retry: ${{ inputs.retry }}
+  retry_request: ${{ inputs.retry_request }}
+  feedback: ${{ inputs.?feedback.orValue({}) }}
+sequence:
+- id: edit
+  op: command_execution
+  inputs:
+    env:
+      OUTBOX: ${{ context.environment.op.outbox }}
+    run: |
+      printf 'accepted change\n' > marker.txt
+      git add marker.txt
+      git diff --cached --binary --full-index HEAD > "$OUTBOX/approved.diff"
+- id: form
+  when: inputs.review_changes
+  include: ../../recipes/review-v2.yaml
+  inputs:
+    request:
+      title: Accept the marker change
+      question: Accept the current marker?
+      documents: {}
+      directions:
+      - id: accept
+        label: Accept
+        feedback_mode: forbidden
+        allow_attachments: false
+        continues_review: false
+      feedback:
+        label: Feedback
+      settings: []
+      conversation: []
+- id: approve
+  when: inputs.review_changes
+  op: input
+  inputs:
+    form: ${{ sequence.form.outputs.form }}
+- id: integrate
+  include: ../../recipes/adaptive3/execute.yaml
+  inputs:
+    purpose: integration
+    request: Land the accepted marker.
+    feedback: ${{ inputs.feedback }}
+    accepted: >-
+      ${{ inputs.review_changes ? {'result':{'status':'accepted','receipt':sequence.approve.outputs.receipt},
+        'patch':sequence.edit.artifacts['approved.diff']} : {} }}
+- id: revise
+  when: inputs.review_changes
+  op: command_execution
+  inputs:
+    env:
+      OUTBOX: ${{ context.environment.op.outbox }}
+    run: |
+      printf 'new accepted change\n' > marker.txt
+      git add marker.txt
+      git diff --cached --binary --full-index HEAD > "$OUTBOX/approved.diff"
+- id: approve_revision
+  when: inputs.review_changes
+  op: input
+  inputs:
+    form: ${{ sequence.form.outputs.form }}
+- id: retry
+  when: inputs.retry
+  include: ../../recipes/adaptive3/execute.yaml
+  inputs:
+    purpose: integration
+    request: ${{ inputs.retry_request }}
+    merge_state: ${{ sequence.integrate.outputs.merge_state }}
+    accepted: >-
+      ${{ inputs.review_changes ? {'result':{'status':'accepted','receipt':sequence.approve_revision.outputs.receipt},
+        'patch':sequence.revise.artifacts['approved.diff']} : {} }}
+    feedback:
+      publication:
+        merged_hash: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+        verified: true
+outputs:
+  first: ${{ sequence.integrate.outputs.response }}
+  merge_state: ${{ sequence.integrate.outputs.merge_state }}
+  final: ${{ sequence[?'retry'].orValue({}).?outputs.orValue({}).?response.orValue({}) }}
+  result: ${{ sequence.integrate.outputs.response }}

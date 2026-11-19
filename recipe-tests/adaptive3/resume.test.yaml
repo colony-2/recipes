@@ -44,6 +44,15 @@ cases:
             stage: implementation
             summary: The original direction remains approved. Restore the unfinished implementation and validate
               it completely.
+            publication:
+              source_job: upstream-job
+              source_task: upstream-merge
+              merged_hash: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+              target_branch: refs/heads/main
+              publication_branch: refs/heads/main
+              publication_disposition: published
+              candidate_sha: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+              candidate_subject: Upstream dependency
             approval:
               source_job: previous-job
               source_task: original-human-review
@@ -198,6 +207,10 @@ cases:
   - type: output_equals
     path: work_kind
     value: bug
+  - type: cel_true
+    expr: size(calls.filter(c,c.op=="merge"))==1 && outputs.merge.merged_hash!="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  - type: cel_true
+    expr: calls.filter(c,c.node_path.endsWith("adaptive3-merge-receipt/check")).all(c,c.inputs.env.RECEIPT_REQUEST.contains(outputs.reviews[0].receipt.request_id) && !c.inputs.env.RECEIPT_REQUEST.contains("original-decision"))
 - id: resume-changed-human-scope
   type: integration_case
   runtime:
@@ -304,74 +317,6 @@ cases:
   - type: cel_true
     expr: calls.exists(c,c.node_path.contains("/direction/") && (c.op=="extension_execution" && has(c.inputs.inputs.prompt))
       && c.inputs.inputs.prompt.contains("changes this to an explanation"))
-- id: resume-publication-after-merge
-  type: integration_case
-  runtime:
-    cells:
-      root:
-        files:
-          README.md: Merged project
-          .c2/recipes/hooks/build/publish.yaml: |
-            id: publish
-            sequence:
-            - id: publish
-              op: command_execution
-              inputs:
-                run: printf published
-            outputs:
-              api_version: c2.build-hook/v1
-              status: passed
-              summary: Published the original merged change.
-              artifact_refs: {}
-  inputs:
-    prompt: Complete publication of the approved change.
-    resume_from: previous-job
-  mocks:
-    ops:
-    - match:
-        selector: nix:github:colony-2/c2ops/published#codex
-      behavior:
-        mode: return
-        outputs:
-          status: completed
-          output_schema_valid: true
-          response:
-            document_details: []
-            status: resume
-            action: Rerun the stated stage after correcting its local prerequisite, preserving completed effects.
-            stage: integration
-            summary: The recorded native merge completed. Only publication remains.
-            publication:
-              source_job: previous-job
-              source_task: original-native-merge
-              merged_hash: main
-              target_branch: refs/heads/main
-              publication_branch: refs/heads/main
-              publication_disposition: merged
-              candidate_sha: original-candidate
-              candidate_subject: Approved local change
-            title: Restore progress on integration
-            primary: null
-        effects:
-          objects:
-            session:
-              type: c2ops.codex.session/v1
-              metadata:
-                label: The recorded native merge completed. Only publication remains.
-    - match:
-        op: command_execution
-      repeat: true
-      behavior:
-        mode: passthrough
-  assertions:
-  - type: cel_true
-    expr: '!calls.exists(c,c.op=="merge" || c.op=="squash")'
-  - type: cel_true
-    expr: outputs.merge.merged_hash=="main"
-  - type: cel_true
-    expr: calls.exists(c,c.node_path.endsWith("/publish/publish/root/publish"))
-  - type: cel_true
-    expr: '!calls.exists(c,c.node_path.contains("/direction/"))'
 - id: unreadable-history-asks-before-any-stage
   type: integration_case
   runtime:
