@@ -7,7 +7,8 @@ inputs:
   document_details: ${{ inputs.?document_details.orValue([]) }}
   require_document_details: ${{ inputs.?require_document_details.orValue(true) }}
   requests: ${{ inputs.?requests.orValue([]) }}
-  adopted: ${{ inputs.?adopted.orValue(false) }}
+  write: ${{ inputs.?write.orValue(false) }}
+  approved: ${{ inputs.?approved.orValue({}) }}
   message: ${{ inputs.?message.orValue('') }}
 state:
   initial:
@@ -182,10 +183,12 @@ state:
     package_config:
       id: package_config
       op: command_execution
-      const: true
       execution_needs:
+        python:
+          requires-python: ">=3.10"
+          dependencies:
+          - PyYAML==6.0.3
         packages:
-        - nix:github:NixOS/nixpkgs/e7439b6b14ad3cc35d05608ebca9bce01a25f5f8#python3
         - nix:github:NixOS/nixpkgs/e7439b6b14ad3cc35d05608ebca9bce01a25f5f8#yq-go
       artifacts:
         ./: ${{ jq(inputs.documents, 'with_entries(select(.key | startswith("review/")))') }}
@@ -194,37 +197,131 @@ state:
           INBOX: ${{ context.environment.op.inbox }}
           OUTBOX: ${{ context.environment.op.outbox }}
           REQUESTS: ${{ json_stringify(inputs.requests) }}
-          ADOPTED: ${{ string(inputs.adopted) }}
+          WRITE: ${{ string(inputs.write) }}
+          APPROVED: ${{ json_stringify(inputs.approved) }}
+          PROPOSAL_REF: ${{ json_stringify(inputs.documents[?'review/config.yaml'].orValue({})) }}
         run: |
           python3 - <<'PY'
-          import json, os, pathlib, subprocess
+          import hashlib, json, os, pathlib, stat, subprocess, tempfile, yaml
           out=pathlib.Path(os.environ['OUTBOX']); (out/'error').mkdir(exist_ok=True)
-          def read(p):
-           if not p.exists(): return {}
-           if p.is_symlink(): raise ValueError('Configuration must not be a symlink')
-           v=json.loads(subprocess.check_output(['yq','-o=json','.',str(p)])) or {}
-           if not isinstance(v,dict): raise ValueError('Configuration must be a mapping')
-           return v
-          issues=[]
+          path=pathlib.Path('.c2/config.yaml'); directory=path.parent
+          def same(left, right):
+           # Preserve JSON types: booleans are not numbers. Native JSON transport
+           # may serialize integral floats as integers; both have JSON type number.
+           if type(left) in (int,float) and type(right) in (int,float): return left==right
+           if type(left) is not type(right): return False
+           if isinstance(left,dict):
+            return left.keys()==right.keys() and all(same(left[k],right[k]) for k in left)
+           if isinstance(left,(list,tuple)):
+            return len(left)==len(right) and all(same(a,b) for a,b in zip(left,right))
+           return left==right
+          def parse(raw):
+           # Inspect syntax before yq collapses duplicate keys. Do not construct
+           # Python values: yq remains responsible for YAML scalar/merge semantics.
+           pending=[yaml.compose(raw,Loader=yaml.BaseLoader)]; visited=set()
+           while pending:
+            node=pending.pop()
+            if node is None or id(node) in visited: continue
+            visited.add(id(node))
+            if isinstance(node,yaml.MappingNode):
+             keys=set()
+             for key,value in node.value:
+              if not isinstance(key,yaml.ScalarNode): raise ValueError('Configuration mapping keys must be scalars')
+              if key.value in keys:
+               raise ValueError('Duplicate YAML mapping key '+repr(key.value)+' at line '+str(key.start_mark.line+1))
+              keys.add(key.value); pending.append(value)
+            elif isinstance(node,yaml.SequenceNode): pending.extend(node.value)
+           value=json.loads(subprocess.check_output(['yq','-o=json','.','-'],input=raw))
+           if not isinstance(value,dict): raise ValueError('Configuration must be a mapping')
+           return value
+          def current():
+           if directory.is_symlink() or (directory.exists() and not directory.is_dir()):
+            raise ValueError('Configuration directory must be a real directory')
+           if path.is_symlink(): raise ValueError('Configuration must not be a symlink')
+           if not path.exists(): return {'present':False,'value':{}}, None, None
+           if not path.is_file(): raise ValueError('Configuration must be a regular file')
+           raw=path.read_bytes(); st=path.stat()
+           identity=(st.st_dev,st.st_ino,st.st_mode,st.st_mtime_ns,st.st_ctime_ns)
+           return {'present':True,'value':parse(raw)}, raw, identity
+          def packages(config):
+           if not isinstance(config,dict): raise ValueError('Configuration must be a mapping')
+           values=config.get('packages',[])
+           if not isinstance(values,list) or any(not isinstance(v,str) or not v for v in values):
+            raise ValueError('Packages must be an array of nonempty references')
+           if len(values)!=len(set(values)): raise ValueError('Duplicate package references')
+           return values
+          issues=[]; approved={}; temporary=None; written=False
           try:
-           current=read(pathlib.Path('.c2/config.yaml'))
-           proposed=read(pathlib.Path(os.environ['INBOX'])/'review/config.yaml')
+           snapshot, old_bytes, identity=current()
+           proposal=pathlib.Path(os.environ['INBOX'])/'review/config.yaml'
+           if proposal.parent.is_symlink() or proposal.is_symlink() or not proposal.is_file():
+            raise ValueError('No regular proposed configuration')
+           raw=proposal.read_bytes(); proposed=parse(raw)
            requested=json.loads(os.environ['REQUESTS'])
-           if os.environ['ADOPTED']=='true' and current!=proposed: raise ValueError('The adopted configuration differs from the approved proposal')
-           if not (pathlib.Path(os.environ['INBOX'])/'review/config.yaml').is_file(): raise ValueError('No proposed configuration')
-           before=current.pop('packages',[]) or []; after=proposed.pop('packages',[]) or []
-           refs=[x['reference'] for x in requested]
+           if not isinstance(requested,list) or not requested: raise ValueError('Requests must be a nonempty array')
+           refs=[]
            for item in requested:
-            if item['reference'].split(':')[0] not in ('nix','uv','pnpm'): raise ValueError('Use a portable package reference')
-            if not item['check'] or any(not isinstance(x,str) or not x or '\x00' in x for x in item['check']): raise ValueError('Probe must be an argument array')
-           if current!=proposed: raise ValueError('Unrelated configuration changed')
-           if len(after)!=len(set(after)) or set(after)!=set(before+refs): raise ValueError('Package configuration differs from requested additions')
+            if not isinstance(item,dict): raise ValueError('Request must be an object')
+            ref=item.get('reference'); check=item.get('check')
+            if not isinstance(ref,str) or ':' not in ref or ref.split(':',1)[0] not in ('nix','uv','pnpm') or not ref.split(':',1)[1] or any(c.isspace() or ord(c)<32 for c in ref):
+             raise ValueError('Use a portable package reference')
+            # Match c2j's repository-package boundary before a proposal can be written.
+            manager, spec=ref.split(':',1)
+            local_prefixes=('.', '/', '~', 'file:', 'link:', 'workspace:', 'path:', 'git+file:')
+            local=spec.startswith(local_prefixes)
+            if manager=='nix': local=local or spec.startswith('#')
+            if manager=='uv' and '@' in spec: local=local or spec.split('@',1)[1].startswith(local_prefixes)
+            if manager=='pnpm' and spec.rfind('@')>0: local=local or spec.rsplit('@',1)[1].startswith(local_prefixes)
+            if local or spec.startswith('-') or ('$'+'{'*2) in spec:
+             raise ValueError('Use a portable package reference')
+            if not isinstance(check,list) or not check or any(not isinstance(x,str) or not x or '\x00' in x for x in check):
+             raise ValueError('Probe must be an argument array')
+            refs.append(ref)
+           if len(refs)!=len(set(refs)): raise ValueError('Duplicate package requests')
+           writing=os.environ['WRITE']=='true'
+           bound=json.loads(os.environ['APPROVED'])
+           reference=json.loads(os.environ['PROPOSAL_REF'])
+           digest=hashlib.sha256(raw).hexdigest()
+           if writing:
+            if not isinstance(bound,dict) or set(bound)!={'baseline','proposed','requests','config','sha256'}:
+             raise ValueError('No validated approved proposal binding')
+            if not all(same(bound[k],v) for k,v in [('requests',requested),('config',reference),('proposed',proposed),('sha256',digest)]):
+             raise ValueError('Approved proposal or requests changed')
+            baseline=bound['baseline']
+            if not isinstance(baseline,dict) or set(baseline)!={'present','value'} or type(baseline['present']) is not bool:
+             raise ValueError('Invalid original configuration binding')
+            if not baseline['present'] and not same(baseline['value'],{}): raise ValueError('Invalid absent baseline')
+           else: baseline=snapshot
+           before=packages(baseline['value']); after=packages(proposed)
+           if not same({k:v for k,v in baseline['value'].items() if k!='packages'},{k:v for k,v in proposed.items() if k!='packages'}):
+            raise ValueError('Unrelated configuration changed')
+           if set(after)!=set(before+refs): raise ValueError('Package configuration differs from requested additions')
+           if writing:
+            applied=snapshot['present'] and same(snapshot['value'],proposed)
+            if not same(snapshot,baseline) and not applied: raise ValueError('Current configuration conflicts with approved baseline')
+            if not applied:
+             # No proposed package participates in this task's preparation. Only the next task sees it.
+             directory.mkdir(exist_ok=True)
+             directory_identity=directory.stat()
+             with tempfile.NamedTemporaryFile(dir=directory,prefix='.config-',delete=False) as f:
+              temporary=f.name
+              f.write(raw); f.flush(); os.fsync(f.fileno())
+              os.fchmod(f.fileno(),stat.S_IMODE(identity[2]) if identity else 0o644)
+             now, now_bytes, now_identity=current()
+             parent_now=directory.stat()
+             if not same((now,now_bytes,now_identity),(snapshot,old_bytes,identity)) or (parent_now.st_dev,parent_now.st_ino)!=(directory_identity.st_dev,directory_identity.st_ino):
+              raise ValueError('Current configuration changed before replacement')
+             os.replace(temporary,path); temporary=None; written=True
+           approved={'baseline':baseline,'proposed':proposed,'requests':requested,'config':reference,'sha256':digest}
           except Exception as ex: issues.append(str(ex))
+          finally:
+           if temporary: pathlib.Path(temporary).unlink(missing_ok=True)
           (out/'error'/'package-config.log').write_text('\n'.join(issues) or 'Only approved package additions are present.\n')
-          print(json.dumps({'status':'changes' if issues else 'passed','summary':'; '.join(issues)[:700] or 'Only requested package changes.'}))
+          print(json.dumps({'status':'changes' if issues else 'passed','summary':'; '.join(issues)[:700] or 'Only requested package changes.','approved':approved if not issues else {},'written':written}))
           PY
 outputs:
-  result: ${{ jq(json_parse(states[inputs.check].outputs.stdout),'del(.document_metadata)') }}
+  approved: ${{ json_parse(states[inputs.check].outputs.stdout).?approved.orValue({}) }}
+  result: ${{ jq(json_parse(states[inputs.check].outputs.stdout),'del(.document_metadata,.approved,.written)') }}
   document_metadata: ${{ json_parse(states[inputs.check].outputs.stdout).?document_metadata.orValue({}) }}
   artifacts: ${{ jq(states[inputs.check].artifacts,'with_entries(select((.key|startswith("error/")) or .key=="candidate.diff"))')
     }}

@@ -379,3 +379,25 @@ build paths and security review. Static validation alone does not load late hook
 See the [complete contract](PROPOSAL_BUILD_RECIPE_HOOKS.md) for checkpoint ordering
 and detailed limits, and the [example directory](../examples/build-hooks/README.md)
 for files to adapt to your project.
+
+## Scoped tool installation authority in Adaptive3
+
+Before scheduling scoped tools, direction and package reviews explain their installation
+authority. Private pnpm authorization permits builds for direct, transitive and selected
+optional dependencies, mutable transitive resolutions and repeated preparation after failure,
+worker changes or cache loss. Keep exact requested references and checks. Changed requests
+or installation scope need applicable authority. Questions are not approval; withdrawal,
+cancellation and newer human scope take precedence. Unchanged authorized retries need no
+second prompt. A legacy pnpm reference/check match alone takes the existing package review.
+Baseline recipe, repository, extension and early-hook dependencies use source authority and
+applicable standing cell policy; personal job approval does not universally precede setup.
+
+Adaptive3 compares approved additions and unrelated settings against the retained original
+baseline before staging, and again before adoption after a successful validation child.
+Only a subsequent fresh task prepares the accepted additions. An independently edited
+configuration outside this package service is outside that ordering guarantee.
+
+For the separately saved strict-verification candidate, retain `pnpm:pnpm@12.10.1` only on
+the verification operation after applicable approval. Do not move it into repository-wide,
+recipe-wide, configure or planning dependencies. This correction does not change the runner
+pin or establish runtime activation or that candidate's fresh full worker acceptance.

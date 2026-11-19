@@ -61,7 +61,20 @@ pinned c2j and runs the [shared checks](../scripts/test-recipes.sh) from the can
 repository root, including for assignments targeting a subdirectory. The hook returns
 `tests.log` and archives any generated reports on failure. While editing, run focused
 cases locally.
+The hook runs the shared script under the declared `tini` subreaper. Native fixture
+Git processes can outlive their parents; collecting those descendants prevents
+zombie accumulation when the worker container's PID 1 does not reap them. Suite
+selection, concurrency and per-case allowances are unchanged.
 A verify-hook change follows this same candidate verification path.
+The shared script also runs `test_tools.py` and `test_schemas.py` through Python
+unittest discovery, before the native suites. These exercise the production
+validators and response schemas; a failed test stops verification and remains in
+`validators.log`. The hook declares PyYAML, Pillow, jsonschema, cmark, yq and Git;
+CI provisions the same Python libraries and command tools before the shared script.
+`recipe-tests/repository-verify.test.yaml` loads the actual Recipes hook through
+Adaptive3 with disposable installer/suite entrypoints. It checks identity logging,
+success, materialized failure reports and orphan collection without recursively
+running the full suite.
 
 For executable examples, see the
 [verification cases](../recipe-tests/adaptive/verification.test.yaml) and their
@@ -92,6 +105,58 @@ Use CEL assertions over `outputs`, `calls`, `reviews`, `artifacts`, and
 `repositories` to check routing and actual upstream file changes. Use
 `expect_error` for a specific expected execution failure; unrelated errors and
 timeouts still fail. See the c2j native-testing guide for the complete schema.
+
+For the bounded package correction, also run:
+
+```sh
+python3 recipe-tests/checks/package_preparation.py --out-dir /tmp/package-preparation
+```
+
+This runs two native SQLite fixtures and checks their retained successful-task
+setup envelopes by invocation identity, attempt, repository snapshot and digest,
+exact package reference, scope and preparation outcome. It verifies staging before
+the fresh probe and parent preparation after rejected adoption following a real
+successful child. CI runs this check because the pinned assertion CEL environment
+cannot decode the snapshot's base64 JSON. The selected records are written to
+`preparation-evidence.json`. Missing, redacted or incomplete evidence fails.
+These successful records do not establish a complete preparation stream, cold
+installation, worker replacement, interrupted durable continuation or child-only
+cancellation. Synthetic or harmless uv checks do not verify private pnpm builds.
+
+For cold-install rejection evidence, run:
+
+```sh
+python3 recipe-tests/checks/package_negative_preparation.py --out-dir /tmp/package-negative-preparation
+```
+
+These controls intercept only repository tool installations with a synthetic
+allowlist. Validator Python environments still use real uv, captured before the
+fixture changes PATH: `venv` and `pip compile`, `sync`, and `list` are forwarded
+with their original arguments and exit status. Each fresh case retains separate
+Python preparation and repository installer logs. This keeps Python dependencies
+available without changing the assertions about rejected repository additions.
+
+This runs five paired native cases: configuration symlink, dangling symlink,
+unsafe parent, altered approved check and unexpected addition. Each invocation
+starts with its own empty cache, exact synthetic package allowlist, external
+target and installer log. Healthy controls must cold-install and probe the exact
+addition; negative cases must retain target bytes, reject for the expected reason
+and avoid addition-install and probe markers. Regular rejected configurations also
+compare before/after bytes in native tasks. The worker rejects symlink cases
+before the validator body and cannot run a following inspection task; their
+external targets are compared after the runner drains. This does not establish
+complete C14/C20 acceptance or observe warm hits and failed-task setup envelopes.
+
+The shared CI and verify-hook script invokes both preparation checks. The cold
+check's `.cases.yaml` declaration is intentionally
+outside ordinary `*.test.yaml` discovery because it requires the wrapper's isolated
+synthetic installer and target paths. The wrapper uses the native compiler/runner,
+changes only the case-owned target input and fixture-relative observer path, and
+retains logs/caches until each invocation completes. Use a fresh output directory
+for a rerun; an existing invocation directory is rejected. Selected results are
+written to `negative-preparation-evidence.json`. No pnpm build behavior is simulated
+or certified by this synthetic uv fixture. Required lifecycle acceptance remains
+incomplete where the public pin lacks controls; owner advice does not waive it.
 
 ## Live suites
 

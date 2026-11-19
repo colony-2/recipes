@@ -271,6 +271,13 @@ outside that policy receive one specific approval. Identical accepted requests
 reuse their recorded validation job and diagnostics. A changed proposal/probe starts
 a new job after its policy decision; it cannot silently expand an old approval.
 
+Adaptive3 additionally distinguishes installation authority from an exact legacy
+policy match. Private pnpm authorization covers direct, transitive and selected
+optional dependency builds and repeated preparation; a legacy pnpm match alone
+uses the existing review. See the [current package service](../adaptive3/README.md)
+for comparison before writing and the boundary between baseline source authority
+and personal job approval. Existing uv/Nix policy behavior is unchanged.
+
 Validation stages the proposed `.c2/config.yaml` in a separate child, leaving the
 parent's management environment unchanged. Adoption requires a successful probe
 of the exact candidate and an unchanged parent configuration. Invalid package

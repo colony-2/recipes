@@ -1,0 +1,81 @@
+schema_version: 2
+id: package-preparation-test
+input_schema:
+  conflict:
+    type: boolean
+    default_value: false
+inputs:
+  conflict: ${{ inputs.conflict }}
+sequence:
+- id: proposal
+  op: command_execution
+  const: true
+  inputs:
+    env:
+      OUTBOX: ${{ context.environment.op.outbox }}
+    run: |
+      mkdir -p "$OUTBOX/review"
+      printf 'packages: ["uv:pytest==8.3.5"]\n' > "$OUTBOX/review/config.yaml"
+- id: validate
+  include: ../../recipes/adaptive3/tools.yaml
+  inputs:
+    check: package_config
+    documents: ${{ sequence.proposal.artifacts }}
+    requests: &requests
+    - reference: uv:pytest==8.3.5
+      check: [pytest, --version]
+- id: stage
+  when: '!inputs.conflict'
+  include: ../../recipes/adaptive3/package-probe.yaml
+  inputs:
+    config: ${{ sequence.proposal.artifacts['review/config.yaml'] }}
+    requests: *requests
+    approved: ${{ sequence.validate.outputs.approved }}
+- id: launch
+  when: inputs.conflict
+  op: recipes.run
+  inputs:
+    recipes:
+    - name: package-probe
+      cell_name: ${{ context.workflow.cell }}
+      inputs:
+        config: ${{ sequence.proposal.artifacts['review/config.yaml'] }}
+        requests: *requests
+        approved: ${{ sequence.validate.outputs.approved }}
+- id: wait
+  when: inputs.conflict
+  op: recipe.await_result_soft
+  inputs:
+    target:
+      job: ${{ sequence.launch.outputs.job_ids[0] }}
+    wait: {'on': job, condition: complete}
+    return_when: terminal
+- id: concurrent
+  when: inputs.conflict && sequence.wait.outputs.status == 'completed' && sequence.wait.outputs.outputs.status == 'passed'
+  op: command_execution
+  inputs:
+    run: |
+      mkdir -p .c2
+      printf 'custom: concurrent\n' > .c2/config.yaml
+- id: adopt
+  when: inputs.conflict && sequence.wait.outputs.status == 'completed' && sequence.wait.outputs.outputs.status == 'passed'
+  include: ../../recipes/adaptive3/tools.yaml
+  inputs:
+    check: package_config
+    documents: ${{ sequence.proposal.artifacts }}
+    requests: *requests
+    approved: ${{ sequence.validate.outputs.approved }}
+    write: true
+- id: following
+  op: command_execution
+  const: true
+  inputs:
+    run: cat .c2/config.yaml
+- id: observe
+  op: ./observer
+  inputs: {}
+outputs:
+  stage: ${{ sequence.?stage.orValue({}).?outputs.orValue({}) }}
+  child: ${{ sequence.?wait.orValue({}).?outputs.orValue({}) }}
+  adoption: ${{ sequence.?adopt.orValue({}).?outputs.orValue({}).?result.orValue({}) }}
+  configuration: ${{ sequence.following.outputs.stdout }}

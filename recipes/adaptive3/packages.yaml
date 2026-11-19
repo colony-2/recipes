@@ -48,8 +48,7 @@ state:
         session: ${{ sequence.proposal.outputs.session }}
         documents: ${{ jq(sequence.proposal.outputs.artifacts, 'with_entries(select(.key | startswith("review/")))')
           }}
-        schema: ${{ sequence.schemas.outputs.execute }}
-        text: ${{ sequence.prompts.outputs }}
+        approved: ${{ sequence.config.outputs.approved }}
         policy: ${{ sequence.policy.outputs.approved }}
         valid: ${{ sequence.config.outputs.result.status == 'passed' && sequence.files.outputs.result.status ==
           'passed' && sequence.proposal.outputs.response.?primary.orValue('') == 'review/README.md' }}
@@ -62,7 +61,7 @@ state:
         payload:
           result: ${{ outputs.findings }}
       - to: launch
-        when: inputs.requests.all(r, r.reference in outputs.policy && outputs.policy[r.reference] == r.check)
+        when: inputs.requests.all(r, !r.reference.startsWith('pnpm:') && r.reference in outputs.policy && outputs.policy[r.reference] == r.check)
       - to: approval
         when: 'true'
       inputs:
@@ -107,6 +106,7 @@ state:
           inputs:
             config: ${{ states.prepare.outputs.documents['review/config.yaml'] }}
             requests: ${{ inputs.requests }}
+            approved: ${{ states.prepare.outputs.approved }}
       transitions:
       - to: wait
         when: 'true'
@@ -133,31 +133,21 @@ state:
     adopt:
       inputs:
         documents: ${{ states.prepare.outputs.documents }}
-        prompt: ${{ states.prepare.outputs.text.adopt }}
-        schema: ${{ states.prepare.outputs.schema }}
+        approved: ${{ states.prepare.outputs.approved }}
         requests: ${{ inputs.requests }}
         session: ${{ state_output('approval','session',states.prepare.outputs.session) }}
-        agent_settings: ${{ inputs.agent_settings }}
       sequence:
-      - id: agent
-        include: ./agent.yaml
-        inputs:
-          prompt: ${{ inputs.prompt }}
-          schema: ${{ inputs.schema }}
-          documents: ${{ inputs.documents }}
-          read_only: false
-          session: ${{ inputs.session }}
-          agent_settings: ${{ inputs.agent_settings }}
       - id: check
         include: ./tools.yaml
         inputs:
           check: package_config
           documents: ${{ inputs.documents }}
           requests: ${{ inputs.requests }}
-          adopted: true
+          approved: ${{ inputs.approved }}
+          write: true
       outputs:
         result: ${{ sequence.check.outputs.result }}
-        session: ${{ sequence.agent.outputs.session }}
+        session: ${{ inputs.session }}
       transitions:
       - to: done
         when: 'true'

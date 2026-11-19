@@ -1,0 +1,86 @@
+recipe: repository-verify.yaml
+cases:
+- id: candidate-hook-records-identities-and-shared-suite-success
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        file_sources: &sources
+          .c2j-version: ../.c2j-version
+          .c2/recipes/hooks/build/verify.yaml: ../.c2/recipes/hooks/build/verify.yaml
+          check-orphan-reaping.py: fixtures/check-orphan-reaping.py
+        files: &files
+          README.md: Disposable hook fixture; script entrypoints are test doubles.
+          scripts/install-c2j.sh: |
+            set -eu
+            printf 'fixture installer\n'
+          scripts/test-recipes.sh: |
+            set -eu
+            test -f README.md
+            python3 -c 'import yaml, PIL, jsonschema; from importlib.metadata import version; assert [version(p) for p in ("PyYAML", "Pillow", "jsonschema")] == ["6.0.3", "12.0.0", "4.26.0"]'
+            cmark --version >/dev/null
+            yq --version >/dev/null
+            git --version >/dev/null
+            printf 'validator dependencies available\n'
+            printf 'shared suite reached from repository root\n'
+  mocks: &mocks
+    ops:
+    - match: {op: command_execution}
+      repeat: true
+      behavior: {mode: passthrough}
+  assertions:
+  - type: cel_true
+    expr: outputs.result.status=="passed" && outputs.evidence.report==null
+  - type: cel_true
+    expr: >-
+      outputs.evidence.log.contains("Recipes candidate: " + outputs.evidence.candidate)
+      && outputs.evidence.log.contains("Required c2j: " + outputs.evidence.required_pin)
+      && outputs.evidence.log.contains("fixture installer")
+      && outputs.evidence.log.contains("tini version 0.19.0")
+      && outputs.evidence.log.contains("validator dependencies available")
+      && outputs.evidence.log.contains("shared suite reached from repository root")
+  - type: cel_true
+    expr: '"tests.log" in outputs.result.artifact_refs && !("test-reports.tar.gz" in outputs.result.artifact_refs)'
+- id: candidate-hook-retains-failing-suite-report
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        file_sources: *sources
+        files:
+          <<: *files
+          scripts/test-recipes.sh: |
+            set -eu
+            mkdir -p "$1"
+            printf 'required fixture check failed\n' > "$1/failure.txt"
+            printf 'fixture suite failure\n' >&2
+            exit 7
+  mocks: *mocks
+  assertions:
+  - type: cel_true
+    expr: outputs.result.status=="failed" && outputs.evidence.report=="required fixture check failed\n"
+  - type: cel_true
+    expr: >-
+      outputs.evidence.log.contains("Recipes candidate: " + outputs.evidence.candidate)
+      && outputs.evidence.log.contains("Required c2j: " + outputs.evidence.required_pin)
+      && outputs.evidence.log.contains("fixture suite failure")
+  - type: cel_true
+    expr: '"tests.log" in outputs.result.artifact_refs && "test-reports.tar.gz" in outputs.result.artifact_refs'
+- id: candidate-hook-collects-orphaned-session-leaders
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        file_sources: *sources
+        files:
+          <<: *files
+          scripts/test-recipes.sh: |
+            set -eu
+            python3 check-orphan-reaping.py
+  mocks: *mocks
+  assertions:
+  - type: cel_true
+    expr: outputs.result.status=="passed" && outputs.evidence.report==null
+  - type: cel_true
+    expr: >-
+      outputs.evidence.log.contains("orphan session leaders collected: 16")

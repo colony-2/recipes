@@ -29,9 +29,20 @@ sequence:
   op: command_execution
   const: true
   execution_needs:
+    python:
+      requires-python: ">=3.10"
+      dependencies:
+        - PyYAML==6.0.3
+        - Pillow==12.0.0
+        - jsonschema==4.26.0
     packages:
+      - nix:github:NixOS/nixpkgs/e7439b6b14ad3cc35d05608ebca9bce01a25f5f8#cmark
+      - nix:github:NixOS/nixpkgs/e7439b6b14ad3cc35d05608ebca9bce01a25f5f8#yq-go
+      - nix:github:NixOS/nixpkgs/e7439b6b14ad3cc35d05608ebca9bce01a25f5f8#git
       # Go 1.26.8 builds the same source pin used in CI.
       - nix:github:NixOS/nixpkgs/e7439b6b14ad3cc35d05608ebca9bce01a25f5f8#go
+      # Reap orphaned fixture subprocesses even when the worker's PID 1 does not.
+      - nix:github:NixOS/nixpkgs/e7439b6b14ad3cc35d05608ebca9bce01a25f5f8#tini
   inputs:
     env:
       REPO: ${{ context.environment.op.worktree_path }}
@@ -44,13 +55,18 @@ sequence:
       scratch=$(mktemp -d)
       trap 'rm -rf "$scratch"' EXIT
       if (
+        printf 'Recipes candidate: '
+        git rev-parse HEAD &&
+        printf 'Required c2j: ' &&
+        cat .c2j-version &&
         printf 'Candidate: %s\nBase: %s\nRuntime pin: ' "$CANDIDATE" "$BASE"
         cat .c2j-version
         bash scripts/install-c2j.sh "$scratch" &&
         git rev-parse HEAD &&
         cat .c2j-version &&
         git --version &&
-        PATH="$scratch/bin:$PATH" bash scripts/test-recipes.sh "$scratch/results"
+        tini --version &&
+        PATH="$scratch/bin:$PATH" tini -s -- bash scripts/test-recipes.sh "$scratch/results"
       ) > "$OUTBOX/tests.log" 2>&1; then
         printf passed
       else

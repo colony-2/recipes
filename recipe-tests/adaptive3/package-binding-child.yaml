@@ -1,0 +1,51 @@
+schema_version: 2
+id: package-binding-child-test
+sequence:
+- id: proposal
+  op: command_execution
+  const: true
+  inputs:
+    env:
+      OUTBOX: ${{ context.environment.op.outbox }}
+    run: |
+      mkdir -p "$OUTBOX/review"
+      printf 'packages: ["uv:pytest==8.3.5"]\n' > "$OUTBOX/review/config.yaml"
+- id: validate
+  include: ../../recipes/adaptive3/tools.yaml
+  inputs:
+    check: package_config
+    documents: ${{ sequence.proposal.artifacts }}
+    requests: &requests
+    - reference: uv:pytest==8.3.5
+      check: [pytest, --version]
+- id: launch
+  op: recipes.run
+  inputs:
+    recipes:
+    - name: package-probe
+      cell_name: ${{ context.workflow.cell }}
+      inputs:
+        config: ${{ sequence.proposal.artifacts['review/config.yaml'] }}
+        requests: *requests
+        approved: ${{ sequence.validate.outputs.approved }}
+- id: wait
+  op: recipe.await_result_soft
+  inputs:
+    target:
+      job: ${{ sequence.launch.outputs.job_ids[0] }}
+    wait:
+      'on': job
+      condition: complete
+    return_when: terminal
+- id: adopt
+  include: ../../recipes/adaptive3/tools.yaml
+  when: sequence.wait.outputs.status == 'completed' && sequence.wait.outputs.outputs.status == 'passed'
+  inputs:
+    check: package_config
+    documents: ${{ sequence.proposal.artifacts }}
+    requests: *requests
+    approved: ${{ sequence.validate.outputs.approved }}
+    write: true
+outputs:
+  child: ${{ sequence.wait.outputs }}
+  result: ${{ sequence.?adopt.orValue({}).?outputs.orValue({}).?result.orValue({}) }}

@@ -1,0 +1,35 @@
+schema_version: 2
+id: package-boundary-test
+input_schema:
+  config: {type: artifact, required: true}
+  requests:
+    type: array
+    items: {type: object}
+    required: true
+  approved: {type: object, default_value: {}}
+inputs:
+  config: ${{ inputs.config }}
+  requests: ${{ inputs.requests }}
+  approved: ${{ inputs.approved }}
+sequence:
+- id: child
+  include: ../../recipes/adaptive3/package-probe.yaml
+  inputs:
+    config: ${{ inputs.config }}
+    requests: ${{ inputs.requests }}
+    approved: ${{ inputs.approved }}
+- id: inspect
+  op: command_execution
+  const: true
+  inputs:
+    run: |
+      python3 - <<'PY'
+      import json, pathlib
+      path=pathlib.Path('.c2/config.yaml')
+      print(json.dumps({'config':path.read_text() if path.exists() else None}))
+      PY
+outputs:
+  status: ${{ sequence.child.outputs.status }}
+  summary: ${{ sequence.child.outputs.summary }}
+  failure: ${{ sequence.child.outputs.?failure.orValue({}) }}
+  config: ${{ json_parse(sequence.inspect.outputs.stdout).config }}

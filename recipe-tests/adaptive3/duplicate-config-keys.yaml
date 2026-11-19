@@ -1,0 +1,43 @@
+schema_version: 2
+id: duplicate-config-test
+input_schema:
+  check: {type: string, required: true}
+  documents: {type: artifact_map, required: true}
+  requests:
+    type: array
+    items: {type: object}
+    required: true
+  write: {type: boolean, default_value: false}
+  approved: {type: object, default_value: {}}
+inputs:
+  check: ${{ inputs.check }}
+  documents: ${{ inputs.documents }}
+  requests: ${{ inputs.requests }}
+  write: ${{ inputs.write }}
+  approved: ${{ inputs.approved }}
+sequence:
+- id: tools
+  include: ../../recipes/adaptive3/tools.yaml
+  inputs:
+    check: ${{ inputs.check }}
+    documents: ${{ inputs.documents }}
+    requests: ${{ inputs.requests }}
+    write: ${{ inputs.write }}
+    approved: ${{ inputs.approved }}
+- id: inspect
+  op: command_execution
+  const: true
+  execution_needs:
+    packages:
+    - nix:github:NixOS/nixpkgs/e7439b6b14ad3cc35d05608ebca9bce01a25f5f8#python3
+  inputs:
+    run: |
+      python3 - <<'PY'
+      import json, pathlib
+      path=pathlib.Path('.c2/config.yaml')
+      print(json.dumps({'config':path.read_text() if path.exists() else None}))
+      PY
+outputs:
+  result: ${{ sequence.tools.outputs.result }}
+  approved: ${{ sequence.tools.outputs.approved }}
+  config: ${{ json_parse(sequence.inspect.outputs.stdout).config }}

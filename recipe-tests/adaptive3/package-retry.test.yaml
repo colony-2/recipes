@@ -1,0 +1,122 @@
+recipe: package-retry.yaml
+cases:
+- id: unchanged-authorized-retry-uses-fresh-probe-without-rewrite
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          README.md: A small project.
+    responses: []
+    observe_files:
+    - .c2/config.yaml
+  inputs:
+    config:
+      kind: value
+      name: review/config.yaml
+      format: text
+      value: 'packages: ["uv:pytest==8.3.5"]
+
+        '
+    requests:
+    - reference: uv:pytest==8.3.5
+      check:
+      - pytest
+      - --version
+  mocks:
+    ops:
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.first.status=="passed" && outputs.retry.status=="passed" && outputs.unchanged
+  - type: cel_true
+    expr: calls.filter(c,c.node_path.endsWith("/probe/probe")).size()==2 && size(reviews)==0
+  - type: cel_true
+    expr: 'calls.exists(c,c.node_path.contains("/retry/") && c.node_path.contains("/install/") && c.outputs.stdout.contains(''"written":
+      false''))'
+- id: changed-request-does-not-reuse-approved-retry
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          README.md: A small project.
+    responses: []
+    observe_files:
+    - .c2/config.yaml
+  inputs:
+    config:
+      kind: value
+      name: review/config.yaml
+      format: text
+      value: 'packages: ["uv:pytest==8.3.5"]
+
+        '
+    requests:
+    - reference: uv:pytest==8.3.5
+      check:
+      - pytest
+      - --version
+    changed_requests:
+    - reference: uv:pytest==8.3.4
+      check:
+      - pytest
+      - --version
+  mocks:
+    ops:
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.first.status=="passed" && outputs.retry.status=="changes" && outputs.retry.summary=="Approved
+      proposal or requests changed" && outputs.unchanged
+  - type: cel_true
+    expr: calls.filter(c,c.node_path.endsWith("/probe/probe")).size()==1
+- id: unchanged-authorized-retry-after-real-probe-failure
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          README.md: A small project.
+    responses: []
+    observe_files:
+    - .c2/config.yaml
+  inputs:
+    config:
+      kind: value
+      name: review/config.yaml
+      format: text
+      value: 'packages: ["uv:pytest==8.3.5"]
+
+        '
+    requests:
+    - reference: uv:pytest==8.3.5
+      check:
+      - python3
+      - -c
+      - import pathlib, shutil, sys; assert shutil.which('pytest'); sys.exit(0 if pathlib.Path('prerequisite-ready').exists()
+        else 9)
+    repair: true
+  mocks:
+    ops:
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.first.status=="changes" && outputs.retry.status=="passed" && outputs.unchanged
+  - type: cel_true
+    expr: calls.filter(c,c.node_path.endsWith("/probe/probe")).size()==2 && size(reviews)==0
+  - type: cel_true
+    expr: 'calls.exists(c,c.node_path.contains("/retry/") && c.node_path.contains("/install/") && c.outputs.stdout.contains(''"written":
+      false''))'

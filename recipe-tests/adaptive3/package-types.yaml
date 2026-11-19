@@ -1,0 +1,52 @@
+schema_version: 2
+id: package-types-test
+input_schema:
+  config: {type: artifact, required: true}
+  current: {type: string, default_value: ''}
+inputs:
+  config: ${{ inputs.config }}
+  current: ${{ inputs.current }}
+sequence:
+- id: validate
+  include: ../../recipes/adaptive3/tools.yaml
+  inputs:
+    check: package_config
+    documents:
+      review/config.yaml: ${{ inputs.config }}
+    requests: &requests
+    - reference: uv:pytest==8.3.5
+      check: [pytest, --version]
+- id: concurrent
+  when: inputs.current != ''
+  op: command_execution
+  inputs:
+    env:
+      CURRENT: ${{ inputs.current }}
+    run: |
+      python3 - <<'PY'
+      import os, pathlib
+      pathlib.Path('.c2/config.yaml').write_text(os.environ['CURRENT'])
+      PY
+- id: before
+  op: command_execution
+  const: true
+  inputs:
+    run: cat .c2/config.yaml
+- id: write
+  when: sequence.validate.outputs.result.status == 'passed'
+  include: ../../recipes/adaptive3/tools.yaml
+  inputs:
+    check: package_config
+    documents:
+      review/config.yaml: ${{ inputs.config }}
+    requests: *requests
+    approved: ${{ sequence.validate.outputs.approved }}
+    write: true
+- id: after
+  op: command_execution
+  const: true
+  inputs:
+    run: cat .c2/config.yaml
+outputs:
+  result: '${{ sequence.validate.outputs.result.status == "passed" ? sequence.write.outputs.result : sequence.validate.outputs.result }}'
+  unchanged: ${{ sequence.before.outputs.stdout == sequence.after.outputs.stdout }}

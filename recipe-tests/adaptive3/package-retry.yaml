@@ -1,0 +1,59 @@
+schema_version: 2
+id: package-retry-test
+input_schema:
+  config:
+    type: artifact
+    required: true
+  requests:
+    type: array
+    items: {type: object}
+    required: true
+  repair:
+    type: boolean
+    default_value: false
+  changed_requests:
+    type: array
+    items: {type: object}
+    default_value: []
+inputs:
+  config: ${{ inputs.config }}
+  requests: ${{ inputs.requests }}
+  changed_requests: ${{ inputs.changed_requests }}
+  repair: ${{ inputs.repair }}
+sequence:
+- id: approved
+  include: ../../recipes/adaptive3/tools.yaml
+  inputs:
+    check: package_config
+    documents:
+      review/config.yaml: ${{ inputs.config }}
+    requests: ${{ inputs.requests }}
+- id: first
+  include: ../../recipes/adaptive3/package-probe.yaml
+  inputs:
+    config: ${{ inputs.config }}
+    requests: ${{ inputs.requests }}
+    approved: ${{ sequence.approved.outputs.approved }}
+- id: before_retry
+  op: command_execution
+  inputs:
+    env:
+      REPAIR: ${{ string(inputs.repair) }}
+    run: |
+      if [ "$REPAIR" = true ]; then touch prerequisite-ready; fi
+      sha256sum .c2/config.yaml
+- id: retry
+  include: ../../recipes/adaptive3/package-probe.yaml
+  inputs:
+    config: ${{ inputs.config }}
+    requests: '${{ size(inputs.changed_requests)>0 ? inputs.changed_requests : inputs.requests }}'
+    approved: ${{ sequence.approved.outputs.approved }}
+- id: after_retry
+  op: command_execution
+  const: true
+  inputs:
+    run: sha256sum .c2/config.yaml
+outputs:
+  first: ${{ sequence.first.outputs }}
+  retry: ${{ sequence.retry.outputs }}
+  unchanged: ${{ sequence.before_retry.outputs.stdout == sequence.after_retry.outputs.stdout }}

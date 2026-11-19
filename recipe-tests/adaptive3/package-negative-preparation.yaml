@@ -1,0 +1,84 @@
+schema_version: 2
+id: package-negative-preparation
+input_schema:
+  mode: {type: string, required: true}
+  addition: {type: string, required: true}
+  tool: {type: string, required: true}
+  target: {type: string, required: true}
+inputs:
+  mode: ${{ inputs.mode }}
+  addition: ${{ inputs.addition }}
+  tool: ${{ inputs.tool }}
+  target: ${{ inputs.target }}
+sequence:
+- id: proposal
+  op: command_execution
+  const: true
+  inputs:
+    env:
+      OUTBOX: ${{ context.environment.op.outbox }}
+      ADDITION: ${{ inputs.addition }}
+      MODE: ${{ inputs.mode }}
+    run: |
+      python3 - <<'PY'
+      import json, os, pathlib
+      packages=['uv:a3-prior==1', os.environ['ADDITION']]
+      if os.environ['MODE']=='unexpected-addition': packages.append('uv:a3-unexpected==1')
+      out=pathlib.Path(os.environ['OUTBOX'])/'review'; out.mkdir()
+      (out/'config.yaml').write_text(json.dumps({'packages':packages, 'custom':'retained'})+'\n')
+      PY
+- id: validate
+  include: ../../recipes/adaptive3/tools.yaml
+  inputs:
+    check: package_config
+    documents: ${{ sequence.proposal.artifacts }}
+    requests:
+    - reference: ${{ inputs.addition }}
+      check: ["${{ inputs.tool }}", --version]
+- id: ready
+  op: ./observer
+  inputs: {}
+- id: arrange
+  op: command_execution
+  inputs:
+    env:
+      MODE: ${{ inputs.mode }}
+      TARGET: ${{ inputs.target }}
+    run: &inspect |
+      python3 - <<'PY'
+      import json, os, pathlib
+      config=pathlib.Path('.c2/config.yaml'); mode=os.environ.get('MODE','inspect')
+      target=pathlib.Path(os.environ['TARGET'])
+      if mode in ('symlink','dangling'):
+          config.unlink(); config.symlink_to(target)
+      elif mode=='unsafe-parent':
+          config.unlink(); pathlib.Path('.c2').rmdir()
+          pathlib.Path('.c2').symlink_to(target.parent, target_is_directory=True)
+      def value(path):
+          p=pathlib.Path(path)
+          return {'symlink':os.readlink(p) if p.is_symlink() else None, 'bytes':p.read_text() if p.is_file() else None, 'exists':p.exists()}
+      observed={p:value(p) for p in ['.c2', '.c2/config.yaml']}
+      observed['external_target']=value(target)
+      print(json.dumps(observed))
+      PY
+- id: stage
+  include: ../../recipes/adaptive3/package-probe.yaml
+  inputs:
+    config: ${{ sequence.proposal.artifacts['review/config.yaml'] }}
+    approved: ${{ sequence.validate.outputs.approved }}
+    requests:
+    - reference: ${{ inputs.addition }}
+      check: ["${{ inputs.tool }}", "${{ inputs.mode=='altered-check' ? '--changed' : '--version' }}"]
+- id: inspect
+  when: "!(inputs.mode in ['symlink', 'dangling', 'unsafe-parent'])"
+  op: command_execution
+  const: true
+  inputs:
+    env:
+      TARGET: ${{ inputs.target }}
+    run: *inspect
+outputs:
+  validation: ${{ sequence.validate.outputs.result }}
+  stage: ${{ sequence.stage.outputs }}
+  before: ${{ json_parse(sequence.arrange.outputs.stdout) }}
+  after: ${{ json_parse(sequence.?inspect.orValue({}).?outputs.orValue({}).?stdout.orValue('{}')) }}

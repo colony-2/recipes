@@ -201,8 +201,23 @@ evidence stops recovery before publication or a guessed second merge. No public
 build input or agent trust flag can establish the internal record.
 
 Package requests contain a `reference`, an argument-array `check`, and a reason.
-The package service prepares a proposed configuration, obtains policy or human
-approval, validates it in a separate job, and checks the adopted configuration.
+The package service validates a proposed configuration and retains its original baseline,
+artifact identity and exact requests/checks in native outputs. After applicable approval,
+a bounded operation compares and writes it in a separate validation job. Only the following
+fresh task prepares and probes those additions. After child success, the same operation
+compares the parent's current configuration again before adoption. Conflicts, substituted
+proposals and extra packages fail without writing; an exact unchanged retry preserves bytes.
+Older callers without the retained binding fail safely before writing.
+
+Private pnpm authorization includes direct, transitive and selected optional dependency
+builds, mutable transitive resolutions and repeated preparation after failure, worker changes
+or cache loss. Exact requested references and checks stay exact. Changed requests or scope
+need applicable authority; questions never approve, and withdrawal, cancellation and newer
+human scope take precedence. Completed durable operations remain completed. Legacy pnpm
+reference/check policy matches alone use the existing package review; uv/Nix matching is
+unchanged. Baseline recipe, repository, extension and early-hook dependencies derive authority
+from their source and applicable standing cell policy, independently of personal job approval.
+This guarantee covers service-managed staging/adoption; out-of-service edits remain outside it.
 
 ## Source map
 
@@ -216,7 +231,7 @@ approval, validates it in a separate job, and checks the adopted configuration.
 - `agent.yaml` owns session start/resume and native Codex calls.
 - `hooks.yaml`, `integration.yaml`, `specialists.yaml` call existing extension points.
 - `prompts/` and `schemas.yaml` are empty includes; they create no worker tasks.
-- `tools.yaml` embeds three validators: review files, approved edits and package configuration.
+- `tools.yaml` embeds review-file and approved-edit validators plus bounded package comparison/writing.
 
 See the [design](../../guides/adaptive3/DESIGN.md),
 [implementation assessment](../../guides/adaptive3/IMPLEMENTATION.md), and

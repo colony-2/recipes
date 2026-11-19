@@ -1,0 +1,96 @@
+recipe: package-preparation.yaml
+cases:
+- id: staging-before-fresh-probe-setup
+  type: integration_case
+  runtime: &runtime
+    backend: sqlite
+    observe_files:
+    - .c2/config.yaml
+    cells:
+      root:
+        files:
+          README.md: Preparation must follow validated configuration.
+        file_sources:
+          .c2/recipes/package-probe.yaml: ../../recipes/adaptive3/package-probe.yaml
+          .c2/recipes/tools.yaml: ../../recipes/adaptive3/tools.yaml
+          observer/op.yaml: preparation-observer/op.yaml
+    controls:
+      snapshot:
+        files:
+        - .c2/config.yaml
+      barriers:
+      - id: observe
+        match:
+          selector: ./observer
+          node_path: package-preparation-test/observe
+          cell: root
+          occurrence: 1
+          attempt: 1
+        stdout: '{"output":{"observed":true}}'
+      actions:
+      - 'on': observe.entered
+        do: release
+  inputs:
+    conflict: false
+  mocks:
+    ops:
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - &complete
+    type: cel_true
+    expr: controls.complete && size(controls.errors)==0 && controls.final_snapshot.complete
+      && size(controls.final_snapshot.errors)==0
+  - &tasks
+    type: cel_true
+    expr: size(controls.final_snapshot.successful_tasks)>0
+  - type: cel_true
+    expr: outputs.stage.status=="passed" && outputs.configuration.contains("uv:pytest==8.3.5")
+  - type: cel_true
+    expr: size(controls.final_snapshot.successful_tasks.filter(k,k.contains('sequence:validate')))
+      == 1
+  - type: cel_true
+    expr: size(controls.final_snapshot.successful_tasks.filter(k,k.contains('op:following')))
+      == 1
+  - type: cel_true
+    expr: size(controls.final_snapshot.successful_tasks.filter(k,k.contains('sequence:stage')))
+      == 2
+  - type: cel_true
+    expr: controls.final_snapshot.successful_tasks.all(k,controls.final_snapshot.successful_tasks[k].attempt==1
+      && !controls.final_snapshot.successful_tasks[k].output.redacted && size(controls.final_snapshot.successful_tasks[k].output.content_base64)>0)
+- id: rejected-adoption-parent-setup
+  type: integration_case
+  runtime: *runtime
+  inputs:
+    conflict: true
+  mocks:
+    ops:
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - *complete
+  - *tasks
+  - type: cel_true
+    expr: 'outputs.child.status=="completed" && outputs.child.outputs.status=="passed"
+      && outputs.adoption.status=="changes" && outputs.configuration=="custom: concurrent"'
+  - type: cel_true
+    expr: size(controls.final_snapshot.successful_tasks.filter(k,k.contains('sequence:validate')))
+      == 1
+  - type: cel_true
+    expr: size(controls.final_snapshot.successful_tasks.filter(k,k.contains('op:following')))
+      == 1
+  - type: cel_true
+    expr: size(controls.final_snapshot.successful_tasks.filter(k,k.contains('sequence:adopt')))
+      == 1
+  - type: cel_true
+    expr: size(controls.final_snapshot.successful_tasks.filter(k,k.contains('op:concurrent')))
+      == 1
+  - type: cel_true
+    expr: controls.final_snapshot.successful_tasks.all(k,controls.final_snapshot.successful_tasks[k].attempt==1
+      && !controls.final_snapshot.successful_tasks[k].output.redacted && size(controls.final_snapshot.successful_tasks[k].output.content_base64)>0)

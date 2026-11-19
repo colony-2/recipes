@@ -134,3 +134,45 @@ Defined in the approved preparation before implementation. Scripted assessments 
 | A3-85 | Plans and assessments use candidate evidence before merge and evaluate requested releases after publication. | High | Integration / sampled Adaptive3 jobs | `recipes/adaptive3/prompts/execute.yaml`, `recipes/adaptive3/prompts/validate.yaml` |
 | A3-86 | A local dependency update proceeds from passing focused compatibility checks without routine owner confirmation. | High | Integration / sampled Adaptive3 jobs | `recipes/adaptive3/prompts/context.yaml`, `recipes/adaptive3/prompts/execute.yaml` |
 | A3-87 | Owner consultations identify a concrete issue, a question that could change the plan, or required external work, and carry relevant evidence. | High | Integration / sampled Adaptive3 jobs | `recipes/adaptive3/prompts/context.yaml`, `recipes/adaptive3/prompts/execute.yaml` |
+
+The accepted pnpm correction replaces the former late-adoption checks in A3-57–61
+with comparison before writing. Duplicate references have a specific finding;
+automatic legacy policy matching remains applicable to uv/Nix. The original
+34 saved-candidate R/G/H/D expectations remain separate review artifacts.
+
+| ID | Expectation | Priority | Level / dependencies | Files |
+| --- | --- | --- | --- | --- |
+| A3-88 | Approved bindings retain the original baseline, proposal artifact and exact references/checks through isolated validation and parent adoption. | Critical | Integration / pinned c2j | `packages.test.yaml`, `package-probe-binding.test.yaml`, `package-binding-child.test.yaml` |
+| A3-89 | Altered approved inputs, substituted artifacts and unexpected additions leave configuration unchanged and never reach a fresh probe. | Critical | Integration / pinned c2j | `package-probe-binding.test.yaml` |
+| A3-90 | A fresh probe prepares accepted packages after bounded staging; failed setup prevents its body from running. | Critical | Integration / pinned c2j, uv | `package-probe.test.yaml`, `package-preparation-failure.test.yaml` |
+| A3-91 | Concurrent configuration changes cause parent adoption conflicts after successful child validation, preserving current bytes. | Critical | Integration / pinned c2j | `packages.test.yaml`, `test_tools.py` |
+| A3-92 | Unchanged authorized retries probe successfully without rewriting configuration; changed requests cannot reuse the prior binding. | Critical | Integration / pinned c2j, uv | `package-retry.test.yaml`, `test_tools.py` |
+| A3-93 | Legacy pnpm policy matches still require review; questions and withdrawal prevent installation, and newer human scope returns to direction. | Critical | Integration / pinned c2j | `packages.test.yaml` |
+| A3-94 | Symlinks, malformed packages and mid-comparison configuration changes fail before replacement and preserve unrelated files. | Critical | Unit / Python, yq | `test_tools.py` |
+
+Preparation-order checks use a real failing uv setup and a following native task
+for rejected additions; command-entry order alone is insufficient. These fixtures
+do not establish private pnpm dependency-build behavior, worker/cache replacement,
+or a real interrupted durable continuation. Existing scripted `resume.test.yaml`
+cases exercise routing and remain distinct from that missing continuation coverage.
+
+A corrected Backstop resume fixture must supply valid retained review descriptions
+before offering Continue; invalid earlier collections remain blocked. This exercises
+existing review safeguards, not a worker restart. (`backstop-resume.test.yaml`;
+critical, integration, pinned c2j.)
+
+| ID | Expectation | Priority | Level / dependencies | Files |
+| --- | --- | --- | --- | --- |
+| A3-95 | Direction framing explains applicable private pnpm authority before scheduling scoped tool consumption. | Critical | Integration / pinned c2j | `build.test.yaml` |
+| A3-96 | Boolean and numeric settings remain distinct in approved proposals, concurrent conflicts and already-applied retries; rejected changes preserve current configuration. | Critical | Unit and integration / Python, yq, pinned c2j | `test_tools.py`, `package-types.test.yaml` |
+| A3-97 | Native setup records show approved additions only after staging, and exclude child-warmed additions from parent preparation following rejected adoption. | Critical | Integration / pinned c2j, uv | `package-preparation.test.yaml`, `../checks/package_preparation.py` |
+| A3-98 | Symlinks, unsafe configuration parents and rejected inputs preserve configuration and targets without cold-installing or probing proposed additions; paired healthy controls install and probe. | Critical | Integration / pinned c2j, synthetic uv | `package-negative-preparation.cases.yaml`, `../checks/package_negative_preparation.py` |
+| A3-99 | Bounded adoption preserves the proposal or latest review session without starting another author task. | High | Integration / pinned c2j | `packages.test.yaml`, `packages.yaml` |
+| A3-100 | Verification records candidate and runtime identities, runs shared checks and retains failure reports. | High | Integration / c2j, Go, Python, Nix | `.c2/recipes/hooks/build/verify.yaml`, `scripts/test-recipes.sh`, `../repository-verify.test.yaml` |
+| A3-101 | Verification collects orphaned fixture processes before they exhaust worker capacity, preserving successful results and failure diagnostics. | High | Integration / Python, pinned c2j, tini, Linux procfs | `.c2/recipes/hooks/build/verify.yaml`, `../repository-verify.test.yaml`, `../fixtures/check-orphan-reaping.py` |
+| A3-102 | Shared verification executes configuration-validator and response-schema tests; a failing test stops verification and preserves its diagnostic log. | Critical | Unit/integration / Python, PyYAML, Pillow, jsonschema, cmark, yq, Git | `scripts/test-recipes.sh`, `test_tools.py`, `test_schemas.py` |
+| A3-103 | Local, templated and option-like package references fail before configuration writes; exact registry and remote requests remain usable. | Critical | Unit / Python, PyYAML, yq, Git | `test_tools.py`, `recipes/adaptive3/tools.yaml` |
+| A3-104 | Duplicate YAML mapping keys reject proposal binding and staging/adoption, preserving configuration bytes, identity and permissions. | Critical | Unit/integration / Python, PyYAML, yq, pinned c2j, Git | `test_tools.py`, `duplicate-config-keys.test.yaml`, `package-probe.test.yaml`, `recipes/adaptive3/tools.yaml` |
+| A3-105 | Valid YAML aliases, merge overrides and scalar spellings retain existing configuration meaning during approved additions. | High | Unit / Python, PyYAML, yq, Git | `test_tools.py`, `recipes/adaptive3/tools.yaml` |
+| A3-106 | Cold-install controls prepare validator Python dependencies using the real environment tool, while synthetic repository-package installs retain exact allowlists and isolated logs. | Critical | Unit/integration / Python, uv, pinned c2j, Nix | `preparation-installer/uv`, `test_preparation_installer.py`, `../checks/package_negative_preparation.py` |
+| A3-107 | Unknown installer commands and unexpected repository packages reject without invoking the real installer; Python preparation failures remain failures. | Critical | Unit / Python, shell | `preparation-installer/uv`, `test_preparation_installer.py` |

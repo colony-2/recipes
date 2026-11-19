@@ -1,0 +1,29 @@
+#!/bin/sh
+# Repository tool installs are synthetic and accept only this case's exact specs.
+# Python execution environments use the real uv captured before PATH was changed.
+set -eu
+case "${1-}" in
+  venv|pip)
+    if [ "$1" = pip ]; then
+      case "${2-}" in compile|sync|list) ;; *) exit 92 ;; esac
+    fi
+    : "${PREP_REAL_UV:?Captured real uv executable is required}"
+    printf '%s\n' "$*" >> "$PREP_PYTHON_LOG"
+    exec "$PREP_REAL_UV" "$@"
+    ;;
+  tool) ;;
+  *) exit 92 ;;
+esac
+printf '%s\n' "$*" >> "$PREP_INSTALL_LOG"
+test "$#" -eq 4
+test "$1" = tool
+test "$2" = install
+test "$3" = --
+case "$4" in
+  "$PREP_PRIOR_SPEC"|"$PREP_ADDITION_SPEC") ;;
+  *) exit 92 ;;
+esac
+mkdir -p "$UV_TOOL_BIN_DIR"
+prep_tool_name=${4%%==*}
+printf '#!/bin/sh\nprintf "native-preparation-marker %s\\n"\n' "$4" > "$UV_TOOL_BIN_DIR/$prep_tool_name"
+chmod +x "$UV_TOOL_BIN_DIR/$prep_tool_name"

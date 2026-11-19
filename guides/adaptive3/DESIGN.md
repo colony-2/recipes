@@ -113,7 +113,7 @@ guides/adaptive3/
 | `packages.yaml` | Package policy, any required approval, approved-environment validation and adoption. | General workflow recovery or its own human-dialogue implementation. |
 | `package-probe.yaml` | A fresh environment that checks the approved configuration and reports actual probe results. | Delivery work or authority to expand the approved package request. |
 | `integration.yaml` | Native rebase/squash/merge operations, actual integration results and publication against the merged commit. | Asking for another approval or treating a Git hash change as an unapproved content change. |
-| `tools.yaml` | The three output validators and their declared worker packages. | Artifact selection, repair or state bookkeeping. |
+| `tools.yaml` | Review/patch validators, bounded package comparison/writing and their declared worker packages. | Artifact selection, repair or state bookkeeping. |
 | `specialists.yaml` | Configured independent assessments using the shared Validate activity. | Another review or consultation protocol. |
 | `schemas.yaml` | Small activity-specific response schemas, exported by an empty sequence. | A universal response containing every possible field. |
 
@@ -175,7 +175,7 @@ when unused; they are not populated with empty objects in every agent response.
 | `backstop` | `stage`, `request`, `problem`, `documents`, `feedback`, `prior_job`, `automatic` | Corrected direction and the stage to resume; native human response when one was needed. |
 | `hooks` | `hook`, `request`, `target_directory`, `documents`, `settings`, `publication` | The native hook result, settings from configure, and exported artifacts. |
 | `packages` | `requests`, `reason` | Approved and validated configuration, or findings for Execute/resolution. |
-| `package-probe` | `config`, `checks` | Probe results and diagnostics. |
+| `package-probe` | `config`, `requests`, `approved` baseline/proposal binding | Probe results and diagnostics; missing bindings fail before writing. |
 | `integration` | `operation` | Native candidate, merge or publication-related execution result. Reads managed Git context itself. |
 
 The lifecycle's eight inputs are a deliberate wide boundary: assignment,
@@ -528,7 +528,7 @@ stashed adaptive2 edits.
 | [`adaptive2/consultation.yaml`](../../recipes/adaptive2/consultation.yaml), [`coordinate.yaml`](../../recipes/adaptive2/coordinate.yaml) | Reuse owner workspaces, separate sessions, receiver judgment and native submission. Replace handoff-file gates, conversation aggregates and accumulated document maps. |
 | [`adaptive2/dependency-requirements.yaml`](../../recipes/adaptive2/dependency-requirements.yaml) | Preserve the recent lesson that obsolete prerequisites must not block current scope. Use actual source results and agent judgment; do not copy the coordination-history projection into a new ledger. |
 | [`adaptive/hook-*.yaml`](../../recipes/adaptive/hook-verify.yaml) | Extract native hook invocations and contract checks into adaptive3's adapter. Leave existing helpers unchanged. Remove generated agent-facing settings/reports from the shared call path. |
-| [`adaptive2/packages.yaml`](../../recipes/adaptive2/packages.yaml), [`adaptive/package-policy.yaml`](../../recipes/adaptive/package-policy.yaml) | Preserve policy → approval when needed → fresh-environment probe → adoption. Reuse the narrow policy include unchanged if its tests pass. Replace shell/Python proposal/adoption glue with agent work and validation. |
+| [`adaptive2/packages.yaml`](../../recipes/adaptive2/packages.yaml), [`adaptive/package-policy.yaml`](../../recipes/adaptive/package-policy.yaml) | Preserve policy → approval when needed → fresh-environment probe → adoption. Reuse the narrow policy include unchanged if its tests pass. Use an agent proposal and bounded validate-before-write staging/adoption. |
 | [`adaptive/git-candidate.yaml`](../../recipes/adaptive/git-candidate.yaml) | Extract approved-edit equivalence validation into `tools.yaml: approved_change`. Preserve binary/path/mode correctness; remove the large stdout candidate inventory and report construction. |
 | [`adaptive/await-child.yaml`](../../recipes/adaptive/await-child.yaml) | Reuse the native soft-wait operation and result semantics directly. Do not inherit generated error documents or terminal recovery policy. |
 | [`adaptive2/review-links.yaml`](../../recipes/adaptive2/review-links.yaml) | Port useful attachment checks into `tools.yaml: review_files`; check the producer's set without constructing a different set. |
@@ -546,28 +546,51 @@ ops for workspaces, Git, jobs, waits and human input. No shell command should
 exist solely to generate prompts, transform recipe state, compose a packet or
 read a JSON file that an earlier command wrote for the recipe.
 
-The proposed executable code is limited to output validation:
+The executable code is bounded to output comparison and writing validated package configuration:
 
 | File | Why code is justified | Limits |
 | --- | --- | --- |
 | `tools.yaml: review_files` | Read real file contents, resolve local Markdown/HTML links and check image readability and final metadata. | Produces findings; never copies, renames, selects or repairs the review files. |
 | `tools.yaml: approved_change` | Establish whether the candidate is the approved edit rebased onto the new base, including binary files and modes. | Reads Git and may use a temporary index. Does not manage the real worktree or merge. Uncertain comparison requests review. |
-| `tools.yaml: package_config` | Validate that a proposed/adopted configuration matches the approved package change and preserves unrelated settings. | Does not install tools, alter config or make an approval decision. |
+| `tools.yaml: package_config` | Validate exact additions, requests/checks, original baseline and proposal identity; optionally compare and atomically write approved configuration. | Does not install tools or decide approval. Rejects symlinks, substituted inputs and conflicts before mutation. |
 
 The three tasks embed their Python in `tools.yaml`, as requested during
 implementation. This makes the code part of the captured recipe and avoids a
 companion-file resolver. They use declared worker packages, bound inbox files,
 and the managed worktree. None generates workflow state or review packets.
 
-For packages, the working agent proposes the actual configuration as an artifact;
-it does not yet install it as the parent's live `.c2/config`. Keep the existing
-request shape: package `reference`, an argument-array `check`, and a plain reason
-for needing it. Policy or human approval comes **before** running newly requested
-tools. The fresh probe environment installs only the approved proposal and checks
-it, then the working agent adopts the validated change and the configuration
-validator checks that adoption. Preserve denial feedback and useful work. Verify
-how the current runtime applies changed `.c2/config` to a new task; do not assume
-editing a file changes the current process's environment.
+For packages, the working agent proposes actual configuration as an artifact, without
+installing it. The read-only comparison retains baseline presence/value, proposed value,
+original artifact reference and byte digest, and exact requests/checks as native outputs.
+Review, child staging, probing and parent adoption keep that same binding. A revised
+proposal must repeat validation and approval. No separate approval ledger is written.
+Comparisons preserve JSON types recursively: `false` differs from `0`, including
+inside lists and mappings. Mapping order is immaterial. Integral floats and integers
+share JSON's number type so native serialization of `1.0` as `1` remains compatible.
+
+Keep the request shape: `reference`, an argument-array `check`, and a plain reason.
+The existing package review authorizes private pnpm builds for direct, transitive and
+selected optional dependencies, mutable transitives and repeated preparation after failure,
+worker changes or cache loss. Exact requested references and checks stay exact. Changed
+requests or installation scope need applicable authority; questions do not approve, and
+withdrawal, cancellation and newer human scope take precedence. Completed operations retain
+native durable semantics. Legacy pnpm reference/check policy matches alone cannot establish
+expanded script authority, so they take the existing review; uv/Nix policy behavior is retained.
+Baseline recipe, repository, extension and early-hook dependencies use source authority and
+standing cell policy, independently of a personal job approval. No per-dependency prompt or
+permission API is added.
+
+The separate validation child runs a bounded compare-and-write operation. That task prepares
+only the prior configuration. It checks original baseline additions and unrelated settings,
+proposal identity/content and exact requests before writing; a fresh task then prepares and
+probes the validated configuration using argument arrays. Failed setup prevents probe execution.
+After actual child success, adoption repeats comparison against the parent's current file.
+A conflict leaves bytes unchanged; it never silently merges unrelated settings. An exact
+already-applied target permits an unchanged retry without rewriting bytes, but still checks
+the original baseline and approved binding. Missing bindings from older callers fail safely.
+The writer rejects dangling/config/directory symlinks and rechecks bytes and file identity
+immediately before atomic replacement. This is a managed-task boundary, not a cross-process
+configuration service; independent out-of-service edits retain their own preparation authority.
 
 Avoid introducing a generic validation framework. Each script has a small CLI,
 a bounded result and diagnostic files. Use existing test/build commands or hooks

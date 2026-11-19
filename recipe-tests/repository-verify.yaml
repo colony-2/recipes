@@ -1,0 +1,32 @@
+id: repository-verify-test
+sequence:
+- id: verify
+  include: ../recipes/adaptive3/hooks.yaml
+  inputs:
+    hook: verify
+    request: Check the repository candidate.
+    target_directory: component
+- id: inspect
+  op: command_execution
+  const: true
+  artifacts:
+    ./: ${{ sequence.verify.outputs.result.artifact_refs }}
+  inputs:
+    env:
+      INBOX: ${{ context.environment.op.inbox }}
+    run: |
+      python3 - <<'PY'
+      import json, os, pathlib, subprocess, tarfile
+      inbox=pathlib.Path(os.environ['INBOX'])
+      archive=inbox/'test-reports.tar.gz'
+      report=None
+      if archive.exists():
+          with tarfile.open(archive) as tar:
+              report=tar.extractfile('./failure.txt').read().decode()
+      print(json.dumps({'log':(inbox/'tests.log').read_text(), 'report':report,
+                        'required_pin':pathlib.Path('.c2j-version').read_text().strip(),
+                        'candidate':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()}))
+      PY
+outputs:
+  result: ${{ sequence.verify.outputs.result }}
+  evidence: ${{ json_parse(sequence.inspect.outputs.stdout) }}
