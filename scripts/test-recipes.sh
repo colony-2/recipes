@@ -19,3 +19,4 @@ python3 recipe-tests/checks/package_preparation.py --out-dir "$results/package-p
 python3 recipe-tests/checks/package_negative_preparation.py --out-dir "$results/package-negative-preparation" \
   2>&1 | tee "$results/package-negative-preparation.log"
 c2j test run --directory . --case-timeout 10m --out-dir "$results" 2>&1 | tee "$results/run.log"
+python3 recipe-tests/adaptive3/merge-queue-title-checks.py --results "$results"

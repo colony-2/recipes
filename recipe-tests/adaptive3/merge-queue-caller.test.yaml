@@ -5,9 +5,10 @@ cases:
   runtime: &cell
     backend: sqlite
     cells:
-      root:
+      root: &root_cell
         file_sources:
-          merge-batch.yaml: ../../merge-batch.yaml
+          merge-batch.yaml: merge-queue-title-receiver.yaml
+          merge-batch-implementation.yaml: ../../merge-batch.yaml
           merge-check.yaml: ../../merge-check.yaml
           recipes/adaptive3: ../../recipes/adaptive3
           recipes/merge-queue: ../../recipes/merge-queue
@@ -49,21 +50,30 @@ cases:
               artifact_refs: {}
   mocks: &native
     ops:
-    - match: {selector: ./recipes/merge-queue}
+    - &queue_op
+      match: {selector: ./recipes/merge-queue}
       repeat: true
       behavior: {mode: passthrough}
-    - match: {op: command_execution}
+    - &command_op
+      match: {op: command_execution}
       repeat: true
       behavior: {mode: passthrough}
-    - match: {op: squash}
+    - &squash_op
+      match: {op: squash}
       repeat: true
       behavior: {mode: passthrough}
-    - match: {op: merge}
+    - &merge_op
+      match: {op: merge}
       repeat: true
       behavior: {mode: passthrough}
   assertions:
   - type: cel_true
     expr: outputs.verified && outputs.result.status=='passed' && outputs.result.publication.merged_hash==outputs.candidate.head_hash
+  - type: cel_true
+    expr: |
+      calls.exists(c,c.op=='recipe.run_and_get_result' && has(c.outputs.outputs.metadata) &&
+        c.outputs.outputs.metadata.title.matches('^Merge queue: root/refs/heads/main [(][0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2} UTC[)]$') &&
+        c.outputs.outputs.metadata.id!='')
   - type: cel_true
     expr: outputs.result.initial_submitted_at.matches('^[0-9A-Z:.\\-]+$')
 - id: retry-recognizes-a-landed-id-behind-a-newer-tip
@@ -77,7 +87,7 @@ cases:
   - type: cel_true
     expr: outputs.repeated.initial_submitted_at==outputs.result.initial_submitted_at
   - type: cel_true
-    expr: calls.filter(c,c.op=='merge' && c.node_path.startsWith('adaptive3-merge-batch/')).size()==1
+    expr: calls.filter(c,c.op=='merge' && c.node_path.contains('adaptive3-merge-batch/')).size()==1
 - id: another-items-success-cannot-release-publication
   type: integration_case
   runtime:
@@ -183,6 +193,306 @@ cases:
       outputs.repeated.status=='stuck' && outputs.result.rejected_changeid==outputs.repeated.rejected_changeid
   - type: cel_true
     expr: '!calls.exists(c,c.node_path.contains("/repeat/") && c.node_path.endsWith("/submit/sequence/batch"))'
+
+- id: capture-failure-prevents-admission-and-publication
+  type: integration_case
+  runtime: *cell
+  mocks:
+    ops:
+    - match: {node_path: merge-queue-caller-test/candidate/submit/adaptive3-merge-queue-submit/submit/sequence/capture_batch_start}
+      behavior: {mode: fail, error: {message: clock command failed}}
+    - match: {selector: ./recipes/merge-queue}
+      repeat: true
+      behavior: {mode: passthrough}
+    - match: {op: command_execution}
+      repeat: true
+      behavior: {mode: passthrough}
+    - match: {op: squash}
+      repeat: true
+      behavior: {mode: passthrough}
+  assertions:
+  - type: cel_true
+    expr: outputs.result.status=='stuck' && !has(outputs.result.publication) && !outputs.verified && outputs.result.summary.contains('clock command failed')
+  - type: cel_true
+    expr: "!calls.exists(c,c.op=='recipe.run_and_get_result' || c.op=='merge')"
+- &fixed_clock
+  id: deterministic-clock-is-stored-as-metadata
+  type: integration_case
+  runtime: *cell
+  mocks: &fixed_clock_mocks
+    ops:
+    - match: {node_path: merge-queue-caller-test/candidate/submit/adaptive3-merge-queue-submit/submit/sequence/capture_batch_start}
+      behavior:
+        mode: return
+        outputs: {stdout: '2024-04-01 12:25:00 UTC', stderr: '', exit_code: 0, success: true, timed_out: false, error_message: ''}
+    - match: {selector: ./recipes/merge-queue}
+      repeat: true
+      behavior: {mode: passthrough}
+    - match: {op: command_execution}
+      repeat: true
+      behavior: {mode: passthrough}
+    - match: {op: squash}
+      repeat: true
+      behavior: {mode: passthrough}
+    - match: {op: merge}
+      repeat: true
+      behavior: {mode: passthrough}
+  assertions:
+  - type: cel_true
+    expr: outputs.verified && outputs.result.status=='passed'
+  - type: cel_true
+    expr: |
+      calls.exists(c,c.op=='recipe.run_and_get_result' && has(c.outputs.outputs.metadata) &&
+        c.outputs.outputs.metadata.title=='Merge queue: root/refs/heads/main (2024-04-01 12:25:00 UTC)' &&
+        c.outputs.outputs.metadata.id!='')
+
+- <<: *fixed_clock
+  id: long-unicode-destination-preserves-metadata-and-identity
+  mocks:
+    ops:
+    - match: {node_path: merge-queue-caller-test/candidate/submit/adaptive3-merge-queue-submit/submit/sequence/capture_batch_start}
+      behavior:
+        mode: return
+        outputs: {stdout: '2024-04-01 12:25:00 UTC', stderr: '', exit_code: 0, success: true, timed_out: false, error_message: ''}
+    - *queue_op
+    - *command_op
+    - *squash_op
+  runtime: &observe_cell
+    backend: sqlite
+    cells:
+      root:
+        file_sources:
+          merge-batch.yaml: merge-queue-title-native.yaml
+          recipes/merge-queue: ../../recipes/merge-queue
+  inputs:
+    branch: équipe-longue-longue-longue-longue-longue-longue-longue-longue-longue-longue-longue-longue-longue-longue-longue-longue-longue-longue-日本
+  assertions:
+  - type: cel_true
+    expr: "!outputs.verified && outputs.result.status=='changes'"
+  - type: cel_true
+    expr: |
+      calls.exists(c,c.op=='recipe.run_and_get_result' &&
+        c.outputs.outputs.metadata.title=='Merge queue: root/refs/heads/équipe-longue-longue-longue-longue-longue-longue-longue-longue-longue-longue-longue-longue-longue-longue-longue-longue-longue-longue-日本 (2024-04-01 12:25:00 UTC)' &&
+        c.inputs.grouping.key.endsWith('/refs/heads/équipe-longue-longue-longue-longue-longue-longue-longue-longue-longue-longue-longue-longue-longue-longue-longue-longue-longue-longue-日本/merge') &&
+        c.inputs.git_ref=='refs/heads/équipe-longue-longue-longue-longue-longue-longue-longue-longue-longue-longue-longue-longue-longue-longue-longue-longue-longue-longue-日本')
+
+- id: clock-boundary-1
+  type: integration_case
+  runtime: *observe_cell
+  mocks:
+    ops:
+    - match: {node_path: merge-queue-caller-test/candidate/submit/adaptive3-merge-queue-submit/submit/sequence/capture_batch_start}
+      behavior:
+        mode: return
+        outputs: {stdout: '2024-04-01 11:59:59 UTC', stderr: '', exit_code: 0, success: true, timed_out: false, error_message: ''}
+    - *queue_op
+    - *command_op
+    - *squash_op
+  assertions:
+  - type: cel_true
+    expr: |
+      calls.exists(c,c.op=='recipe.run_and_get_result' &&
+        c.outputs.outputs.metadata.title=='Merge queue: root/refs/heads/main (2024-04-01 11:59:59 UTC)' &&
+        c.outputs.outputs.metadata.id!='')
+
+- id: clock-boundary-2
+  type: integration_case
+  runtime: *observe_cell
+  mocks:
+    ops:
+    - match: {node_path: merge-queue-caller-test/candidate/submit/adaptive3-merge-queue-submit/submit/sequence/capture_batch_start}
+      behavior:
+        mode: return
+        outputs: {stdout: '2024-04-01 12:00:00 UTC', stderr: '', exit_code: 0, success: true, timed_out: false, error_message: ''}
+    - *queue_op
+    - *command_op
+    - *squash_op
+  assertions:
+  - type: cel_true
+    expr: |
+      calls.exists(c,c.op=='recipe.run_and_get_result' &&
+        c.outputs.outputs.metadata.title=='Merge queue: root/refs/heads/main (2024-04-01 12:00:00 UTC)' &&
+        c.outputs.outputs.metadata.id!='')
+
+- id: clock-boundary-3
+  type: integration_case
+  runtime: *observe_cell
+  mocks:
+    ops:
+    - match: {node_path: merge-queue-caller-test/candidate/submit/adaptive3-merge-queue-submit/submit/sequence/capture_batch_start}
+      behavior:
+        mode: return
+        outputs: {stdout: '2024-04-01 23:59:59 UTC', stderr: '', exit_code: 0, success: true, timed_out: false, error_message: ''}
+    - *queue_op
+    - *command_op
+    - *squash_op
+  assertions:
+  - type: cel_true
+    expr: |
+      calls.exists(c,c.op=='recipe.run_and_get_result' &&
+        c.outputs.outputs.metadata.title=='Merge queue: root/refs/heads/main (2024-04-01 23:59:59 UTC)' &&
+        c.outputs.outputs.metadata.id!='')
+
+- id: clock-boundary-4
+  type: integration_case
+  runtime: *observe_cell
+  mocks:
+    ops:
+    - match: {node_path: merge-queue-caller-test/candidate/submit/adaptive3-merge-queue-submit/submit/sequence/capture_batch_start}
+      behavior:
+        mode: return
+        outputs: {stdout: '2024-04-02 00:00:00 UTC', stderr: '', exit_code: 0, success: true, timed_out: false, error_message: ''}
+    - *queue_op
+    - *command_op
+    - *squash_op
+  assertions:
+  - type: cel_true
+    expr: |
+      calls.exists(c,c.op=='recipe.run_and_get_result' &&
+        c.outputs.outputs.metadata.title=='Merge queue: root/refs/heads/main (2024-04-02 00:00:00 UTC)' &&
+        c.outputs.outputs.metadata.id!='')
+
+- id: clock-boundary-5
+  type: integration_case
+  runtime: *observe_cell
+  mocks:
+    ops:
+    - match: {node_path: merge-queue-caller-test/candidate/submit/adaptive3-merge-queue-submit/submit/sequence/capture_batch_start}
+      behavior:
+        mode: return
+        outputs: {stdout: '2024-04-30 23:59:59 UTC', stderr: '', exit_code: 0, success: true, timed_out: false, error_message: ''}
+    - *queue_op
+    - *command_op
+    - *squash_op
+  assertions:
+  - type: cel_true
+    expr: |
+      calls.exists(c,c.op=='recipe.run_and_get_result' &&
+        c.outputs.outputs.metadata.title=='Merge queue: root/refs/heads/main (2024-04-30 23:59:59 UTC)' &&
+        c.outputs.outputs.metadata.id!='')
+
+- id: clock-boundary-6
+  type: integration_case
+  runtime: *observe_cell
+  mocks:
+    ops:
+    - match: {node_path: merge-queue-caller-test/candidate/submit/adaptive3-merge-queue-submit/submit/sequence/capture_batch_start}
+      behavior:
+        mode: return
+        outputs: {stdout: '2024-05-01 00:00:00 UTC', stderr: '', exit_code: 0, success: true, timed_out: false, error_message: ''}
+    - *queue_op
+    - *command_op
+    - *squash_op
+  assertions:
+  - type: cel_true
+    expr: |
+      calls.exists(c,c.op=='recipe.run_and_get_result' &&
+        c.outputs.outputs.metadata.title=='Merge queue: root/refs/heads/main (2024-05-01 00:00:00 UTC)' &&
+        c.outputs.outputs.metadata.id!='')
+
+- id: clock-boundary-7
+  type: integration_case
+  runtime: *observe_cell
+  mocks:
+    ops:
+    - match: {node_path: merge-queue-caller-test/candidate/submit/adaptive3-merge-queue-submit/submit/sequence/capture_batch_start}
+      behavior:
+        mode: return
+        outputs: {stdout: '2024-12-31 23:59:59 UTC', stderr: '', exit_code: 0, success: true, timed_out: false, error_message: ''}
+    - *queue_op
+    - *command_op
+    - *squash_op
+  assertions:
+  - type: cel_true
+    expr: |
+      calls.exists(c,c.op=='recipe.run_and_get_result' &&
+        c.outputs.outputs.metadata.title=='Merge queue: root/refs/heads/main (2024-12-31 23:59:59 UTC)' &&
+        c.outputs.outputs.metadata.id!='')
+
+- id: clock-boundary-8
+  type: integration_case
+  runtime: *observe_cell
+  mocks:
+    ops:
+    - match: {node_path: merge-queue-caller-test/candidate/submit/adaptive3-merge-queue-submit/submit/sequence/capture_batch_start}
+      behavior:
+        mode: return
+        outputs: {stdout: '2025-01-01 00:00:00 UTC', stderr: '', exit_code: 0, success: true, timed_out: false, error_message: ''}
+    - *queue_op
+    - *command_op
+    - *squash_op
+  assertions:
+  - type: cel_true
+    expr: |
+      calls.exists(c,c.op=='recipe.run_and_get_result' &&
+        c.outputs.outputs.metadata.title=='Merge queue: root/refs/heads/main (2025-01-01 00:00:00 UTC)' &&
+        c.outputs.outputs.metadata.id!='')
+
+- id: successor-captures-fresh-time-preserving-contribution-age
+  type: integration_case
+  runtime: *cell
+  inputs: {retry_after_advance: true}
+  mocks:
+    ops:
+    - match: {node_path: merge-queue-caller-test/candidate/submit/adaptive3-merge-queue-submit/submit/sequence/capture_batch_start}
+      behavior:
+        mode: return
+        outputs: {stdout: '2090-04-01 12:25:00 UTC', stderr: '', exit_code: 0, success: true, timed_out: false, error_message: ''}
+    - match: {node_path: merge-queue-caller-test/candidate/repeat/adaptive3-merge-queue-submit/submit/sequence/capture_batch_start}
+      behavior:
+        mode: return
+        outputs: {stdout: '2090-04-01 13:05:00 UTC', stderr: '', exit_code: 0, success: true, timed_out: false, error_message: ''}
+    - *queue_op
+    - *command_op
+    - *squash_op
+    - *merge_op
+  assertions:
+  - type: cel_true
+    expr: |
+      outputs.verified && outputs.repeated.status=='passed' &&
+      outputs.repeated.publication==outputs.result.publication &&
+      outputs.repeated.initial_submitted_at==outputs.result.initial_submitted_at &&
+      outputs.repeated.initial_submitted_at < '2090-04-01'
+  - type: cel_true
+    expr: |
+      calls.filter(c,c.op=='recipe.run_and_get_result').size()==2 &&
+      calls.filter(c,c.op=='recipe.run_and_get_result')[0].outputs.outputs.metadata.title=='Merge queue: root/refs/heads/main (2090-04-01 12:25:00 UTC)' &&
+      calls.filter(c,c.op=='recipe.run_and_get_result')[1].outputs.outputs.metadata.title=='Merge queue: root/refs/heads/main (2090-04-01 13:05:00 UTC)' &&
+      calls.filter(c,c.op=='recipe.run_and_get_result')[0].outputs.outputs.metadata.id!=calls.filter(c,c.op=='recipe.run_and_get_result')[1].outputs.outputs.metadata.id &&
+      calls.filter(c,c.op=='recipe.run_and_get_result')[0].inputs.grouping.key==calls.filter(c,c.op=='recipe.run_and_get_result')[1].inputs.grouping.key
+
+- id: equal-times-keep-distinct-batch-generations
+  type: integration_case
+  runtime: *cell
+  inputs: {retry_after_advance: true}
+  mocks:
+    ops:
+    - match: {node_path: merge-queue-caller-test/candidate/submit/adaptive3-merge-queue-submit/submit/sequence/capture_batch_start}
+      behavior:
+        mode: return
+        outputs: {stdout: '2090-04-01 12:25:00 UTC', stderr: '', exit_code: 0, success: true, timed_out: false, error_message: ''}
+    - match: {node_path: merge-queue-caller-test/candidate/repeat/adaptive3-merge-queue-submit/submit/sequence/capture_batch_start}
+      behavior:
+        mode: return
+        outputs: {stdout: '2090-04-01 12:25:00 UTC', stderr: '', exit_code: 0, success: true, timed_out: false, error_message: ''}
+    - *queue_op
+    - *command_op
+    - *squash_op
+    - *merge_op
+  assertions:
+  - type: cel_true
+    expr: |
+      outputs.verified && outputs.repeated.status=='passed' &&
+      outputs.repeated.publication==outputs.result.publication &&
+      outputs.repeated.initial_submitted_at==outputs.result.initial_submitted_at &&
+      outputs.repeated.initial_submitted_at < '2090-04-01'
+  - type: cel_true
+    expr: |
+      calls.filter(c,c.op=='recipe.run_and_get_result').size()==2 &&
+      calls.filter(c,c.op=='recipe.run_and_get_result')[0].outputs.outputs.metadata.title=='Merge queue: root/refs/heads/main (2090-04-01 12:25:00 UTC)' &&
+      calls.filter(c,c.op=='recipe.run_and_get_result')[1].outputs.outputs.metadata.title=='Merge queue: root/refs/heads/main (2090-04-01 12:25:00 UTC)' &&
+      calls.filter(c,c.op=='recipe.run_and_get_result')[0].outputs.outputs.metadata.id!=calls.filter(c,c.op=='recipe.run_and_get_result')[1].outputs.outputs.metadata.id &&
+      calls.filter(c,c.op=='recipe.run_and_get_result')[0].inputs.grouping.key==calls.filter(c,c.op=='recipe.run_and_get_result')[1].inputs.grouping.key
 - id: grouped-caller-forwards-saved-verification-and-publishes-once
   type: integration_case
   inputs: {saved_receipt: true}
@@ -194,4 +504,4 @@ cases:
   - type: cel_true
     expr: calls.filter(c,c.node_path.endsWith('/verify/root/check')).size()==1 &&
       calls.filter(c,c.node_path.endsWith('/publish_marker')).size()==1 &&
-      calls.exists(c,c.node_path.startsWith('adaptive3-merge-batch/') && has(c.outputs.result) && has(c.outputs.result.reused) && c.outputs.result.reused)
+      calls.exists(c,c.node_path.contains('adaptive3-merge-batch/') && has(c.outputs.result) && has(c.outputs.result.reused) && c.outputs.result.reused)

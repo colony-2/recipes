@@ -109,6 +109,16 @@ same change retains its initial submission time on retry. The queue groups by
 cell and canonical branch ref, with up to 50 contributions per serial batch.
 Each batch uses the creator's verification policy.
 
+New batches have titles such as `Merge queue: recipes/refs/heads/main (2024-04-01 12:25:00 UTC)`.
+The caller captures UTC submission time immediately before grouped submission;
+this includes any later wait for a predecessor. Completed capture and submission
+checkpoints survive same-job resumption. Joining callers keep the creator's
+title; a successor uses its own creating submission's time, independently of
+contribution age. Fixed-width, 24-hour timestamps sort chronologically within
+one destination, subject to clock skew and ties within a second. Job IDs still
+distinguish generations. Existing jobs keep their titles, and custom receivers
+need no new inputs.
+
 A change confined to `.c2/recipes/hooks/build/publish.yaml` or its sibling
 `publish/` directory runs the same merge recipe inline with one contribution.
 It can land ahead of queued product changes. If another change lands during

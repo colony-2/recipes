@@ -174,3 +174,46 @@ Scripted repair choices verify routing and rollback, not Codex confidence or sem
 
 The replay helper runs through the Recipes-owned Python extension op. The
 statements describe acceptance requirements for the queue.
+
+## Batch titles
+
+
+New merge batches should be recognizable by destination and a stable UTC submission time. These expectations develop the approved direction; none is a passing result. Each expectation is at most 30 words. Priority, level, dependencies and relevant files are annotated per row.
+
+Filename key: **Submit** = `recipes/adaptive3/merge-queue-submit.yaml`; **Caller** = `recipe-tests/adaptive3/merge-queue-caller.yaml`; **Suite** = `recipe-tests/adaptive3/merge-queue-caller.test.yaml`. **Native fixtures** = `recipe-tests/adaptive3/merge-queue-title-native.yaml` and the runtime-owned grouping/persistence regressions. No additional acceptance driver is required by the current human direction.
+
+| ID | Expectation | Relevant filenames | Priority | Level / dependencies |
+| --- | --- | --- | --- | --- |
+| MQT-01 | A new batch stores a title containing its destination cell, canonical branch and creating submission’s timestamp. | Submit; Caller; Suite | High | Integration / pinned c2j, SQLite, Git |
+| MQT-02 | Titles use fixed-width, 24-hour UTC timestamps regardless of the capture worker’s timezone or locale. | Submit; Caller; Suite | High | Integration / pinned c2j, system date, timezone and locale fixtures |
+| MQT-03 | Titles sort chronologically within one destination across noon, midnight, month and year boundaries. | Submit; Caller; Suite | High | Integration / pinned c2j, deterministic clock outputs |
+| MQT-04 | Joining contributors cannot replace an existing batch’s stored title or timestamp with their own proposed values. | Submit; Suite; Native fixtures | High | Integration / pinned c2j, SQLite, two native callers, controlled receiver dispatch |
+| MQT-05 | A successor’s title uses its creating submission’s timestamp, even when its contribution retains an older submission age. | Submit; Suite; Native fixtures | High | Integration / pinned c2j, SQLite, native successor generation |
+| MQT-06 | Same-job resumption preserves the recorded timestamp and batch handle without repeating completed capture or submission effects. | Submit; Native fixtures | High | Integration / pinned c2j, SQLite, separate runner invocations, uninterrupted control |
+| MQT-07 | Strict custom receivers accept titled submissions without receiving undeclared title or timestamp inputs. | Submit; Caller; Suite | High | Integration / pinned c2j, SQLite, strict receiver schema |
+| MQT-08 | Clock-command failure prevents batch submission and returns an operational failure without direct publication or a title-less fallback. | Submit; Caller; Suite | High | Integration / pinned c2j, failing clock fixture |
+| MQT-09 | Long and Unicode destination names preserve a complete timestamp and unchanged queue identity. | Submit; Caller; Suite | Medium | Integration / pinned c2j, long-name and Unicode fixtures |
+| MQT-10 | Equal displayed timestamps do not collapse distinct batch generations or alter their individual results. | Submit; Suite; Native fixtures | High | Integration / pinned c2j, SQLite, equal clock outputs, native generations |
+| MQT-11 | Titled grouped batches still verify their candidates and return each caller’s confirmed landed commit. | Submit; Caller; Suite | High | Integration / pinned c2j, SQLite, Git, uv, verifier hook |
+| MQT-12 | Rejected or unconfirmed contributions cannot acquire successful publication merely because their batch has a valid title. | Submit; Caller; Suite | High | Integration / pinned c2j, SQLite, Git, rejection and foreign-receipt fixtures |
+
+## Evidence required before merge
+
+Validation scope was revised by the human cancellation of c2j job
+`GpU4zxTl4UreRPCOtbRk19OhmCn`: “This is already well tested layer by layer”.
+The expectations above remain unchanged. For MQT-04 and MQT-06, use the existing
+runtime grouping, checkpoint and persistence coverage together with this recipe’s
+stored-title tests. Additional combined pre-lease and separate-process title
+acceptance runs are not delivery prerequisites. They were not executed and must
+not be reported as passing. This supersedes the earlier plan to build new test
+controls solely for those runs.
+
+For MQT-01, MQT-05 and MQT-07, retain the expected and actual stored title plus the actual batch ID. Submission arguments alone are insufficient. Use the strict test receivers to read stored metadata through `c2j job dag self --subtree --json`.
+
+For MQT-02, execute the real capture command with a non-UTC `TZ` and an available non-default locale. Check the output format and UTC value against the host UTC clock around capture; this is evidence, not a recipe time gate. For MQT-03, supply deterministic captured timestamps on both sides of the stated boundaries and compare the actual constructed/stored titles in lexical order. That case checks title assembly and ordering; the real-command case separately checks formatting.
+
+For MQT-05, record a genuinely separate successor with its actual batch ID and fresh stored title. Do not infer grouping or generation identity from matching title strings. Runtime evidence supporting MQT-04 and MQT-06 must retain its own tested scope; generic runtime passes are not combined title acceptance runs.
+
+For MQT-08, fail only the capture command with otherwise valid preparation and permissions. Pair it with the same fixture’s successful control. Assert no grouped submission or publication occurs. For MQT-12, preserve existing negative caller checks and their healthy control, rather than duplicate queue validation logic.
+
+Native result reports must distinguish passed, failed and unexecuted checks. Missing prerequisites or incomplete metadata reads are not feature passes. The normal repository verification also remains required. No production deployment is requested.

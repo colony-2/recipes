@@ -1,6 +1,9 @@
 schema_version: 2
 id: merge-queue-caller-test
 input_schema:
+  branch:
+    type: string
+    default_value: main
   saved_receipt:
     type: boolean
     default_value: false
@@ -11,87 +14,111 @@ input_schema:
     type: boolean
     default_value: false
 inputs:
+  branch: ${{ inputs.branch }}
   saved_receipt: ${{ inputs.saved_receipt }}
   retry_after_advance: ${{ inputs.retry_after_advance }}
   retry_rejection: ${{ inputs.retry_rejection }}
 sequence:
-- id: work
-  op: command_execution
-  inputs:
-    run: printf 'queue-ready\n' > contribution.txt
-- id: prepare
-  include: ../../recipes/adaptive3/merge-queue-prepare.yaml
-  inputs:
-    message: Add the queue fixture
-- id: verify
-  when: inputs.saved_receipt
-  include: ../../recipes/adaptive3/verify-candidate.yaml
-  inputs:
-    request: Check the caller candidate before queue submission.
-    target_directory: .
-    documents: {}
-    settings: {}
-    require_verification: true
-- id: submit
-  include: ../../recipes/adaptive3/merge-queue-submit.yaml
-  inputs:
-    contribution: ${{ sequence.prepare.outputs.candidate }}
-    verification: ${{ sequence[?'verify'].orValue({}).?outputs.orValue({}).?receipt.orValue({}) }}
-    receiver: ${{ 'git+' + context.git.repo + '//merge-batch.yaml@main' }}
-    require_verification: true
-    target_directory: .
-    settings: {}
-- id: publish
-  when: inputs.saved_receipt && sequence.submit.outputs.result.status=='passed'
-  include: ../../recipes/adaptive3/hooks.yaml
-  inputs:
-    hook: publish
-    request: Publish the confirmed caller candidate.
-    target_directory: .
-    documents: {}
-    settings: {}
-    publication: ${{ sequence.submit.outputs.result.publication }}
-- id: read_target
-  when: sequence.submit.outputs.result.status=='passed'
+- id: initialize_branch
+  when: inputs.branch!='main'
   op: command_execution
   const: true
-  workspace:
-    cell: ${{ context.workflow.cell }}
-    ref: main
   inputs:
     env:
-      LANDED: ${{ sequence.submit.outputs.result.?publication.orValue({}).?merged_hash.orValue('') }}
-      CHANGE_ID: ${{ sequence.prepare.outputs.candidate.changeid }}
-    run: |
-      set -eu
-      test "$(git rev-parse HEAD)" = "$LANDED"
-      test "$(cat contribution.txt)" = queue-ready
-      test "$(git log -1 --format='%(trailers:key=Change-Id,valueonly)' | tr -d '\n')" = "$CHANGE_ID"
-- id: advance
-  when: inputs.retry_after_advance
+      QUEUE_BRANCH: ${{ inputs.branch }}
+    run: git push origin "HEAD:refs/heads/$QUEUE_BRANCH"
+- id: candidate
+  inputs:
+    branch: ${{ inputs.branch }}
+    saved_receipt: ${{ inputs.saved_receipt }}
+    retry_after_advance: ${{ inputs.retry_after_advance }}
+    retry_rejection: ${{ inputs.retry_rejection }}
   workspace:
     cell: ${{ context.workflow.cell }}
-    ref: main
+    ref: ${{ inputs.branch }}
   sequence:
-  - id: unrelated
+  - id: work
     op: command_execution
     inputs:
-      run: printf 'later\n' > later.txt
-  - id: merge
-    op: merge
-- id: repeat
-  when: inputs.retry_after_advance || inputs.retry_rejection
-  include: ../../recipes/adaptive3/merge-queue-submit.yaml
-  inputs:
-    contribution: ${{ sequence.prepare.outputs.candidate }}
-    verification: ${{ sequence[?'verify'].orValue({}).?outputs.orValue({}).?receipt.orValue({}) }}
-    queue_history: ${{ sequence.submit.outputs.result }}
-    receiver: ${{ 'git+' + context.git.repo + '//merge-batch.yaml@main' }}
-    require_verification: true
-    target_directory: .
-    settings: {}
+      run: printf 'queue-ready\n' > contribution.txt
+  - id: prepare
+    include: ../../recipes/adaptive3/merge-queue-prepare.yaml
+    inputs:
+      message: Add the queue fixture
+  - id: verify
+    when: inputs.saved_receipt
+    include: ../../recipes/adaptive3/verify-candidate.yaml
+    inputs:
+      request: Check the caller candidate before queue submission.
+      target_directory: .
+      documents: {}
+      settings: {}
+      require_verification: true
+  - id: submit
+    include: ../../recipes/adaptive3/merge-queue-submit.yaml
+    inputs:
+      contribution: ${{ sequence.prepare.outputs.candidate }}
+      verification: ${{ sequence[?'verify'].orValue({}).?outputs.orValue({}).?receipt.orValue({}) }}
+      receiver: ${{ 'git+' + context.git.repo + '//merge-batch.yaml@main' }}
+      require_verification: true
+      target_directory: .
+      settings: {}
+  - id: publish
+    when: inputs.saved_receipt && sequence.submit.outputs.result.status=='passed'
+    include: ../../recipes/adaptive3/hooks.yaml
+    inputs:
+      hook: publish
+      request: Publish the confirmed caller candidate.
+      target_directory: .
+      documents: {}
+      settings: {}
+      publication: ${{ sequence.submit.outputs.result.publication }}
+  - id: read_target
+    when: sequence.submit.outputs.result.status=='passed'
+    op: command_execution
+    const: true
+    workspace:
+      cell: ${{ context.workflow.cell }}
+      ref: ${{ inputs.branch }}
+    inputs:
+      env:
+        LANDED: ${{ sequence.submit.outputs.result.?publication.orValue({}).?merged_hash.orValue('') }}
+        CHANGE_ID: ${{ sequence.prepare.outputs.candidate.changeid }}
+      run: |
+        set -eu
+        test "$(git rev-parse HEAD)" = "$LANDED"
+        test "$(cat contribution.txt)" = queue-ready
+        test "$(git log -1 --format='%(trailers:key=Change-Id,valueonly)' | tr -d '\n')" = "$CHANGE_ID"
+  - id: advance
+    when: inputs.retry_after_advance
+    workspace:
+      cell: ${{ context.workflow.cell }}
+      ref: ${{ inputs.branch }}
+    sequence:
+    - id: unrelated
+      op: command_execution
+      inputs:
+        run: printf 'later\n' > later.txt
+    - id: merge
+      op: merge
+  - id: repeat
+    when: inputs.retry_after_advance || inputs.retry_rejection
+    include: ../../recipes/adaptive3/merge-queue-submit.yaml
+    inputs:
+      contribution: ${{ sequence.prepare.outputs.candidate }}
+      verification: ${{ sequence[?'verify'].orValue({}).?outputs.orValue({}).?receipt.orValue({}) }}
+      queue_history: ${{ sequence.submit.outputs.result }}
+      receiver: ${{ 'git+' + context.git.repo + '//merge-batch.yaml@main' }}
+      require_verification: true
+      target_directory: .
+      settings: {}
+  outputs:
+    result: ${{ sequence.submit.outputs.result }}
+    repeated: ${{ sequence[?'repeat'].orValue({}).?outputs.orValue({}).?result.orValue({}) }}
+    verified: ${{ sequence[?'read_target'].orValue({}).?outputs.orValue({}).?success.orValue(false) }}
+    candidate: ${{ sequence.prepare.outputs.candidate }}
 outputs:
-  result: ${{ sequence.submit.outputs.result }}
-  repeated: ${{ sequence[?'repeat'].orValue({}).?outputs.orValue({}).?result.orValue({}) }}
-  verified: ${{ sequence[?'read_target'].orValue({}).?outputs.orValue({}).?success.orValue(false) }}
-  candidate: ${{ sequence.prepare.outputs.candidate }}
+  result: ${{ sequence.candidate.outputs.result }}
+  repeated: ${{ sequence.candidate.outputs.repeated }}
+  verified: ${{ sequence.candidate.outputs.verified }}
+  candidate: ${{ sequence.candidate.outputs.candidate }}

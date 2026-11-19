@@ -1,0 +1,34 @@
+# Strict test receiver: observe stored metadata, then run the real queue.
+schema_version: 2
+id: titled-merge-batch
+input_schema:
+  branch: {type: string, required: true}
+  verification_policy: {type: object, required: true}
+inputs:
+  branch: ${{ inputs.branch }}
+  verification_policy: ${{ inputs.verification_policy }}
+sequence:
+- id: metadata
+  op: command_execution
+  const: true
+  inputs:
+    run: |
+      python3 - <<'PY'
+      import json, subprocess
+      dag = json.loads(subprocess.check_output(['c2j', 'job', 'dag', 'self', '--subtree', '--json']))
+      assert dag['coverage']['complete'], dag['coverage']
+      own = [node for node in dag['nodes'] if node['id'] == dag['selected']['id']]
+      assert len(own) == 1, dag
+      print(json.dumps({'id': own[0]['id'], 'title': own[0]['title']}))
+      PY
+- id: queue
+  include: ./merge-batch-implementation.yaml
+  inputs:
+    branch: ${{ inputs.branch }}
+    verification_policy: ${{ inputs.verification_policy }}
+outputs:
+  metadata: ${{ json_parse(sequence.metadata.outputs.stdout) }}
+  version: ${{ sequence.queue.outputs.version }}
+  branch: ${{ sequence.queue.outputs.branch }}
+  requested: ${{ sequence.queue.outputs.requested }}
+  results: ${{ sequence.queue.outputs.results }}
