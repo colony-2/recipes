@@ -31,9 +31,9 @@ cases:
   inputs: {scenario: ordinary}
   mocks: &native
     ops:
-    - {match: {selector: ./recipes/merge-queue}, repeat: true, behavior: {mode: passthrough}}
-    - {match: {op: command_execution}, repeat: true, behavior: {mode: passthrough}}
-    - {match: {op: merge}, repeat: true, behavior: {mode: passthrough}}
+    - &queue_op {match: {selector: ./recipes/merge-queue}, repeat: true, behavior: {mode: passthrough}}
+    - &command {match: {op: command_execution}, repeat: true, behavior: {mode: passthrough}}
+    - &merge {match: {op: merge}, repeat: true, behavior: {mode: passthrough}}
   assertions:
   - type: cel_true
     expr: outputs.results.size()==3 && outputs.results.filter(r,r.status=='success').map(r,r.changeid)==['000000000000000000000000001']
@@ -67,17 +67,19 @@ cases:
     expr: outputs.results.exists(r,r.status=='fail-validation' && r.changeid=='000000000000000000000000002' && size(r.failure_logs)>0)
 - id: bounded-repair-keeps-original-position-and-change-id
   type: integration_case
-  runtime:
+  runtime: &repair_runtime
     backend: sqlite
+    observe_files: [change.txt, third.txt, stray.txt]
     cells:
       root:
         file_sources: *sources
         files:
           .c2/recipes/hooks/build/verify.yaml: *pass
-  inputs: {scenario: repair}
+  inputs: {scenario: conflict}
   mocks:
     ops:
-    - match: {selector: 'nix:github:colony-2/c2ops/published#codex'}
+    - &repair_second
+      match: &agent {selector: 'nix:github:colony-2/c2ops/published#codex'}
       behavior:
         mode: return
         outputs:
@@ -89,9 +91,9 @@ cases:
         effects:
           worktree:
             change.txt: "1 and 2\n"
-    - {match: {selector: ./recipes/merge-queue}, repeat: true, behavior: {mode: passthrough}}
-    - {match: {op: command_execution}, repeat: true, behavior: {mode: passthrough}}
-    - {match: {op: merge}, repeat: true, behavior: {mode: passthrough}}
+    - *queue_op
+    - *command
+    - *merge
   assertions:
   - type: cel_true
     expr: outputs.results.size()==3 && outputs.results.all(r,r.status=='success')
@@ -100,6 +102,156 @@ cases:
   - type: cel_true
     expr: calls.filter(c,c.op=='extension_execution' && c.node_path.contains('/repair/') &&
       c.inputs.selector=='nix:github:colony-2/c2ops/published#codex').size()==1
+- id: consecutive-repairs-land-on-the-repaired-prefix
+  type: integration_case
+  runtime: *repair_runtime
+  inputs: {scenario: overlapping}
+  mocks:
+    ops:
+    - *repair_second
+    - match: *agent
+      behavior:
+        mode: return
+        outputs: &resolved
+          status: completed
+          output_schema_valid: true
+          response: {status: resolved, summary: Preserve the older changes together with the current change.}
+        effects:
+          worktree: {change.txt: "1 and 2 and 3\n"}
+    - *queue_op
+    - *command
+    - *merge
+  assertions:
+  - type: cel_true
+    expr: calls.filter(c,c.op=='extension_execution' && c.inputs.selector=='nix:github:colony-2/c2ops/published#codex').map(c,c.worktree['change.txt'])==['1\n','1 and 2\n']
+  - type: cel_true
+    expr: outputs.results.map(r,r.changeid)==['000000000000000000000000001','000000000000000000000000002','000000000000000000000000003'] &&
+      outputs.results.all(r,r.status=='success') && outputs.published==outputs.results.map(r,r.hash)
+  - type: cel_true
+    expr: repositories.root.files['change.txt']=='1 and 2 and 3\n'
+- id: declined-repair-is-not-retried-after-a-younger-repair
+  type: integration_case
+  runtime: *repair_runtime
+  inputs: {scenario: overlapping}
+  mocks:
+    ops:
+    - match: *agent
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response: {status: uncertain, summary: The second change needs an author decision.}
+    - match: *agent
+      behavior:
+        mode: return
+        outputs: *resolved
+        effects:
+          worktree: {change.txt: "1 and 3\n"}
+    - *queue_op
+    - *command
+    - *merge
+  assertions:
+  - type: cel_true
+    expr: calls.filter(c,c.op=='extension_execution' && c.inputs.selector=='nix:github:colony-2/c2ops/published#codex').map(c,c.worktree['change.txt'])==['1\n','1\n']
+  - type: cel_true
+    expr: outputs.results.filter(r,r.status=='success').map(r,r.changeid)==['000000000000000000000000001','000000000000000000000000003'] &&
+      outputs.results.exists(r,r.changeid=='000000000000000000000000002' && r.status=='fail-conflict' && size(r.failure_logs)>0)
+  - type: cel_true
+    expr: outputs.published==outputs.results.filter(r,r.status=='success').map(r,r.hash) && repositories.root.files['change.txt']=='1 and 3\n'
+- id: out-of-scope-later-repair-keeps-the-accepted-prefix
+  type: integration_case
+  runtime: *repair_runtime
+  inputs: {scenario: overlapping}
+  mocks:
+    ops:
+    - *repair_second
+    - match: *agent
+      behavior:
+        mode: return
+        outputs: *resolved
+        effects:
+          worktree: {change.txt: "1 and 2 and 3\n", stray.txt: "outside the approved change\n"}
+    - *queue_op
+    - *command
+    - *merge
+  assertions:
+  - type: cel_true
+    expr: outputs.results.filter(r,r.status=='success').map(r,r.changeid)==['000000000000000000000000001','000000000000000000000000002'] &&
+      outputs.results.exists(r,r.changeid=='000000000000000000000000003' && r.status=='fail-conflict' && size(r.failure_logs)>0)
+  - type: cel_true
+    expr: outputs.published==outputs.results.filter(r,r.status=='success').map(r,r.hash) &&
+      repositories.root.files['change.txt']=='1 and 2\n' && !('stray.txt' in repositories.root.files)
+- id: subset-verification-and-final-landing-reuse-an-accepted-repair
+  type: integration_case
+  runtime:
+    backend: sqlite
+    observe_files: [change.txt, third.txt]
+    cells:
+      root:
+        file_sources: *sources
+        files:
+          .c2/recipes/hooks/build/verify.yaml: |
+            id: verify
+            sequence:
+            - id: check
+              op: command_execution
+              inputs:
+                run: if [ -f third.txt ]; then echo failed; else echo passed; fi
+            outputs:
+              api_version: c2.build-hook/v1
+              status: ${{ sequence.check.outputs.stdout }}
+              summary: The third change fails verification.
+              artifact_refs: {}
+  inputs: {scenario: conflict}
+  mocks: &one_repair
+    ops: [*repair_second, *queue_op, *command, *merge]
+  assertions:
+  - type: cel_true
+    expr: calls.exists(c,c.node_path.startsWith('adaptive3-merge-check/') && c.node_path.endsWith('/root/check') &&
+      'change.txt' in c.worktree && c.worktree['change.txt']=='1 and 2\n' && !('third.txt' in c.worktree)) &&
+      calls.exists(c,c.node_path.contains('/final/') && c.node_path.endsWith('/root/check') && c.worktree['change.txt']=='1 and 2\n')
+  - type: cel_true
+    expr: outputs.results.filter(r,r.status=='success').map(r,r.changeid)==['000000000000000000000000001','000000000000000000000000002'] &&
+      outputs.results.exists(r,r.changeid=='000000000000000000000000003' && r.status=='fail-validation' && size(r.failure_logs)>0)
+  - type: cel_true
+    expr: outputs.published==outputs.results.filter(r,r.status=='success').map(r,r.hash) &&
+      repositories.root.files['change.txt']=='1 and 2\n' && !('third.txt' in repositories.root.files)
+- id: subset-with-a-different-prefix-lands-the-original-change
+  type: integration_case
+  runtime:
+    backend: sqlite
+    observe_files: [change.txt, third.txt]
+    cells:
+      root:
+        file_sources: *sources
+        files:
+          .c2/recipes/hooks/build/verify.yaml: |
+            id: verify
+            sequence:
+            - id: check
+              op: command_execution
+              inputs:
+                run: |
+                  if [ -f change.txt ] && grep -q '^1' change.txt; then echo failed; else echo passed; fi
+            outputs:
+              api_version: c2.build-hook/v1
+              status: ${{ sequence.check.outputs.stdout }}
+              summary: The oldest change fails verification.
+              artifact_refs: {}
+  inputs: {scenario: conflict}
+  mocks: *one_repair
+  assertions:
+  - type: cel_true
+    expr: calls.exists(c,c.node_path.startsWith('adaptive3-merge-check/') && c.node_path.endsWith('/root/check') &&
+      'change.txt' in c.worktree && c.worktree['change.txt']=='2\n' && 'third.txt' in c.worktree) &&
+      calls.exists(c,c.node_path.contains('/final/') && c.node_path.endsWith('/root/check') && c.worktree['change.txt']=='2\n')
+  - type: cel_true
+    expr: outputs.results.filter(r,r.status=='success').map(r,r.changeid)==['000000000000000000000000002','000000000000000000000000003'] &&
+      outputs.results.exists(r,r.changeid=='000000000000000000000000001' && r.status=='fail-validation' && size(r.failure_logs)>0)
+  - type: cel_true
+    expr: outputs.published==outputs.results.filter(r,r.status=='success').map(r,r.hash) &&
+      repositories.root.files['change.txt']=='2\n' && repositories.root.files['third.txt']=='third\n'
 - id: rebuilds-and-reverifies-after-real-upstream-advance
   type: integration_case
   runtime:

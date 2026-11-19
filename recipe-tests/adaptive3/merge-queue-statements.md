@@ -85,6 +85,7 @@ Suite: `recipe-tests/adaptive3/merge-queue-replay.test.yaml`.
 | MQ-28 | Uncertain or behavior-changing repairs return conflict rejection without publication or repeated automatic repair attempts. | `merge-batch.yaml` | Critical | Integration / c2j, scripted repair |
 | MQ-29 | Older repairs are evaluated against older accepted work and reinserted before younger additions. | `merge-batch.yaml` | High | Integration / c2j, ordered repair fixtures |
 | MQ-30 | Empty replay preserves the original change ID in a reachable commit with an individual success hash. | `merge-batch.yaml` | High | Integration / c2j, Python replay, Git |
+| MQ-76 | If reconstructing the preceding changes produces a different commit, the batch stops before asking for a repair or publishing. | `merge-queue-repair.yaml` | Critical | Integration / c2j, Git, missing predecessor |
 
 ## Combined verification and subset selection
 
@@ -92,6 +93,11 @@ Suite: `recipe-tests/adaptive3/merge-queue-selection.test.yaml`.
 
 | ID | Expectation | Files | Priority | Level / dependencies |
 | --- | --- | --- | --- | --- |
+| MQ-71 | Consecutive conflicts see each earlier accepted repair and land in order with their original change IDs. | `merge-queue-resolve.yaml`, `merge-queue-repair.yaml` | Critical | Integration / c2j, Git, scripted repair |
+| MQ-72 | A declined repair is attempted once, even when a younger repair succeeds and causes the batch to be rebuilt. | `merge-queue-resolve.yaml` | Critical | Integration / c2j, Git, scripted repair |
+| MQ-73 | A later repair that touches an unauthorized path leaves earlier repairs publishable and returns a conflict diagnostic for the rejected change. | `merge-queue-resolve.yaml`, `merge-queue-repair.yaml` | High | Integration / c2j, Git, scripted repair |
+| MQ-74 | After combined verification fails, subset checks and final verification retain a repair when its predecessors are unchanged. | `merge-queue-resolve.yaml`, `merge-queue-land.yaml`, `merge-queue-select.yaml` | Critical | Integration / c2j, Git, verification hook |
+| MQ-75 | A subset that excludes a repair’s predecessor verifies and lands the original contribution on its new base. | `merge-queue-replay.yaml`, `merge-queue-land.yaml` | High | Integration / c2j, Git, verification hook |
 | MQ-31 | A passing complete sequence lands all eligible contributions without subset-search publication. | `merge-batch.yaml`, `merge-check.yaml` | Critical | Integration / c2j, controlled verifier |
 | MQ-32 | A failing sequence launches isolated parallel subset checks with no more than four concurrent probes. | `merge-batch.yaml` | High | Integration / c2j, parallel child fixtures |
 | MQ-33 | Subset checks preserve the same published base and relative order while naming their exact persisted candidate HEADs. | `merge-check.yaml` | Critical | Integration / c2j, real snapshots |
