@@ -1,0 +1,139 @@
+recipe: publisher-merge.yaml
+cases:
+- id: changed-hook-chases-a-competing-merge-inline
+  type: integration_case
+  inputs: {change: hook}
+  runtime: &cell
+    backend: sqlite
+    cells:
+      root:
+        file_sources:
+          recipes/merge-queue: ../../recipes/merge-queue
+          recipes/adaptive3: ../../recipes/adaptive3
+          merge-batch.yaml: ../../merge-batch.yaml
+        files:
+          .c2/recipes/hooks/build/publish.yaml: |
+            id: publish
+            inputs:
+              merged_hash: ${{ inputs.merged_hash }}
+            sequence:
+            - id: check
+              op: command_execution
+              inputs:
+                env:
+                  LANDED: ${{ inputs.merged_hash }}
+                run: test "$(git rev-parse HEAD)" = "$LANDED"
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: ${{ inputs.merged_hash }}
+              artifact_refs: {}
+          .c2/recipes/hooks/build/verify.yaml: |
+            id: verify
+            sequence:
+            - id: check
+              op: command_execution
+              inputs:
+                env:
+                  CELL_REPO: ${{ context.git.repo }}
+                run: |
+                  set -eu
+                  case "$CELL_REPO" in https://example.test/fixture-*) ;; *) exit 1 ;; esac
+                  hook=.c2/recipes/hooks/build/publish.yaml
+                  if test -f "$hook" && grep -q 'revised publisher' "$hook" && ! test -f concurrent.txt; then
+                    work=$(mktemp -d)
+                    trap 'rm -r "$work"' EXIT
+                    git clone --quiet --branch main "$(git remote get-url origin)" "$work"
+                    echo 'earlier landing' > "$work/concurrent.txt"
+                    git -C "$work" add concurrent.txt
+                    git -C "$work" -c user.name=Test -c user.email=test@example.test commit -qm 'Land product change'
+                    git -C "$work" push --quiet origin HEAD:refs/heads/main
+                  fi
+                  if test -f "$hook" && grep -q 'invalid publisher' "$hook"; then
+                    printf failed
+                  else
+                    printf passed
+                  fi
+            outputs:
+              api_version: c2.build-hook/v1
+              status: ${{ sequence.check.outputs.stdout }}
+              summary: Verified the publisher candidate.
+              artifact_refs: {}
+  mocks: &native
+    ops:
+    - &command
+      match: {op: command_execution}
+      repeat: true
+      behavior: {mode: passthrough}
+    - &queue_op
+      match: {selector: ./recipes/merge-queue}
+      repeat: true
+      behavior: {mode: passthrough}
+    - &squash
+      match: {op: squash}
+      repeat: true
+      behavior: {mode: passthrough}
+    - match: {op: merge}
+      repeat: true
+      behavior: {mode: passthrough}
+  assertions:
+  - type: cel_true
+    expr: outputs.result.status=='ready' && outputs.result.publish.summary==outputs.result.publication.merged_hash && outputs.result.publication.merged_hash!=outputs.candidate.head_hash
+  - type: cel_true
+    expr: repositories.root.files['concurrent.txt']=='earlier landing\n' && repositories.root.files['.c2/recipes/hooks/build/publish.yaml'].contains('revised publisher')
+  - type: cel_true
+    expr: calls.filter(c,c.node_path.contains('/inline_batch/') && c.node_path.endsWith('/verify/verify/root/check')).size()==2 && !calls.exists(c,c.op=='recipe.run_and_get_result')
+- id: publisher-helper-merges-inline
+  type: integration_case
+  inputs: {change: helper}
+  runtime: *cell
+  mocks: *native
+  assertions:
+  - type: cel_true
+    expr: outputs.result.status=='ready' && outputs.result.publish.summary==outputs.candidate.head_hash && calls.exists(c,c.op=='merge' && c.node_path.contains('/inline_batch/'))
+- id: product-edit-uses-the-grouped-receiver
+  type: integration_case
+  inputs: {change: product}
+  runtime: *cell
+  mocks: *native
+  assertions:
+  - type: cel_true
+    expr: outputs.result.status=='ready' && outputs.result.publish.summary==outputs.result.publication.merged_hash && repositories.root.files['product.txt']=='product change\n'
+  - type: cel_true
+    expr: calls.filter(c,c.op=='recipe.run_and_get_result' && has(c.inputs.grouping) && c.inputs.grouping.max_items==50).size()==1 && calls.exists(c,c.op=='merge' && c.node_path.startsWith('adaptive3-merge-batch/'))
+- id: removed-publisher-merges-inline
+  type: integration_case
+  inputs: {change: delete}
+  runtime: *cell
+  mocks: *native
+  assertions:
+  - type: cel_true
+    expr: outputs.result.status=='ready' && outputs.result.publish.status=='skipped' && calls.exists(c,c.op=='merge' && c.node_path.contains('/inline_batch/'))
+- id: mixed-rename-returns-for-splitting
+  type: integration_case
+  inputs: {change: mixed}
+  runtime: *cell
+  mocks: &no_merge
+    ops: [*command, *queue_op, *squash]
+  assertions: &split
+  - type: cel_true
+    expr: outputs.result.status=='changes' && outputs.result.stage=='implementation' && !calls.exists(c,c.op in ['merge','recipe.run_and_get_result'])
+  - type: cel_true
+    expr: repositories.root.new_commits==0
+- id: direct-mode-also-returns-mixed-work-for-splitting
+  type: integration_case
+  inputs: {change: mixed, merge_queue: false}
+  runtime: *cell
+  mocks:
+    ops: [*command]
+  assertions: *split
+- id: failed-inline-verification-returns-for-repair
+  type: integration_case
+  inputs: {change: invalid}
+  runtime: *cell
+  mocks: *no_merge
+  assertions:
+  - type: cel_true
+    expr: outputs.result.status=='changes' && outputs.result.stage=='implementation' && outputs.result.rejected_changeid==outputs.candidate.changeid && size(outputs.result.errors)>0
+  - type: cel_true
+    expr: repositories.root.new_commits==0 && !calls.exists(c,c.op in ['merge','recipe.run_and_get_result'])

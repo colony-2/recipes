@@ -109,6 +109,13 @@ same change retains its initial submission time on retry. The queue groups by
 cell and canonical branch ref, with up to 50 contributions per serial batch.
 Each batch uses the creator's verification policy.
 
+A change confined to `.c2/recipes/hooks/build/publish.yaml` or its sibling
+`publish/` directory runs the same merge recipe inline with one contribution.
+It can land ahead of queued product changes. If another change lands during
+verification, the merge recipe replays and verifies against the updated branch.
+Changes that touch both publisher and product paths return to implementation
+for splitting, including in direct-merge mode.
+
 The Python op screens contributions, replays bundles in a disposable Git
 checkout, plans subset probes, and produces per-change receipts. Replay retains
 the original commit metadata and Change-Id. The receiver can try one narrow

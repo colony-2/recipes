@@ -63,11 +63,11 @@ state:
       transitions:
       - to: done
         when: outputs.result.status == 'stuck'
+        payload:
+          result: ${{ outputs.result }}
       - to: confirmed
         when: size(outputs.merge_state)>0
-      - to: queue
-        when: inputs.merge_queue
-      - to: merge
+      - to: classify
         when: 'true'
     confirmed:
       sequence: []
@@ -121,9 +121,47 @@ state:
       transitions:
       - to: done
         when: 'true'
+    classify:
+      op: command_execution
+      const: true
+      inputs:
+        env:
+          BASE: ${{ context.git.execution.base_hash }}
+        run: |
+          set -eu
+          hook=.c2/recipes/hooks/build/publish
+          publisher=$(git diff --no-renames --name-only "$BASE" HEAD -- "$hook.yaml" "$hook/")
+          if [ -z "$publisher" ]; then
+            printf product
+          elif git diff --quiet --no-renames "$BASE" HEAD -- ":(exclude)$hook.yaml" ":(exclude)$hook/"; then
+            printf publisher
+          else
+            test "$?" -eq 1
+            printf mixed
+          fi
+      transitions:
+      - to: done
+        when: outputs.success && outputs.stdout == 'mixed'
+        payload:
+          result:
+            status: changes
+            stage: implementation
+            summary: Split the publish hook and its private files into a separate contribution from the product changes.
+            initial_submitted_at: ${{ inputs.queue_history.?initial_submitted_at.orValue('') }}
+      - to: queue
+        when: outputs.success && inputs.merge_queue && outputs.stdout in ['product','publisher']
+      - to: merge
+        when: outputs.success && !inputs.merge_queue && outputs.stdout in ['product','publisher']
+      - to: done
+        when: 'true'
+        payload:
+          result:
+            status: stuck
+            summary: Could not classify the prepared Git diff for merge.
     queue:
       include: ./merge-queue-submit.yaml
       inputs:
+        inline: ${{ states.classify.outputs.stdout == 'publisher' }}
         contribution: ${{ inputs.contribution }}
         verification: ${{ inputs.verification }}
         queue_history: ${{ inputs.queue_history }}
@@ -135,6 +173,8 @@ state:
         when: outputs.result.status == 'passed'
       - to: done
         when: 'true'
+        payload:
+          result: ${{ outputs.result }}
     merge:
       include: ./integration.yaml
       inputs:
@@ -166,6 +206,8 @@ state:
         when: 'true'
     done:
       sequence: []
+      outputs:
+        result: ${{ transition.payload.?result.orValue({}) }}
 outputs:
   merge_state: ${{ state_output('confirmed','merge_state',inputs.merge_state) }}
   response: >-
@@ -176,7 +218,7 @@ outputs:
            'publication':states.confirmed.outputs.merge_state.publication,
            'initial_submitted_at':state_output('queue','result',{}).?initial_submitted_at.orValue(inputs.queue_history.?initial_submitted_at.orValue('')),
            'publish':states.publish.outputs.result,'errors':states.publish.outputs.artifacts}
-        : (state_output('receipt','result',{}).?status.orValue('') == 'stuck' ? states.receipt.outputs.result : states.queue.outputs.result))
+        : states.done.outputs.result)
       : (state_output('refresh','result',{}).?status.orValue('') == 'stuck' ? states.refresh.outputs.result :
         (state_output('before_design','result',{}).?status.orValue('') == 'failed' && states.work.outputs.response.status == 'ready'
           ? {'status':'changes','summary':states.before_design.outputs.result.summary,'errors':states.before_design.outputs.artifacts}

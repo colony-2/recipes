@@ -17,6 +17,7 @@ Start with [PURPOSE.md](../PURPOSE.md), the actual recipe, and
 | Add or change an operation | [Operation index](ops/README.md) | [Extension operations](ops/EXTENSION_OPS_GUIDE.md); select the operation-specific guide from the index |
 | Handle execution failure | [Failure-handling guide](RECIPE_FAILURE_HANDLING_USER_GUIDE.md) | [Failure patterns](RECIPE_FAILURE_HANDLING_PATTERN.md), [operational-outcomes assessment](ASSESSMENT_OPERATIONAL_OUTCOMES.md) |
 | Customize a cell's build | [Build hooks](BUILD_HOOKS_USER_GUIDE.md), [hook examples](../examples/build-hooks/README.md) | [Local hooks](GUIDE-Local-Recipe-Hooks.md), [hook validation](BUILD_HOOKS_VALIDATION.md) |
+| Plan publish hook recovery and promotion | [Adaptive3 proposal](adaptive3/PLAN_PUBLISH_HOOK_PROMOTION.md) | Publisher-only changes, fallback after partial publication, and reuse of the implementation cycle |
 | Understand sessions and skills | [Codex operation](ops/OP_CODEX_EXEC.md) | [Session migration](CODEX_OBJECT_SESSION_MIGRATION.md), [instruction/skill design rationale](PROPOSAL_AGENT_INSTRUCTIONS_AND_SKILLS.md), [shared prompt includes](IMPLEMENTATION_SHARED_PROMPTS.md) |
 
 The operation index covers command execution, Codex, other model calls, human

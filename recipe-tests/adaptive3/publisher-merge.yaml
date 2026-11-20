@@ -1,0 +1,45 @@
+schema_version: 2
+id: publisher-merge-test
+input_schema:
+  change:
+    type: string
+    required: true
+  merge_queue:
+    type: boolean
+    default_value: true
+inputs:
+  change: ${{ inputs.change }}
+  merge_queue: ${{ inputs.merge_queue }}
+sequence:
+- id: edit
+  op: command_execution
+  inputs:
+    env:
+      CHANGE: ${{ inputs.change }}
+    run: |
+      set -eu
+      hook=.c2/recipes/hooks/build/publish
+      case "$CHANGE" in
+        hook) echo '# revised publisher' >> "$hook.yaml" ;;
+        invalid) echo '# invalid publisher' >> "$hook.yaml" ;;
+        product) echo 'product change' > product.txt ;;
+        helper) mkdir -p "$hook" && echo 'release helper' > "$hook/helper.sh" ;;
+        delete) rm "$hook.yaml" ;;
+        mixed) git mv "$hook.yaml" moved-publisher.yaml ;;
+      esac
+- id: prepare
+  when: inputs.merge_queue
+  include: ../../recipes/adaptive3/merge-queue-prepare.yaml
+  inputs:
+    message: Update the publisher
+- id: integrate
+  include: ../../recipes/adaptive3/execute.yaml
+  inputs:
+    purpose: integration
+    request: Update the publisher.
+    merge_queue: ${{ inputs.merge_queue }}
+    require_verification: true
+    contribution: ${{ sequence[?'prepare'].orValue({}).?outputs.orValue({}).?candidate.orValue({}) }}
+outputs:
+  result: ${{ sequence.integrate.outputs.response }}
+  candidate: ${{ sequence[?'prepare'].orValue({}).?outputs.orValue({}).?candidate.orValue({}) }}

@@ -8,6 +8,7 @@ inputs:
   target_directory: ${{ inputs.target_directory }}
   settings: ${{ inputs.settings }}
   receiver: ${{ inputs.?receiver.orValue('') }}
+  inline: ${{ inputs.?inline.orValue(false) }}
 state:
   initial:
   - to: unchanged_rejection
@@ -42,6 +43,12 @@ state:
       transitions:
       - to: submit
         when: outputs.result.verified
+        payload:
+          policy:
+            version: 1
+            require_verification: ${{ inputs.require_verification }}
+            target_directory: ${{ outputs.result.directory }}
+            settings: ${{ inputs.settings }}
       - to: done
         when: 'true'
         payload:
@@ -51,7 +58,18 @@ state:
             summary: The prepared merge queue candidate must be refreshed, verified, and reviewed before submission.
     submit:
       sequence:
+      - id: inline_batch
+        when: inputs.inline
+        include: ./merge-queue-batch.yaml
+        inputs:
+          branch: ${{ inputs.branch }}
+          policy: ${{ inputs.policy }}
+          appends:
+          - content: ${{ inputs.content }}
+            artifacts:
+            - ${{ inputs.content.thinpack_ref }}
       - id: batch
+        when: '!inputs.inline'
         op: recipe.run_and_get_result
         retry:
           maximum_attempts: 1
@@ -65,10 +83,11 @@ state:
           grouping:
             key: ${{ inputs.key }}
             max_items: 50
-            content: ${{ jq([inputs.content,{'verification_policy':inputs.policy}], 'add') }}
+            content: ${{ inputs.content }}
             artifacts:
             - ${{ inputs.content.thinpack_ref }}
       inputs:
+        inline: ${{ inputs.inline }}
         receiver: >-
           ${{ nonempty(inputs.receiver) ? inputs.receiver :
             'git+' + context.recipe_source.?repo.orValue('https://github.com/colony-2/recipes.git') + '//merge-batch.yaml@' + context.recipe_source.?ref.orValue('main') }}
@@ -77,22 +96,18 @@ state:
         key: >-
           ${{ context.workflow.?cell_id.orValue(context.workflow.cell) + '/' +
             states.identify.outputs.result.branch + '/merge' }}
-        policy:
-          version: 1
-          require_verification: ${{ inputs.require_verification }}
-          target_directory: ${{ states.identify.outputs.result.directory }}
-          settings: ${{ inputs.settings }}
+        policy: ${{ transition.payload.policy }}
         content: >-
           ${{ jq([inputs.contribution,{
             'version':1, 'repository':context.git.repo, 'job_id':context.workflow.job_id,
-            'branch':states.identify.outputs.result.branch,
+            'branch':states.identify.outputs.result.branch, 'verification_policy':transition.payload.policy,
             'initial_submitted_at':states.identify.outputs.result.age
           }, size(inputs.verification)>0 ? {
             'verification':jq([inputs.verification,{'job_id':context.workflow.job_id}],
               'add | del(.contribution)')
           } : {}], 'add | .thinpack_ref.name = "candidate.bundle"') }}
       outputs:
-        receipt: ${{ sequence.batch.outputs.outputs }}
+        receipt: "${{ inputs.inline ? sequence.inline_batch.outputs : sequence.batch.outputs.outputs }}"
       catch:
       - when: failure.kind!='cancellation'
         to: done

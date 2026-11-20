@@ -15,6 +15,14 @@ Suite: `recipe-tests/adaptive3/default-build.test.yaml`.
 | MQ-69 | A build that omits the queue setting verifies and merges through the queue and publishes its confirmed commit. | `./build.yaml`, `./adaptive3.yaml`, `merge-queue-submit.yaml` | Critical | Integration / grouped c2j, Git, uv |
 | MQ-70 | A build with `merge_queue: false` merges directly without submitting to the queue. | `./build.yaml`, `./adaptive3.yaml`, `integration.yaml` | High | Integration / c2j, Git |
 
+The [publisher merge suite](publisher-merge.test.yaml) exercises the integration stage.
+
+| ID | Expectation | Files | Priority | Level / dependencies |
+| --- | --- | --- | --- | --- |
+| MQ-77 | A publisher-only edit runs one verified merge in the caller and publishes its confirmed commit without submitting a grouped job. | `execute.yaml`, `merge-queue-submit.yaml` | Critical | Integration / c2j, Git |
+| MQ-78 | A contribution mixing publisher and product changes returns to implementation before either merge path writes the target branch. | `execute.yaml` | Critical | Integration / c2j, Git |
+| MQ-79 | When the target advances during an inline publisher merge, both changes survive and verification runs again before publication. | `merge-queue-batch.yaml`, `merge-queue-submit.yaml` | Critical | Integration / c2j, Git |
+
 ## Python op boundary
 
 Run the unit tests with `python3 -B -m unittest discover -s recipe-tests -p test_merge_queue.py`. The native replay, caller and selection suites also execute the extension.
