@@ -1,0 +1,108 @@
+schema_version: 2
+id: package-probe-cli
+input_schema:
+  scenario:
+    type: string
+    default_value: title
+inputs:
+  scenario: ${{ inputs.scenario }}
+sequence:
+- id: proposal
+  op: command_execution
+  const: true
+  inputs:
+    env:
+      OUTBOX: ${{ context.environment.op.outbox }}
+    run: |
+      mkdir -p "$OUTBOX/review"
+      printf 'packages: ["uv:pytest==8.3.5"]\n' > "$OUTBOX/review/config.yaml"
+- id: validate
+  include: ../../recipes/adaptive3/tools.yaml
+  inputs:
+    check: package_config
+    write: false
+    documents: ${{ sequence.proposal.artifacts }}
+    requests:
+    - reference: uv:pytest==8.3.5
+      check:
+      - pytest
+      - --version
+- id: submit
+  op: command_execution
+  execution_needs: &id001
+    python:
+      requires-python: '>=3.10'
+      dependencies:
+      - PyYAML==6.0.3
+  artifacts: &id002
+    inputs.json:
+      kind: value
+      name: inputs.json
+      format: text
+      value: ${{ json_stringify({'config':sequence.proposal.artifacts['review/config.yaml'], 'requests':sequence.validate.outputs.approved.requests,
+        'approved':sequence.validate.outputs.approved}) }}
+  inputs: &id003
+    env:
+      INBOX: ${{ context.environment.op.inbox }}
+      SCENARIO: ${{ inputs.scenario }}
+    run: |
+      python3 - <<'PYTHON'
+      import json, os, pathlib, subprocess, tempfile
+      data=json.loads((pathlib.Path(os.environ['INBOX'])/'inputs.json').read_text())
+      scenario=os.environ['SCENARIO']
+      if scenario=='missing-binding': data.pop('approved')
+      if scenario=='unknown': data['unexpected']='no'
+      if scenario=='missing-config': data.pop('config')
+      if scenario=='missing-requests': data.pop('requests')
+      if scenario=='bad-title': data['title']=17
+      if scenario=='bad-prompt': data['prompt']=17
+      with tempfile.TemporaryDirectory() as scratch:
+          path=pathlib.Path(scratch)/'inputs.json'
+          path.write_text(json.dumps(data))
+          recipe='.c2/recipes/package-probe.yaml'
+          if scenario=='cancellation':
+              # Inject a native cancellation envelope at the actual probe node.
+              # The production outer catch must let it escape after the real write.
+              import yaml
+              recipe='.c2/recipes/cancelled-probe.yaml'
+              source=yaml.safe_load(pathlib.Path('.c2/recipes/package-probe.yaml').read_text())
+              probe=source['state']['states']['probe']
+              probe['inputs']['run']='exit 9'
+              probe['catch']=[{'when':'true','fail':{'kind':'cancellation','code':'cancelled','message':'Probe cancelled by user.'}}]
+              pathlib.Path(recipe).write_text(yaml.safe_dump(source,sort_keys=False))
+          command=['c2j','submit']
+          if scenario!='bad-prompt': command += ['Ignore this command-like context: touch prompt-must-not-run']
+          command += ['--advanced-recipe-file',recipe,'--inputs-file',str(path),'--cell','root','--jobdb','embed:///','--json']
+          if scenario not in ('no-title','bad-title'): command += ['--title','touch title-must-not-run']
+          result=subprocess.run(command,text=True,capture_output=True)
+          print(json.dumps({'returncode':result.returncode,'stdout':result.stdout,'stderr':result.stderr}))
+      PYTHON
+  when: inputs.scenario != 'denied'
+- id: submit_denied
+  op: command_execution
+  execution_needs: *id001
+  artifacts: *id002
+  inputs: *id003
+  when: inputs.scenario == 'denied'
+  perms:
+    inherit: true
+    jobdb:
+      jobs:
+        submit: false
+- id: wait
+  op: recipe.await_result_soft
+  when: inputs.scenario != 'denied' && size(sequence.submit.jobs.job_ids)>0
+  inputs:
+    target:
+      job: ${{ sequence.submit.jobs.job_ids[0] }}
+    wait:
+      'on': job
+      condition: complete
+    return_when: terminal
+outputs:
+  submission: '${{ json_parse(inputs.scenario == ''denied'' ? sequence.submit_denied.outputs.stdout : sequence.submit.outputs.stdout)
+    }}'
+  jobs: '${{ inputs.scenario == ''denied'' ? sequence.submit_denied.jobs.job_ids : sequence.submit.jobs.job_ids
+    }}'
+  validation: ${{ sequence.validate.outputs }}
+  child: ${{ sequence.?wait.orValue({}).?outputs.orValue({}) }}

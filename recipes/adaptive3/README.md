@@ -215,6 +215,8 @@ fresh task prepares and probes those additions. After child success, the same op
 compares the parent's current configuration again before adoption. Conflicts, substituted
 proposals and extra packages fail without writing; an exact unchanged retry preserves bytes.
 Older callers without the retained binding fail safely before writing.
+For direct CLI submission and recovery of a retained approval against the actual
+target baseline, see [Submit an approved package check](package-probe.md).
 
 Private pnpm authorization includes direct, transitive and selected optional dependency
 builds, mutable transitive resolutions and repeated preparation after failure, worker changes

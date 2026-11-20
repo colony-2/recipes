@@ -54,7 +54,15 @@ uses fresh authenticated model sessions; its native routing cases only check the
 comparison's instruction and scenario plumbing.
 
 Package tests distinguish proposals from adoption and check approval before
-probing, including a real fresh-task `uv:pytest==8.3.5` probe. The public entrypoint
+probing, including a real fresh-task `uv:pytest==8.3.5` probe.
+`package-probe-cli.test.yaml` submits the candidate through the actual CLI with a
+stored proposal and read-only validator binding. It checks optional context,
+command arguments, missing authority, required fields, typing and denied submission.
+`package-probe-schema.test.yaml` also checks recipe typing where the CLI rejects
+an invalid prompt first. `package-probe-cancellation.test.yaml` injects a native
+cancellation envelope at the actual probe command after a real bounded write;
+it checks catch behavior, not process cleanup. Existing preparation, rejection,
+probe-failure/retry, native human cancellation and permission suites remain required. The public entrypoint
 tests native Git publication and recovery in the same job. Do not infer model
 judgment or complete runtime resilience from these scripted choices.
 
