@@ -122,46 +122,24 @@ state:
       - to: done
         when: 'true'
     classify:
-      op: command_execution
-      const: true
-      inputs:
-        env:
-          BASE: ${{ context.git.execution.base_hash }}
-        run: |
-          set -eu
-          hook=.c2/recipes/hooks/build/publish
-          publisher=$(git diff --no-renames --name-only "$BASE" HEAD -- "$hook.yaml" "$hook/")
-          if [ -z "$publisher" ]; then
-            printf product
-          elif git diff --quiet --no-renames "$BASE" HEAD -- ":(exclude)$hook.yaml" ":(exclude)$hook/"; then
-            printf publisher
-          else
-            test "$?" -eq 1
-            printf mixed
-          fi
+      include: ./publisher-scope.yaml
       transitions:
       - to: done
-        when: outputs.success && outputs.stdout == 'mixed'
+        when: outputs.result.status == 'changes'
         payload:
-          result:
-            status: changes
-            stage: implementation
-            summary: Split the publish hook and its private files into a separate contribution from the product changes.
-            initial_submitted_at: ${{ inputs.queue_history.?initial_submitted_at.orValue('') }}
-      - to: queue
-        when: outputs.success && inputs.merge_queue && outputs.stdout in ['product','publisher']
-      - to: merge
-        when: outputs.success && !inputs.merge_queue && outputs.stdout in ['product','publisher']
+          result: ${{ jq([outputs.result,{'initial_submitted_at':inputs.queue_history.?initial_submitted_at.orValue('')}],'add') }}
       - to: done
-        when: 'true'
+        when: outputs.result.status != 'passed'
         payload:
-          result:
-            status: stuck
-            summary: Could not classify the prepared Git diff for merge.
+          result: ${{ outputs.result }}
+      - to: queue
+        when: inputs.merge_queue
+      - to: merge
+        when: 'true'
     queue:
       include: ./merge-queue-submit.yaml
       inputs:
-        inline: ${{ states.classify.outputs.stdout == 'publisher' }}
+        inline: ${{ states.classify.outputs.kind == 'publisher' }}
         contribution: ${{ inputs.contribution }}
         verification: ${{ inputs.verification }}
         queue_history: ${{ inputs.queue_history }}

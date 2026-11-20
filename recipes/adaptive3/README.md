@@ -102,9 +102,11 @@ resolve the extension from the recipe's source revision.
 [Extension Python environments](https://github.com/colony-2/c2j/blob/main/EXTENSION_OPS.md#python-libraries) ·
 [Grouping contract](https://github.com/colony-2/c2j/blob/12cee9e70f04826adf073ba4b5e34deb388df691/GUIDE-Recipe-Grouping.md)
 
-The caller refreshes retained work before implementation. After preparation it
-squashes changes into one commit with a durable KSUID Change-Id, verifies the
-candidate, and waits for its outcome approval before entering the queue. The
+The caller refreshes retained work before implementation. After rebase and the
+prepare hook, a candidate touching both publisher and product paths returns to
+implementation for splitting, including in direct-merge mode. Eligible queued
+changes are squashed into one commit with a durable KSUID Change-Id. The caller
+verifies the candidate and waits for outcome approval before entering the queue. The
 same change retains its initial submission time on retry. The queue groups by
 cell and canonical branch ref, with up to 50 contributions per serial batch.
 Each batch uses the creator's verification policy.
@@ -123,8 +125,7 @@ A change confined to `.c2/recipes/hooks/build/publish.yaml` or its sibling
 `publish/` directory runs the same merge recipe inline with one contribution.
 It can land ahead of queued product changes. If another change lands during
 verification, the merge recipe replays and verifies against the updated branch.
-Changes that touch both publisher and product paths return to implementation
-for splitting, including in direct-merge mode.
+Integration checks the reviewed diff again when choosing the merge path.
 
 The Python op screens contributions, replays bundles in a disposable Git
 checkout, plans subset probes, and produces per-change receipts. Replay retains

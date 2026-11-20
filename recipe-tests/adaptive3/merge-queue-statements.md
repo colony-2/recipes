@@ -23,6 +23,13 @@ The [publisher merge suite](publisher-merge.test.yaml) exercises the integration
 | MQ-78 | A contribution mixing publisher and product changes returns to implementation before either merge path writes the target branch. | `execute.yaml` | Critical | Integration / c2j, Git |
 | MQ-79 | When the target advances during an inline publisher merge, both changes survive and verification runs again before publication. | `merge-queue-batch.yaml`, `merge-queue-submit.yaml` | Critical | Integration / c2j, Git |
 
+The [publisher validation suite](publisher-validation.test.yaml) exercises implementation before outcome review.
+
+| ID | Expectation | Files | Priority | Level / dependencies |
+| --- | --- | --- | --- | --- |
+| MQ-80 | A prepared change mixing publisher and product edits returns for splitting before verification or review in both queued and direct builds, including edits made by the prepare hook. | `prepare-candidate.yaml`, `validate.yaml` | Critical | Integration / c2j, Git |
+| MQ-81 | A publisher-only or product-only change proceeds to candidate verification after preparation. | `prepare-candidate.yaml`, `verify-candidate.yaml` | High | Integration / c2j, Git |
+
 ## Python op boundary
 
 Run the unit tests with `python3 -B -m unittest discover -s recipe-tests -p test_merge_queue.py`. The native replay, caller and selection suites also execute the extension.

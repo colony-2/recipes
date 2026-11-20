@@ -6,7 +6,7 @@ This proposal addresses a failure we observed twice in the same cell. Both SDK c
 
 ## Which changes can land together?
 
-The Adaptive3 wrapper enforces this rule before merge admission. It classifies the final reviewed diff against its accepted base after preparation and rebase. A single contribution containing both publisher and product changes goes back to implementation for splitting, even if it would be the only item in a batch. Direct-merge builds apply the same check to their single candidate.
+After rebase and the repository prepare hook, Adaptive3 checks the diff against its base. A contribution containing both publisher and product changes returns to implementation for splitting before candidate verification or outcome review. This applies in queued and direct builds. Integration checks the reviewed diff again when choosing the merge path.
 
 | Change | Proposed behavior |
 | --- | --- |

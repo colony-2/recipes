@@ -1,0 +1,36 @@
+schema_version: 2
+id: publisher-validation
+input_schema:
+  change:
+    type: string
+    required: true
+  merge_queue:
+    type: boolean
+    default_value: true
+inputs:
+  change: ${{ inputs.change }}
+  merge_queue: ${{ inputs.merge_queue }}
+sequence:
+- id: edit
+  op: command_execution
+  inputs:
+    env:
+      CHANGE: ${{ inputs.change }}
+    run: |
+      set -eu
+      hook=.c2/recipes/hooks/build/publish
+      case "$CHANGE" in
+        publisher|mixed|prepare_mixes) mkdir -p "$hook" && echo "$CHANGE" > "$hook/helper" ;;
+      esac
+      case "$CHANGE" in
+        product|mixed) echo product > product.txt ;;
+      esac
+- id: validate
+  include: ../../recipes/adaptive3/validate.yaml
+  inputs:
+    purpose: implementation
+    request: Check the prepared candidate.
+    merge_queue: ${{ inputs.merge_queue }}
+    require_verification: true
+outputs:
+  result: ${{ sequence.validate.outputs.result }}

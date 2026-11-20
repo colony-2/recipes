@@ -80,6 +80,7 @@ You should start any work by reviewing the existing recipe yaml files under `/sr
 
 ## Working on Recipes
 
+- Run cheap, deterministic checks as soon as the inputs they judge are settled. Return actionable feedback before expensive verification or human review. Recheck at integration if the candidate can change.
 - When working on recipes, work iteratively. Making small changes and testing them often is the best way to get feedback. Often it is useful to create testing recipes that can be used to test out a single op. 
 - Be sure to review the scope rules in guides/NODE_SCOPE_SPEC.md. Often, recipe authors will be confused by the scope rules when trying to refer to outputs of other operations.
 - Prefer to use real ops as opposed to random code scripts (e.g. python) where possible.

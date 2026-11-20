@@ -1,0 +1,88 @@
+recipe: publisher-validation.yaml
+cases:
+- id: preparation-hook-can-turn-a-queued-candidate-into-a-mixed-change
+  type: integration_case
+  inputs: {change: prepare_mixes}
+  runtime: &cell
+    cells:
+      root:
+        file_sources:
+          recipes/merge-queue: ../../recipes/merge-queue
+        files:
+          .c2/recipes/hooks/build/prepare.yaml: |
+            id: prepare
+            sequence:
+            - id: generate
+              op: command_execution
+              inputs:
+                run: |
+                  if grep -qx prepare_mixes .c2/recipes/hooks/build/publish/helper 2>/dev/null; then
+                    echo generated > product.txt
+                  fi
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: Prepared the candidate.
+              artifact_refs: {}
+          .c2/recipes/hooks/build/verify.yaml: |
+            id: verify
+            sequence:
+            - id: verify_scope
+              op: command_execution
+              inputs:
+                run: test -f product.txt || test -f .c2/recipes/hooks/build/publish/helper
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: Verified the candidate.
+              artifact_refs: {}
+  mocks: &prepare
+    ops:
+    - &command
+      match: {op: command_execution}
+      repeat: true
+      behavior: {mode: passthrough}
+    - &rebase
+      match: {op: rebase}
+      behavior: {mode: passthrough}
+  assertions: &split
+  - type: cel_true
+    expr: outputs.result.status=='changes' && outputs.result.stage=='implementation' && outputs.result.summary.contains('Split')
+  - type: cel_true
+    expr: calls.exists(c,c.node_path.endsWith('/generate')) && !calls.exists(c,c.op=='squash' || c.node_path.contains('/verify/') || c.node_path.contains('/assess/'))
+- id: direct-mixed-change-returns-before-verification
+  type: integration_case
+  inputs: {change: mixed, merge_queue: false}
+  runtime: *cell
+  mocks: *prepare
+  assertions: *split
+- id: queued-publisher-only-change-reaches-verification
+  type: integration_case
+  inputs: {change: publisher}
+  runtime: *cell
+  mocks:
+    ops:
+    - *command
+    - *rebase
+    - match: {selector: ./recipes/merge-queue}
+      behavior: {mode: passthrough}
+    - match: {op: squash}
+      behavior: {mode: passthrough}
+    - &assess
+      match: {selector: 'nix:github:colony-2/c2ops/published#codex'}
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response: {status: passed, summary: Ready for outcome review.}
+  assertions: &verified
+  - type: cel_true
+    expr: outputs.result.status=='passed' && calls.filter(c,c.node_path.endsWith('/verify_scope')).size()==1 && calls.exists(c,c.node_path.contains('/assess/'))
+- id: direct-product-only-change-reaches-verification
+  type: integration_case
+  inputs: {change: product, merge_queue: false}
+  runtime: *cell
+  mocks:
+    ops: [*command, *rebase, *assess]
+  assertions: *verified
