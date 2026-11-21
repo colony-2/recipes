@@ -3,6 +3,7 @@ cases:
   - id: create-approved-set
     type: integration_case
     inputs:
+      title: "Create gamma — \"quoted\" and 'single'\n${{ inputs.not_a_real_field }} {{ unknown }}"
       prompt: Create the approved cells.
     runtime:
       cells:
@@ -95,9 +96,17 @@ cases:
         expr: '!calls.exists(c, c.node_path.contains("catalog") || ("run" in c.inputs && c.inputs.run.contains("cell add")))'
       - type: cel_true
         expr: reviews.all(r, !r.form.documents.exists(k, k.endsWith("root-config.yaml")))
+      - type: cel_true
+        expr: >-
+          calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex"))[0].inputs.inputs.prompt.startsWith("Request title:\nCreate gamma — \"quoted\" and 'single'\n${{ inputs.not_a_real_field }} {{ unknown }}\n\nCreate the approved cells.")
+      - type: cel_true
+        expr: outputs.created_cells.all(c, c.cell in ["alpha", "beta"])
+      - type: cel_true
+        expr: reviews.all(r, r.form.title == "Review proposed cells")
   - id: declined
     type: integration_case
     inputs:
+      title: ""
       prompt: Create the approved cells.
     runtime:
       cells:
@@ -148,9 +157,79 @@ cases:
         expr: outputs.disposition == "declined" && size(outputs.created_cells) == 0 && !outputs.merged
       - type: cel_true
         expr: '!calls.exists(c, c.op in ["squash", "merge", "squashrebasemerge"]) && size(reviews) == 0'
+      - type: cel_true
+        expr: >-
+          calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex"))[0].inputs.inputs.prompt.startsWith("Create the approved cells.")
+      - type: cel_true
+        expr: >-
+          !calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex"))[0].inputs.inputs.prompt.contains("Request title:")
+      - type: cel_true
+        expr: >-
+          !calls.exists(c, c.op == "recipes.run" || c.node_path.endsWith("/register-cell/register"))
+  - id: titled-declined
+    type: integration_case
+    inputs:
+      title: "Create gamma instead"
+      prompt: Create the approved cells.
+    runtime:
+      cells:
+        root:
+          files:
+            PURPOSE.md: Project root
+            keep.txt: original
+          file_sources:
+            .c2/recipes/initialize.yaml: ../recipes/create/initialize.yaml
+            recipes/kernel/render/op.yaml: ../recipes/kernel/render/op.yaml
+        alpha: {}
+        beta: {}
+      responses: []
+    mocks:
+      ops:
+        - match:
+            selector: nix:github:colony-2/c2ops/published#codex
+          behavior:
+            mode: return
+            outputs:
+              status: completed
+              output_schema_valid: true
+              response:
+                outcome: declined
+                summary: Creation proposal
+                cells: []
+                files:
+                  - path: proposal.md
+                    description: Review document
+                questions: []
+            artifacts:
+              proposal.md: |-
+                # Proposed cells
+                Project fit, excluded alternatives, technology guidance and repository identities.
+            effects:
+              objects:
+                session:
+                  type: c2ops.codex.session/v1
+                  metadata:
+                    phase: creation-review
+        - repeat: true
+          match:
+            op: command_execution
+          behavior:
+            mode: passthrough
+    assertions:
+      - type: cel_true
+        expr: outputs.disposition == "declined" && size(outputs.created_cells) == 0 && !outputs.merged
+      - type: cel_true
+        expr: '!calls.exists(c, c.op in ["squash", "merge", "squashrebasemerge"]) && size(reviews) == 0'
+      - type: cel_true
+        expr: >-
+          calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex"))[0].inputs.inputs.prompt.startsWith("Request title:\nCreate gamma instead\n\nCreate the approved cells.")
+      - type: cel_true
+        expr: >-
+          !calls.exists(c, c.op == "recipes.run" || c.node_path.endsWith("/register-cell/register"))
   - id: redirected
     type: integration_case
     inputs:
+      title: "   \n"
       prompt: Create the approved cells.
     runtime:
       cells:
@@ -201,9 +280,16 @@ cases:
         expr: outputs.disposition == "redirected" && size(outputs.created_cells) == 0 && !outputs.merged
       - type: cel_true
         expr: '!calls.exists(c, c.op in ["squash", "merge", "squashrebasemerge"]) && size(reviews) == 0'
+      - type: cel_true
+        expr: >-
+          calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex"))[0].inputs.inputs.prompt.startsWith("Request title:\n   \n\n\nCreate the approved cells.")
+      - type: cel_true
+        expr: >-
+          !calls.exists(c, c.op == "recipes.run" || c.node_path.endsWith("/register-cell/register"))
   - id: cancel
     type: integration_case
     inputs:
+      title: "Create gamma instead"
       prompt: Create the approved cells.
     runtime:
       cells:
@@ -259,6 +345,14 @@ cases:
         expr: outputs.disposition == "cancelled" && !outputs.merged
       - type: cel_true
         expr: '!calls.exists(c, c.op in ["squash", "merge", "squashrebasemerge"])'
+      - type: cel_true
+        expr: >-
+          calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex"))[0].inputs.inputs.prompt.startsWith("Request title:\nCreate gamma instead\n\nCreate the approved cells.")
+      - type: cel_true
+        expr: >-
+          !calls.exists(c, c.op == "recipes.run" || c.node_path.endsWith("/register-cell/register"))
+      - type: cel_true
+        expr: reviews.all(r, r.form.title == "Review proposed cells")
   - id: missing-purpose
     type: integration_case
     inputs:
@@ -444,6 +538,7 @@ cases:
   - id: revise-then-cancel
     type: integration_case
     inputs:
+      title: "Create gamma instead"
       prompt: Create the approved cells.
     runtime:
       cells:
@@ -529,6 +624,17 @@ cases:
         expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex"))[1].artifacts["feedback.json"].contains("simpler technology")
       - type: cel_true
         expr: '!("instructions" in calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex"))[1].inputs.inputs)'
+      - type: cel_true
+        expr: >-
+          calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex"))[0].inputs.inputs.prompt.startsWith("Request title:\nCreate gamma instead\n\nCreate the approved cells.")
+      - type: cel_true
+        expr: >-
+          !calls.exists(c, c.op == "recipes.run" || c.node_path.endsWith("/register-cell/register"))
+      - type: cel_true
+        expr: reviews.all(r, r.form.title == "Review proposed cells")
+      - type: cel_true
+        expr: >-
+          !calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex"))[1].inputs.inputs.prompt.contains("Request title:")
   - id: annotations-require-revision
     type: integration_case
     inputs:
@@ -729,6 +835,7 @@ cases:
   - id: clarification-then-cancel
     type: integration_case
     inputs:
+      title: "Create gamma instead"
       prompt: Create the approved cells.
     runtime:
       cells:
@@ -809,6 +916,17 @@ cases:
         expr: size(reviews) == 2 && !outputs.merged
       - type: cel_true
         expr: calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex"))[1].artifacts["feedback.json"].contains("Go toolchain")
+      - type: cel_true
+        expr: >-
+          calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex"))[0].inputs.inputs.prompt.startsWith("Request title:\nCreate gamma instead\n\nCreate the approved cells.")
+      - type: cel_true
+        expr: >-
+          !calls.exists(c, c.op == "recipes.run" || c.node_path.endsWith("/register-cell/register"))
+      - type: cel_true
+        expr: >-
+          !calls.filter(c, c.op == "extension_execution" && c.inputs.selector.endsWith("#codex"))[1].inputs.inputs.prompt.contains("Request title:")
+      - type: cel_true
+        expr: reviews[0].form.title == "Clarify proposed cells" && reviews[1].form.title == "Review proposed cells"
   - id: revision-without-direction
     type: integration_case
     inputs:

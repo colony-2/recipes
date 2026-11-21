@@ -36,3 +36,21 @@ seeded repository references, scripted model/review decisions and local Git.
 
 Publication diagnostics and partial results have additional
 [expectations](creation-publication-statements.md).
+
+## Optional request titles
+
+These expectations supplement the existing creation contract. Native dependencies
+include the pinned c2j runtime and the declared Nix tools.
+
+| ID | Priority | Kind / dependencies | Relevant files | Expectation |
+| --- | --- | --- | --- | --- |
+| T1 | P1 | Integration / c2j, Nix | `create.yaml`, `recipes/create/review.yaml`, `recipe-tests/create.test.yaml` | A supplied title reaches the proposal agent as labeled context alongside the unchanged full prompt. |
+| T2 | P1 | Integration / c2j, Nix | `create.yaml`, `recipes/create/review.yaml`, `recipe-tests/create.test.yaml` | Unicode, quotes, newlines and template-like title text remain literal without changing the request details. |
+| T3 | P1 | Integration / c2j, Nix, Git | `create.yaml`, `recipe-tests/create.test.yaml`, `recipe-tests/create-handoff.test.yaml` | Omitted and empty titles preserve existing creation outcomes and add no empty title heading. |
+| T4 | P1 | Integration / c2j | `create.yaml`, `recipe-tests/create-title-inputs.test.yaml` | Numeric, boolean, list, object and null titles fail validation before any operation or human review. |
+| T5 | P0 | Integration / c2j | `create.yaml`, `recipe-tests/create-title-inputs.test.yaml` | A title without the required prompt fails validation before any operation or human review. |
+| T6 | P0 | Integration / c2j, Nix, Git | `recipes/create/review.yaml`, `recipe-tests/create.test.yaml` | A titled request creates only the identities and exact purposes approved by the human, even when the title suggests another name. |
+| T7 | P0 | Integration / c2j, Nix, Git | `recipes/create/review.yaml`, `recipe-tests/create.test.yaml` | Cancelling or declining a titled request registers no cells and publishes no repositories. |
+| T8 | P1 | Integration / c2j, Nix, Git | `recipes/create/review.yaml`, `recipe-tests/create-title-handoff.test.yaml`, `recipe-tests/fixtures/create-title-handoff.yaml` | A supplied consultation session receives the title and full prompt while retaining its documents and session continuity. |
+| T9 | P0 | Integration / c2j, Nix | `recipes/create/review.yaml`, `recipe-tests/create.test.yaml` | Feedback on a titled proposal reaches the resumed agent and requires another review before creation. |
+| T10 | P1 | Integration / c2j, Nix | `recipes/create/review.yaml`, `recipe-tests/create.test.yaml` | Supplying a title preserves the existing creation and clarification review headings. |

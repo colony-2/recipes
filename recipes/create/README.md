@@ -2,9 +2,20 @@
 
 [`create.yaml`](../../create.yaml) runs as a job owned by `root` in an explicit
 root workspace. Its ownership guard runs before review or registration and does
-not read or capture root configuration. The inputs remain `prompt`, optional
+not read or capture root configuration. The inputs are required `prompt`, optional `title`,
 consultation `session`, `documents`, `annotations`, `root_cell`/`root_ref`, and an
 optional `initialize_recipe` selector.
+
+`title` is a string defaulting to `''`. A nonempty title labels the whole creation
+request and reaches the proposal agent alongside the complete prompt. It does not
+choose cell names, repositories or purposes; those still require human approval.
+Omitted and empty titles add no heading. Whitespace and other supplied text are
+preserved literally. Non-string titles, including null, are invalid.
+
+```yaml
+title: Create a billing cell
+prompt: Propose a cell responsible for invoices and payment reconciliation.
+```
 
 Creation has two boundaries:
 
