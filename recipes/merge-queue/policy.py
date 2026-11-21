@@ -23,7 +23,7 @@ def is_change_id(value):
 def policy_key(policy):
     if (type(policy) is not dict or set(policy) !=
             {"version", "require_verification", "target_directory", "settings"} or
-            type(policy["version"]) is not int or policy["version"] != 1 or
+            type(policy["version"]) is not int or policy["version"] != 2 or
             type(policy["require_verification"]) is not bool or type(policy["settings"]) is not dict):
         raise ValueError("Invalid verification policy")
     directory = policy["target_directory"]
@@ -98,7 +98,7 @@ def reusable_receipt(assembly, contributions, policy):
 
 
 def validate_contribution(append, content, repository, branch, authority):
-    if type(content.get("version")) is not int or content["version"] != 1:
+    if type(content.get("version")) is not int or content["version"] != 2:
         raise ValueError("Unknown merge queue contribution version")
     if content.get("repository") != repository or content.get("branch") != branch:
         raise ValueError("Contribution target differs from the batch target")
@@ -116,10 +116,31 @@ def validate_contribution(append, content, repository, branch, authority):
     stored = ref.get("stored") if isinstance(ref, dict) else None
     key = stored.get("key") if isinstance(stored, dict) else None
     owner = key.get("jobId") if isinstance(key, dict) else None
-    if (not isinstance(refs, list) or len(refs) != 1 or not isinstance(refs[0], dict) or
-            not owner or owner != content.get("job_id") or ref.get("kind") != "stored" or
-            refs[0].get("stored") != stored):
-        raise ValueError("Contribution bundle must be bound to its originating job")
+    documents = content.get("documents", {})
+    if not isinstance(documents, dict):
+        raise ValueError("Contribution documents must be named artifact references")
+    for name, document in documents.items():
+        if (not safe_name(name) or not isinstance(document, dict) or
+                document.get("kind") != "stored" or not isinstance(document.get("stored"), dict)):
+            raise ValueError("Contribution document needs a safe alias and stored reference")
+    expected = [ref, *documents.values()]
+    identities = [json.dumps(item.get("stored"), sort_keys=True) for item in expected
+                  if isinstance(item, dict)]
+    if len(identities) != len(set(identities)):
+        raise ValueError("Bundle and document references must not be duplicated")
+    if (not isinstance(refs, list) or not owner or owner != content.get("job_id") or
+            ref.get("kind") != "stored" or len(refs) != len(expected) or
+            any(not isinstance(item, dict) for item in refs) or
+            sorted(json.dumps(item.get("stored"), sort_keys=True) for item in refs) !=
+            sorted(json.dumps(item.get("stored"), sort_keys=True) for item in expected)):
+        raise ValueError("Contribution bundle and documents must be bound to their originating references")
+
+
+def safe_name(name):
+    return (isinstance(name, str) and bool(name) and name not in {".", ".."} and
+            not name.startswith(("/", "../")) and "\\" not in name and
+            all(ord(char) >= 32 and ord(char) != 127 for char in name) and
+            posixpath.normpath(name) == name)
 
 
 def screen_contributions(appends, repository, branch, policy):
@@ -129,7 +150,7 @@ def screen_contributions(appends, repository, branch, policy):
     rejected = {}
     evidence = {}
     ambiguous = set()
-    source_fields = ("repository", "base_hash", "head_hash", "initial_submitted_at")
+    source_fields = ("repository", "base_hash", "head_hash", "initial_submitted_at", "documents")
     for append in appends:
         content = append.get("content") if isinstance(append, dict) else None
         change_id = content.get("changeid") if isinstance(content, dict) else None
@@ -137,6 +158,7 @@ def screen_contributions(appends, repository, branch, policy):
             raise UnidentifiedContribution(rejected)
         try:
             validate_contribution(append, content, repository, branch, authority)
+            content = dict(content, documents=content.get("documents", {}))
             previous = accepted.get(change_id)
             if previous and any(previous[key] != content[key] for key in source_fields):
                 raise ValueError("Duplicate Change-Id names different source commits or submission times")
@@ -242,11 +264,11 @@ def record_probes(cases, children, policy, base):
     return {"checks": [records[key] for key in expected]}
 
 
-def caller_receipt(receipt, own, branch):
+def caller_receipt(receipt, own, branch, owner_job):
     """Return one caller's result only after validating the whole receipt."""
     if not isinstance(receipt, dict) or type(receipt.get("version")) is not int:
         return {}
-    if receipt["version"] != 1 or receipt.get("branch") != branch:
+    if receipt["version"] != 2 or receipt.get("branch") != branch:
         return {}
 
     requested = receipt.get("requested")
@@ -275,7 +297,53 @@ def caller_receipt(receipt, own, branch):
         by_id[change_id] = row
     if sorted(by_id) != requested or own not in by_id:
         return {}
-    return {"own": by_id[own]}
+    publication = receipt.get("publication")
+    if not valid_publication(publication, branch, owner_job):
+        return {}
+    return {"own": by_id[own], "queue_publication": publication}
+
+
+def valid_publication(publication, branch, owner_job):
+    if not isinstance(publication, dict) or not owner_job or publication.get("owner_job") != owner_job:
+        return False
+    result = publication.get("result")
+    if (not isinstance(result, dict) or not set(result) <= {"api_version", "status", "summary", "artifact_refs", "failure"} or
+            ("failure" in result and not isinstance(result["failure"], dict)) or
+            result.get("api_version") != "c2.build-hook/v1" or
+            result.get("status") not in {"passed", "skipped", "failed"} or
+            not isinstance(result.get("summary"), str) or not result["summary"].strip() or len(result["summary"]) > 8192 or
+            not isinstance(result.get("artifact_refs"), dict)):
+        return False
+    source = publication.get("source")
+    if publication.get("reason") == "no-new-merge":
+        return source is None and result["status"] == "skipped"
+    return (publication.get("reason") == "hook" and isinstance(source, dict) and
+            set(source) == {"merged_hash", "target_branch"} and is_hash(source.get("merged_hash")) and source.get("target_branch") == branch)
+
+
+def publication_context(landing, branch, owner_job, contributions):
+    """Bind the hook to the recorded final native merge, never receipt-row order."""
+    merge = landing.get("merge", {})
+    if not merge:
+        return {"owner_job": owner_job, "source": None, "reason": "no-new-merge",
+                "result": {"api_version": "c2.build-hook/v1", "status": "skipped",
+                           "summary": "No new merge; no publication hook ran.", "artifact_refs": {}}}
+    head, base = landing.get("verified_head"), landing.get("base")
+    if (not owner_job or not is_hash(base) or not is_hash(head) or head == base or
+            merge.get("merged_hash") != head or merge.get("target_branch") != branch):
+        raise ValueError("Native merge does not match the verified publication source and branch")
+    accepted = landing.get("accepted", [])
+    if not accepted or not all(is_change_id(item) for item in accepted) or len(accepted) != len(set(accepted)):
+        raise ValueError("Publication requires accepted contribution identities")
+    by_id = {item["changeid"]: item for item in contributions}
+    if not set(accepted) <= by_id.keys():
+        raise ValueError("Publication identifies an unknown contribution")
+    documents = {f"contributions/{change_id}/{name}": dict(ref, name=f"contributions/{change_id}/{name}")
+                 for change_id in accepted for name, ref in by_id[change_id].get("documents", {}).items()}
+    return {"owner_job": owner_job, "source": {"merged_hash": head, "target_branch": branch},
+            "reason": "hook", "base": base, "merge": merge, "accepted": accepted,
+            "request": f"Publish merged batch on {branch}: " + ", ".join(accepted), "documents": documents}
+
 
 
 def landing_results(outbox, landed, replay, replay_logs, evidence):

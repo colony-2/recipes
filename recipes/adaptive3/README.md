@@ -126,6 +126,12 @@ A change confined to `.c2/recipes/hooks/build/publish.yaml` or its sibling
 It can land ahead of queued product changes. If another change lands during
 verification, the merge recipe replays and verifies against the updated branch.
 Integration checks the reviewed diff again when choosing the merge path.
+If its hook fails, Integration retains the confirmed merge, original hook inputs
+and diagnostics in bound internal `merge_state`. Retry validates that state and
+invokes only publication at the original commit, even after branch advancement or
+disabling the queue. It does not submit, verify, squash or merge again. Repeated
+failure remains stuck; completed or skipped publication is not invoked again.
+Retain the original Integration state rather than resubmitting a landed change.
 
 The Python op screens contributions, replays bundles in a disposable Git
 checkout, plans subset probes, and produces per-change receipts. Replay retains
@@ -153,10 +159,11 @@ without receipts still work. Custom hooks do not receive a separate queue-contex
 invocation on qualifying paths: the original candidate check is authoritative.
 The general verifier's receipt cache and publication guards are unchanged.
 
-The batch publishes only its verified commit sequence through the native merge
-operation. The caller confirms its individual receipt against target-branch
-history, then runs the publish hook at that commit. A failed publish retries at
-the same commit. Candidate rejections return their diagnostics to implementation.
+The batch installs its checked commit sequence through the native merge operation,
+then runs the publish hook once at the final assembled tip. The caller confirms
+its individual receipt and the receiver-owned publication against target-branch
+history, without invoking a hook. Recover failed publication in that receiver
+at the same source. Candidate rejections return diagnostics to implementation.
 The [merge queue test statements](../../recipe-tests/adaptive3/merge-queue-statements.md)
 describe the existing acceptance checks; [exact-commit reuse expectations](../../recipe-tests/adaptive3/exact-commit-fast-forward-statements.md) cover verification reuse.
 
@@ -217,6 +224,14 @@ recovery can select an accepted contribution behind the native published tip wit
 its original Change-Id and complete patch equivalence. Unavailable or contradictory
 evidence stops recovery before publication or a guessed second merge. No public
 build input or agent trust flag can establish the internal record.
+
+Queued publication belongs to the merge receiver at the final assembled tip;
+callers consume the shared result and retain their individual merge hashes.
+Recover failed grouped publication in the original receiver, then consume its native goal
+result through `queue_recovery`; never submit a replacement batch or invoke a
+caller publisher. [Receipt, recovery and drain-first upgrade details](../../guides/BUILD_HOOKS_USER_GUIDE.md#queue-receipt-and-upgrade)
+cover the v2 paired caller/receiver contract. Product hooks still own branch
+eligibility, durable release identity and ancestry-aware ordering.
 
 Package requests contain a `reference`, an argument-array `check`, and a reason.
 The package service validates a proposed configuration and retains its original baseline,

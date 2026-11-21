@@ -6,6 +6,7 @@ inputs:
   documents: ${{ inputs.?documents.orValue({}) }}
   settings: ${{ inputs.?settings.orValue({}) }}
   publication: ${{ inputs.?publication.orValue({}) }}
+  publication_base: ${{ inputs.?publication_base.orValue(context.git.execution.base_hash) }}
 state:
   initial:
   - to: configure
@@ -360,77 +361,95 @@ state:
       - to: collect
         when: 'true'
     publish:
+      id: publish
       const: true
-      include:
-        recipe: cell://.c2/recipes/hooks/build/publish.yaml
-        if_missing:
-          outputs:
-            api_version: c2.build-hook/v1
-            status: skipped
-            summary: No repository publish hook is configured.
-            artifact_refs: {}
-      inputs:
-        api_version: c2.build-hook/v1
-        request: ${{ inputs.request }}
-        target_directory: ${{ inputs.target_directory }}
-        candidate: ${{ context.git.hash }}
-        base: ${{ context.git.execution.base_hash }}
-        documents: ${{ inputs.documents }}
-        settings:
-          kind: value
-          name: build-settings.json
-          format: json
-          value: ${{ inputs.settings }}
-        merged_hash: ${{ inputs.publication.merged_hash }}
-        target_branch: ${{ inputs.publication.target_branch }}
-      expect_outputs:
-        type: object
-        additionalProperties: false
-        required:
-        - api_version
-        - status
-        - summary
-        - artifact_refs
-        properties:
-          api_version:
-            type: string
-            enum:
-            - c2.build-hook/v1
-          status:
-            type: string
-            enum:
-            - passed
-            - failed
-            - skipped
-          summary:
-            type: string
-            minLength: 1
-            maxLength: 8192
-          artifact_refs:
-            type: object
-            maxProperties: 64
-            propertyNames:
-              not:
-                enum:
-                - __git_state_thin_pack__
-                - diff_from_parent.diff
-                - diff_from_base.diff
-            additionalProperties:
-              type: object
-          failure:
-            type: object
-      catch:
-      - when: failure.kind != 'cancellation'
-        continue:
-          outputs:
-            api_version: c2.build-hook/v1
-            status: failed
-            summary: ${{ failure.message }}
-            artifact_refs: {}
-            failure: ${{ json_parse(json_stringify(failure)) }}
+      # Resolve the immutable workspace before cell-hook pinning and input binding.
+      # A workspace on the cell include itself is too late for candidate binding.
       workspace:
         cell: ${{ context.workflow.cell }}
         ref: ${{ inputs.publication.merged_hash }}
+      inputs:
+        request: ${{ inputs.request }}
+        target_directory: ${{ inputs.target_directory }}
+        publication: ${{ inputs.publication }}
+        publication_base: ${{ inputs.publication_base }}
+        documents: ${{ inputs.documents }}
+        settings: ${{ inputs.settings }}
+      sequence:
+      - id: invoke
+        include:
+          recipe: cell://.c2/recipes/hooks/build/publish.yaml
+          if_missing:
+            outputs:
+              api_version: c2.build-hook/v1
+              status: skipped
+              summary: No repository publish hook is configured.
+              artifact_refs: {}
+        inputs:
+          api_version: c2.build-hook/v1
+          request: ${{ inputs.request }}
+          target_directory: ${{ inputs.target_directory }}
+          candidate: ${{ context.git.hash }}
+          base: ${{ inputs.publication_base }}
+          documents: ${{ inputs.documents }}
+          settings:
+            kind: value
+            name: build-settings.json
+            format: json
+            value: ${{ inputs.settings }}
+          merged_hash: ${{ inputs.publication.merged_hash }}
+          target_branch: ${{ inputs.publication.target_branch }}
+        expect_outputs:
+          type: object
+          additionalProperties: false
+          required:
+          - api_version
+          - status
+          - summary
+          - artifact_refs
+          properties:
+            api_version:
+              type: string
+              enum:
+              - c2.build-hook/v1
+            status:
+              type: string
+              enum:
+              - passed
+              - failed
+              - skipped
+            summary:
+              type: string
+              minLength: 1
+              maxLength: 8192
+            artifact_refs:
+              type: object
+              maxProperties: 64
+              propertyNames:
+                not:
+                  enum:
+                  - __git_state_thin_pack__
+                  - diff_from_parent.diff
+                  - diff_from_base.diff
+              additionalProperties:
+                type: object
+            failure:
+              type: object
+        catch:
+        - when: failure.kind != 'cancellation'
+          continue:
+            outputs:
+              api_version: c2.build-hook/v1
+              status: failed
+              summary: ${{ failure.message }}
+              artifact_refs: {}
+              failure: ${{ json_parse(json_stringify(failure)) }}
+      outputs:
+        api_version: ${{ sequence.invoke.outputs.api_version }}
+        status: ${{ sequence.invoke.outputs.status }}
+        summary: ${{ sequence.invoke.outputs.summary }}
+        artifact_refs: ${{ sequence.invoke.outputs.artifact_refs }}
+        failure: ${{ sequence.invoke.outputs.?failure.orValue({}) }}
       transitions:
       - to: collect
         when: 'true'

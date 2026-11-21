@@ -17,7 +17,7 @@ class DocumentSchemas(unittest.TestCase):
             'backstop':dict(status='ask',summary='Choose a browser for validation.',stage='implementation',action='Rerun validation with the available browser.',
                             additional_attempts=None,title='Choose the validation browser',primary='review/decision.md'),
             'recovery':dict(status='ask',summary='Restore the saved work.',stage='implementation',action=None,approval=None,
-                            publication=None,additional_attempts=None,title='Restore the draft repair',primary='review/decision.md'),
+                            publication=None,queue_recovery=None,additional_attempts=None,title='Restore the draft repair',primary='review/decision.md'),
         }
         for name,report in reports.items():
             schema=SCHEMAS[name]

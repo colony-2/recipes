@@ -1,0 +1,529 @@
+{
+  "recipe": "fixtures/queue-scenario/driver.yaml",
+  "cases": [
+    {
+      "id": "fresh-ordinary-merge-publishes-recorded-source-after-advancement",
+      "type": "integration_case",
+      "runtime": {
+        "backend": "sqlite",
+        "cells": {
+          "root": {
+            "file_sources": {
+              ".c2/recipes/hooks/build/publish.yaml": "./fixtures/queue-scenario/ordinary-publish.yaml"
+            },
+            "files": {
+              "README.md": "Receiver publication scenario."
+            }
+          }
+        },
+        "controls": {
+          "scenario": {
+            "jobs": {
+              "root": {
+                "root": true
+              },
+              "ordinary": {
+                "child_binding": "ordinary"
+              },
+              "advance": {
+                "child_binding": "advance"
+              }
+            },
+            "admission_holds": [
+              {
+                "id": "advance_admission",
+                "cell": "root",
+                "recipe": "post-advance",
+                "route": {
+                  "jobType": "recipe"
+                },
+                "jobs": [
+                  "advance"
+                ]
+              }
+            ],
+            "dispatch_holds": [
+              {
+                "id": "publish",
+                "job": "ordinary",
+                "task": {
+                  "task_type": "recipe_workspace_resolve",
+                  "node_path": "ordinary-scenario/execute/adaptive3-execute/publish/publish/adaptive3-hooks/publish/publish",
+                  "attempt": 1,
+                  "occurrence": 1
+                }
+              }
+            ],
+            "events": [
+              {
+                "id": "publishing",
+                "kind": "dispatch",
+                "hold": "publish"
+              },
+              {
+                "id": "landed",
+                "kind": "task_result",
+                "job": "ordinary",
+                "task": {
+                  "task_type": "merge:merge",
+                  "node_path": "ordinary-scenario/execute/adaptive3-execute/merge/merge/adaptive3-integration/merge/sequence/merge",
+                  "attempt": 1,
+                  "occurrence": 1
+                },
+                "status": "SUCCEEDED"
+              },
+              {
+                "id": "advanced",
+                "kind": "settled",
+                "job": "advance",
+                "status": "completed"
+              }
+            ],
+            "actions": [
+              {
+                "id": "advance_now",
+                "after_all": [
+                  "landed"
+                ],
+                "do": "release",
+                "target": "advance_admission"
+              },
+              {
+                "id": "checkout",
+                "after_all": [
+                  "advanced",
+                  "publishing"
+                ],
+                "do": "release",
+                "target": "publish"
+              }
+            ],
+            "outcomes": {
+              "root": {
+                "status": "completed"
+              },
+              "ordinary": {
+                "status": "completed"
+              },
+              "advance": {
+                "status": "completed"
+              }
+            }
+          }
+        }
+      },
+      "mocks": {
+        "ops": [
+          {
+            "match": {
+              "node_path": "queue-scenario/spawn"
+            },
+            "behavior": {
+              "mode": "return",
+              "effects": {
+                "children": [
+                  {
+                    "bind": "ordinary",
+                    "cell": "root",
+                    "recipe": "fixtures/queue-scenario/ordinary.yaml"
+                  },
+                  {
+                    "bind": "advance",
+                    "cell": "root",
+                    "recipe": "fixtures/queue-scenario/advance.yaml"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "match": {
+              "node_path": "queue-scenario/next"
+            },
+            "behavior": {
+              "mode": "return"
+            }
+          },
+          {
+            "match": {
+              "op": "command_execution"
+            },
+            "repeat": true,
+            "behavior": {
+              "mode": "passthrough"
+            }
+          },
+          {
+            "match": {
+              "op": "squash"
+            },
+            "repeat": true,
+            "behavior": {
+              "mode": "passthrough"
+            }
+          },
+          {
+            "match": {
+              "op": "merge"
+            },
+            "repeat": true,
+            "behavior": {
+              "mode": "passthrough"
+            }
+          }
+        ]
+      },
+      "assertions": [
+        {
+          "type": "cel_true",
+          "expr": "controls.scenario.complete && controls.dispatch_complete"
+        },
+        {
+          "type": "cel_true",
+          "expr": "calls.filter(c,c.node_path.endsWith('/ordinary-source/source')).size()==1"
+        },
+        {
+          "type": "cel_true",
+          "expr": "calls.exists(m,m.op=='merge' && m.job_id==controls.scenario.jobs.ordinary.ref.job_id && calls.exists(p,p.node_path.endsWith('/ordinary-source/source') && p.inputs.env.MERGED==m.outputs.merged_hash))"
+        }
+      ]
+    },
+    {
+      "id": "cancel-ordinary-after-merge-before-publish-checkout",
+      "type": "integration_case",
+      "runtime": {
+        "backend": "sqlite",
+        "cells": {
+          "root": {
+            "file_sources": {
+              ".c2/recipes/hooks/build/publish.yaml": "./fixtures/queue-scenario/ordinary-publish.yaml"
+            },
+            "files": {
+              "README.md": "Receiver publication scenario."
+            }
+          }
+        },
+        "controls": {
+          "scenario": {
+            "jobs": {
+              "root": {
+                "root": true
+              },
+              "ordinary": {
+                "child_binding": "ordinary"
+              }
+            },
+            "admission_holds": [],
+            "dispatch_holds": [
+              {
+                "id": "publish",
+                "job": "ordinary",
+                "task": {
+                  "task_type": "recipe_workspace_resolve",
+                  "node_path": "ordinary-scenario/execute/adaptive3-execute/publish/publish/adaptive3-hooks/publish/publish",
+                  "attempt": 1,
+                  "occurrence": 1
+                },
+                "disposition": "cancelled"
+              }
+            ],
+            "events": [
+              {
+                "id": "publishing",
+                "kind": "dispatch",
+                "hold": "publish"
+              },
+              {
+                "id": "landed",
+                "kind": "task_result",
+                "job": "ordinary",
+                "task": {
+                  "task_type": "merge:merge",
+                  "node_path": "ordinary-scenario/execute/adaptive3-execute/merge/merge/adaptive3-integration/merge/sequence/merge",
+                  "attempt": 1,
+                  "occurrence": 1
+                },
+                "status": "SUCCEEDED"
+              }
+            ],
+            "actions": [
+              {
+                "id": "cancel",
+                "after_all": [
+                  "publishing",
+                  "landed"
+                ],
+                "do": "cancel_job",
+                "target": "ordinary"
+              }
+            ],
+            "outcomes": {
+              "root": {
+                "status": "completed"
+              },
+              "ordinary": {
+                "status": "cancelled"
+              }
+            }
+          },
+          "dispatch": {
+            "forbid": [
+              {
+                "job": "ordinary",
+                "kind": "task",
+                "name": "command_execution:command_execution",
+                "node_path": "ordinary-scenario/execute/adaptive3-execute/publish/publish/adaptive3-hooks/publish/publish/invoke/ordinary-source/source"
+              }
+            ]
+          }
+        }
+      },
+      "mocks": {
+        "ops": [
+          {
+            "match": {
+              "node_path": "queue-scenario/spawn"
+            },
+            "behavior": {
+              "mode": "return",
+              "effects": {
+                "children": [
+                  {
+                    "bind": "ordinary",
+                    "cell": "root",
+                    "recipe": "fixtures/queue-scenario/ordinary.yaml"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "match": {
+              "node_path": "queue-scenario/next"
+            },
+            "behavior": {
+              "mode": "return"
+            }
+          },
+          {
+            "match": {
+              "op": "command_execution"
+            },
+            "repeat": true,
+            "behavior": {
+              "mode": "passthrough"
+            }
+          },
+          {
+            "match": {
+              "op": "squash"
+            },
+            "repeat": true,
+            "behavior": {
+              "mode": "passthrough"
+            }
+          },
+          {
+            "match": {
+              "op": "merge"
+            },
+            "repeat": true,
+            "behavior": {
+              "mode": "passthrough"
+            }
+          }
+        ]
+      },
+      "assertions": [
+        {
+          "type": "cel_true",
+          "expr": "controls.scenario.complete && controls.dispatch_complete"
+        },
+        {
+          "type": "cel_true",
+          "expr": "calls.filter(c,c.op=='merge').size()==1 && !calls.exists(c,c.node_path.endsWith('/ordinary-source/source'))"
+        }
+      ]
+    },
+    {
+      "id": "failed-native-ordinary-merge-never-dispatches-publisher",
+      "type": "integration_case",
+      "runtime": {
+        "backend": "sqlite",
+        "cells": {
+          "root": {
+            "file_sources": {
+              ".c2/recipes/hooks/build/publish.yaml": "./fixtures/queue-scenario/ordinary-publish.yaml"
+            },
+            "files": {
+              "README.md": "Receiver publication scenario."
+            }
+          }
+        },
+        "controls": {
+          "scenario": {
+            "jobs": {
+              "root": {
+                "root": true
+              },
+              "ordinary": {
+                "child_binding": "ordinary"
+              },
+              "advance": {
+                "child_binding": "advance"
+              }
+            },
+            "admission_holds": [
+              {
+                "id": "advance_admission",
+                "cell": "root",
+                "recipe": "post-advance",
+                "route": {
+                  "jobType": "recipe"
+                },
+                "jobs": [
+                  "advance"
+                ]
+              }
+            ],
+            "dispatch_holds": [
+              {
+                "id": "merge",
+                "job": "ordinary",
+                "task": {
+                  "task_type": "merge:merge",
+                  "node_path": "ordinary-scenario/execute/adaptive3-execute/merge/merge/adaptive3-integration/merge/sequence/merge",
+                  "attempt": 1,
+                  "occurrence": 1
+                }
+              }
+            ],
+            "events": [
+              {
+                "id": "merging",
+                "kind": "dispatch",
+                "hold": "merge"
+              },
+              {
+                "id": "advanced",
+                "kind": "settled",
+                "job": "advance",
+                "status": "completed"
+              }
+            ],
+            "actions": [
+              {
+                "id": "advance_now",
+                "after_all": [
+                  "merging"
+                ],
+                "do": "release",
+                "target": "advance_admission"
+              },
+              {
+                "id": "fail_stale_merge",
+                "after_all": [
+                  "advanced"
+                ],
+                "do": "release",
+                "target": "merge"
+              }
+            ],
+            "outcomes": {
+              "root": {
+                "status": "completed"
+              },
+              "ordinary": {
+                "status": "failed"
+              },
+              "advance": {
+                "status": "completed"
+              }
+            }
+          },
+          "dispatch": {
+            "forbid": [
+              {
+                "kind": "task",
+                "job": "ordinary",
+                "name": "command_execution:command_execution",
+                "node_path": "ordinary-scenario/execute/adaptive3-execute/publish/publish/adaptive3-hooks/publish/publish/invoke/ordinary-source/source"
+              }
+            ]
+          }
+        }
+      },
+      "mocks": {
+        "ops": [
+          {
+            "match": {
+              "node_path": "queue-scenario/spawn"
+            },
+            "behavior": {
+              "mode": "return",
+              "effects": {
+                "children": [
+                  {
+                    "bind": "ordinary",
+                    "cell": "root",
+                    "recipe": "fixtures/queue-scenario/ordinary.yaml"
+                  },
+                  {
+                    "bind": "advance",
+                    "cell": "root",
+                    "recipe": "fixtures/queue-scenario/advance.yaml"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "match": {
+              "node_path": "queue-scenario/next"
+            },
+            "behavior": {
+              "mode": "return"
+            }
+          },
+          {
+            "match": {
+              "op": "command_execution"
+            },
+            "repeat": true,
+            "behavior": {
+              "mode": "passthrough"
+            }
+          },
+          {
+            "match": {
+              "op": "squash"
+            },
+            "repeat": true,
+            "behavior": {
+              "mode": "passthrough"
+            }
+          },
+          {
+            "match": {
+              "op": "merge"
+            },
+            "repeat": true,
+            "behavior": {
+              "mode": "passthrough"
+            }
+          }
+        ]
+      },
+      "assertions": [
+        {
+          "type": "cel_true",
+          "expr": "controls.scenario.complete && controls.dispatch_complete"
+        },
+        {
+          "type": "cel_true",
+          "expr": "calls.filter(c,c.op=='merge' && c.job_id==controls.scenario.jobs.ordinary.ref.job_id).size()==1 && !calls.exists(c,c.node_path.endsWith('/ordinary-source/source'))"
+        }
+      ]
+    }
+  ]
+}

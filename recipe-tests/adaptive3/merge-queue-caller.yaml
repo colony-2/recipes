@@ -7,6 +7,12 @@ input_schema:
   saved_receipt:
     type: boolean
     default_value: false
+  missing_document:
+    type: boolean
+    default_value: false
+  replace_hook:
+    type: boolean
+    default_value: false
   retry_after_advance:
     type: boolean
     default_value: false
@@ -16,6 +22,8 @@ input_schema:
 inputs:
   branch: ${{ inputs.branch }}
   saved_receipt: ${{ inputs.saved_receipt }}
+  missing_document: ${{ inputs.missing_document }}
+  replace_hook: ${{ inputs.replace_hook }}
   retry_after_advance: ${{ inputs.retry_after_advance }}
   retry_rejection: ${{ inputs.retry_rejection }}
 sequence:
@@ -31,6 +39,8 @@ sequence:
   inputs:
     branch: ${{ inputs.branch }}
     saved_receipt: ${{ inputs.saved_receipt }}
+    missing_document: ${{ inputs.missing_document }}
+    replace_hook: ${{ inputs.replace_hook }}
     retry_after_advance: ${{ inputs.retry_after_advance }}
     retry_rejection: ${{ inputs.retry_rejection }}
   workspace:
@@ -40,7 +50,16 @@ sequence:
   - id: work
     op: command_execution
     inputs:
-      run: printf 'queue-ready\n' > contribution.txt
+      env:
+        OUTBOX: ${{ context.environment.op.outbox }}
+        REPLACE_HOOK: ${{ string(inputs.replace_hook) }}
+      run: |
+        if [ "$REPLACE_HOOK" = true ]; then
+          sed -i 's/id: queue-publish-source-probe/id: contributed-publish-source-probe/' .c2/recipes/hooks/build/publish.yaml
+        fi
+        printf 'queue-ready\n' > contribution.txt
+        mkdir -p "$OUTBOX/review"
+        printf 'selected-document\n' > "$OUTBOX/review/note.txt"
   - id: prepare
     include: ../../recipes/adaptive3/merge-queue-prepare.yaml
     inputs:
@@ -57,22 +76,15 @@ sequence:
   - id: submit
     include: ../../recipes/adaptive3/merge-queue-submit.yaml
     inputs:
+      documents:
+        review/note.txt: >-
+          ${{ inputs.missing_document ? jq(sequence.work.artifacts['review/note.txt'],'.stored.key.name="missing-note.txt"') : sequence.work.artifacts['review/note.txt'] }}
       contribution: ${{ sequence.prepare.outputs.candidate }}
       verification: ${{ sequence[?'verify'].orValue({}).?outputs.orValue({}).?receipt.orValue({}) }}
       receiver: ${{ 'git+' + context.git.repo + '//merge-batch.yaml@main' }}
       require_verification: true
       target_directory: .
       settings: {}
-  - id: publish
-    when: inputs.saved_receipt && sequence.submit.outputs.result.status=='passed'
-    include: ../../recipes/adaptive3/hooks.yaml
-    inputs:
-      hook: publish
-      request: Publish the confirmed caller candidate.
-      target_directory: .
-      documents: {}
-      settings: {}
-      publication: ${{ sequence.submit.outputs.result.publication }}
   - id: read_target
     when: sequence.submit.outputs.result.status=='passed'
     op: command_execution
@@ -89,6 +101,22 @@ sequence:
         test "$(git rev-parse HEAD)" = "$LANDED"
         test "$(cat contribution.txt)" = queue-ready
         test "$(git log -1 --format='%(trailers:key=Change-Id,valueonly)' | tr -d '\n')" = "$CHANGE_ID"
+  - id: read_publication
+    when: sequence.submit.outputs.result.status=='passed' && sequence.submit.outputs.result.publish.status=='passed'
+    op: command_execution
+    const: true
+    artifacts:
+      shared/: ${{ sequence.submit.outputs.result.publish.artifact_refs }}
+    inputs:
+      env:
+        SOURCE: ${{ sequence.submit.outputs.result.queue_publication.source.merged_hash }}
+        OWNER: ${{ sequence.submit.outputs.result.queue_publication.owner_job }}
+        INBOX: ${{ context.environment.op.inbox }}
+      run: |
+        set -eu
+        test -f "$INBOX/shared/source.txt"
+        grep -Fx "source=$SOURCE" "$INBOX/shared/source.txt"
+        grep -Fx "owner=$OWNER" "$INBOX/shared/source.txt"
   - id: advance
     when: inputs.retry_after_advance
     workspace:
@@ -105,6 +133,9 @@ sequence:
     when: inputs.retry_after_advance || inputs.retry_rejection
     include: ../../recipes/adaptive3/merge-queue-submit.yaml
     inputs:
+      documents:
+        review/note.txt: >-
+          ${{ inputs.missing_document ? jq(sequence.work.artifacts['review/note.txt'],'.stored.key.name="missing-note.txt"') : sequence.work.artifacts['review/note.txt'] }}
       contribution: ${{ sequence.prepare.outputs.candidate }}
       verification: ${{ sequence[?'verify'].orValue({}).?outputs.orValue({}).?receipt.orValue({}) }}
       queue_history: ${{ sequence.submit.outputs.result }}

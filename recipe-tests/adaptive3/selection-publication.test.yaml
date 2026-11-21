@@ -1,0 +1,588 @@
+recipe: merge-queue-selection.yaml
+cases:
+- id: duplicate-appends-publish-one-native-batch
+  type: integration_case
+  inputs:
+    scenario: duplicate
+  runtime: &id001
+    backend: sqlite
+    cells:
+      root:
+        file_sources:
+          merge-check.yaml: ../../merge-check.yaml
+          recipes/adaptive3: ../../recipes/adaptive3
+          recipes/merge-queue: ../../recipes/merge-queue
+        files:
+          .c2/recipes/hooks/build/verify.yaml: |
+            id: verify
+            sequence: []
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: Checked assembled source.
+              artifact_refs: {}
+          .c2/recipes/hooks/build/publish.yaml: |
+            id: selection-publish
+            inputs:
+              candidate: ${{ inputs.candidate }}
+              merged_hash: ${{ inputs.merged_hash }}
+              branch: ${{ inputs.target_branch }}
+            sequence:
+            - id: source
+              op: command_execution
+              const: true
+              inputs:
+                env:
+                  CANDIDATE: ${{ inputs.candidate }}
+                  MERGED: ${{ inputs.merged_hash }}
+                  BRANCH: ${{ inputs.branch }}
+                run: |
+                  set -eu
+                  test "$(git rev-parse HEAD)" = "$CANDIDATE"
+                  test "$CANDIDATE" = "$MERGED"
+                  test "$BRANCH" = refs/heads/main
+                  test -f change.txt
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: Published the selected native source.
+              artifact_refs: {}
+  mocks: &id002
+    ops:
+    - match:
+        selector: ./recipes/merge-queue
+      repeat: true
+      behavior:
+        mode: passthrough
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+    - match:
+        op: merge
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.results.size()==3 && outputs.results.all(r,r.status=='success')
+      && calls.filter(c,c.op=='merge').size()==1
+  - type: cel_true
+    expr: calls.filter(c,c.node_path.endsWith('/selection-publish/source')).size()==1
+      && outputs.publication.result.status=='passed'
+- id: all-invalid-contributions-never-enter-healthy-publisher
+  type: integration_case
+  inputs:
+    scenario: all-invalid
+  runtime: *id001
+  mocks:
+    ops:
+    - match:
+        selector: ./recipes/merge-queue
+      repeat: true
+      behavior:
+        mode: passthrough
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.results.size()==3 && outputs.results.all(r,r.status=='fail-validation')
+  - type: cel_true
+    expr: '!calls.exists(c,c.op==''merge'' || c.node_path.endsWith(''/selection-publish/source''))
+      && outputs.publication.reason==''no-new-merge'' && outputs.publication.source==null'
+- id: retained-empty-tree-commit-publishes-after-new-native-merge
+  type: integration_case
+  inputs:
+    scenario: empty
+  runtime: *id001
+  mocks: *id002
+  assertions:
+  - type: cel_true
+    expr: outputs.results.size()==3 && outputs.results.all(r,r.status=='success')
+      && outputs.published.size()==3
+  - type: cel_true
+    expr: outputs.results[1].hash!=outputs.results[0].hash && calls.filter(c,c.op=='merge').size()==1
+      && calls.filter(c,c.node_path.endsWith('/selection-publish/source')).size()==1
+- id: optional-skipped-verification-keeps-source-and-status
+  type: integration_case
+  inputs:
+    scenario: optional
+  runtime:
+    backend: sqlite
+    cells:
+      root:
+        file_sources:
+          merge-check.yaml: ../../merge-check.yaml
+          recipes/adaptive3: ../../recipes/adaptive3
+          recipes/merge-queue: ../../recipes/merge-queue
+        files:
+          .c2/recipes/hooks/build/verify.yaml: |
+            id: verify
+            sequence:
+            - id: skip
+              op: command_execution
+              const: true
+              inputs:
+                run: printf skipped
+            outputs:
+              api_version: c2.build-hook/v1
+              status: ${{ sequence.skip.outputs.stdout }}
+              summary: Verification explicitly optional.
+              artifact_refs: {}
+          .c2/recipes/hooks/build/publish.yaml: |
+            id: selection-publish
+            inputs:
+              candidate: ${{ inputs.candidate }}
+              merged_hash: ${{ inputs.merged_hash }}
+              branch: ${{ inputs.target_branch }}
+            sequence:
+            - id: source
+              op: command_execution
+              const: true
+              inputs:
+                env:
+                  CANDIDATE: ${{ inputs.candidate }}
+                  MERGED: ${{ inputs.merged_hash }}
+                  BRANCH: ${{ inputs.branch }}
+                run: |
+                  set -eu
+                  test "$(git rev-parse HEAD)" = "$CANDIDATE"
+                  test "$CANDIDATE" = "$MERGED"
+                  test "$BRANCH" = refs/heads/main
+                  test -f change.txt
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: Published the selected native source.
+              artifact_refs: {}
+  mocks: *id002
+  assertions:
+  - type: cel_true
+    expr: outputs.results.all(r,r.status=='success') && outputs.publication.result.status=='passed'
+  - type: cel_true
+    expr: calls.filter(c,c.node_path.endsWith('/selection-publish/source')).size()==1
+  - type: cel_true
+    expr: calls.exists(c,c.node_path.endsWith('/root/skip') && c.outputs.stdout=='skipped')
+- id: selected-subset-publishes-only-final-verified-tip
+  type: integration_case
+  runtime:
+    backend: sqlite
+    cells:
+      root:
+        file_sources:
+          merge-check.yaml: ../../merge-check.yaml
+          recipes/adaptive3: ../../recipes/adaptive3
+          recipes/merge-queue: ../../recipes/merge-queue
+        files:
+          .c2/recipes/hooks/build/verify.yaml: |
+            id: verify
+            sequence:
+            - id: test
+              op: command_execution
+              inputs:
+                run: |
+                  if [ -f change.txt ] && { [ -f program ] || [ -f third.txt ]; }; then
+                    echo failed
+                  else
+                    echo passed
+                  fi
+            outputs:
+              api_version: c2.build-hook/v1
+              status: ${{ sequence.test.outputs.stdout }}
+              summary: Older work and younger work are incompatible.
+              artifact_refs: {}
+          .c2/recipes/hooks/build/publish.yaml: |
+            id: selection-publish
+            inputs:
+              candidate: ${{ inputs.candidate }}
+              merged_hash: ${{ inputs.merged_hash }}
+              branch: ${{ inputs.target_branch }}
+            sequence:
+            - id: source
+              op: command_execution
+              const: true
+              inputs:
+                env:
+                  CANDIDATE: ${{ inputs.candidate }}
+                  MERGED: ${{ inputs.merged_hash }}
+                  BRANCH: ${{ inputs.branch }}
+                run: |
+                  set -eu
+                  test "$(git rev-parse HEAD)" = "$CANDIDATE"
+                  test "$CANDIDATE" = "$MERGED"
+                  test "$BRANCH" = refs/heads/main
+                  test -f change.txt
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: Published the selected native source.
+              artifact_refs: {}
+  inputs:
+    scenario: ordinary
+  mocks:
+    ops:
+    - match:
+        selector: ./recipes/merge-queue
+      repeat: true
+      behavior:
+        mode: passthrough
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+    - match:
+        op: merge
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.results.size()==3 && outputs.results.filter(r,r.status=='success').map(r,r.changeid)==['000000000000000000000000001']
+  - type: cel_true
+    expr: outputs.results.filter(r,r.status=='fail-validation').size()==2 && outputs.results.filter(r,r.status=='fail-validation').all(r,size(r.failure_logs)>0)
+  - type: cel_true
+    expr: outputs.published[0]==outputs.results.filter(r,r.status=='success')[0].hash
+  - type: cel_true
+    expr: calls.filter(c,c.node_path.endsWith('/selection-publish/source')).size()==1
+      && outputs.publication.source.merged_hash==calls.filter(c,c.op=='merge' && has(c.outputs))[calls.filter(c,c.op=='merge'
+      && has(c.outputs)).size()-1].outputs.merged_hash
+- id: upstream-chase-publishes-only-after-final-native-merge
+  type: integration_case
+  runtime:
+    backend: sqlite
+    cells:
+      root:
+        file_sources:
+          merge-check.yaml: ../../merge-check.yaml
+          recipes/adaptive3: ../../recipes/adaptive3
+          recipes/merge-queue: ../../recipes/merge-queue
+        files:
+          .c2/recipes/hooks/build/verify.yaml: |
+            id: verify
+            sequence:
+            - id: check
+              op: command_execution
+              inputs:
+                env:
+                  CELL_REPO: ${{ context.git.repo }}
+                run: |
+                  set -eu
+                  test -f change.txt
+                  case "$CELL_REPO" in https://example.test/fixture-*) ;; *) exit 1 ;; esac
+                  work=$(mktemp -d)
+                  trap 'rm -r "$work"' EXIT
+                  git clone --quiet --branch main "$(git remote get-url origin)" "$work"
+                  if [ ! -f "$work/upstream.txt" ]; then
+                    printf 'unrelated advance\n' > "$work/upstream.txt"
+                    git -C "$work" add upstream.txt
+                    git -C "$work" -c user.name=Test -c user.email=test@example.test commit --quiet -m "Advance the fixture branch"
+                    git -C "$work" push --quiet origin HEAD:refs/heads/main
+                  fi
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: Checked the exact stack.
+              artifact_refs: {}
+          .c2/recipes/hooks/build/publish.yaml: |
+            id: selection-publish
+            inputs:
+              candidate: ${{ inputs.candidate }}
+              merged_hash: ${{ inputs.merged_hash }}
+              branch: ${{ inputs.target_branch }}
+            sequence:
+            - id: source
+              op: command_execution
+              const: true
+              inputs:
+                env:
+                  CANDIDATE: ${{ inputs.candidate }}
+                  MERGED: ${{ inputs.merged_hash }}
+                  BRANCH: ${{ inputs.branch }}
+                run: |
+                  set -eu
+                  test "$(git rev-parse HEAD)" = "$CANDIDATE"
+                  test "$CANDIDATE" = "$MERGED"
+                  test "$BRANCH" = refs/heads/main
+                  test -f change.txt
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: Published the selected native source.
+              artifact_refs: {}
+  inputs:
+    scenario: ordinary
+  mocks:
+    ops:
+    - match:
+        selector: ./recipes/merge-queue
+      repeat: true
+      behavior:
+        mode: passthrough
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+    - match:
+        op: merge
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.results.size()==3 && outputs.results.all(r,r.status=='success')
+  - type: cel_true
+    expr: outputs.published.size()==4 && outputs.published[1]==outputs.results[0].hash
+      && outputs.published[3]==outputs.results[2].hash
+  - type: cel_true
+    expr: calls.filter(c,c.node_path.endsWith('/verify/verify/root/check')).size()==2
+  - type: cel_true
+    expr: calls.filter(c,c.node_path.endsWith('/selection-publish/source')).size()==1
+      && outputs.publication.source.merged_hash==calls.filter(c,c.op=='merge' && has(c.outputs))[calls.filter(c,c.op=='merge'
+      && has(c.outputs)).size()-1].outputs.merged_hash
+- id: mismatched-native-merge-tip-never-enters-healthy-publisher
+  type: integration_case
+  inputs:
+    scenario: ordinary
+  runtime:
+    backend: sqlite
+    cells:
+      root:
+        file_sources:
+          merge-check.yaml: ../../merge-check.yaml
+          recipes/adaptive3: ../../recipes/adaptive3
+          recipes/merge-queue: ../../recipes/merge-queue
+        files:
+          .c2/recipes/hooks/build/verify.yaml: |
+            id: verify
+            sequence: []
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: Checked assembled source.
+              artifact_refs: {}
+          .c2/recipes/hooks/build/publish.yaml: |
+            id: selection-publish
+            inputs:
+              candidate: ${{ inputs.candidate }}
+              merged_hash: ${{ inputs.merged_hash }}
+              branch: ${{ inputs.target_branch }}
+            sequence:
+            - id: source
+              op: command_execution
+              const: true
+              inputs:
+                env:
+                  CANDIDATE: ${{ inputs.candidate }}
+                  MERGED: ${{ inputs.merged_hash }}
+                  BRANCH: ${{ inputs.branch }}
+                run: |
+                  set -eu
+                  test "$(git rev-parse HEAD)" = "$CANDIDATE"
+                  test "$CANDIDATE" = "$MERGED"
+                  test "$BRANCH" = refs/heads/main
+                  test -f change.txt
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: Published the selected native source.
+              artifact_refs: {}
+  mocks:
+    ops:
+    - match:
+        selector: ./recipes/merge-queue
+      repeat: true
+      behavior:
+        mode: passthrough
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+    - match:
+        op: merge
+      behavior:
+        mode: return
+        outputs:
+          merged_hash: '0000000000000000000000000000000000000000'
+          target_branch: refs/heads/main
+  assertions:
+  - type: cel_true
+    expr: calls.filter(c,c.op=='merge').size()==1 && !calls.exists(c,c.node_path.endsWith('/selection-publish/source'))
+  expect_error: Native merge does not match
+- id: exhausted-upstream-chases-never-enter-healthy-publisher
+  type: integration_case
+  inputs:
+    scenario: ordinary
+  runtime:
+    backend: sqlite
+    cells:
+      root:
+        file_sources:
+          merge-check.yaml: ../../merge-check.yaml
+          recipes/adaptive3: ../../recipes/adaptive3
+          recipes/merge-queue: ../../recipes/merge-queue
+        files:
+          .c2/recipes/hooks/build/verify.yaml: |
+            id: verify
+            sequence:
+            - id: advance
+              op: command_execution
+              const: true
+              inputs:
+                run: 'set -eu
+
+                  writer=$(mktemp -d)
+
+                  trap ''rm -rf "$writer"'' EXIT
+
+                  git clone -q --branch main "$(git remote get-url origin)" "$writer"
+
+                  git -C "$writer" -c user.name=Race -c user.email=race@example.test commit -q
+                  --allow-empty -m ''Advance every checked base''
+
+                  git -C "$writer" push -q origin HEAD:refs/heads/main
+
+                  '
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: Checked assembled source.
+              artifact_refs: {}
+          .c2/recipes/hooks/build/publish.yaml: |
+            id: selection-publish
+            inputs:
+              candidate: ${{ inputs.candidate }}
+              merged_hash: ${{ inputs.merged_hash }}
+              branch: ${{ inputs.target_branch }}
+            sequence:
+            - id: source
+              op: command_execution
+              const: true
+              inputs:
+                env:
+                  CANDIDATE: ${{ inputs.candidate }}
+                  MERGED: ${{ inputs.merged_hash }}
+                  BRANCH: ${{ inputs.branch }}
+                run: |
+                  set -eu
+                  test "$(git rev-parse HEAD)" = "$CANDIDATE"
+                  test "$CANDIDATE" = "$MERGED"
+                  test "$BRANCH" = refs/heads/main
+                  test -f change.txt
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: Published the selected native source.
+              artifact_refs: {}
+  mocks:
+    ops:
+    - match:
+        selector: ./recipes/merge-queue
+      repeat: true
+      behavior:
+        mode: passthrough
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+    - match:
+        op: merge
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: calls.filter(c,c.op=='merge').size()==4 && !calls.exists(c,c.node_path.endsWith('/selection-publish/source'))
+  expect_error: Target branch advanced beyond the prepared base
+- id: failed-final-verification-never-enters-healthy-publisher
+  type: integration_case
+  runtime:
+    backend: sqlite
+    cells:
+      root:
+        file_sources:
+          merge-check.yaml: ../../merge-check.yaml
+          recipes/adaptive3: ../../recipes/adaptive3
+          recipes/merge-queue: ../../recipes/merge-queue
+        files:
+          .c2/recipes/hooks/build/verify.yaml: |
+            id: verify
+            sequence:
+            - id: test
+              op: command_execution
+              inputs:
+                run: |
+                  if [ -f change.txt ] && { [ -f program ] || [ -f third.txt ]; }; then
+                    echo failed
+                  else
+                    echo passed
+                  fi
+            outputs:
+              api_version: c2.build-hook/v1
+              status: ${{ sequence.test.outputs.stdout }}
+              summary: Older work and younger work are incompatible.
+              artifact_refs: {}
+          .c2/recipes/hooks/build/publish.yaml: |
+            id: selection-publish
+            inputs:
+              candidate: ${{ inputs.candidate }}
+              merged_hash: ${{ inputs.merged_hash }}
+              branch: ${{ inputs.target_branch }}
+            sequence:
+            - id: source
+              op: command_execution
+              const: true
+              inputs:
+                env:
+                  CANDIDATE: ${{ inputs.candidate }}
+                  MERGED: ${{ inputs.merged_hash }}
+                  BRANCH: ${{ inputs.branch }}
+                run: |
+                  set -eu
+                  test "$(git rev-parse HEAD)" = "$CANDIDATE"
+                  test "$CANDIDATE" = "$MERGED"
+                  test "$BRANCH" = refs/heads/main
+                  test -f change.txt
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: Published the selected native source.
+              artifact_refs: {}
+  inputs:
+    scenario: ordinary
+  mocks:
+    ops:
+    - match:
+        node_path: merge-queue-selection-test/batch/adaptive3-merge-queue-batch/land/land/adaptive3-merge-queue-land/final/final/adaptive3-merge-queue-check/verify/adaptive3-verify-candidate/run/run/adaptive3-hooks/verify/verify/root/test
+      behavior:
+        mode: return
+        outputs:
+          success: true
+          exit_code: 0
+          stdout: failed
+          stderr: ''
+    - match:
+        selector: ./recipes/merge-queue
+      repeat: true
+      behavior:
+        mode: passthrough
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: '!calls.exists(c,c.op==''merge'' || c.node_path.endsWith(''/selection-publish/source''))
+      && calls.exists(c,c.node_path.contains(''/final/'') && c.outputs.stdout==''failed'')'
+  - type: cel_true
+    expr: calls.exists(c,c.node_path.endsWith('/operational/command_execution') &&
+      c.inputs.env.REASON.contains('The selected stack failed its final verification'))
+  expect_error: operational.command_execution] command execution failed

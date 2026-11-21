@@ -248,10 +248,115 @@ runs again after upstream rebases; changed files remain subject to normal review
 A `failed` prepare result returns evidence to implementation.
 
 The [publish example](../examples/build-hooks/publish.yaml) passes `merged_hash` to
-an explicit publication script. Publish also receives `target_branch`, and its
-`candidate` equals `merged_hash`. It preserves the managed repository and uses
-ordinary c2j execution and failure handling. The build adds no custom publication
-recovery or rollback protocol. A publication failure does not undo the Git merge.
+an explicit publication script. Publish also receives `target_branch`; checkout
+HEAD, `candidate` and `merged_hash` identify the same recorded commit even after
+the branch advances. The hook receives selected fields, not a native merge
+receipt. The adapter selects that workspace on a containing sequence before
+hook pinning and input binding; keep the hook include inside that scope. Putting
+`workspace` directly on the cell include can bind `candidate` from the enclosing
+job after a restart. Nested jobs must explicitly preserve the immutable source;
+this adapter guarantee does not certify a product's nested release handoff.
+
+With ordinary integration (`merge_queue: false`), the build invokes publish after
+its successful native merge. Same-job recovery reuses the internal `merge_state`,
+bound to the target and accepted Outcome/patch, without merging again. General
+`feedback.publication` cannot select publication. Explicit cross-job Integration
+recovery may supply it as a producer lookup hint: `merge-receipt.yaml` checks the
+successful native task, original human acceptance, patch equivalence, full hash,
+target identity and current reachability. Missing or contradictory evidence stops
+recovery. Legacy two-field queue receipts and moving refs remain stuck. A failure
+preserves the merge; publication does not roll Git or external effects back.
+
+Publisher-only changes use the same merge recipe inline with one contribution;
+that merging job performs publication itself. Product-only changes use the grouped
+receiver below. Mixed publisher/product changes must be split before either merge
+route. See [integration routing](../recipes/adaptive3/README.md).
+
+When inline publication fails, Integration stays stuck and retains the confirmed
+merge, original source/base/request/documents/settings and hook diagnostics in its
+private `merge_state`. A later Integration validates that state's target and
+accepted-patch binding, then retries only the hook at the original full hash,
+even after branch advancement or disabling the queue setting. Repeated failure
+stays stuck; success or `skipped` completes without another hook call on the next
+Integration. Hook adapter errors before invocation also retain the merge.
+General feedback and copied queue history cannot authorize this retry. Keep the
+original Integration state; a new already-landed submission cannot recover failed
+publication. This inline path needs no grouped receiver handle.
+
+With the merge queue enabled, the receiver invokes publish after the final
+successful assembled merge. Callers and subset-check children never publish.
+The source is the assembled tip; each caller keeps its individual landed hash,
+which may be an intermediate commit. Shared verification covers the assembled
+tip, not every prefix. A missing or ineligible hook can return `skipped` normally.
+An already-landed-only batch returns `no-new-merge`, a null source and a skipped
+result; it does not recover or certify an earlier publication.
+
+The receiver supplies the final assembly base, a branch/accepted-ID request,
+screened common directory/settings and accepted documents under
+`contributions/<Change-Id>/<original-key>`. Artifact bindings transport their bytes.
+[Local hook trust and permissions](GUIDE-Local-Recipe-Hooks.md) still control hook
+code, secrets and submission; appends cannot combine or grant authority.
+
+A failed grouped receiver hook leaves a failed receiver and successful merge evidence in
+its retained native landing and publication tasks, even when final outputs are
+absent. Callers retain the completed grouped start item and report stuck. Inspect
+that original receiver with `job log`, `job fields` and artifact commands. Discover
+a post-merge scope with `job restart-points`, inspect `job restart-context`, then
+restart the receiver immediately before publication. Preserve the original source,
+base, owner and document references. Do not resubmit or remerge to retry publish.
+A continuation has a new job ID; `owner_job` remains the original receiver.
+
+Caller recovery carries `feedback.queue_recovery` with the original native
+`receiver` start item, canonical `branch` and `changeid`. It reads that receiver's
+goal with `return_when: current_status`, validates the successful native result
+binding and receipt owner, and never invokes a caller hook, even if queue settings
+have since been disabled. An open goal means repair is pending. Legacy queue
+publication evidence without an owner requires diagnosis rather than fallback.
+
+Successful receiver generations remain serialized through publish. Failure or
+cancellation permits successors; older recovery may therefore run after newer
+batches. Repeated or out-of-order receiver publication remains possible on recovery.
+Products own branch eligibility, durable release intent, version ordering and
+external-effect reconciliation. Cancelling a caller stops its wait, while shared
+receiver work remains eligible. Cancelling the receiver before publish prevents
+new hook work; cancellation does not undo completed effects.
+
+### Queue receipt and upgrade
+
+Queue contributions, verification policy and receipts use version 2 together.
+The grouping namespace ends in `/merge-publish-v2`. Receipt fields are `version`,
+`branch`, sorted unique `requested`, per-contribution `results`, and `publication`:
+
+```yaml
+publication:
+  owner_job: ORIGINAL_RECEIVER_JOB
+  source:
+    merged_hash: FULL_NATIVE_MERGED_HASH
+    target_branch: refs/heads/main
+  reason: hook
+  result:
+    api_version: c2.build-hook/v1
+    status: passed
+    summary: Published the assembled commit.
+    artifact_refs: {}
+```
+
+For no new merge, `source` is null, `reason` is `no-new-merge`, and the result is
+`skipped`. Callers validate receiver identity, branch, complete result coverage,
+full hashes, their Change-Id trailer, reachability and ancestry to the published
+source. Rejected callers stay rejected even when accepted peers publish.
+
+Build completion preserves `outputs.merge` as the caller's merge identity,
+`outputs.publication` as the shared hook result, and adds `outputs.queue_publication`
+for receiver/source/reason/result. Shared hook artifacts are exported under
+`outputs.artifact_refs` with `publication/` aliases; JSON references alone do not
+hydrate files. Ordinary hook inputs and `c2.build-hook/v1` remain unchanged.
+
+Deploy paired caller/receiver revisions. Drain old queued jobs and unresolved old
+publication recovery first: retained jobs keep their captured recipes on restart.
+New readers reject v1 receipts and new receivers reject v1 contributions. Separate
+grouping namespaces cannot alone prevent old and new external publishers from
+both acting. Never fall back to caller publication on incompatibility or denial.
 
 ## Hook inputs and results
 

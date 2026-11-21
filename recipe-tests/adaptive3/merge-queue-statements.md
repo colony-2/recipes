@@ -160,12 +160,15 @@ Suite: `recipe-tests/adaptive3/merge-queue-results.test.yaml`.
 
 ## Publication and cancellation
 
-Suite: `recipe-tests/adaptive3/merge-queue-recovery.test.yaml`.
+Suites: `recipe-tests/adaptive3/merge-queue-caller.test.yaml` and
+`publication-routing.test.yaml`; native worker-restart acceptance remains required.
+MQ-59/MQ-60 use the accepted receiver-owned publication revision, replacing the
+previous per-caller source and recovery expectations.
 
 | ID | Expectation | Files | Priority | Level / dependencies |
 | --- | --- | --- | --- | --- |
-| MQ-59 | Publication reads the caller’s landed commit and receives that hash even when source HEAD and batch tip differ. | `execute.yaml`, `hooks.yaml` | Critical | Integration / c2j, publication hook |
-| MQ-60 | Failed publication resumes from the confirmed receipt without queue resubmission or another merge. | `execute.yaml`, `lifecycle.yaml` | Critical | Integration / c2j, failing publish hook |
+| MQ-59 | The receiver publishes its final assembled tip; callers preserve individual landed hashes without invoking publication. | `merge-queue-batch.yaml`, `execute.yaml`, `hooks.yaml` | Critical | Integration / c2j, publication hook |
+| MQ-60 | Failed receiver publication restarts at its recorded source without another submission or merge; callers consume its native repair result. | `merge-queue-batch.yaml`, `merge-queue-submit.yaml` | Critical | Integration / c2j, restart fixture |
 | MQ-61 | Rejected callers receive original diagnostics, reprepare changed work and satisfy verification and approval before resubmission. | `execute.yaml`, `cycle.yaml` | Critical | Integration / c2j, scripted repair and review |
 | MQ-62 | Cancelling one caller neither cancels the shared batch nor withdraws its accepted contribution. | `integration.yaml` | Critical | Integration / grouped c2j, cancellation fixture |
 | MQ-63 | Failed or cancelled batches reconcile known outcomes and branch history before replacement admission. | `integration.yaml`, `lifecycle.yaml` | Critical | Integration / c2j, durable recovery |
@@ -175,7 +178,7 @@ Suite: `recipe-tests/adaptive3/merge-queue-recovery.test.yaml`.
 
 Implement these cases in the named native suites, then run `c2j test validate --directory recipe-tests/adaptive3` and the focused new suites with `c2j test run --file <suite>`. Retain existing `integration.test.yaml`, `publication-ref.test.yaml`, `renewal.test.yaml`, `resume.test.yaml` and `cancellation.test.yaml` coverage, adapting only their integration path assumptions. Run shared `recipe-tests/adaptive/parent-recovery.test.yaml` and `required-jobs.test.yaml` when changing child orchestration, plus the repository timeout-policy check when executable recipes change.
 
-Finish with a real grouped receiving flow on the selected supported local backend: multiple appends, a serial successor, actual bundles, interrupted/restarted waiting, a passing item beside validation/conflict rejections, and publication observing its own hash. Do not mock those boundaries. Record runtime identity, native reports and selected failure evidence. A selected acceptance check that cannot run is incomplete or failed, never a feature pass. No production deployment, additional backend repair or all-backend certification is part of this validation.
+Finish with a real grouped receiving flow on the selected supported local backend: multiple appends, a serial successor, actual bundles, interrupted/restarted waiting, a passing item beside validation/conflict rejections, and receiver publication observing the final batch hash. Do not mock those boundaries. Record runtime identity, native reports and selected failure evidence. A selected acceptance check that cannot run is incomplete or failed, never a feature pass. No production deployment, additional backend repair or all-backend certification is part of this validation.
 
 Scripted repair choices verify routing and rollback, not Codex confidence or semantic equivalence. Exact optimum, global oldest-first scheduling and starvation freedom across sealed generations are not asserted. If exact optimization is selected, add acceptance for discovering feasible older-dependent combinations before claiming that stronger guarantee.
 
@@ -224,3 +227,28 @@ For MQT-05, record a genuinely separate successor with its actual batch ID and f
 For MQT-08, fail only the capture command with otherwise valid preparation and permissions. Pair it with the same fixture’s successful control. Assert no grouped submission or publication occurs. For MQT-12, preserve existing negative caller checks and their healthy control, rather than duplicate queue validation logic.
 
 Native result reports must distinguish passed, failed and unexecuted checks. Missing prerequisites or incomplete metadata reads are not feature passes. The normal repository verification also remains required. No production deployment is requested.
+
+## Successive conflict recovery
+
+| ID | Expectation | Files | Priority | Type and dependencies |
+| --- | --- | --- | --- | --- |
+| MQ-28a | Successive conflict repairs preserve earlier repairs, ordered landed contributions and exact reconstructed prefixes. | `merge-queue-selection.test.yaml` | Critical | Integration / native c2j, Git, scripted repair |
+| MQ-28b | An uncertain younger repair retains successful older repairs without repeating repair attempts. | `merge-queue-selection.test.yaml` | Critical | Integration / native c2j, Git, scripted repair |
+
+## Reconciled fixture compatibility
+
+| ID | Expectation | Files | Priority | Type and dependencies |
+| --- | --- | --- | --- | --- |
+| MQ-C1 | Queue regression callers and receivers use the same fixture source and current protocol, preserving healthy and rejected outcomes. | `dependency-feedback.test.yaml`, `merge-queue-fast-forward.yaml` | Critical | Integration / native c2j, Git |
+| MQ-C2 | Publication failure regressions reach the actual hook and retain one merged source through retry. | `confirmed-integration.test.yaml` | Critical | Integration / native c2j, Git, scripted failures |
+| MQ-C3 | Publisher-only changes merge and publish inline; product changes use one grouped receiver; mixed changes require splitting. | `publisher-merge.test.yaml` | Critical | Integration / native c2j, Git |
+| MQ-C4 | Titled v2 receivers retain shared publication results and destination identity across admission, retry and rejected contributions. | `merge-queue-caller.test.yaml`, `merge-queue-title-checks.py` | Critical | Integration / native c2j, Git |
+| MQ-C5 | Repository verification records the tested candidate, base and pinned runtime in both successful and failed reports. | `.c2/recipes/hooks/build/verify.yaml`, `recipe-tests/repository-verify.test.yaml` | High | Integration / native c2j, Git |
+
+## Inline publication recovery
+
+| ID | Expectation | Files | Priority | Type and dependencies |
+| --- | --- | --- | --- | --- |
+| MQ-I1 | Failed inline publication retains its landed source, original hook inputs and diagnostics for Integration recovery. | `inline-publication-recovery.test.yaml`, `execute.yaml`, `merge-queue-submit.yaml` | Critical | Integration / pinned c2j, SQLite, Git |
+| MQ-I2 | Inline recovery retries publication at the original commit after branch advancement without another submission, verification, squash or merge. | `inline-publication-recovery.test.yaml` | Critical | Integration / pinned c2j, SQLite, Git |
+| MQ-I3 | Repeated inline publication failures remain stuck; healthy or explicitly skipped publication completes without duplicate hook invocation. | `inline-publication-recovery.test.yaml` | Critical | Integration / pinned c2j, SQLite, Git |

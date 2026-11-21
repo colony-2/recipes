@@ -3,6 +3,7 @@ inputs:
   branch: ${{ inputs.branch }}
   policy: ${{ inputs.policy }}
   appends: ${{ inputs.appends }}
+  return_publication_failure: ${{ inputs.?return_publication_failure.orValue(false) }}
   check_recipe: >-
     ${{ inputs.?check_recipe.orValue('git+' + context.recipe_source.?repo.orValue('https://github.com/colony-2/recipes.git')
       + '//merge-check.yaml@' + context.recipe_source.?ref.orValue('main')) }}
@@ -21,7 +22,7 @@ state:
       transitions:
       - to: land
         when: size(outputs.intake.pending)>0
-      - to: done
+      - to: publication_context
         when: 'true'
     land:
       workspace:
@@ -39,15 +40,69 @@ state:
           (!state_exists('chase') || states.chase.outputs.attempts<3)
         to: chase
       transitions:
-      - to: done
+      - to: publication_context
         when: 'true'
     chase:
+      # Read prior state before entering the sequence's scope.
+      inputs:
+        attempts: ${{ state_output('chase','attempts',0)+1 }}
       sequence: []
       outputs:
-        attempts: ${{ state_output('chase','attempts',0)+1 }}
+        attempts: ${{ inputs.attempts }}
       transitions:
       - to: intake
         when: 'true'
+    publication_context:
+      op: ./recipes/merge-queue
+      const: true
+      inputs:
+        action: publication_context
+        request:
+          landing: >-
+            ${{ state_output('land','merge',{}).size()>0 ? {'merge':states.land.outputs.merge,'base':states.land.outputs.base,'verified_head':states.land.outputs.verified_head,'accepted':states.land.outputs.accepted} : {} }}
+          branch: ${{ inputs.branch }}
+          owner_job: ${{ context.workflow.job_id }}
+          contributions: ${{ states.intake.outputs.intake.pending }}
+      transitions:
+      - to: publish
+        when: outputs.result.reason=='hook'
+      - to: done
+        when: 'true'
+    publish:
+      include: ./hooks.yaml
+      inputs:
+        hook: publish
+        publication: ${{ states.publication_context.outputs.result.source }}
+        publication_base: ${{ states.publication_context.outputs.result.base }}
+        request: ${{ states.publication_context.outputs.result.request }}
+        documents: ${{ states.publication_context.outputs.result.documents }}
+        target_directory: ${{ inputs.policy.target_directory }}
+        settings: ${{ inputs.policy.settings }}
+      catch:
+      - when: failure.kind != 'cancellation'
+        continue:
+          outputs:
+            result:
+              api_version: c2.build-hook/v1
+              status: failed
+              summary: ${{ failure.message }}
+              artifact_refs: {}
+              failure: ${{ json_parse(json_stringify(failure)) }}
+            artifacts: {}
+      transitions:
+      - to: publication_failed
+        when: outputs.result.status=='failed' && !inputs.return_publication_failure
+      - to: done
+        when: 'true'
+    publication_failed:
+      op: command_execution
+      const: true
+      inputs:
+        env:
+          REASON: ${{ states.publish.outputs.result.summary }}
+        run: |
+          printf '%s\n' "$REASON" >&2
+          exit 1
     done:
       sequence: []
       inputs:
@@ -59,7 +114,15 @@ state:
       outputs:
         results: ${{ inputs.results }}
 outputs:
-  version: 1
+  version: 2
   branch: ${{ inputs.branch }}
   requested: ${{ jq(inputs.appends.map(a,a.content.changeid),'unique') }}
   results: ${{ states.done.outputs.results }}
+  publication: >-
+    ${{ state_exists('publish')
+      ? {'owner_job':states.publication_context.outputs.result.owner_job,
+         'source':states.publication_context.outputs.result.source,'reason':'hook',
+         'result':states.publish.outputs.result}
+      : states.publication_context.outputs.result }}
+  artifact_refs: ${{ state_output('publish','artifacts',{}) }}
+  publication_context: ${{ states.publication_context.outputs.result }}

@@ -7,15 +7,15 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "recipes" / "merge-queue"))
 
-from git_work import Git, GitError, install, reuse_verification
-from policy import UnidentifiedContribution, caller_receipt, landing_results, plan_probes, record_probes, screen_contributions, reusable_receipt
+from git_work import Git, GitError, confirm_landed, install, reuse_verification
+from policy import UnidentifiedContribution, caller_receipt, landing_results, plan_probes, publication_context, record_probes, screen_contributions, reusable_receipt
 
 
 BASE = "a" * 40
 HEAD = "b" * 40
 BRANCH = "refs/heads/main"
 REPOSITORY = "https://example.test/cell.git"
-POLICY = {"version": 1, "require_verification": True, "target_directory": ".", "settings": {}}
+POLICY = {"version": 2, "require_verification": True, "target_directory": ".", "settings": {}}
 OLDER, NEWER, YOUNGEST = (f"{number:027d}" for number in range(1, 4))
 
 
@@ -28,7 +28,7 @@ def append(change_id, age, *, policy=POLICY, head=HEAD):
     return {
         "artifacts": [bundle],
         "content": {
-            "version": 1, "changeid": change_id, "repository": REPOSITORY, "branch": BRANCH,
+            "version": 2, "changeid": change_id, "repository": REPOSITORY, "branch": BRANCH,
             "base_hash": BASE, "head_hash": head, "initial_submitted_at": age,
             "thinpack_ref": bundle, "job_id": "producer", "verification_policy": policy,
         },
@@ -114,10 +114,19 @@ class MergeQueuePolicyTest(unittest.TestCase):
     def test_complete_receipt_releases_only_the_callers_own_result(self):
         own = {"changeid": OLDER, "status": "success", "hash": HEAD}
         other = {"changeid": NEWER, "status": "fail-conflict"}
-        receipt = {"version": 1, "branch": BRANCH, "requested": [OLDER, NEWER], "results": [other, own]}
-        self.assertEqual(caller_receipt(receipt, OLDER, BRANCH), {"own": own})
-        self.assertEqual(caller_receipt(receipt, YOUNGEST, BRANCH), {})
+        publication = {"owner_job": "receiver", "source": {"merged_hash": HEAD, "target_branch": BRANCH},
+                       "reason": "hook", "result": {"api_version": "c2.build-hook/v1", "status": "passed",
+                                                    "summary": "Published.", "artifact_refs": {}}}
+        receipt = {"version": 2, "branch": BRANCH, "requested": [OLDER, NEWER], "results": [other, own],
+                   "publication": publication}
+        self.assertEqual(caller_receipt(receipt, OLDER, BRANCH, "receiver"), {"own": own, "queue_publication": publication})
+        self.assertEqual(caller_receipt(receipt, YOUNGEST, BRANCH, "receiver"), {})
         for changes in (
+            {"version": 1},
+            {"publication": dict(publication, owner_job="foreign")},
+            {"publication": dict(publication, source={"merged_hash": "main", "target_branch": BRANCH})},
+            {"publication": dict(publication, reason="no-new-merge")},
+            {"publication": dict(publication, result=dict(publication["result"], status="unknown"))},
             {"branch": "refs/heads/other"},
             {"results": [own, own]},
             {"results": [own, dict(other, status="fail-validation")]},
@@ -125,7 +134,128 @@ class MergeQueuePolicyTest(unittest.TestCase):
             {"requested": [OLDER, YOUNGEST]},
         ):
             with self.subTest(changes=changes):
-                self.assertEqual(caller_receipt(dict(receipt, **changes), OLDER, BRANCH), {})
+                self.assertEqual(caller_receipt(dict(receipt, **changes), OLDER, BRANCH, "receiver"), {})
+
+    def test_publication_comes_from_native_merge_and_only_accepted_documents(self):
+        landing = {"merge": {"merged_hash": HEAD, "target_branch": BRANCH}, "base": BASE,
+                   "verified_head": HEAD, "accepted": [OLDER]}
+        contributions = [{"changeid": OLDER, "documents": {"review/note.md": {"stored": "accepted"}}},
+                         {"changeid": NEWER, "documents": {"review/note.md": {"stored": "rejected"}}}]
+        context = publication_context(landing, BRANCH, "receiver", contributions)
+        self.assertEqual(context["source"], {"merged_hash": HEAD, "target_branch": BRANCH})
+        self.assertEqual(context["documents"], {f"contributions/{OLDER}/review/note.md":
+                                                {"stored": "accepted", "name": f"contributions/{OLDER}/review/note.md"}})
+        for changes in ({"verified_head": BASE}, {"base": HEAD}, {"accepted": []},
+                        {"merge": {"merged_hash": BASE, "target_branch": BRANCH}},
+                        {"merge": {"merged_hash": HEAD, "target_branch": "refs/heads/other"}}):
+            with self.subTest(changes=changes), self.assertRaises(ValueError):
+                publication_context(dict(landing, **changes), BRANCH, "receiver", contributions)
+        skipped = publication_context({}, BRANCH, "receiver", [])
+        self.assertIsNone(skipped["source"])
+        self.assertEqual(skipped["result"]["status"], "skipped")
+
+    def test_receipt_field_failures_are_independent_of_row_order(self):
+        """R04c/QP06: each invalid field starts from a healthy unordered receipt."""
+        receipt = {
+            "version": 2, "branch": BRANCH, "requested": [OLDER, NEWER],
+            "results": [{"changeid": NEWER, "status": "fail-conflict"},
+                        {"changeid": OLDER, "status": "success", "hash": HEAD}],
+            "publication": {"owner_job": "receiver", "reason": "hook",
+                            "source": {"merged_hash": HEAD, "target_branch": BRANCH},
+                            "result": {"api_version": "c2.build-hook/v1", "status": "passed",
+                                       "summary": "Published.", "artifact_refs": {}}},
+        }
+        self.assertEqual(caller_receipt(receipt, OLDER, BRANCH, "receiver")["own"]["hash"], HEAD)
+        mutations = [
+            (("version",), None), (("version",), True), (("version",), 1),
+            (("branch",), "refs/heads/foreign"), (("requested",), []),
+            (("requested",), [OLDER, OLDER]), (("requested",), [OLDER, YOUNGEST]),
+            (("results",), [receipt["results"][1]]),
+            (("results", 0, "changeid"), OLDER), (("results", 0, "changeid"), YOUNGEST),
+            (("results", 0, "status"), "unknown"), (("results", 0, "failure_logs"), {}),
+            (("results", 0, "status"), "fail-validation"),
+            (("results", 1, "hash"), "main"), (("results", 1, "hash"), HEAD[:8]),
+            (("publication", "owner_job"), "foreign"),
+            (("publication", "reason"), "unknown"), (("publication", "reason"), "no-new-merge"),
+            (("publication", "source"), None),
+            (("publication", "source", "target_branch"), "refs/heads/foreign"),
+            (("publication", "source", "merged_hash"), "main"),
+            (("publication", "result", "api_version"), "c2.build-hook/v2"),
+            (("publication", "result", "status"), "unknown"),
+            (("publication", "result", "summary"), " "),
+            (("publication", "result", "artifact_refs"), []),
+            (("publication", "result", "failure"), "not an envelope"),
+            (("publication", "result", "unexpected"), "native receipt"),
+        ]
+        for path, value in mutations:
+            with self.subTest(path=path, value=value):
+                invalid = copy.deepcopy(receipt)
+                parent = invalid
+                for key in path[:-1]:
+                    parent = parent[key]
+                parent[path[-1]] = value
+                self.assertEqual(caller_receipt(invalid, OLDER, BRANCH, "receiver"), {})
+        for field in receipt:
+            with self.subTest(missing=field):
+                invalid = copy.deepcopy(receipt)
+                del invalid[field]
+                self.assertEqual(caller_receipt(invalid, OLDER, BRANCH, "receiver"), {})
+        skipped = copy.deepcopy(receipt)
+        skipped["publication"].update(reason="no-new-merge", source=None)
+        skipped["publication"]["result"]["status"] = "skipped"
+        self.assertIsNone(caller_receipt(skipped, OLDER, BRANCH, "receiver")["queue_publication"]["source"])
+        skipped["publication"]["result"]["status"] = "passed"
+        self.assertEqual(caller_receipt(skipped, OLDER, BRANCH, "receiver"), {})
+
+    def test_duplicate_documents_and_versions_do_not_pool_authority(self):
+        """QP05/QP06/QP08: duplicates cannot change document bytes or grants."""
+        original = append(OLDER, "2026-11-18T12:00:00.000000001Z")
+        ref = {"kind": "stored", "stored": {"key": {"jobId": "document", "index": 1}}}
+        original["content"]["documents"] = {"review/note.txt": ref}
+        original["artifacts"].append(ref)
+        accepted, rejected = screen_contributions([original, copy.deepcopy(original)], REPOSITORY, BRANCH, POLICY)
+        self.assertEqual(len(accepted), 1)
+        self.assertFalse(rejected)
+        for change in ("document", "alias", "bundle-owner", "contribution-version", "policy-version", "authority"):
+            with self.subTest(change=change):
+                duplicate = copy.deepcopy(original)
+                if change == "document":
+                    replacement = {"kind": "stored", "stored": {"key": {"jobId": "different", "index": 1}}}
+                    duplicate["content"]["documents"] = {"review/note.txt": replacement}
+                    duplicate["artifacts"][1] = replacement
+                elif change == "alias":
+                    duplicate["content"]["documents"]["review/second.txt"] = ref
+                    duplicate["artifacts"].append(ref)
+                elif change == "bundle-owner":
+                    duplicate["content"]["job_id"] = "foreign"
+                elif change == "contribution-version":
+                    duplicate["content"]["version"] = 1
+                elif change == "policy-version":
+                    duplicate["content"]["verification_policy"]["version"] = 1
+                else:
+                    duplicate["content"]["verification_policy"]["perms"] = {"jobs": {"submit": True}}
+                accepted, rejected = screen_contributions([original, duplicate], REPOSITORY, BRANCH, POLICY)
+                self.assertEqual(accepted, [])
+                self.assertIn(OLDER, rejected)
+
+    def test_document_binding_and_policy_cannot_supply_authority(self):
+        original = append(OLDER, "2026-11-18T12:00:00.000000001Z")
+        document = {"kind": "stored", "stored": {"key": {"jobId": "document-owner", "index": 1}}}
+        original["content"]["documents"] = {"review/note.md": document}
+        original["artifacts"].append(document)
+        accepted, rejected = screen_contributions([original], REPOSITORY, BRANCH, POLICY)
+        self.assertFalse(rejected)
+        self.assertEqual(accepted[0]["documents"], original["content"]["documents"])
+        for name in ("../escape", "/absolute", "a/../b", "a\\b", "bad\x00name"):
+            invalid = copy.deepcopy(original)
+            invalid["content"]["documents"] = {name: document}
+            self.assertIn(OLDER, screen_contributions([invalid], REPOSITORY, BRANCH, POLICY)[1])
+        invalid = copy.deepcopy(original)
+        invalid["artifacts"].pop()
+        self.assertIn(OLDER, screen_contributions([invalid], REPOSITORY, BRANCH, POLICY)[1])
+        invalid = copy.deepcopy(original)
+        invalid["content"]["verification_policy"] = dict(POLICY, permissions={"secrets": ["unrelated"]})
+        self.assertIn(OLDER, screen_contributions([invalid], REPOSITORY, BRANCH, POLICY)[1])
 
     def test_landing_results_attach_validation_evidence_without_bundle(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -144,6 +274,35 @@ class MergeQueuePolicyTest(unittest.TestCase):
 
 
 class MergeQueueInstallTest(unittest.TestCase):
+    def test_confirmation_requires_reachability_change_id_and_source_ancestry(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            repo = Git(Path(temporary))
+            repo.run("init", "--quiet")
+            repo.run("config", "user.name", "Queue Test")
+            repo.run("config", "user.email", "queue@example.test")
+            repo.run("commit", "--quiet", "--allow-empty", "-m", "Base")
+            base = repo.head()
+            repo.run("commit", "--quiet", "--allow-empty", "-m", "Own\n\nChange-Id: " + OLDER)
+            own = repo.head()
+            repo.run("commit", "--quiet", "--allow-empty", "-m", "Batch tip")
+            tip = repo.head()
+            repo.run("checkout", "--quiet", "--detach", base)
+            repo.run("commit", "--quiet", "--allow-empty", "-m", "Unreachable\n\nChange-Id: " + OLDER)
+            unreachable = repo.head()
+            repo.run("checkout", "--quiet", "--detach", tip)
+            source = {"merged_hash": tip, "target_branch": BRANCH}
+            self.assertTrue(confirm_landed(repo, BRANCH, own, OLDER, source)["confirmed"])
+            self.assertFalse(confirm_landed(repo, BRANCH, own, NEWER, source)["confirmed"])
+            self.assertFalse(confirm_landed(repo, BRANCH, unreachable, OLDER, source)["confirmed"])
+            self.assertFalse(confirm_landed(repo, BRANCH, own, OLDER,
+                                          dict(source, merged_hash=base))["confirmed"])
+            self.assertFalse(confirm_landed(repo, BRANCH, own, OLDER,
+                                          dict(source, target_branch="refs/heads/other"))["confirmed"])
+            self.assertFalse(confirm_landed(repo, BRANCH, own, OLDER,
+                                          dict(source, merged_hash=unreachable))["confirmed"])
+            self.assertFalse(confirm_landed(repo, BRANCH, own, OLDER,
+                                          dict(source, merged_hash="f" * 40))["confirmed"])
+
     def test_install_checks_the_advertised_head_before_changing_the_workspace(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

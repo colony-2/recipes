@@ -1,0 +1,56 @@
+id: scenario-publish
+inputs:
+  candidate: ${{ inputs.candidate }}
+  merged_hash: ${{ inputs.merged_hash }}
+  target_branch: ${{ inputs.target_branch }}
+  base: ${{ inputs.base }}
+  documents: ${{ inputs.documents }}
+  request: ${{ inputs.request }}
+  settings: ${{ inputs.settings }}
+sequence:
+- id: source
+  op: command_execution
+  const: true
+  artifacts:
+    selected/: ${{ inputs.documents }}
+    settings.json: ${{ inputs.settings }}
+  inputs:
+    capture_diagnostics: always
+    env:
+      CANDIDATE: ${{ inputs.candidate }}
+      MERGED: ${{ inputs.merged_hash }}
+      TARGET: ${{ inputs.target_branch }}
+      BASE: ${{ inputs.base }}
+      REQUEST: ${{ inputs.request }}
+      OWNER: ${{ context.workflow.job_id }}
+      OUTBOX: ${{ context.environment.op.outbox }}
+      INBOX: ${{ context.environment.op.inbox }}
+    run: |
+      set -eu
+      printf 'head=%s\ncandidate=%s\nmerged=%s\n' "$(git rev-parse HEAD)" "$CANDIDATE" "$MERGED" > "$OUTBOX/actual-state.txt"
+      cat "$OUTBOX/actual-state.txt"
+      test "$(git rev-parse HEAD)" = "$CANDIDATE"
+      test "$CANDIDATE" = "$MERGED"
+      test "$TARGET" = refs/heads/main
+      test "$BASE" != "$MERGED"
+      test "$(cat one.txt)" = one
+      test "$(cat two.txt)" = two
+      test "$(cat pre.txt)" = pre
+      test ! -e advanced.txt
+      test ! -e rejected.txt
+      test ! -e "$INBOX/candidate.bundle"
+      count=0
+      for document in "$INBOX"/selected/contributions/*/review/note.txt; do
+        case "$(cat "$document")" in 'one λ'|'two λ'|'three λ') ;; *) exit 1 ;; esac
+        count=$((count+1))
+      done
+      if [ -f three.txt ]; then test "$count" -eq 1; else test "$count" -eq 2; fi
+      test "$(cat "$INBOX/settings.json")" = '{}'
+      case "$REQUEST" in 'Publish merged batch on refs/heads/main: '*) ;; *) exit 1 ;; esac
+      printf 'owner=%s\nsource=%s\nbase=%s\nbranch=%s\n' "$OWNER" "$MERGED" "$BASE" "$TARGET" > "$OUTBOX/source.txt"
+      cat "$OUTBOX/source.txt"
+outputs:
+  api_version: c2.build-hook/v1
+  status: passed
+  summary: Checked the receiver batch source and documents.
+  artifact_refs: ${{ jq(sequence.source.artifacts,'with_entries(select(.key=="source.txt"))') }}

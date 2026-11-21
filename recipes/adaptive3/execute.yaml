@@ -44,6 +44,8 @@ state:
         schema: ${{ sequence.schemas.outputs.execute }}
         task: ${{ sequence.prompts.outputs.task }}
       transitions:
+      - to: queue
+        when: inputs.purpose == 'integration' && (has(inputs.feedback.queue_recovery) || (inputs.queue_history.?status.orValue('')=='stuck' && inputs.queue_history.?receiver.orValue(null)!=null))
       - to: receipt
         when: inputs.purpose == 'integration'
       - to: refresh
@@ -65,6 +67,11 @@ state:
         when: outputs.result.status == 'stuck'
         payload:
           result: ${{ outputs.result }}
+      - to: inline_retry
+        when: outputs.merge_state.?queue_result.orValue({}).?publish.orValue({}).?status.orValue('')=='failed' &&
+          size(outputs.merge_state.queue_result.?inline_publication.orValue({}))>0
+      - to: queue_completed
+        when: size(outputs.merge_state.?queue_result.orValue({}))>0
       - to: confirmed
         when: size(outputs.merge_state)>0
       - to: classify
@@ -139,20 +146,83 @@ state:
     queue:
       include: ./merge-queue-submit.yaml
       inputs:
-        inline: ${{ states.classify.outputs.kind == 'publisher' }}
+        inline: ${{ state_output('classify','kind','') == 'publisher' }}
         contribution: ${{ inputs.contribution }}
         verification: ${{ inputs.verification }}
         queue_history: ${{ inputs.queue_history }}
+        recovery: ${{ inputs.feedback.?queue_recovery.orValue({}) }}
+        recovering: ${{ has(inputs.feedback.queue_recovery) }}
+        documents: ${{ inputs.documents }}
         require_verification: ${{ inputs.require_verification }}
         target_directory: ${{ inputs.target_directory }}
         settings: ${{ inputs.settings }}
       transitions:
-      - to: confirmed
-        when: outputs.result.status == 'passed'
+      - to: queue_completed
+        when: outputs.result.status == 'passed' || size(outputs.result.?inline_publication.orValue({}))>0
       - to: done
         when: 'true'
         payload:
           result: ${{ outputs.result }}
+    queue_completed:
+      sequence: []
+      inputs:
+        merge_state: >-
+          ${{ size(state_output('receipt','merge_state',{}).?queue_result.orValue({}))>0
+            ? states.receipt.outputs.merge_state
+            : {'binding':state_output('receipt','binding',{}),
+               'publication':states.queue.outputs.result.publication,
+               'queue_result':states.queue.outputs.result} }}
+      outputs:
+        merge_state: ${{ inputs.merge_state }}
+        result: ${{ inputs.merge_state.queue_result }}
+      transitions:
+      - to: done
+        when: 'true'
+    inline_retry:
+      # Only the receipt checker can admit this retained internal state. General
+      # feedback and queue history cannot authorize an inline publication retry.
+      include: ./hooks.yaml
+      inputs:
+        hook: publish
+        publication: ${{ states.receipt.outputs.merge_state.queue_result.inline_publication.context.source }}
+        publication_base: ${{ states.receipt.outputs.merge_state.queue_result.inline_publication.context.base }}
+        request: ${{ states.receipt.outputs.merge_state.queue_result.inline_publication.context.request }}
+        documents: ${{ states.receipt.outputs.merge_state.queue_result.inline_publication.context.documents }}
+        target_directory: ${{ states.receipt.outputs.merge_state.queue_result.inline_publication.policy.target_directory }}
+        settings: ${{ states.receipt.outputs.merge_state.queue_result.inline_publication.policy.settings }}
+      catch:
+      - when: failure.kind != 'cancellation'
+        continue:
+          outputs:
+            result:
+              api_version: c2.build-hook/v1
+              status: failed
+              summary: ${{ failure.message }}
+              artifact_refs: {}
+              failure: ${{ json_parse(json_stringify(failure)) }}
+            artifacts: {}
+      transitions:
+      - to: inline_recovered
+        when: 'true'
+    inline_recovered:
+      inputs:
+        merge_state: ${{ states.receipt.outputs.merge_state }}
+        result: >-
+          ${{ jq([states.receipt.outputs.merge_state.queue_result,{
+            'status':states.inline_retry.outputs.result.status=='failed' ? 'stuck' : 'passed',
+            'summary':states.inline_retry.outputs.result.summary,
+            'publish':states.inline_retry.outputs.result,
+            'queue_publication':jq([states.receipt.outputs.merge_state.queue_result.queue_publication,
+              {'result':states.inline_retry.outputs.result}],'add'),
+            'errors':jq([states.receipt.outputs.merge_state.queue_result.errors,states.inline_retry.outputs.artifacts],'add')
+          }],'add') }}
+      sequence: []
+      outputs:
+        result: ${{ inputs.result }}
+        merge_state: ${{ jq([inputs.merge_state,{'queue_result':inputs.result}],'add') }}
+      transitions:
+      - to: done
+        when: 'true'
     merge:
       include: ./integration.yaml
       inputs:
@@ -187,7 +257,7 @@ state:
       outputs:
         result: ${{ transition.payload.?result.orValue({}) }}
 outputs:
-  merge_state: ${{ state_output('confirmed','merge_state',inputs.merge_state) }}
+  merge_state: ${{ state_output('inline_recovered','merge_state',state_output('queue_completed','merge_state',state_output('confirmed','merge_state',inputs.merge_state))) }}
   response: >-
     ${{ inputs.purpose == 'integration'
       ? (state_exists('publish')
@@ -196,7 +266,11 @@ outputs:
            'publication':states.confirmed.outputs.merge_state.publication,
            'initial_submitted_at':state_output('queue','result',{}).?initial_submitted_at.orValue(inputs.queue_history.?initial_submitted_at.orValue('')),
            'publish':states.publish.outputs.result,'errors':states.publish.outputs.artifacts}
-        : states.done.outputs.result)
+        : (state_exists('inline_recovered')
+          ? jq([states.inline_recovered.outputs.result,{'status':states.inline_recovered.outputs.result.status=='passed' ? 'ready' : 'stuck'}],'add')
+          : (state_exists('queue_completed')
+            ? jq([states.queue_completed.outputs.result,{'status':states.queue_completed.outputs.result.status=='passed' ? 'ready' : 'stuck'}],'add')
+            : states.done.outputs.result)))
       : (state_output('refresh','result',{}).?status.orValue('') == 'stuck' ? states.refresh.outputs.result :
         (state_output('before_design','result',{}).?status.orValue('') == 'failed' && states.work.outputs.response.status == 'ready'
           ? {'status':'changes','summary':states.before_design.outputs.result.summary,'errors':states.before_design.outputs.artifacts}
@@ -205,6 +279,9 @@ outputs:
     ? jq(states.work.outputs.artifacts,''with_entries(select(.key|startswith("review/")))'') : inputs.documents
     }}'
   session: ${{ state_output('work','session',{}) }}
-  artifacts: '${{ state_exists(''work'') ? states.work.outputs.artifacts : state_output(''publish'',''artifacts'',{})
-    }}'
+  artifacts: >-
+    ${{ state_exists('work') ? states.work.outputs.artifacts :
+      (state_exists('inline_recovered') ? states.inline_recovered.outputs.result.errors :
+        state_output('publish','artifacts',state_output('queue','result',{}).?errors.orValue(
+          state_output('queue','result',{}).?publish.orValue({}).?artifact_refs.orValue({})))) }}
   jobs: ${{ state_output('work','jobs',[]) }}

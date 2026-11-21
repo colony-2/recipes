@@ -34,7 +34,7 @@ for path in args.results.rglob('result.json'):
         continue
     assert result['status'] == 'passed', (case, result['status'])
     calls = result['run']['runtime']['calls']
-    batches = [call for call in calls if call['op'] == 'recipe.run_and_get_result']
+    batches = [call for call in calls if call['op'] == 'recipe.await_result_soft']
     assert len(batches) == 1, (case, len(batches))
     metadata = batches[0]['outputs']['outputs']['metadata']
     assert metadata['id'], metadata

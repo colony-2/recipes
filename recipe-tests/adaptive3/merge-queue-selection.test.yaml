@@ -296,3 +296,123 @@ cases:
       outputs.published[1]==outputs.results[0].hash && outputs.published[3]==outputs.results[2].hash
   - type: cel_true
     expr: calls.filter(c,c.node_path.endsWith('/verify/verify/root/check')).size()==2
+
+- id: two-successive-repairs-preserve-earlier-prefix
+  type: integration_case
+  runtime:
+    backend: sqlite
+    cells:
+      root:
+        file_sources: *sources
+        files:
+          .c2/recipes/hooks/build/verify.yaml: |
+            id: verify-repaired-prefix
+            sequence:
+            - id: check_repairs
+              op: command_execution
+              inputs:
+                run: test "$(cat change.txt)" = '1 and 2 and 3'
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: Both repairs survived final assembly.
+              artifact_refs: {}
+  inputs: {scenario: successive}
+  mocks:
+    ops:
+    - match: {selector: 'nix:github:colony-2/c2ops/published#codex'}
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: resolved
+            summary: Retain contribution one while mechanically applying contribution two.
+        effects:
+          worktree:
+            change.txt: "1 and 2\n"
+    - match: {selector: 'nix:github:colony-2/c2ops/published#codex'}
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: resolved
+            summary: Retain the repaired older prefix while mechanically applying contribution three.
+        effects:
+          worktree:
+            change.txt: "1 and 2 and 3\n"
+    - {match: {selector: ./recipes/merge-queue}, repeat: true, behavior: {mode: passthrough}}
+    - {match: {op: command_execution}, repeat: true, behavior: {mode: passthrough}}
+    - {match: {op: merge}, repeat: true, behavior: {mode: passthrough}}
+  assertions:
+  - type: cel_true
+    expr: outputs.results.size()==3 && outputs.results.all(r,r.status=='success') && outputs.published==outputs.results.map(r,r.hash)
+  - type: cel_true
+    expr: calls.filter(c,c.node_path.endsWith('/confirm')).size()==2 && calls.filter(c,c.node_path.endsWith('/confirm')).all(c,c.inputs.env.ACTUAL==c.inputs.env.EXPECTED && c.outputs.success)
+  - type: cel_true
+    expr: calls.filter(c,c.op=='extension_execution' && c.inputs.selector=='./recipes/merge-queue' && c.inputs.inputs.action=='capture_repair').size()==2
+  - type: cel_true
+    expr: calls.filter(c,c.op=='merge').size()==1 && calls.filter(c,c.node_path.endsWith('/check_repairs')).size()==1
+  - type: cel_true
+    expr: calls.filter(c,c.op=='extension_execution' && c.inputs.selector=='./recipes/merge-queue' && c.inputs.inputs.action=='assemble').exists(c,c.inputs.inputs.request.contributions.filter(r,r.repair_base!='').size()==2)
+- id: uncertain-second-repair-keeps-first-without-retry
+  type: integration_case
+  runtime:
+    backend: sqlite
+    cells:
+      root:
+        file_sources: *sources
+        files:
+          .c2/recipes/hooks/build/verify.yaml: |
+            id: verify-repaired-prefix
+            sequence:
+            - id: check_repairs
+              op: command_execution
+              inputs:
+                run: test "$(cat change.txt)" = '1 and 2'
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: The successful earlier repair survives the uncertain younger change.
+              artifact_refs: {}
+  inputs: {scenario: successive}
+  mocks:
+    ops:
+    - match: {selector: 'nix:github:colony-2/c2ops/published#codex'}
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: resolved
+            summary: Retain contribution one while mechanically applying contribution two.
+        effects:
+          worktree:
+            change.txt: "1 and 2\n"
+    - match: {selector: 'nix:github:colony-2/c2ops/published#codex'}
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: uncertain
+            summary: The younger change requires a new decision.
+    - {match: {selector: ./recipes/merge-queue}, repeat: true, behavior: {mode: passthrough}}
+    - {match: {op: command_execution}, repeat: true, behavior: {mode: passthrough}}
+    - {match: {op: merge}, repeat: true, behavior: {mode: passthrough}}
+  assertions:
+  - type: cel_true
+    expr: outputs.results.size()==3 && outputs.results.map(r,r.status)==['success','success','fail-conflict'] && outputs.published==outputs.results.filter(r,r.status=='success').map(r,r.hash)
+  - type: cel_true
+    expr: calls.filter(c,c.node_path.endsWith('/confirm')).size()==2 && calls.filter(c,c.node_path.endsWith('/confirm')).all(c,c.inputs.env.ACTUAL==c.inputs.env.EXPECTED && c.outputs.success)
+  - type: cel_true
+    expr: calls.filter(c,c.op=='extension_execution' && c.inputs.selector=='./recipes/merge-queue' && c.inputs.inputs.action=='capture_repair').size()==1
+  - type: cel_true
+    expr: calls.filter(c,c.op=='merge').size()==1 && calls.filter(c,c.node_path.endsWith('/check_repairs')).size()==1
+  - type: cel_true
+    expr: calls.filter(c,c.op=='extension_execution' && c.inputs.selector=='./recipes/merge-queue' && c.inputs.inputs.action=='assemble').exists(c,c.inputs.inputs.request.contributions.filter(r,r.repair_base!='').size()==1)

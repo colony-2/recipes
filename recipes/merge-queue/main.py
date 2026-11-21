@@ -27,6 +27,7 @@ def main():
         "record_probes": policy.record_probes,
         "landing_results": functools.partial(policy.landing_results, outbox),
         "caller_receipt": policy.caller_receipt,
+        "publication_context": policy.publication_context,
         "confirm_landed": functools.partial(git_work.confirm_landed, repo),
     }
     try:

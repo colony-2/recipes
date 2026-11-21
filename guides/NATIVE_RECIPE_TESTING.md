@@ -11,7 +11,8 @@ c2j version
 
 `.c2j-version` accepts an npm release or `source:<full Git commit ID>`.
 The current pin includes native child bindings, terminal ordering, response
-gates, and grouped submission used by the merge queue integration tests. The
+gates, grouped submission, and SQLite scenario controls used by the merge queue
+integration tests. The
 installer fetches that exact commit, checks its identity and builds with readonly
 module resolution. It labels the CLI as a source build; it does not manufacture
 a release number or require deployment. CI uses the same installer and records
@@ -210,8 +211,24 @@ requires a recorded restart and uninterrupted control, inspecting actual retaine
 sessions, human direction, documents and routing. Inspect bindings and produced
 artifacts as well as final outputs to exclude state-file round trips. Native failed-child cases confirm that the attempt's goal stays
 open. Mocked goal status cases cover recipe branching; they do not
-exercise an open goal's replacement/wakeup lifecycle. These checks need
-additional native fixture controls.
+exercise an open goal's replacement/wakeup lifecycle.
+
+For deterministic multi-job checks, use `runtime.controls.scenario` with the
+SQLite backend. The queue publication scenarios in
+[`queue-publication-scenario.test.json`](../recipe-tests/adaptive3/queue-publication-scenario.test.json)
+admit real callers before their shared receiver can lease, advance the branch
+before publish workspace preparation, and select caller versus receiver
+cancellation independently. They also declare worker stop/join, runtime reopen
+and a native post-merge continuation. The ordinary scenarios in
+[`ordinary-publication-scenario.test.json`](../recipe-tests/adaptive3/ordinary-publication-scenario.test.json)
+cover advancement, failed native merge and cancellation before checkout.
+
+These declarations exercise the production recipe includes and hook adapter.
+They add no runtime service or worker restart authority. Scenario outcomes and
+dispatch prohibitions remain required checks after expected job failures;
+declaring a restart is not evidence that publication recovered. Keep failures
+failed until the exact-source and retained-byte assertions pass. See the pinned
+c2j native-testing guide for the supported controller schema.
 
 ## Child report recovery checks
 

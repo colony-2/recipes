@@ -1,0 +1,76 @@
+schema_version: 2
+id: publication-routing
+input_schema:
+  mode: {type: string}
+inputs:
+  mode: ${{ inputs.mode }}
+sequence:
+- id: edit
+  op: command_execution
+  inputs:
+    run: printf 'queue-ready\n' > contribution.txt
+- id: prepare
+  include: ../../recipes/adaptive3/merge-queue-prepare.yaml
+  inputs:
+    message: Prepare an exact-source fixture
+- id: binding
+  when: inputs.mode.startsWith('ordinary')
+  include: ../../recipes/adaptive3/merge-receipt.yaml
+  inputs:
+    accepted: {}
+    documents: {}
+- id: land
+  when: inputs.mode.startsWith('ordinary') || inputs.mode.startsWith('legacy')
+  op: merge
+- id: submit
+  when: inputs.mode=='receiver'
+  include: ../../recipes/adaptive3/merge-queue-submit.yaml
+  inputs:
+    contribution: ${{ sequence.prepare.outputs.candidate }}
+    receiver: ${{ 'git+' + context.git.repo + '//merge-batch.yaml@main' }}
+    require_verification: true
+    target_directory: .
+    settings: {}
+- id: advance
+  when: inputs.mode=='ordinary'
+  workspace:
+    cell: ${{ context.workflow.cell }}
+    ref: main
+  sequence:
+  - id: unrelated
+    op: command_execution
+    inputs:
+      run: printf 'later branch\n' > later.txt
+  - id: merge
+    op: merge
+- id: execute
+  include: ../../recipes/adaptive3/execute.yaml
+  inputs:
+    purpose: integration
+    merge_state: >-
+      ${{ inputs.mode in ['ordinary','ordinary-null-receiver']
+        ? {'binding':sequence.binding.outputs.binding,'publication':sequence.land.outputs} : {} }}
+    recovery: ${{ inputs.mode in ['legacy','legacy-disabled','ordinary-moving'] }}
+    prior_publication: >-
+      ${{ inputs.mode=='ordinary-moving' ? {'merged_hash':'main'} :
+        sequence[?'land'].orValue({}).?outputs.orValue(null) }}
+    merge_queue: ${{ inputs.mode=='legacy' }}
+    contribution: ${{ sequence.prepare.outputs.candidate }}
+    queue_history: >-
+      ${{ inputs.mode=='ordinary-null-receiver' ? {'status':'stuck','receiver':null}
+        : sequence[?'submit'].orValue({}).?outputs.orValue({}).?result.orValue({}) }}
+    feedback: >-
+      ${{ inputs.mode=='receiver'
+        ? {'queue_recovery':{'receiver':sequence.submit.outputs.result.receiver,'branch':'refs/heads/main','changeid':sequence.prepare.outputs.candidate.changeid} }
+        : inputs.mode=='missing-owner' ? {'queue_recovery':{} }
+        : inputs.mode=='legacy-disabled' ? {'publication':{'merged_hash':sequence.land.outputs.merged_hash,'target_branch':'refs/heads/main'} }
+        : inputs.mode=='ordinary-moving' ? {'publication':jq([sequence.land.outputs,{'merged_hash':'main','candidate_sha':'main'}],'add')}
+        : {'publication':sequence.land.outputs} }}
+    request: Recover only the recorded publication
+    target_directory: .
+    documents: {}
+    settings: {}
+outputs:
+  result: ${{ sequence.execute.outputs.response }}
+  receipt: ${{ sequence[?'land'].orValue({}).?outputs.orValue({}) }}
+  queued: ${{ sequence[?'submit'].orValue({}).?outputs.orValue({}).?result.orValue({}) }}

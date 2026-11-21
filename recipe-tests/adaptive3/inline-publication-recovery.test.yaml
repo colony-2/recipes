@@ -1,0 +1,161 @@
+recipe: inline-publication-recovery.yaml
+cases:
+- id: healthy-inline-publication-is-not-repeated
+  type: integration_case
+  inputs: {mode: healthy}
+  runtime: &cell
+    backend: sqlite
+    cells:
+      root:
+        file_sources:
+          recipes: ../../recipes
+          merge-check.yaml: ../../merge-check.yaml
+        files:
+          README.md: Disposable inline publication recovery cell.
+          .c2/recipes/hooks/build/verify.yaml: |
+            id: verifier
+            sequence:
+            - id: check
+              op: command_execution
+              const: true
+              inputs:
+                run: test -f .c2/recipes/hooks/build/publish.yaml
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: Verified the inline publisher.
+              artifact_refs: {}
+          .c2/recipes/hooks/build/publish.yaml: |
+            id: inline-publisher
+            inputs:
+              candidate: ${{ inputs.candidate }}
+              merged_hash: ${{ inputs.merged_hash }}
+              base: ${{ inputs.base }}
+              target_branch: ${{ inputs.target_branch }}
+              request: ${{ inputs.request }}
+              documents: ${{ inputs.documents }}
+              settings: ${{ inputs.settings }}
+            sequence:
+            - id: effect
+              op: command_execution
+              const: true
+              artifacts:
+                selected/: ${{ inputs.documents }}
+                settings.json: ${{ inputs.settings }}
+              inputs:
+                capture_diagnostics: always
+                env:
+                  CANDIDATE: ${{ inputs.candidate }}
+                  MERGED: ${{ inputs.merged_hash }}
+                  BASE: ${{ inputs.base }}
+                  BRANCH: ${{ inputs.target_branch }}
+                  REQUEST: ${{ inputs.request }}
+                  OUTBOX: ${{ context.environment.op.outbox }}
+                  INBOX: ${{ context.environment.op.inbox }}
+                run: |
+                  set -eu
+                  test "$(git rev-parse HEAD)" = "$CANDIDATE"
+                  test "$CANDIDATE" = "$MERGED"
+                  test "$BASE" != "$MERGED"
+                  test "$BRANCH" = refs/heads/main
+                  test ! -f advanced.txt
+                  grep -F '# original publisher contribution' .c2/recipes/hooks/build/publish.yaml
+                  case "$REQUEST" in 'Publish merged batch on refs/heads/main: '*) ;; *) exit 2 ;; esac
+                  test "$(find "$INBOX/selected" -type f | wc -l)" -eq 1
+                  grep -Fx 'original selected bytes λ' "$INBOX"/selected/contributions/*/review/note.txt
+                  mode=$(python3 -c 'import json,os; s=json.load(open(os.environ["INBOX"]+"/settings.json")); assert s["probe"]=="original"; print(s["mode"])')
+                  printf 'head=%s\ncandidate=%s\nmerged=%s\nbase=%s\nbranch=%s\n' "$(git rev-parse HEAD)" "$CANDIDATE" "$MERGED" "$BASE" "$BRANCH" > "$OUTBOX/source.txt"
+                  cat "$OUTBOX/source.txt"
+                  if [ "$mode" = skipped ]; then printf skipped; exit 0; fi
+                  if [ "$mode" = always ] || { [ "$mode" != healthy ] && ! git ls-remote --exit-code origin refs/heads/inline-publication-probe >/dev/null; }; then
+                    git push origin HEAD:refs/heads/inline-publication-probe
+                    printf 'original inline publication failed λ\n' > "$OUTBOX/failure.txt"
+                    cat "$OUTBOX/failure.txt" >&2
+                    if [ "$mode" = returned ]; then printf failed; else exit 19; fi
+                  else
+                    printf passed
+                  fi
+            outputs:
+              api_version: c2.build-hook/v1
+              status: >-
+                ${{ sequence.effect.outputs.stdout.endsWith('failed') ? 'failed' : (sequence.effect.outputs.stdout.endsWith('skipped') ? 'skipped' : 'passed') }}
+              summary: Inline publication source checked.
+              artifact_refs: ${{ sequence.effect.artifacts }}
+  mocks: &native
+    ops:
+    - match: {op: command_execution}
+      repeat: true
+      behavior: {mode: passthrough}
+    - match: {selector: ./recipes/merge-queue}
+      repeat: true
+      behavior: {mode: passthrough}
+    - match: {op: squash}
+      repeat: true
+      behavior: {mode: passthrough}
+    - match: {op: merge}
+      repeat: true
+      behavior: {mode: passthrough}
+  assertions:
+  - type: cel_true
+    expr: outputs.first.response.status=='ready' && outputs.second.response.status=='ready'
+  - type: cel_true
+    expr: calls.filter(c,c.node_path.endsWith('/inline-publisher/effect')).size()==1 && calls.filter(c,c.op=='merge').size()==2 && !calls.exists(c,c.op=='recipes.run')
+- id: failed-inline-publication-recovers-original-source
+  type: integration_case
+  inputs: {mode: once}
+  runtime: *cell
+  mocks: *native
+  assertions: &recovered
+  - type: cel_true
+    expr: outputs.evidence.original_failure_retained && outputs.third.status=='ready' && outputs.third.publication==outputs.first.response.publication
+  - type: cel_true
+    expr: outputs.first.response.status=='stuck' && outputs.first.response.publish.status=='failed' && size(outputs.first.merge_state)>0 && size(outputs.first.response.errors)>0
+  - type: cel_true
+    expr: outputs.second.response.status=='ready' && outputs.second.response.publish.status=='passed' && outputs.second.response.publication==outputs.first.response.publication && outputs.second.response.publication.merged_hash!=outputs.advanced
+  - type: cel_true
+    expr: calls.filter(c,c.node_path.endsWith('/inline-publisher/effect')).size()==2 && calls.filter(c,c.op=='merge').size()==2 && !calls.exists(c,c.op=='recipes.run') && !calls.exists(c,c.node_path.contains('/second/') && (c.op in ['merge','squash','recipes.run','extension_execution'] || c.node_path.contains('/verify/')))
+- id: returned-inline-failure-recovers-original-source
+  type: integration_case
+  inputs: {mode: returned}
+  runtime: *cell
+  mocks: *native
+  assertions: *recovered
+- id: repeated-inline-failure-cannot-become-no-new-merge
+  type: integration_case
+  inputs: {mode: always}
+  runtime: *cell
+  mocks: *native
+  assertions:
+  - type: cel_true
+    expr: outputs.first.response.status=='stuck' && outputs.second.response.status=='stuck' && outputs.second.response.publish.status=='failed' && outputs.first.response.publication==outputs.second.response.publication && size(outputs.second.merge_state)>0 && size(outputs.second.response.errors)>0
+  - type: cel_true
+    expr: calls.filter(c,c.node_path.endsWith('/inline-publisher/effect')).size()==2 && calls.filter(c,c.op=='merge').size()==2 && !calls.exists(c,c.op=='recipes.run')
+
+- id: failed-inline-publication-recovers-with-queue-disabled
+  type: integration_case
+  inputs: {mode: once, retry_queue: false}
+  runtime: *cell
+  mocks: *native
+  assertions: *recovered
+- id: skipped-inline-publication-is-not-repeated
+  type: integration_case
+  inputs: {mode: skipped}
+  runtime: *cell
+  mocks: *native
+  assertions:
+  - type: cel_true
+    expr: outputs.first.response.status=='ready' && outputs.second.response.status=='ready' && outputs.second.response.publish.status=='skipped'
+  - type: cel_true
+    expr: calls.filter(c,c.node_path.endsWith('/inline-publisher/effect')).size()==1 && calls.filter(c,c.op=='merge').size()==2 && !calls.exists(c,c.op=='recipes.run')
+- id: malformed-inline-hook-retains-merge-on-retry
+  type: integration_case
+  inputs: {mode: malformed}
+  runtime: *cell
+  mocks: *native
+  assertions:
+  - type: cel_true
+    expr: >-
+      outputs.first.response.status=='stuck' && outputs.second.response.status=='stuck' && outputs.second.response.publish.status=='failed' && outputs.first.response.publication==outputs.second.response.publication && size(outputs.second.merge_state)>0 && outputs.second.response.publish.summary.contains('yaml:')
+  - type: cel_true
+    expr: >-
+      !calls.exists(c,c.node_path.endsWith('/inline-publisher/effect')) && calls.filter(c,c.op=='merge').size()==2 && !calls.exists(c,c.op=='recipes.run')

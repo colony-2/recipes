@@ -1,0 +1,114 @@
+schema_version: 2
+id: scenario-caller
+input_schema:
+  marker: {type: string}
+  reject: {type: boolean, default_value: false}
+  duplicate: {type: boolean, default_value: false}
+  recover: {type: boolean, default_value: false}
+inputs:
+  marker: ${{ inputs.marker }}
+  reject: ${{ inputs.reject }}
+  duplicate: ${{ inputs.duplicate }}
+  recover: ${{ inputs.recover }}
+sequence:
+- id: edit
+  op: command_execution
+  inputs:
+    env:
+      MARKER: ${{ inputs.marker }}
+      OUTBOX: ${{ context.environment.op.outbox }}
+    run: |
+      set -eu
+      printf '%s\n' "$MARKER" > "$MARKER.txt"
+      mkdir -p "$OUTBOX/review"
+      printf '%s λ\n' "$MARKER" > "$OUTBOX/review/note.txt"
+- id: prepare
+  include: ../../../../recipes/adaptive3/merge-queue-prepare.yaml
+  inputs:
+    message: ${{ 'Add ' + inputs.marker }}
+- id: submit
+  include: ../../../../recipes/adaptive3/merge-queue-submit.yaml
+  inputs:
+    contribution: ${{ sequence.prepare.outputs.candidate }}
+    receiver: scenario-receiver
+    documents:
+      review/note.txt: ${{ sequence.edit.artifacts['review/note.txt'] }}
+    require_verification: ${{ !inputs.reject }}
+    target_directory: .
+    settings: {}
+- id: shared_bytes
+  when: sequence.submit.outputs.result.status=='passed' && sequence.submit.outputs.result.publish.status=='passed'
+  op: command_execution
+  const: true
+  artifacts:
+    shared/: ${{ sequence.submit.outputs.result.publish.artifact_refs }}
+  inputs:
+    env:
+      INBOX: ${{ context.environment.op.inbox }}
+      SOURCE: ${{ sequence.submit.outputs.result.queue_publication.source.merged_hash }}
+      OWNER: ${{ sequence.submit.outputs.result.queue_publication.owner_job }}
+    run: |
+      set -eu
+      grep -Fx "source=$SOURCE" "$INBOX/shared/source.txt"
+      grep -Fx "owner=$OWNER" "$INBOX/shared/source.txt"
+- id: repeat
+  when: inputs.duplicate
+  include: ../../../../recipes/adaptive3/merge-queue-submit.yaml
+  inputs:
+    contribution: ${{ sequence.prepare.outputs.candidate }}
+    receiver: scenario-receiver
+    queue_history: ${{ sequence.submit.outputs.result }}
+    documents:
+      review/note.txt: ${{ sequence.edit.artifacts['review/note.txt'] }}
+    require_verification: true
+    target_directory: .
+    settings: {}
+- id: record
+  op: command_execution
+  const: true
+  inputs:
+    env:
+      STATUS: ${{ sequence.submit.outputs.result.status }}
+      SOURCE: ${{ sequence.submit.outputs.result.?queue_publication.orValue({}).?source.orValue({}).?merged_hash.orValue('') }}
+      LANDED: ${{ sequence.submit.outputs.result.?publication.orValue({}).?merged_hash.orValue('') }}
+      HEAD: ${{ sequence.prepare.outputs.candidate.head_hash }}
+      REPEAT_REASON: ${{ sequence[?'repeat'].orValue({}).?outputs.orValue({}).?result.orValue({}).?queue_publication.orValue({}).?reason.orValue('') }}
+      REPEAT_SOURCE: ${{ json_stringify(sequence[?'repeat'].orValue({}).?outputs.orValue({}).?result.orValue({}).?queue_publication.orValue({}).?source.orValue(null)) }}
+      RESULT: ${{ json_stringify(sequence.submit.outputs.result) }}
+      CANDIDATE: ${{ json_stringify(sequence.prepare.outputs.candidate) }}
+      REPEATED: ${{ json_stringify(sequence[?'repeat'].orValue({}).?outputs.orValue({}).?result.orValue({})) }}
+    run: printf '%s\n%s\n%s\n' "$RESULT" "$CANDIDATE" "$REPEATED"
+- id: before_recovery
+  when: inputs.recover
+  op: command_execution
+  const: true
+  inputs: {run: 'true'}
+- id: recovery
+  when: inputs.recover
+  include: ../../../../recipes/adaptive3/merge-queue-submit.yaml
+  inputs:
+    recovering: true
+    queue_history: ${{ sequence.submit.outputs.result }}
+    require_verification: true
+    target_directory: .
+    settings: {}
+- id: recovered
+  when: inputs.recover
+  op: command_execution
+  const: true
+  inputs:
+    env:
+      STATUS: ${{ sequence.recovery.outputs.result.status }}
+      ORIGINAL_OWNER: ${{ sequence.submit.outputs.result.receiver.job_id }}
+      OWNER: ${{ sequence.recovery.outputs.result.queue_publication.owner_job }}
+      SOURCE: ${{ sequence.recovery.outputs.result.queue_publication.source.merged_hash }}
+      RESULT: ${{ json_stringify(sequence.recovery.outputs.result) }}
+    run: |
+      set -eu
+      test "$STATUS" = passed
+      test "$OWNER" = "$ORIGINAL_OWNER"
+      printf '%s\n' "$RESULT"
+
+outputs:
+  result: ${{ sequence.submit.outputs.result }}
+  candidate: ${{ sequence.prepare.outputs.candidate }}

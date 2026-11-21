@@ -1,0 +1,111 @@
+schema_version: 2
+id: inline-publication-recovery
+input_schema:
+  mode: {type: string, default_value: once}
+  retry_queue: {type: boolean, default_value: true}
+inputs:
+  mode: ${{ inputs.mode }}
+  retry_queue: ${{ inputs.retry_queue }}
+sequence:
+- id: edit
+  op: command_execution
+  inputs:
+    env:
+      OUTBOX: ${{ context.environment.op.outbox }}
+      MODE: ${{ inputs.mode }}
+    run: |
+      set -eu
+      printf '\n# original publisher contribution\n' >> .c2/recipes/hooks/build/publish.yaml
+      if [ "$MODE" = malformed ]; then printf 'invalid: invalid: yaml\n' >> .c2/recipes/hooks/build/publish.yaml; fi
+      mkdir -p "$OUTBOX/review"
+      printf 'original selected bytes λ\n' > "$OUTBOX/review/note.txt"
+- id: prepare
+  include: ../../recipes/adaptive3/merge-queue-prepare.yaml
+  inputs:
+    message: Recover the inline publisher
+- id: first
+  include: ../../recipes/adaptive3/execute.yaml
+  inputs:
+    purpose: integration
+    request: Publish the original inline change.
+    merge_queue: true
+    require_verification: true
+    contribution: ${{ sequence.prepare.outputs.candidate }}
+    settings: ${{ {'probe':'original','mode':inputs.mode} }}
+    documents: ${{ jq(sequence.edit.artifacts,'with_entries(select(.key|startswith("review/")))') }}
+- id: record_first
+  op: command_execution
+  const: true
+  inputs:
+    env:
+      VALUE: ${{ json_stringify(sequence.first.outputs) }}
+      OUTBOX: ${{ context.environment.op.outbox }}
+    run: printf '%s\n' "$VALUE" > "$OUTBOX/first.json"
+- id: advance
+  workspace:
+    cell: ${{ context.workflow.cell }}
+    ref: main
+  sequence:
+  - id: edit
+    op: command_execution
+    inputs:
+      run: printf 'later branch contents\n' > advanced.txt
+  - id: merge
+    op: merge
+  outputs:
+    merged_hash: ${{ sequence.merge.outputs.merged_hash }}
+- id: second
+  include: ../../recipes/adaptive3/execute.yaml
+  inputs:
+    purpose: integration
+    request: Retry with a changed request; preserve original publication inputs.
+    merge_queue: ${{ inputs.retry_queue }}
+    require_verification: true
+    merge_state: ${{ sequence.first.outputs.merge_state }}
+    queue_history: ${{ sequence.first.outputs.response }}
+    contribution: ${{ sequence.prepare.outputs.candidate }}
+    settings: {probe: changed, mode: healthy}
+    documents: ${{ jq(sequence.edit.artifacts,'with_entries(select(.key|startswith("review/")))') }}
+- id: third
+  when: sequence.second.outputs.response.status=='ready'
+  include: ../../recipes/adaptive3/execute.yaml
+  inputs:
+    purpose: integration
+    request: Confirm successful publication remains complete.
+    merge_queue: false
+    merge_state: ${{ sequence.second.outputs.merge_state }}
+    contribution: ${{ sequence.prepare.outputs.candidate }}
+    documents: ${{ jq(sequence.edit.artifacts,'with_entries(select(.key|startswith("review/")))') }}
+- id: inspect_evidence
+  when: inputs.mode in ['once','returned','always']
+  op: command_execution
+  const: true
+  artifacts:
+    first/: ${{ sequence.first.outputs.response.errors }}
+    second/: ${{ sequence.second.outputs.response.errors }}
+  inputs:
+    env:
+      INBOX: ${{ context.environment.op.inbox }}
+    run: |
+      python3 - <<'CHECK'
+      import json, os
+      from pathlib import Path
+      root = Path(os.environ['INBOX'])
+      originals = list((root/'first').rglob('*'))
+      originals = [p for p in originals if p.is_file()]
+      assert originals
+      for p in originals:
+          assert p.read_bytes() == (root/'second'/p.relative_to(root/'first')).read_bytes()
+      assert any('original inline publication failed λ' in p.read_text() for p in originals)
+      sources = [p.read_text() for p in (root/'second').rglob('source.txt')]
+      print(json.dumps({'original_failure_retained': True, 'source_captures': sources}, ensure_ascii=False))
+      CHECK
+outputs:
+  third: >-
+    ${{ sequence.second.outputs.response.status=='ready' ? sequence.third.outputs.response : {} }}
+  evidence: >-
+    ${{ inputs.mode in ['once','returned','always'] ? json_parse(sequence.inspect_evidence.outputs.stdout) : {} }}
+  first: ${{ sequence.first.outputs }}
+  second: ${{ sequence.second.outputs }}
+  candidate: ${{ sequence.prepare.outputs.candidate }}
+  advanced: ${{ sequence.advance.outputs.merged_hash }}

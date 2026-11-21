@@ -345,7 +345,7 @@ state:
         verification: ${{ state_output('implementation','verification',{}) }}
         queue_history: >-
           ${{ jq(state_output('integration','result',{}),
-            '{initial_submitted_at, rejected_changeid, errors}') }}
+            '{initial_submitted_at, rejected_changeid, errors, status, receiver, branch, changeid} | with_entries(select(.value != null))') }}
         request: |-
           {{ inputs.title }}
           {{ inputs.prompt }}
@@ -569,8 +569,12 @@ outputs:
   summary: ${{ states.complete.outputs.result.work.summary }}
   work_kind: ${{ states.complete.outputs.result.work.?work_kind.orValue(state_output('outcome','work',{}).?work_kind.orValue(state_output('implementation','work',{}).?work_kind.orValue(state_output('preparation','work',{}).?work_kind.orValue(state_output('direction','work',{}).?work_kind.orValue('oversight')))))
     }}
-  artifact_refs: ${{ states.complete.outputs.result.documents }}
+  artifact_refs: >-
+    ${{ jq([states.complete.outputs.result.documents,
+      states.complete.outputs.result.work.?publish.orValue({}).?artifact_refs.orValue({})],
+      '.[0] + (.[1] | with_entries(.key = "publication/" + .key | .value.name = .key))') }}
   reviews: '${{ (state_exists(''direction'') ? [states.direction.outputs.result] : []) + (state_exists(''outcome'')
     ? [states.outcome.outputs.result] : []) }}'
   merge: ${{ states.complete.outputs.result.work.?publication.orValue({}) }}
   publication: ${{ states.complete.outputs.result.work.?publish.orValue({}) }}
+  queue_publication: ${{ states.complete.outputs.result.work.?queue_publication.orValue({}) }}

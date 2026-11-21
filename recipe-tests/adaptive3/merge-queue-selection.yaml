@@ -9,28 +9,28 @@ sequence:
 - id: seed
   include: ./merge-queue-source.yaml
   inputs:
-    scenario: "${{ inputs.scenario=='mixed-policy' ? 'ordinary' : inputs.scenario }}"
+    scenario: "${{ inputs.scenario=='repair' || inputs.scenario=='uncertain' ? 'conflict' : (inputs.scenario=='mixed-policy' ? 'ordinary' : inputs.scenario) }}"
 - id: batch
   include: ../../recipes/adaptive3/merge-queue-batch.yaml
   inputs:
     branch: refs/heads/main
     policy:
-      version: 1
-      require_verification: true
+      version: 2
+      require_verification: ${{ inputs.scenario!='optional' }}
       target_directory: .
       settings: {}
     check_recipe: ${{ 'git+' + context.git.repo + '//merge-check.yaml@main' }}
     appends: >-
-      ${{ [2,1,0].map(i,{
+      ${{ (inputs.scenario=='duplicate' ? [2,1,0,0] : [2,1,0]).map(i,{
         'artifacts':[sequence.seed.outputs.packs[string(i+1)+'.bundle']],
         'content':{
-          'version':1, 'repository':context.git.repo, 'branch':'refs/heads/main',
+          'version':2, 'repository':context.git.repo, 'branch':'refs/heads/main',
           'job_id':context.workflow.job_id, 'base_hash':sequence.seed.outputs.hashes[3],
           'head_hash':sequence.seed.outputs.hashes[i],
           'changeid':['000000000000000000000000001','000000000000000000000000002','000000000000000000000000003'][i],
           'initial_submitted_at':['2026-11-18T08:00:01.000000000Z','2026-11-18T08:00:02.000000000Z','2026-11-18T08:00:03.000000000Z'][i],
           'thinpack_ref':sequence.seed.outputs.packs[string(i+1)+'.bundle'],
-          'verification_policy':{'version':1,'require_verification':!(inputs.scenario=='mixed-policy' && i==1),
+          'verification_policy':{'version':2,'require_verification':inputs.scenario!='optional' && !(inputs.scenario=='all-invalid' || (inputs.scenario=='mixed-policy' && i==1)),
                                  'target_directory':'.','settings':{} }
         } }) }}
 - id: observed
@@ -42,9 +42,18 @@ sequence:
   inputs:
     env:
       BASE: ${{ sequence.seed.outputs.hashes[3] }}
+      SCENARIO: ${{ inputs.scenario }}
     run: |
       if [ "$(git rev-parse --is-shallow-repository)" = true ]; then git fetch --unshallow origin main; fi
-      git log --reverse --format=%H --no-decorate "$BASE..HEAD"
+      commits=$(git log --reverse --format=%H --no-decorate "$BASE..HEAD")
+      if [ "$SCENARIO" = empty ]; then
+        set -- $commits
+        test "$#" -eq 3
+        git diff --quiet "$1" "$2"
+      fi
+      printf '%s\n' "$commits"
 outputs:
   results: ${{ sequence.batch.outputs.results }}
   published: ${{ jq(sequence.observed.outputs.stdout,'split("\n")') }}
+  publication: ${{ sequence.batch.outputs.publication }}
+  artifact_refs: ${{ sequence.batch.outputs.artifact_refs }}

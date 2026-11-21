@@ -1,4 +1,4 @@
-recipe: publisher-merge.yaml
+recipe: publisher-merge-entry.yaml
 cases:
 - id: changed-hook-chases-a-competing-merge-inline
   type: integration_case
@@ -8,9 +8,10 @@ cases:
     cells:
       root:
         file_sources:
-          recipes/merge-queue: ../../recipes/merge-queue
-          recipes/adaptive3: ../../recipes/adaptive3
+          recipes: ../../recipes
           merge-batch.yaml: ../../merge-batch.yaml
+          merge-check.yaml: ../../merge-check.yaml
+          recipe-tests/adaptive3/publisher-merge.yaml: publisher-merge.yaml
         files:
           .c2/recipes/hooks/build/publish.yaml: |
             id: publish
@@ -82,7 +83,7 @@ cases:
   - type: cel_true
     expr: repositories.root.files['concurrent.txt']=='earlier landing\n' && repositories.root.files['.c2/recipes/hooks/build/publish.yaml'].contains('revised publisher')
   - type: cel_true
-    expr: calls.filter(c,c.node_path.contains('/inline_batch/') && c.node_path.endsWith('/verify/verify/root/check')).size()==2 && !calls.exists(c,c.op=='recipe.run_and_get_result')
+    expr: calls.filter(c,c.node_path.contains('/inline_batch/') && c.node_path.endsWith('/verify/verify/root/check')).size()==2 && !calls.exists(c,c.op=='recipes.run')
 - id: publisher-helper-merges-inline
   type: integration_case
   inputs: {change: helper}
@@ -100,7 +101,7 @@ cases:
   - type: cel_true
     expr: outputs.result.status=='ready' && outputs.result.publish.summary==outputs.result.publication.merged_hash && repositories.root.files['product.txt']=='product change\n'
   - type: cel_true
-    expr: calls.filter(c,c.op=='recipe.run_and_get_result' && has(c.inputs.grouping) && c.inputs.grouping.max_items==50).size()==1 && calls.exists(c,c.op=='merge' && c.node_path.startsWith('adaptive3-merge-batch/'))
+    expr: calls.filter(c,c.op=='recipes.run' && c.inputs.recipes.size()==1 && c.inputs.recipes[0].grouping.max_items==50 && c.inputs.recipes[0].grouping.content.version==2 && c.inputs.recipes[0].name.startsWith('git+https://example.test/fixture-')).size()==1 && calls.exists(c,c.op=='merge' && c.node_path.startsWith('adaptive3-merge-batch/'))
 - id: removed-publisher-merges-inline
   type: integration_case
   inputs: {change: delete}
@@ -117,7 +118,7 @@ cases:
     ops: [*command, *queue_op, *squash]
   assertions: &split
   - type: cel_true
-    expr: outputs.result.status=='changes' && outputs.result.stage=='implementation' && !calls.exists(c,c.op in ['merge','recipe.run_and_get_result'])
+    expr: outputs.result.status=='changes' && outputs.result.stage=='implementation' && !calls.exists(c,c.op in ['merge','recipes.run'])
   - type: cel_true
     expr: repositories.root.new_commits==0
 - id: direct-mode-also-returns-mixed-work-for-splitting
@@ -136,4 +137,4 @@ cases:
   - type: cel_true
     expr: outputs.result.status=='changes' && outputs.result.stage=='implementation' && outputs.result.rejected_changeid==outputs.candidate.changeid && size(outputs.result.errors)>0
   - type: cel_true
-    expr: repositories.root.new_commits==0 && !calls.exists(c,c.op in ['merge','recipe.run_and_get_result'])
+    expr: repositories.root.new_commits==0 && !calls.exists(c,c.op in ['merge','recipes.run'])

@@ -24,7 +24,7 @@ sequence:
           base = dict(status='ask', summary='Owner route unavailable; discuss next steps.', action=None,
                       stage=None, additional_attempts=None, title='Explain the stopped job', primary=None, document_details=[])
           if family == 'recovery':
-              base.update(approval=None, publication=None)
+              base.update(approval=None, publication=None, queue_recovery=None)
           valid = [base, dict(base, action='Rerun validation', stage='implementation', status='resume')]
           valid += [dict(base, additional_attempts=n) for n in [1, 20]]
           valid += [dict(base, summary='x' * 7000)]
@@ -34,6 +34,24 @@ sequence:
               ('unexpected', True), ('summary', 'x' * 8001)]]
           for key in ['action', 'stage', 'document_details']:
               v = dict(base); del v[key]; invalid.append(v)
+          if family == 'recovery':
+              receiver = dict(job_id='receiver-job', goal_id='receiver-goal', tenant_id='0',
+                              cell='root', cell_id='root-cell', cell_repo='example.test/project',
+                              wait={'on': 'job', 'condition': 'complete'})
+              queue = dict(receiver=receiver, branch='refs/heads/main', changeid='contribution')
+              valid.append(dict(base, queue_recovery=queue))
+              missing = dict(base); del missing['queue_recovery']; invalid.append(missing)
+              invalid.append(dict(base, queue_recovery='receiver-job'))
+              for key in queue:
+                  malformed = dict(queue); del malformed[key]
+                  invalid.append(dict(base, queue_recovery=malformed))
+              for key in receiver:
+                  malformed = dict(receiver); del malformed[key]
+                  invalid.append(dict(base, queue_recovery=dict(queue, receiver=malformed)))
+              for wait in [{}, {'on': 'job'}, {'condition': 'complete'},
+                           {'on': 'branch', 'condition': 'complete'},
+                           {'on': 'job', 'condition': 'published'}]:
+                  invalid.append(dict(base, queue_recovery=dict(queue, receiver=dict(receiver, wait=wait))))
           for schema in [schemas[family], copy.deepcopy(schemas[family])]:
               # Same narrowing used by the production include, with an early paused stage.
               if schema is not schemas[family]:

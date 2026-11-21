@@ -1,0 +1,1249 @@
+recipe: merge-queue-caller.yaml
+cases:
+- id: receiver-granted-secret-and-child
+  type: integration_case
+  runtime:
+    backend: sqlite
+    secrets:
+      TEST_TOKEN: fixture-secret-only
+      UNRELATED: not-authorized
+    config:
+      _c2j_hook_policy_tenant:
+        version: 1
+        hooks:
+          .c2/recipes/hooks/build/publish.yaml:
+            perms:
+              jobdb:
+                secrets:
+                  resolve:
+                  - TEST_TOKEN
+                jobs:
+                  submit: true
+            source_trust:
+              jobdb.secrets.resolve:
+                TEST_TOKEN:
+                  mode: candidate
+              jobdb.jobs.submit:
+                mode: candidate
+    cells:
+      root:
+        file_sources: &id001
+          merge-batch.yaml: ../../merge-batch.yaml
+          merge-check.yaml: ../../merge-check.yaml
+          recipes/adaptive3: ../../recipes/adaptive3
+          recipes/merge-queue: ../../recipes/merge-queue
+        files:
+          README.md: Receiver contract fixture.
+          .c2/recipes/hooks/build/verify.yaml: |
+            id: verify
+            inputs:
+              candidate: ${{ inputs.candidate }}
+            sequence:
+            - id: check
+              op: command_execution
+              inputs:
+                env:
+                  EXPECTED: ${{ inputs.candidate }}
+                run: |
+                  test "$(git rev-parse HEAD)" = "$EXPECTED"
+                  test "$(cat contribution.txt)" = queue-ready
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: Verified the assembled commit.
+              artifact_refs: {}
+          .c2/recipes/publication-child.yaml: |
+            schema_version: 2
+            id: publication-child
+            input_schema:
+              source: {type: string, required: true}
+            inputs:
+              source: ${{ inputs.source }}
+            sequence:
+            - id: check
+              op: command_execution
+              const: true
+              inputs:
+                env:
+                  SOURCE: ${{ inputs.source }}
+                run: 'test "$(git rev-parse HEAD)" = "$SOURCE"'
+            outputs:
+              source: ${{ inputs.source }}
+          .c2/recipes/hooks/build/publish.yaml: |
+            id: queue-publish-source-probe
+            inputs:
+              candidate: ${{ inputs.candidate }}
+              merged_hash: ${{ inputs.merged_hash }}
+              target_branch: ${{ inputs.target_branch }}
+              base: ${{ inputs.base }}
+              documents: ${{ inputs.documents }}
+              request: ${{ inputs.request }}
+            sequence:
+            - id: publish_source
+              op: command_execution
+              const: true
+              artifacts:
+                selected/: ${{ inputs.documents }}
+              inputs:
+                env:
+                  CANDIDATE: ${{ inputs.candidate }}
+                  MERGED: ${{ inputs.merged_hash }}
+                  TARGET: ${{ inputs.target_branch }}
+                  BASE: ${{ inputs.base }}
+                  REQUEST: ${{ inputs.request }}
+                  OWNER: ${{ context.workflow.job_id }}
+                  OUTBOX: ${{ context.environment.op.outbox }}
+                  INBOX: ${{ context.environment.op.inbox }}
+                run: "set -eu\ntest \"$(git rev-parse HEAD)\" = \"$CANDIDATE\"\ntest \"$CANDIDATE\"\
+                  \ = \"$MERGED\"\ntest \"$TARGET\" = refs/heads/main\ntest \"$BASE\" != \"$MERGED\"\
+                  \ntest ! -e \"$INBOX/candidate.bundle\"\nfor document in \"$INBOX\"/selected/contributions/*/review/note.txt;\
+                  \ do\n  test \"$(cat \"$document\")\" = selected-document\ndone\ntest \"$(cat\
+                  \ contribution.txt)\" = queue-ready\ncase \"$REQUEST\" in 'Publish merged batch\
+                  \ on refs/heads/main: '*) ;; *) exit 1 ;; esac\nprintf 'owner=%s\\nsource=%s\\\
+                  nbase=%s\\nbranch=%s\\n' \"$OWNER\" \"$MERGED\" \"$BASE\" \"$TARGET\" > \"$OUTBOX/source.txt\"\
+                  \n"
+            - id: authority
+              op: command_execution
+              const: true
+              inputs:
+                run: 'set -eu
+
+                  value=$(c2j secret get TEST_TOKEN --format raw)
+
+                  test "$(printf %s "$value" | sha256sum)" = ''1b437c1c0fdc6cf0136d3a91639a428418d164092abf40b5f19966e1c18235b3  -''
+
+                  printf ''authorized-receiver-marker\n''
+
+                  '
+            - id: child
+              op: recipe.run_and_get_result
+              inputs:
+                name: ${{ 'git+' + context.git.repo + '//.c2/recipes/publication-child.yaml@'
+                  + inputs.merged_hash }}
+                inputs:
+                  source: ${{ inputs.merged_hash }}
+                git_ref: refs/heads/main
+                git:
+                  base_hash: ${{ inputs.merged_hash }}
+                  base_ref: refs/heads/main
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: Published the recorded batch source.
+              artifact_refs: ${{ jq(sequence.publish_source.artifacts,'with_entries(select(.key=="source.txt"))')
+                }}
+  mocks:
+    ops:
+    - match:
+        selector: ./recipes/merge-queue
+      repeat: true
+      behavior:
+        mode: passthrough
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+    - match:
+        op: squash
+      repeat: true
+      behavior:
+        mode: passthrough
+    - match:
+        op: merge
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.result.status=='passed' && outputs.result.publish.status=='passed'
+      && outputs.result.queue_publication.source.merged_hash==outputs.candidate.head_hash
+  - type: cel_true
+    expr: calls.exists(c,c.node_path.endsWith('/authority') && c.outputs.stdout=='authorized-receiver-marker')
+      && calls.exists(c,c.node_path=='publication-child/check')
+  - type: cel_true
+    expr: calls.filter(c,c.node_path.endsWith('/publish_source')).all(c,c.node_path.startsWith('adaptive3-merge-batch/'))
+  inputs:
+    replace_hook: true
+- id: receiver-unrelated-secret-denied
+  type: integration_case
+  runtime:
+    backend: sqlite
+    secrets:
+      TEST_TOKEN: fixture-secret-only
+      UNRELATED: not-authorized
+    config:
+      _c2j_hook_policy_tenant:
+        version: 1
+        hooks:
+          .c2/recipes/hooks/build/publish.yaml:
+            perms:
+              jobdb:
+                secrets:
+                  resolve:
+                  - TEST_TOKEN
+                jobs:
+                  submit: true
+            source_trust:
+              jobdb.secrets.resolve:
+                TEST_TOKEN:
+                  mode: candidate
+              jobdb.jobs.submit:
+                mode: candidate
+    cells:
+      root:
+        file_sources: *id001
+        files:
+          README.md: Receiver contract fixture.
+          .c2/recipes/hooks/build/verify.yaml: |
+            id: verify
+            inputs:
+              candidate: ${{ inputs.candidate }}
+            sequence:
+            - id: check
+              op: command_execution
+              inputs:
+                env:
+                  EXPECTED: ${{ inputs.candidate }}
+                run: |
+                  test "$(git rev-parse HEAD)" = "$EXPECTED"
+                  test "$(cat contribution.txt)" = queue-ready
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: Verified the assembled commit.
+              artifact_refs: {}
+          .c2/recipes/publication-child.yaml: |
+            schema_version: 2
+            id: publication-child
+            input_schema:
+              source: {type: string, required: true}
+            inputs:
+              source: ${{ inputs.source }}
+            sequence:
+            - id: check
+              op: command_execution
+              const: true
+              inputs:
+                env:
+                  SOURCE: ${{ inputs.source }}
+                run: 'test "$(git rev-parse HEAD)" = "$SOURCE"'
+            outputs:
+              source: ${{ inputs.source }}
+          .c2/recipes/hooks/build/publish.yaml: |
+            id: queue-publish-source-probe
+            inputs:
+              candidate: ${{ inputs.candidate }}
+              merged_hash: ${{ inputs.merged_hash }}
+              target_branch: ${{ inputs.target_branch }}
+              base: ${{ inputs.base }}
+              documents: ${{ inputs.documents }}
+              request: ${{ inputs.request }}
+            sequence:
+            - id: publish_source
+              op: command_execution
+              const: true
+              artifacts:
+                selected/: ${{ inputs.documents }}
+              inputs:
+                env:
+                  CANDIDATE: ${{ inputs.candidate }}
+                  MERGED: ${{ inputs.merged_hash }}
+                  TARGET: ${{ inputs.target_branch }}
+                  BASE: ${{ inputs.base }}
+                  REQUEST: ${{ inputs.request }}
+                  OWNER: ${{ context.workflow.job_id }}
+                  OUTBOX: ${{ context.environment.op.outbox }}
+                  INBOX: ${{ context.environment.op.inbox }}
+                run: "set -eu\ntest \"$(git rev-parse HEAD)\" = \"$CANDIDATE\"\ntest \"$CANDIDATE\"\
+                  \ = \"$MERGED\"\ntest \"$TARGET\" = refs/heads/main\ntest \"$BASE\" != \"$MERGED\"\
+                  \ntest ! -e \"$INBOX/candidate.bundle\"\nfor document in \"$INBOX\"/selected/contributions/*/review/note.txt;\
+                  \ do\n  test \"$(cat \"$document\")\" = selected-document\ndone\ntest \"$(cat\
+                  \ contribution.txt)\" = queue-ready\ncase \"$REQUEST\" in 'Publish merged batch\
+                  \ on refs/heads/main: '*) ;; *) exit 1 ;; esac\nprintf 'owner=%s\\nsource=%s\\\
+                  nbase=%s\\nbranch=%s\\n' \"$OWNER\" \"$MERGED\" \"$BASE\" \"$TARGET\" > \"$OUTBOX/source.txt\"\
+                  \n"
+            - id: denied
+              op: command_execution
+              const: true
+              inputs:
+                run: c2j secret get UNRELATED --format raw
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: Published the recorded batch source.
+              artifact_refs: ${{ jq(sequence.publish_source.artifacts,'with_entries(select(.key=="source.txt"))')
+                }}
+  mocks:
+    ops:
+    - match:
+        selector: ./recipes/merge-queue
+      repeat: true
+      behavior:
+        mode: passthrough
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+    - match:
+        op: squash
+      repeat: true
+      behavior:
+        mode: passthrough
+    - match:
+        op: merge
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.result.status=='stuck' && has(outputs.result.receiver) && calls.filter(c,c.op=='merge').size()==1
+  - type: cel_true
+    expr: '!calls.exists(c,c.node_path.endsWith(''/read_publication''))'
+  - type: cel_true
+    expr: calls.filter(c,c.node_path.endsWith('/publish_source')).all(c,c.node_path.startsWith('adaptive3-merge-batch/'))
+- id: receiver-child-submission-denied
+  type: integration_case
+  runtime:
+    backend: sqlite
+    secrets:
+      TEST_TOKEN: fixture-secret-only
+      UNRELATED: not-authorized
+    config:
+      _c2j_hook_policy_tenant:
+        version: 1
+        hooks:
+          .c2/recipes/hooks/build/publish.yaml:
+            perms:
+              jobdb:
+                secrets:
+                  resolve:
+                  - TEST_TOKEN
+                jobs:
+                  submit: false
+            source_trust:
+              jobdb.secrets.resolve:
+                TEST_TOKEN:
+                  mode: candidate
+    cells:
+      root:
+        file_sources: *id001
+        files:
+          README.md: Receiver contract fixture.
+          .c2/recipes/hooks/build/verify.yaml: |
+            id: verify
+            inputs:
+              candidate: ${{ inputs.candidate }}
+            sequence:
+            - id: check
+              op: command_execution
+              inputs:
+                env:
+                  EXPECTED: ${{ inputs.candidate }}
+                run: |
+                  test "$(git rev-parse HEAD)" = "$EXPECTED"
+                  test "$(cat contribution.txt)" = queue-ready
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: Verified the assembled commit.
+              artifact_refs: {}
+          .c2/recipes/publication-child.yaml: |
+            schema_version: 2
+            id: publication-child
+            input_schema:
+              source: {type: string, required: true}
+            inputs:
+              source: ${{ inputs.source }}
+            sequence:
+            - id: check
+              op: command_execution
+              const: true
+              inputs:
+                env:
+                  SOURCE: ${{ inputs.source }}
+                run: 'test "$(git rev-parse HEAD)" = "$SOURCE"'
+            outputs:
+              source: ${{ inputs.source }}
+          .c2/recipes/hooks/build/publish.yaml: |
+            id: queue-publish-source-probe
+            inputs:
+              candidate: ${{ inputs.candidate }}
+              merged_hash: ${{ inputs.merged_hash }}
+              target_branch: ${{ inputs.target_branch }}
+              base: ${{ inputs.base }}
+              documents: ${{ inputs.documents }}
+              request: ${{ inputs.request }}
+            sequence:
+            - id: publish_source
+              op: command_execution
+              const: true
+              artifacts:
+                selected/: ${{ inputs.documents }}
+              inputs:
+                env:
+                  CANDIDATE: ${{ inputs.candidate }}
+                  MERGED: ${{ inputs.merged_hash }}
+                  TARGET: ${{ inputs.target_branch }}
+                  BASE: ${{ inputs.base }}
+                  REQUEST: ${{ inputs.request }}
+                  OWNER: ${{ context.workflow.job_id }}
+                  OUTBOX: ${{ context.environment.op.outbox }}
+                  INBOX: ${{ context.environment.op.inbox }}
+                run: "set -eu\ntest \"$(git rev-parse HEAD)\" = \"$CANDIDATE\"\ntest \"$CANDIDATE\"\
+                  \ = \"$MERGED\"\ntest \"$TARGET\" = refs/heads/main\ntest \"$BASE\" != \"$MERGED\"\
+                  \ntest ! -e \"$INBOX/candidate.bundle\"\nfor document in \"$INBOX\"/selected/contributions/*/review/note.txt;\
+                  \ do\n  test \"$(cat \"$document\")\" = selected-document\ndone\ntest \"$(cat\
+                  \ contribution.txt)\" = queue-ready\ncase \"$REQUEST\" in 'Publish merged batch\
+                  \ on refs/heads/main: '*) ;; *) exit 1 ;; esac\nprintf 'owner=%s\\nsource=%s\\\
+                  nbase=%s\\nbranch=%s\\n' \"$OWNER\" \"$MERGED\" \"$BASE\" \"$TARGET\" > \"$OUTBOX/source.txt\"\
+                  \n"
+            - id: authority
+              op: command_execution
+              const: true
+              inputs:
+                run: 'set -eu
+
+                  value=$(c2j secret get TEST_TOKEN --format raw)
+
+                  test "$(printf %s "$value" | sha256sum)" = ''1b437c1c0fdc6cf0136d3a91639a428418d164092abf40b5f19966e1c18235b3  -''
+
+                  printf ''authorized-receiver-marker\n''
+
+                  '
+            - id: child
+              op: recipe.run_and_get_result
+              inputs:
+                name: ${{ 'git+' + context.git.repo + '//.c2/recipes/publication-child.yaml@'
+                  + inputs.merged_hash }}
+                inputs:
+                  source: ${{ inputs.merged_hash }}
+                git_ref: refs/heads/main
+                git:
+                  base_hash: ${{ inputs.merged_hash }}
+                  base_ref: refs/heads/main
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: Published the recorded batch source.
+              artifact_refs: ${{ jq(sequence.publish_source.artifacts,'with_entries(select(.key=="source.txt"))')
+                }}
+  mocks:
+    ops:
+    - match:
+        selector: ./recipes/merge-queue
+      repeat: true
+      behavior:
+        mode: passthrough
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+    - match:
+        op: squash
+      repeat: true
+      behavior:
+        mode: passthrough
+    - match:
+        op: merge
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.result.status=='stuck' && has(outputs.result.receiver) && calls.filter(c,c.op=='merge').size()==1
+  - type: cel_true
+    expr: '!calls.exists(c,c.node_path.endsWith(''/read_publication''))'
+  - type: cel_true
+    expr: calls.filter(c,c.node_path.endsWith('/publish_source')).all(c,c.node_path.startsWith('adaptive3-merge-batch/'))
+- id: receiver-untrusted-source-denied
+  type: integration_case
+  runtime:
+    backend: sqlite
+    secrets:
+      TEST_TOKEN: fixture-secret-only
+      UNRELATED: not-authorized
+    config:
+      _c2j_hook_policy_tenant:
+        version: 1
+        hooks:
+          .c2/recipes/hooks/build/publish.yaml:
+            perms:
+              jobdb:
+                secrets:
+                  resolve:
+                  - TEST_TOKEN
+                jobs:
+                  submit: true
+            source_trust:
+              jobdb.secrets.resolve:
+                TEST_TOKEN:
+                  mode: commit
+                  commit: '0000000000000000000000000000000000000000'
+              jobdb.jobs.submit:
+                mode: candidate
+    cells:
+      root:
+        file_sources: *id001
+        files:
+          README.md: Receiver contract fixture.
+          .c2/recipes/hooks/build/verify.yaml: |
+            id: verify
+            inputs:
+              candidate: ${{ inputs.candidate }}
+            sequence:
+            - id: check
+              op: command_execution
+              inputs:
+                env:
+                  EXPECTED: ${{ inputs.candidate }}
+                run: |
+                  test "$(git rev-parse HEAD)" = "$EXPECTED"
+                  test "$(cat contribution.txt)" = queue-ready
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: Verified the assembled commit.
+              artifact_refs: {}
+          .c2/recipes/publication-child.yaml: |
+            schema_version: 2
+            id: publication-child
+            input_schema:
+              source: {type: string, required: true}
+            inputs:
+              source: ${{ inputs.source }}
+            sequence:
+            - id: check
+              op: command_execution
+              const: true
+              inputs:
+                env:
+                  SOURCE: ${{ inputs.source }}
+                run: 'test "$(git rev-parse HEAD)" = "$SOURCE"'
+            outputs:
+              source: ${{ inputs.source }}
+          .c2/recipes/hooks/build/publish.yaml: |
+            id: queue-publish-source-probe
+            inputs:
+              candidate: ${{ inputs.candidate }}
+              merged_hash: ${{ inputs.merged_hash }}
+              target_branch: ${{ inputs.target_branch }}
+              base: ${{ inputs.base }}
+              documents: ${{ inputs.documents }}
+              request: ${{ inputs.request }}
+            sequence:
+            - id: publish_source
+              op: command_execution
+              const: true
+              artifacts:
+                selected/: ${{ inputs.documents }}
+              inputs:
+                env:
+                  CANDIDATE: ${{ inputs.candidate }}
+                  MERGED: ${{ inputs.merged_hash }}
+                  TARGET: ${{ inputs.target_branch }}
+                  BASE: ${{ inputs.base }}
+                  REQUEST: ${{ inputs.request }}
+                  OWNER: ${{ context.workflow.job_id }}
+                  OUTBOX: ${{ context.environment.op.outbox }}
+                  INBOX: ${{ context.environment.op.inbox }}
+                run: "set -eu\ntest \"$(git rev-parse HEAD)\" = \"$CANDIDATE\"\ntest \"$CANDIDATE\"\
+                  \ = \"$MERGED\"\ntest \"$TARGET\" = refs/heads/main\ntest \"$BASE\" != \"$MERGED\"\
+                  \ntest ! -e \"$INBOX/candidate.bundle\"\nfor document in \"$INBOX\"/selected/contributions/*/review/note.txt;\
+                  \ do\n  test \"$(cat \"$document\")\" = selected-document\ndone\ntest \"$(cat\
+                  \ contribution.txt)\" = queue-ready\ncase \"$REQUEST\" in 'Publish merged batch\
+                  \ on refs/heads/main: '*) ;; *) exit 1 ;; esac\nprintf 'owner=%s\\nsource=%s\\\
+                  nbase=%s\\nbranch=%s\\n' \"$OWNER\" \"$MERGED\" \"$BASE\" \"$TARGET\" > \"$OUTBOX/source.txt\"\
+                  \n"
+            - id: authority
+              op: command_execution
+              const: true
+              inputs:
+                run: 'set -eu
+
+                  value=$(c2j secret get TEST_TOKEN --format raw)
+
+                  test "$(printf %s "$value" | sha256sum)" = ''1b437c1c0fdc6cf0136d3a91639a428418d164092abf40b5f19966e1c18235b3  -''
+
+                  printf ''authorized-receiver-marker\n''
+
+                  '
+            - id: child
+              op: recipe.run_and_get_result
+              inputs:
+                name: ${{ 'git+' + context.git.repo + '//.c2/recipes/publication-child.yaml@'
+                  + inputs.merged_hash }}
+                inputs:
+                  source: ${{ inputs.merged_hash }}
+                git_ref: refs/heads/main
+                git:
+                  base_hash: ${{ inputs.merged_hash }}
+                  base_ref: refs/heads/main
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: Published the recorded batch source.
+              artifact_refs: ${{ jq(sequence.publish_source.artifacts,'with_entries(select(.key=="source.txt"))')
+                }}
+  mocks:
+    ops:
+    - match:
+        selector: ./recipes/merge-queue
+      repeat: true
+      behavior:
+        mode: passthrough
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+    - match:
+        op: squash
+      repeat: true
+      behavior:
+        mode: passthrough
+    - match:
+        op: merge
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.result.status=='stuck' && has(outputs.result.receiver) && calls.filter(c,c.op=='merge').size()==1
+  - type: cel_true
+    expr: '!calls.exists(c,c.node_path.endsWith(''/read_publication''))'
+  - type: cel_true
+    expr: calls.filter(c,c.node_path.endsWith('/publish_source')).all(c,c.node_path.startsWith('adaptive3-merge-batch/'))
+  inputs:
+    replace_hook: true
+- id: receiver-absent-hook
+  type: integration_case
+  runtime:
+    backend: sqlite
+    secrets:
+      TEST_TOKEN: fixture-secret-only
+      UNRELATED: not-authorized
+    config:
+      _c2j_hook_policy_tenant:
+        version: 1
+        hooks:
+          .c2/recipes/hooks/build/publish.yaml:
+            perms:
+              jobdb:
+                secrets:
+                  resolve:
+                  - TEST_TOKEN
+                jobs:
+                  submit: true
+            source_trust:
+              jobdb.secrets.resolve:
+                TEST_TOKEN:
+                  mode: candidate
+              jobdb.jobs.submit:
+                mode: candidate
+    cells:
+      root:
+        file_sources: *id001
+        files:
+          README.md: Receiver contract fixture.
+          .c2/recipes/hooks/build/verify.yaml: |
+            id: verify
+            inputs:
+              candidate: ${{ inputs.candidate }}
+            sequence:
+            - id: check
+              op: command_execution
+              inputs:
+                env:
+                  EXPECTED: ${{ inputs.candidate }}
+                run: |
+                  test "$(git rev-parse HEAD)" = "$EXPECTED"
+                  test "$(cat contribution.txt)" = queue-ready
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: Verified the assembled commit.
+              artifact_refs: {}
+          .c2/recipes/publication-child.yaml: |
+            schema_version: 2
+            id: publication-child
+            input_schema:
+              source: {type: string, required: true}
+            inputs:
+              source: ${{ inputs.source }}
+            sequence:
+            - id: check
+              op: command_execution
+              const: true
+              inputs:
+                env:
+                  SOURCE: ${{ inputs.source }}
+                run: 'test "$(git rev-parse HEAD)" = "$SOURCE"'
+            outputs:
+              source: ${{ inputs.source }}
+  mocks:
+    ops:
+    - match:
+        selector: ./recipes/merge-queue
+      repeat: true
+      behavior:
+        mode: passthrough
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+    - match:
+        op: squash
+      repeat: true
+      behavior:
+        mode: passthrough
+    - match:
+        op: merge
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.result.status=='passed' && outputs.result.publish.status=='skipped'
+      && outputs.result.queue_publication.source.merged_hash==outputs.candidate.head_hash
+  - type: cel_true
+    expr: calls.filter(c,c.node_path.endsWith('/publish_source')).all(c,c.node_path.startsWith('adaptive3-merge-batch/'))
+- id: receiver-explicit-skipped-hook
+  type: integration_case
+  runtime:
+    backend: sqlite
+    secrets:
+      TEST_TOKEN: fixture-secret-only
+      UNRELATED: not-authorized
+    config:
+      _c2j_hook_policy_tenant:
+        version: 1
+        hooks:
+          .c2/recipes/hooks/build/publish.yaml:
+            perms:
+              jobdb:
+                secrets:
+                  resolve:
+                  - TEST_TOKEN
+                jobs:
+                  submit: true
+            source_trust:
+              jobdb.secrets.resolve:
+                TEST_TOKEN:
+                  mode: candidate
+              jobdb.jobs.submit:
+                mode: candidate
+    cells:
+      root:
+        file_sources: *id001
+        files:
+          README.md: Receiver contract fixture.
+          .c2/recipes/hooks/build/verify.yaml: |
+            id: verify
+            inputs:
+              candidate: ${{ inputs.candidate }}
+            sequence:
+            - id: check
+              op: command_execution
+              inputs:
+                env:
+                  EXPECTED: ${{ inputs.candidate }}
+                run: |
+                  test "$(git rev-parse HEAD)" = "$EXPECTED"
+                  test "$(cat contribution.txt)" = queue-ready
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: Verified the assembled commit.
+              artifact_refs: {}
+          .c2/recipes/publication-child.yaml: |
+            schema_version: 2
+            id: publication-child
+            input_schema:
+              source: {type: string, required: true}
+            inputs:
+              source: ${{ inputs.source }}
+            sequence:
+            - id: check
+              op: command_execution
+              const: true
+              inputs:
+                env:
+                  SOURCE: ${{ inputs.source }}
+                run: 'test "$(git rev-parse HEAD)" = "$SOURCE"'
+            outputs:
+              source: ${{ inputs.source }}
+          .c2/recipes/hooks/build/publish.yaml: |
+            id: queue-publish-source-probe
+            inputs:
+              candidate: ${{ inputs.candidate }}
+              merged_hash: ${{ inputs.merged_hash }}
+              target_branch: ${{ inputs.target_branch }}
+              base: ${{ inputs.base }}
+              documents: ${{ inputs.documents }}
+              request: ${{ inputs.request }}
+            sequence: []
+            outputs:
+              api_version: c2.build-hook/v1
+              status: skipped
+              summary: Publication explicitly skipped.
+              artifact_refs: {}
+  mocks:
+    ops:
+    - match:
+        selector: ./recipes/merge-queue
+      repeat: true
+      behavior:
+        mode: passthrough
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+    - match:
+        op: squash
+      repeat: true
+      behavior:
+        mode: passthrough
+    - match:
+        op: merge
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.result.status=='passed' && outputs.result.publish.status=='skipped'
+      && outputs.result.queue_publication.source.merged_hash==outputs.candidate.head_hash
+  - type: cel_true
+    expr: calls.filter(c,c.node_path.endsWith('/publish_source')).all(c,c.node_path.startsWith('adaptive3-merge-batch/'))
+- id: receiver-malformed-hook-output
+  type: integration_case
+  runtime:
+    backend: sqlite
+    secrets:
+      TEST_TOKEN: fixture-secret-only
+      UNRELATED: not-authorized
+    config:
+      _c2j_hook_policy_tenant:
+        version: 1
+        hooks:
+          .c2/recipes/hooks/build/publish.yaml:
+            perms:
+              jobdb:
+                secrets:
+                  resolve:
+                  - TEST_TOKEN
+                jobs:
+                  submit: true
+            source_trust:
+              jobdb.secrets.resolve:
+                TEST_TOKEN:
+                  mode: candidate
+              jobdb.jobs.submit:
+                mode: candidate
+    cells:
+      root:
+        file_sources: *id001
+        files:
+          README.md: Receiver contract fixture.
+          .c2/recipes/hooks/build/verify.yaml: |
+            id: verify
+            inputs:
+              candidate: ${{ inputs.candidate }}
+            sequence:
+            - id: check
+              op: command_execution
+              inputs:
+                env:
+                  EXPECTED: ${{ inputs.candidate }}
+                run: |
+                  test "$(git rev-parse HEAD)" = "$EXPECTED"
+                  test "$(cat contribution.txt)" = queue-ready
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: Verified the assembled commit.
+              artifact_refs: {}
+          .c2/recipes/publication-child.yaml: |
+            schema_version: 2
+            id: publication-child
+            input_schema:
+              source: {type: string, required: true}
+            inputs:
+              source: ${{ inputs.source }}
+            sequence:
+            - id: check
+              op: command_execution
+              const: true
+              inputs:
+                env:
+                  SOURCE: ${{ inputs.source }}
+                run: 'test "$(git rev-parse HEAD)" = "$SOURCE"'
+            outputs:
+              source: ${{ inputs.source }}
+          .c2/recipes/hooks/build/publish.yaml: |
+            id: queue-publish-source-probe
+            inputs:
+              candidate: ${{ inputs.candidate }}
+              merged_hash: ${{ inputs.merged_hash }}
+              target_branch: ${{ inputs.target_branch }}
+              base: ${{ inputs.base }}
+              documents: ${{ inputs.documents }}
+              request: ${{ inputs.request }}
+            sequence:
+            - id: publish_source
+              op: command_execution
+              const: true
+              artifacts:
+                selected/: ${{ inputs.documents }}
+              inputs:
+                env:
+                  CANDIDATE: ${{ inputs.candidate }}
+                  MERGED: ${{ inputs.merged_hash }}
+                  TARGET: ${{ inputs.target_branch }}
+                  BASE: ${{ inputs.base }}
+                  REQUEST: ${{ inputs.request }}
+                  OWNER: ${{ context.workflow.job_id }}
+                  OUTBOX: ${{ context.environment.op.outbox }}
+                  INBOX: ${{ context.environment.op.inbox }}
+                run: "set -eu\ntest \"$(git rev-parse HEAD)\" = \"$CANDIDATE\"\ntest \"$CANDIDATE\"\
+                  \ = \"$MERGED\"\ntest \"$TARGET\" = refs/heads/main\ntest \"$BASE\" != \"$MERGED\"\
+                  \ntest ! -e \"$INBOX/candidate.bundle\"\nfor document in \"$INBOX\"/selected/contributions/*/review/note.txt;\
+                  \ do\n  test \"$(cat \"$document\")\" = selected-document\ndone\ntest \"$(cat\
+                  \ contribution.txt)\" = queue-ready\ncase \"$REQUEST\" in 'Publish merged batch\
+                  \ on refs/heads/main: '*) ;; *) exit 1 ;; esac\nprintf 'owner=%s\\nsource=%s\\\
+                  nbase=%s\\nbranch=%s\\n' \"$OWNER\" \"$MERGED\" \"$BASE\" \"$TARGET\" > \"$OUTBOX/source.txt\"\
+                  \n"
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: Published the recorded batch source.
+              artifact_refs: ${{ jq(sequence.publish_source.artifacts,'with_entries(select(.key=="source.txt"))')
+                }}
+              native_receipt:
+                unexpected: field
+  mocks:
+    ops:
+    - match:
+        selector: ./recipes/merge-queue
+      repeat: true
+      behavior:
+        mode: passthrough
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+    - match:
+        op: squash
+      repeat: true
+      behavior:
+        mode: passthrough
+    - match:
+        op: merge
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: outputs.result.status=='stuck' && has(outputs.result.receiver) && calls.filter(c,c.op=='merge').size()==1
+  - type: cel_true
+    expr: '!calls.exists(c,c.node_path.endsWith(''/read_publication''))'
+  - type: cel_true
+    expr: calls.filter(c,c.node_path.endsWith('/publish_source')).all(c,c.node_path.startsWith('adaptive3-merge-batch/'))
+- id: receiver-missing-shared-artifact-bytes
+  type: integration_case
+  runtime:
+    backend: sqlite
+    secrets:
+      TEST_TOKEN: fixture-secret-only
+      UNRELATED: not-authorized
+    config:
+      _c2j_hook_policy_tenant:
+        version: 1
+        hooks:
+          .c2/recipes/hooks/build/publish.yaml:
+            perms:
+              jobdb:
+                secrets:
+                  resolve:
+                  - TEST_TOKEN
+                jobs:
+                  submit: true
+            source_trust:
+              jobdb.secrets.resolve:
+                TEST_TOKEN:
+                  mode: candidate
+              jobdb.jobs.submit:
+                mode: candidate
+    cells:
+      root:
+        file_sources: *id001
+        files:
+          README.md: Receiver contract fixture.
+          .c2/recipes/hooks/build/verify.yaml: |
+            id: verify
+            inputs:
+              candidate: ${{ inputs.candidate }}
+            sequence:
+            - id: check
+              op: command_execution
+              inputs:
+                env:
+                  EXPECTED: ${{ inputs.candidate }}
+                run: |
+                  test "$(git rev-parse HEAD)" = "$EXPECTED"
+                  test "$(cat contribution.txt)" = queue-ready
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: Verified the assembled commit.
+              artifact_refs: {}
+          .c2/recipes/publication-child.yaml: |
+            schema_version: 2
+            id: publication-child
+            input_schema:
+              source: {type: string, required: true}
+            inputs:
+              source: ${{ inputs.source }}
+            sequence:
+            - id: check
+              op: command_execution
+              const: true
+              inputs:
+                env:
+                  SOURCE: ${{ inputs.source }}
+                run: 'test "$(git rev-parse HEAD)" = "$SOURCE"'
+            outputs:
+              source: ${{ inputs.source }}
+          .c2/recipes/hooks/build/publish.yaml: |
+            id: queue-publish-source-probe
+            inputs:
+              candidate: ${{ inputs.candidate }}
+              merged_hash: ${{ inputs.merged_hash }}
+              target_branch: ${{ inputs.target_branch }}
+              base: ${{ inputs.base }}
+              documents: ${{ inputs.documents }}
+              request: ${{ inputs.request }}
+            sequence:
+            - id: publish_source
+              op: command_execution
+              const: true
+              artifacts:
+                selected/: ${{ inputs.documents }}
+              inputs:
+                env:
+                  CANDIDATE: ${{ inputs.candidate }}
+                  MERGED: ${{ inputs.merged_hash }}
+                  TARGET: ${{ inputs.target_branch }}
+                  BASE: ${{ inputs.base }}
+                  REQUEST: ${{ inputs.request }}
+                  OWNER: ${{ context.workflow.job_id }}
+                  OUTBOX: ${{ context.environment.op.outbox }}
+                  INBOX: ${{ context.environment.op.inbox }}
+                run: "set -eu\ntest \"$(git rev-parse HEAD)\" = \"$CANDIDATE\"\ntest \"$CANDIDATE\"\
+                  \ = \"$MERGED\"\ntest \"$TARGET\" = refs/heads/main\ntest \"$BASE\" != \"$MERGED\"\
+                  \ntest ! -e \"$INBOX/candidate.bundle\"\nfor document in \"$INBOX\"/selected/contributions/*/review/note.txt;\
+                  \ do\n  test \"$(cat \"$document\")\" = selected-document\ndone\ntest \"$(cat\
+                  \ contribution.txt)\" = queue-ready\ncase \"$REQUEST\" in 'Publish merged batch\
+                  \ on refs/heads/main: '*) ;; *) exit 1 ;; esac\nprintf 'owner=%s\\nsource=%s\\\
+                  nbase=%s\\nbranch=%s\\n' \"$OWNER\" \"$MERGED\" \"$BASE\" \"$TARGET\" > \"$OUTBOX/source.txt\"\
+                  \n"
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: Published the recorded batch source.
+              artifact_refs: ${{ jq(sequence.publish_source.artifacts, 'with_entries(select(.key=="source.txt"))
+                | .["source.txt"].stored.key.name="missing-source.txt"') }}
+  mocks:
+    ops:
+    - match:
+        selector: ./recipes/merge-queue
+      repeat: true
+      behavior:
+        mode: passthrough
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+    - match:
+        op: squash
+      repeat: true
+      behavior:
+        mode: passthrough
+    - match:
+        op: merge
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: calls.filter(c,c.node_path.endsWith('/publish_source')).all(c,c.node_path.startsWith('adaptive3-merge-batch/'))
+  expect_error: 'artifact binding "shared/source.txt" save failed: artifact missing-source.txt
+    not found'
+- id: receiver-missing-contributed-document-bytes
+  type: integration_case
+  runtime:
+    backend: sqlite
+    secrets:
+      TEST_TOKEN: fixture-secret-only
+      UNRELATED: not-authorized
+    config:
+      _c2j_hook_policy_tenant:
+        version: 1
+        hooks:
+          .c2/recipes/hooks/build/publish.yaml:
+            perms:
+              jobdb:
+                secrets:
+                  resolve:
+                  - TEST_TOKEN
+                jobs:
+                  submit: true
+            source_trust:
+              jobdb.secrets.resolve:
+                TEST_TOKEN:
+                  mode: candidate
+              jobdb.jobs.submit:
+                mode: candidate
+    cells:
+      root:
+        file_sources:
+          merge-batch.yaml: ../../merge-batch.yaml
+          merge-check.yaml: ../../merge-check.yaml
+          recipes/adaptive3: ../../recipes/adaptive3
+          recipes/merge-queue: ../../recipes/merge-queue
+        files:
+          README.md: Receiver contract fixture.
+          .c2/recipes/hooks/build/verify.yaml: |
+            id: verify
+            inputs:
+              candidate: ${{ inputs.candidate }}
+            sequence:
+            - id: check
+              op: command_execution
+              inputs:
+                env:
+                  EXPECTED: ${{ inputs.candidate }}
+                run: |
+                  test "$(git rev-parse HEAD)" = "$EXPECTED"
+                  test "$(cat contribution.txt)" = queue-ready
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: Verified the assembled commit.
+              artifact_refs: {}
+          .c2/recipes/publication-child.yaml: |
+            schema_version: 2
+            id: publication-child
+            input_schema:
+              source: {type: string, required: true}
+            inputs:
+              source: ${{ inputs.source }}
+            sequence:
+            - id: check
+              op: command_execution
+              const: true
+              inputs:
+                env:
+                  SOURCE: ${{ inputs.source }}
+                run: 'test "$(git rev-parse HEAD)" = "$SOURCE"'
+            outputs:
+              source: ${{ inputs.source }}
+          .c2/recipes/hooks/build/publish.yaml: |
+            id: queue-publish-source-probe
+            inputs:
+              candidate: ${{ inputs.candidate }}
+              merged_hash: ${{ inputs.merged_hash }}
+              target_branch: ${{ inputs.target_branch }}
+              base: ${{ inputs.base }}
+              documents: ${{ inputs.documents }}
+              request: ${{ inputs.request }}
+            sequence:
+            - id: publish_source
+              op: command_execution
+              const: true
+              artifacts:
+                selected/: ${{ inputs.documents }}
+              inputs:
+                env:
+                  CANDIDATE: ${{ inputs.candidate }}
+                  MERGED: ${{ inputs.merged_hash }}
+                  TARGET: ${{ inputs.target_branch }}
+                  BASE: ${{ inputs.base }}
+                  REQUEST: ${{ inputs.request }}
+                  OWNER: ${{ context.workflow.job_id }}
+                  OUTBOX: ${{ context.environment.op.outbox }}
+                  INBOX: ${{ context.environment.op.inbox }}
+                run: "set -eu\ntest \"$(git rev-parse HEAD)\" = \"$CANDIDATE\"\ntest \"$CANDIDATE\"\
+                  \ = \"$MERGED\"\ntest \"$TARGET\" = refs/heads/main\ntest \"$BASE\" != \"$MERGED\"\
+                  \ntest ! -e \"$INBOX/candidate.bundle\"\nfor document in \"$INBOX\"/selected/contributions/*/review/note.txt;\
+                  \ do\n  test \"$(cat \"$document\")\" = selected-document\ndone\ntest \"$(cat\
+                  \ contribution.txt)\" = queue-ready\ncase \"$REQUEST\" in 'Publish merged batch\
+                  \ on refs/heads/main: '*) ;; *) exit 1 ;; esac\nprintf 'owner=%s\\nsource=%s\\\
+                  nbase=%s\\nbranch=%s\\n' \"$OWNER\" \"$MERGED\" \"$BASE\" \"$TARGET\" > \"$OUTBOX/source.txt\"\
+                  \n"
+            - id: authority
+              op: command_execution
+              const: true
+              inputs:
+                run: 'set -eu
+
+                  value=$(c2j secret get TEST_TOKEN --format raw)
+
+                  test "$(printf %s "$value" | sha256sum)" = ''1b437c1c0fdc6cf0136d3a91639a428418d164092abf40b5f19966e1c18235b3  -''
+
+                  printf ''authorized-receiver-marker\n''
+
+                  '
+            - id: child
+              op: recipe.run_and_get_result
+              inputs:
+                name: ${{ 'git+' + context.git.repo + '//.c2/recipes/publication-child.yaml@'
+                  + inputs.merged_hash }}
+                inputs:
+                  source: ${{ inputs.merged_hash }}
+                git_ref: refs/heads/main
+                git:
+                  base_hash: ${{ inputs.merged_hash }}
+                  base_ref: refs/heads/main
+            outputs:
+              api_version: c2.build-hook/v1
+              status: passed
+              summary: Published the recorded batch source.
+              artifact_refs: ${{ jq(sequence.publish_source.artifacts,'with_entries(select(.key=="source.txt"))')
+                }}
+  mocks:
+    ops:
+    - match:
+        selector: ./recipes/merge-queue
+      repeat: true
+      behavior:
+        mode: passthrough
+    - match:
+        op: command_execution
+      repeat: true
+      behavior:
+        mode: passthrough
+    - match:
+        op: squash
+      repeat: true
+      behavior:
+        mode: passthrough
+    - match:
+        op: merge
+      repeat: true
+      behavior:
+        mode: passthrough
+  assertions:
+  - type: cel_true
+    expr: '!calls.exists(c,c.node_path.endsWith(''/publish_source''))'
+  - type: cel_true
+    expr: outputs.result.status=='stuck' && calls.exists(c,c.node_path.endsWith('/publication_failed/command_execution')
+      && c.inputs.env.REASON.contains('missing-note.txt'))
+  inputs:
+    missing_document: true

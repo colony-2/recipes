@@ -1,0 +1,42 @@
+id: queue-publish-source-probe
+inputs:
+  candidate: ${{ inputs.candidate }}
+  merged_hash: ${{ inputs.merged_hash }}
+  target_branch: ${{ inputs.target_branch }}
+  base: ${{ inputs.base }}
+  documents: ${{ inputs.documents }}
+  request: ${{ inputs.request }}
+sequence:
+- id: publish_source
+  op: command_execution
+  const: true
+  artifacts:
+    selected/: ${{ inputs.documents }}
+  inputs:
+    env:
+      CANDIDATE: ${{ inputs.candidate }}
+      MERGED: ${{ inputs.merged_hash }}
+      TARGET: ${{ inputs.target_branch }}
+      BASE: ${{ inputs.base }}
+      REQUEST: ${{ inputs.request }}
+      OWNER: ${{ context.workflow.job_id }}
+      OUTBOX: ${{ context.environment.op.outbox }}
+      INBOX: ${{ context.environment.op.inbox }}
+    run: |
+      set -eu
+      test "$(git rev-parse HEAD)" = "$CANDIDATE"
+      test "$CANDIDATE" = "$MERGED"
+      test "$TARGET" = refs/heads/main
+      test "$BASE" != "$MERGED"
+      test ! -e "$INBOX/candidate.bundle"
+      for document in "$INBOX"/selected/contributions/*/review/note.txt; do
+        test "$(cat "$document")" = selected-document
+      done
+      test "$(cat contribution.txt)" = queue-ready
+      case "$REQUEST" in 'Publish merged batch on refs/heads/main: '*) ;; *) exit 1 ;; esac
+      printf 'owner=%s\nsource=%s\nbase=%s\nbranch=%s\n' "$OWNER" "$MERGED" "$BASE" "$TARGET" > "$OUTBOX/source.txt"
+outputs:
+  api_version: c2.build-hook/v1
+  status: passed
+  summary: Published the recorded batch source.
+  artifact_refs: ${{ jq(sequence.publish_source.artifacts,'with_entries(select(.key=="source.txt"))') }}

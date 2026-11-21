@@ -2,7 +2,10 @@ id: adaptive3-merge-queue-submit
 inputs:
   contribution: ${{ inputs.?contribution.orValue({}) }}
   verification: ${{ inputs.?verification.orValue({}) }}
+  documents: ${{ inputs.?documents.orValue({}) }}
   queue_history: ${{ inputs.?queue_history.orValue({}) }}
+  recovery: ${{ inputs.?recovery.orValue({}) }}
+  recovering: ${{ inputs.?recovering.orValue(false) }}
   initial_submitted_at: ${{ inputs.?initial_submitted_at.orValue(inputs.?queue_history.orValue({}).?initial_submitted_at.orValue('')) }}
   require_verification: ${{ inputs.require_verification }}
   target_directory: ${{ inputs.target_directory }}
@@ -11,12 +14,50 @@ inputs:
   inline: ${{ inputs.?inline.orValue(false) }}
 state:
   initial:
+  - to: recover
+    when: inputs.recovering || size(inputs.recovery)>0 || (inputs.queue_history.?status.orValue('')=='stuck' && inputs.queue_history.?receiver.orValue(null)!=null)
   - to: unchanged_rejection
     when: nonempty(inputs.contribution.?changeid.orValue('')) &&
       inputs.contribution.changeid==inputs.queue_history.?rejected_changeid.orValue('')
   - to: identify
     when: 'true'
   states:
+    recover:
+      inputs:
+        receiver: ${{ inputs.queue_history.?receiver.orValue(inputs.recovery.?receiver.orValue({})) }}
+        branch: ${{ inputs.queue_history.?branch.orValue(inputs.recovery.?branch.orValue('')) }}
+        changeid: ${{ inputs.queue_history.?changeid.orValue(inputs.recovery.?changeid.orValue('')) }}
+      sequence: []
+      outputs:
+        receiver: ${{ inputs.receiver }}
+        branch: ${{ inputs.branch }}
+        changeid: ${{ inputs.changeid }}
+      transitions:
+      - to: repair_result
+        when: nonempty(outputs.receiver.?job_id.orValue('')) && nonempty(outputs.receiver.?goal_id.orValue('')) && nonempty(outputs.branch) && nonempty(outputs.changeid)
+      - to: done
+        when: 'true'
+        payload:
+          result:
+            status: stuck
+            summary: Queue recovery requires the original receiver handle, branch and Change-Id. Legacy publication evidence cannot authorize caller publication.
+    repair_result:
+      op: recipe.await_result_soft
+      inputs:
+        target:
+          goal: ${{ states.recover.outputs.receiver.goal_id }}
+        wait: {on: goal, condition: success}
+        return_when: current_status
+      transitions:
+      - to: receipt
+        when: outputs.status=='completed' && outputs.result.?goal.orValue('')==states.recover.outputs.receiver.goal_id && nonempty(outputs.result.?job.orValue(''))
+        payload:
+          receipt: ${{ outputs.outputs }}
+      - to: unavailable
+        when: 'true'
+        payload:
+          summary: The original receiver has no successful repair result. Recover its recorded publication boundary; do not submit another batch.
+          failure: ${{ outputs }}
     unchanged_rejection:
       sequence: []
       transitions:
@@ -43,12 +84,6 @@ state:
       transitions:
       - to: submit
         when: outputs.result.verified
-        payload:
-          policy:
-            version: 1
-            require_verification: ${{ inputs.require_verification }}
-            target_directory: ${{ outputs.result.directory }}
-            settings: ${{ inputs.settings }}
       - to: done
         when: 'true'
         payload:
@@ -62,12 +97,12 @@ state:
         when: inputs.inline
         include: ./merge-queue-batch.yaml
         inputs:
+          return_publication_failure: true
           branch: ${{ inputs.branch }}
           policy: ${{ inputs.policy }}
           appends:
-          - content: ${{ inputs.content }}
-            artifacts:
-            - ${{ inputs.content.thinpack_ref }}
+          - content: ${{ jq([inputs.content,{'verification_policy':inputs.policy,'documents':inputs.documents}], 'add') }}
+            artifacts: ${{ [inputs.content.thinpack_ref] + inputs.documents.map(k,inputs.documents[k]) }}
       - id: capture_batch_start
         when: '!inputs.inline'
         op: command_execution
@@ -76,45 +111,53 @@ state:
           run: date -u '+%Y-%m-%d %H:%M:%S UTC'
       - id: batch
         when: '!inputs.inline'
-        op: recipe.run_and_get_result
+        op: recipes.run
         retry:
           maximum_attempts: 1
         inputs:
-          name: ${{ inputs.receiver }}
-          cell_name: ${{ inputs.cell }}
           git_ref: ${{ inputs.branch }}
-          title: "Merge queue: ${{ inputs.cell }}/${{ inputs.branch }} (${{ sequence.capture_batch_start.outputs.stdout }})"
-          inputs:
-            branch: ${{ inputs.branch }}
-            verification_policy: ${{ inputs.policy }}
-          grouping:
-            key: ${{ inputs.key }}
-            max_items: 50
-            content: ${{ inputs.content }}
-            artifacts:
-            - ${{ inputs.content.thinpack_ref }}
+          recipes:
+          - name: ${{ inputs.receiver }}
+            title: "Merge queue: ${{ context.workflow.cell }}/${{ inputs.branch }} (${{ sequence.capture_batch_start.outputs.stdout }})"
+            cell_name: ${{ context.workflow.cell }}
+            inputs:
+              branch: ${{ inputs.branch }}
+              verification_policy: ${{ inputs.policy }}
+            grouping:
+              key: ${{ inputs.key }}
+              max_items: 50
+              content: ${{ jq([inputs.content,{'verification_policy':inputs.policy,'documents':inputs.documents}], 'add') }}
+              artifacts: ${{ [inputs.content.thinpack_ref] + inputs.documents.map(k,inputs.documents[k]) }}
       inputs:
         inline: ${{ inputs.inline }}
         receiver: >-
           ${{ nonempty(inputs.receiver) ? inputs.receiver :
             'git+' + context.recipe_source.?repo.orValue('https://github.com/colony-2/recipes.git') + '//merge-batch.yaml@' + context.recipe_source.?ref.orValue('main') }}
-        cell: ${{ context.workflow.cell }}
         branch: ${{ states.identify.outputs.result.branch }}
         key: >-
           ${{ context.workflow.?cell_id.orValue(context.workflow.cell) + '/' +
-            states.identify.outputs.result.branch + '/merge' }}
-        policy: ${{ transition.payload.policy }}
+            states.identify.outputs.result.branch + '/merge-publish-v2' }}
+        documents: ${{ inputs.documents }}
+        policy:
+          version: 2
+          require_verification: ${{ inputs.require_verification }}
+          target_directory: ${{ states.identify.outputs.result.directory }}
+          settings: ${{ inputs.settings }}
         content: >-
           ${{ jq([inputs.contribution,{
-            'version':1, 'repository':context.git.repo, 'job_id':context.workflow.job_id,
-            'branch':states.identify.outputs.result.branch, 'verification_policy':transition.payload.policy,
+            'version':2, 'repository':context.git.repo, 'job_id':context.workflow.job_id,
+            'branch':states.identify.outputs.result.branch,
             'initial_submitted_at':states.identify.outputs.result.age
           }, size(inputs.verification)>0 ? {
             'verification':jq([inputs.verification,{'job_id':context.workflow.job_id}],
               'add | del(.contribution)')
           } : {}], 'add | .thinpack_ref.name = "candidate.bundle"') }}
       outputs:
-        receipt: "${{ inputs.inline ? sequence.inline_batch.outputs : sequence.batch.outputs.outputs }}"
+        inline: ${{ inputs.inline }}
+        receipt: "${{ inputs.inline ? sequence.inline_batch.outputs : {} }}"
+        receiver: "${{ inputs.inline ? {} : sequence.batch.outputs.items[0] }}"
+        inline_publication: >-
+          ${{ inputs.inline ? {'context':sequence.inline_batch.outputs.publication_context,'policy':inputs.policy} : {} }}
       catch:
       - when: failure.kind!='cancellation'
         to: done
@@ -125,21 +168,69 @@ state:
             failure: ${{ json_parse(json_stringify(failure)) }}
       transitions:
       - to: receipt
+        when: outputs.inline
+        payload:
+          receipt: ${{ outputs.receipt }}
+      - to: wait
         when: 'true'
+    wait:
+      op: recipe.await_result_soft
+      inputs:
+        target:
+          job: ${{ states.submit.outputs.receiver.job_id }}
+        wait: {on: job, condition: complete}
+        return_when: terminal
+      transitions:
+      - to: receipt
+        when: outputs.status=='completed' && outputs.result.job==states.submit.outputs.receiver.job_id
+        payload:
+          receipt: ${{ outputs.outputs }}
+      - to: unavailable
+        when: 'true'
+        payload:
+          summary: The merge receiver did not complete publication. Its merge may already be recorded; inspect and recover that receiver, without resubmission.
+          failure: ${{ outputs }}
+    unavailable:
+      inputs:
+        receiver: >-
+          ${{ state_exists('recover') ? states.recover.outputs.receiver : states.submit.outputs.receiver }}
+        branch: >-
+          ${{ state_exists('recover') ? states.recover.outputs.branch : states.identify.outputs.result.branch }}
+        changeid: >-
+          ${{ state_exists('recover') ? states.recover.outputs.changeid : inputs.contribution.changeid }}
+        summary: ${{ transition.payload.summary }}
+        failure: ${{ transition.payload.failure }}
+      sequence: []
+      outputs:
+        result:
+          status: stuck
+          summary: ${{ inputs.summary }}
+          receiver: ${{ inputs.receiver }}
+          branch: ${{ inputs.branch }}
+          changeid: ${{ inputs.changeid }}
+          failure: ${{ inputs.failure }}
+      transitions:
+      - to: done
+        when: 'true'
+        payload:
+          result: ${{ outputs.result }}
     receipt:
       op: ./recipes/merge-queue
       const: true
       inputs:
         action: caller_receipt
         request:
-          receipt: ${{ states.submit.outputs.receipt }}
-          own: ${{ inputs.contribution.changeid }}
-          branch: ${{ states.identify.outputs.result.branch }}
+          receipt: ${{ transition.payload.receipt }}
+          own: >-
+            ${{ state_exists('recover') ? states.recover.outputs.changeid : inputs.contribution.changeid }}
+          branch: >-
+            ${{ state_exists('recover') ? states.recover.outputs.branch : states.identify.outputs.result.branch }}
+          owner_job: >-
+            ${{ state_exists('recover') ? states.recover.outputs.receiver.job_id :
+              (inputs.inline ? context.workflow.job_id : states.submit.outputs.receiver.job_id) }}
       transitions:
       - to: confirm
         when: outputs.result.?own.hasValue() && outputs.result.own.status=='success'
-        payload:
-          hash: ${{ outputs.result.own.hash }}
       - to: done
         when: outputs.result.?own.hasValue()
         payload:
@@ -154,34 +245,52 @@ state:
         payload:
           result:
             status: stuck
-            summary: The merge queue did not return a valid receipt for this change.
+            summary: The merge queue did not return a valid receiver-owned receipt for this change.
     confirm:
       op: ./recipes/merge-queue
       const: true
       workspace:
         cell: ${{ context.workflow.cell }}
-        ref: ${{ states.identify.outputs.result.branch }}
+        ref: >-
+          ${{ state_exists('recover') ? states.recover.outputs.branch : states.identify.outputs.result.branch }}
       inputs:
         action: confirm_landed
         request:
-          landed: ${{ transition.payload.hash }}
-          branch: ${{ states.identify.outputs.result.branch }}
-          change_id: ${{ inputs.contribution.changeid }}
+          landed: ${{ states.receipt.outputs.result.own.hash }}
+          branch: >-
+            ${{ state_exists('recover') ? states.recover.outputs.branch : states.identify.outputs.result.branch }}
+          change_id: ${{ states.receipt.outputs.result.own.changeid }}
+          publication: ${{ states.receipt.outputs.result.queue_publication.source }}
       transitions:
       - to: done
-        when: outputs.result.confirmed
+        when: outputs.result.confirmed && states.receipt.outputs.result.queue_publication.result.status in ['passed','skipped']
         payload:
           result:
             status: passed
+            summary: ${{ states.receipt.outputs.result.queue_publication.result.summary }}
             publication:
               merged_hash: ${{ states.receipt.outputs.result.own.hash }}
-              target_branch: ${{ states.identify.outputs.result.branch }}
+              target_branch: >-
+                ${{ state_exists('recover') ? states.recover.outputs.branch : states.identify.outputs.result.branch }}
+            publish: ${{ states.receipt.outputs.result.queue_publication.result }}
+            queue_publication: ${{ states.receipt.outputs.result.queue_publication }}
+      - to: done
+        when: outputs.result.confirmed && inputs.inline && states.receipt.outputs.result.queue_publication.result.status=='failed'
+        payload:
+          result:
+            status: stuck
+            summary: ${{ states.receipt.outputs.result.queue_publication.result.summary }}
+            publication: ${{ states.receipt.outputs.result.queue_publication.source }}
+            publish: ${{ states.receipt.outputs.result.queue_publication.result }}
+            queue_publication: ${{ states.receipt.outputs.result.queue_publication }}
+            inline_publication: ${{ states.submit.outputs.inline_publication }}
+            errors: ${{ states.submit.outputs.receipt.artifact_refs }}
       - to: done
         when: 'true'
         payload:
           result:
             status: stuck
-            summary: The queue receipt could not be confirmed on the target branch.
+            summary: The queue receipt or shared publication could not be confirmed on the target branch.
     done:
       sequence: []
       outputs:
@@ -189,4 +298,8 @@ state:
 outputs:
   result: >-
     ${{ jq([states.done.outputs.result,{'initial_submitted_at':
-      state_output('identify','result',{}).?age.orValue(inputs.initial_submitted_at)}],'add') }}
+      state_output('identify','result',{}).?age.orValue(inputs.initial_submitted_at)},
+      state_output('submit','receiver',{}).size()>0 ? {'receiver':states.submit.outputs.receiver,
+        'branch':states.identify.outputs.result.branch,'changeid':inputs.contribution.changeid} :
+      (state_exists('recover') ? {'receiver':states.recover.outputs.receiver,
+        'branch':states.recover.outputs.branch,'changeid':states.recover.outputs.changeid} : {})],'add') }}

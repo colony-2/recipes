@@ -311,11 +311,17 @@ def capture_repair(repo, inbox, outbox, prefix, summary):
     return {}
 
 
-def confirm_landed(repo, branch, landed, change_id):
+def confirm_landed(repo, branch, landed, change_id, publication=None):
     try:
         if landed != repo.head():
             repo.deepen(branch)
         repo.run("merge-base", "--is-ancestor", landed, "HEAD")
+        if publication is not None:
+            source = publication.get("merged_hash")
+            if not is_hash(source) or publication.get("target_branch") != branch:
+                return {"confirmed": False}
+            repo.run("merge-base", "--is-ancestor", source, "HEAD")
+            repo.run("merge-base", "--is-ancestor", landed, source)
         trailers = repo.read("log", "-1", "--format=%(trailers:key=Change-Id,valueonly)", landed)
     except GitError as error:
         print(error, file=sys.stderr)

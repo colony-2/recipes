@@ -1,0 +1,3075 @@
+{
+  "recipe": "fixtures/queue-scenario/driver.yaml",
+  "cases": [
+    {
+      "id": "two-callers-publish-final-tip-after-branch-advancement",
+      "type": "integration_case",
+      "runtime": {
+        "backend": "sqlite",
+        "cells": {
+          "root": {
+            "file_sources": {
+              ".c2/recipes/scenario-receiver.yaml": "./fixtures/queue-scenario/receiver.yaml",
+              ".c2/recipes/hooks/build/publish.yaml": "./fixtures/queue-scenario/publish.yaml",
+              ".c2/recipes/hooks/build/verify.yaml": "./fixtures/queue-scenario/verify.yaml",
+              "merge-batch.yaml": "../../merge-batch.yaml",
+              "merge-check.yaml": "../../merge-check.yaml",
+              "recipes/adaptive3": "../../recipes/adaptive3",
+              "recipes/merge-queue": "../../recipes/merge-queue"
+            },
+            "files": {
+              "README.md": "Receiver publication scenario."
+            }
+          }
+        },
+        "controls": {
+          "scenario": {
+            "jobs": {
+              "root": {
+                "root": true
+              },
+              "one": {
+                "child_binding": "one"
+              },
+              "two": {
+                "child_binding": "two"
+              },
+              "receiver": {
+                "submission": {
+                  "caller": "one",
+                  "task": {
+                    "task_type": "recipes.run:start",
+                    "node_path": "scenario-caller/submit/adaptive3-merge-queue-submit/submit/sequence/batch",
+                    "attempt": 1,
+                    "occurrence": 1
+                  },
+                  "index": 1,
+                  "output_pointer": "/payload/output/items/0"
+                }
+              },
+              "same_receiver": {
+                "submission": {
+                  "caller": "two",
+                  "task": {
+                    "task_type": "recipes.run:start",
+                    "node_path": "scenario-caller/submit/adaptive3-merge-queue-submit/submit/sequence/batch",
+                    "attempt": 1,
+                    "occurrence": 1
+                  },
+                  "index": 1,
+                  "output_pointer": "/payload/output/items/0"
+                }
+              },
+              "pre": {
+                "child_binding": "pre"
+              },
+              "advance": {
+                "child_binding": "advance"
+              }
+            },
+            "admission_holds": [
+              {
+                "id": "batch",
+                "cell": "root",
+                "recipe": "scenario-receiver",
+                "route": {
+                  "jobType": "recipe"
+                },
+                "jobs": [
+                  "receiver",
+                  "same_receiver"
+                ]
+              },
+              {
+                "id": "pre_admission",
+                "cell": "root",
+                "recipe": "pre-advance",
+                "route": {
+                  "jobType": "recipe"
+                },
+                "jobs": [
+                  "pre"
+                ]
+              },
+              {
+                "id": "advance_admission",
+                "cell": "root",
+                "recipe": "post-advance",
+                "route": {
+                  "jobType": "recipe"
+                },
+                "jobs": [
+                  "advance"
+                ]
+              }
+            ],
+            "dispatch_holds": [
+              {
+                "id": "publish",
+                "job": "receiver",
+                "task": {
+                  "task_type": "recipe_workspace_resolve",
+                  "node_path": "scenario-receiver/production/adaptive3-merge-batch/batch/adaptive3-merge-queue-batch/publish/publish/adaptive3-hooks/publish/publish",
+                  "attempt": 1,
+                  "occurrence": 1
+                }
+              }
+            ],
+            "events": [
+              {
+                "id": "one_submitted",
+                "kind": "submission",
+                "job": "receiver"
+              },
+              {
+                "id": "two_submitted",
+                "kind": "submission",
+                "job": "same_receiver"
+              },
+              {
+                "id": "pre_done",
+                "kind": "settled",
+                "job": "pre",
+                "status": "completed"
+              },
+              {
+                "id": "publishing",
+                "kind": "dispatch",
+                "hold": "publish"
+              },
+              {
+                "id": "landed",
+                "kind": "task_result",
+                "job": "receiver",
+                "task": {
+                  "task_type": "merge:merge",
+                  "node_path": "scenario-receiver/production/adaptive3-merge-batch/batch/adaptive3-merge-queue-batch/land/land/adaptive3-merge-queue-land/install/sequence/merge",
+                  "attempt": 1,
+                  "occurrence": 1
+                },
+                "status": "SUCCEEDED"
+              },
+              {
+                "id": "advanced",
+                "kind": "settled",
+                "job": "advance",
+                "status": "completed"
+              }
+            ],
+            "actions": [
+              {
+                "id": "prepare_replay",
+                "after_all": [
+                  "one_submitted",
+                  "two_submitted"
+                ],
+                "do": "release",
+                "target": "pre_admission"
+              },
+              {
+                "id": "admit",
+                "after_all": [
+                  "pre_done"
+                ],
+                "do": "release",
+                "target": "batch"
+              },
+              {
+                "id": "advance_now",
+                "after_all": [
+                  "landed"
+                ],
+                "do": "release",
+                "target": "advance_admission"
+              },
+              {
+                "id": "checkout",
+                "after_all": [
+                  "advanced",
+                  "publishing"
+                ],
+                "do": "release",
+                "target": "publish"
+              }
+            ],
+            "outcomes": {
+              "root": {
+                "status": "completed"
+              },
+              "one": {
+                "status": "completed"
+              },
+              "two": {
+                "status": "completed"
+              },
+              "receiver": {
+                "status": "completed"
+              },
+              "same_receiver": {
+                "status": "completed"
+              },
+              "pre": {
+                "status": "completed"
+              },
+              "advance": {
+                "status": "completed"
+              }
+            }
+          }
+        }
+      },
+      "mocks": {
+        "ops": [
+          {
+            "match": {
+              "node_path": "queue-scenario/spawn"
+            },
+            "behavior": {
+              "mode": "return",
+              "effects": {
+                "children": [
+                  {
+                    "bind": "one",
+                    "cell": "root",
+                    "recipe": "fixtures/queue-scenario/caller.yaml",
+                    "inputs": {
+                      "marker": "one"
+                    }
+                  },
+                  {
+                    "bind": "two",
+                    "cell": "root",
+                    "recipe": "fixtures/queue-scenario/caller.yaml",
+                    "inputs": {
+                      "marker": "two"
+                    }
+                  },
+                  {
+                    "bind": "pre",
+                    "cell": "root",
+                    "recipe": "fixtures/queue-scenario/pre-advance.yaml"
+                  },
+                  {
+                    "bind": "advance",
+                    "cell": "root",
+                    "recipe": "fixtures/queue-scenario/advance.yaml"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "match": {
+              "node_path": "queue-scenario/next"
+            },
+            "behavior": {
+              "mode": "return"
+            }
+          },
+          {
+            "match": {
+              "selector": "./recipes/merge-queue"
+            },
+            "repeat": true,
+            "behavior": {
+              "mode": "passthrough"
+            }
+          },
+          {
+            "match": {
+              "op": "command_execution"
+            },
+            "repeat": true,
+            "behavior": {
+              "mode": "passthrough"
+            }
+          },
+          {
+            "match": {
+              "op": "squash"
+            },
+            "repeat": true,
+            "behavior": {
+              "mode": "passthrough"
+            }
+          },
+          {
+            "match": {
+              "op": "merge"
+            },
+            "repeat": true,
+            "behavior": {
+              "mode": "passthrough"
+            }
+          }
+        ]
+      },
+      "assertions": [
+        {
+          "type": "cel_true",
+          "expr": "controls.scenario.complete && controls.dispatch_complete"
+        },
+        {
+          "type": "cel_true",
+          "expr": "controls.scenario.jobs.receiver.ref.job_id==controls.scenario.jobs.same_receiver.ref.job_id"
+        },
+        {
+          "type": "cel_true",
+          "expr": "calls.filter(c,c.node_path.endsWith('/scenario-publish/source')).size()==1 && calls.filter(c,c.node_path.endsWith('/scenario-publish/source')).all(c,c.job_id==controls.scenario.jobs.receiver.ref.job_id)"
+        },
+        {
+          "type": "cel_true",
+          "expr": "calls.filter(c,c.node_path=='scenario-caller/shared_bytes').size()==2"
+        },
+        {
+          "type": "cel_true",
+          "expr": "calls.filter(c,c.node_path=='scenario-caller/record').all(c,c.inputs.env.STATUS=='passed' && c.inputs.env.SOURCE==calls.filter(p,p.node_path.endsWith('/scenario-publish/source'))[0].inputs.env.MERGED)"
+        },
+        {
+          "type": "cel_true",
+          "expr": "calls.exists(a,a.node_path=='scenario-caller/record' && calls.exists(b,b.node_path=='scenario-caller/record' && a.inputs.env.LANDED!=b.inputs.env.LANDED))"
+        },
+        {
+          "type": "cel_true",
+          "expr": "calls.filter(c,c.node_path=='scenario-caller/record').all(c,c.inputs.env.HEAD!=c.inputs.env.LANDED)"
+        },
+        {
+          "type": "cel_true",
+          "expr": "calls.exists(a,a.node_path=='post-advance/land' && calls.exists(p,p.node_path.endsWith('/scenario-publish/source') && a.outputs.merged_hash!=p.inputs.env.MERGED && a.inputs.upstream_branch=='main'))"
+        },
+        {
+          "type": "cel_true",
+          "expr": "calls.filter(c,c.node_path=='scenario-caller/record').exists(c,c.inputs.env.LANDED!=c.inputs.env.SOURCE)"
+        },
+        {
+          "type": "cel_true",
+          "expr": "calls.filter(c,c.node_path.endsWith('/scenario-publish/source')).all(p,calls.exists(m,m.node_path=='pre-advance/land' && p.inputs.env.BASE==m.outputs.merged_hash))"
+        }
+      ]
+    },
+    {
+      "id": "cancel-one-before-receiver-publication",
+      "type": "integration_case",
+      "runtime": {
+        "backend": "sqlite",
+        "cells": {
+          "root": {
+            "file_sources": {
+              ".c2/recipes/scenario-receiver.yaml": "./fixtures/queue-scenario/receiver.yaml",
+              ".c2/recipes/hooks/build/publish.yaml": "./fixtures/queue-scenario/publish.yaml",
+              ".c2/recipes/hooks/build/verify.yaml": "./fixtures/queue-scenario/verify.yaml",
+              "merge-batch.yaml": "../../merge-batch.yaml",
+              "merge-check.yaml": "../../merge-check.yaml",
+              "recipes/adaptive3": "../../recipes/adaptive3",
+              "recipes/merge-queue": "../../recipes/merge-queue"
+            },
+            "files": {
+              "README.md": "Receiver publication scenario."
+            }
+          }
+        },
+        "controls": {
+          "scenario": {
+            "jobs": {
+              "root": {
+                "root": true
+              },
+              "one": {
+                "child_binding": "one"
+              },
+              "two": {
+                "child_binding": "two"
+              },
+              "receiver": {
+                "submission": {
+                  "caller": "one",
+                  "task": {
+                    "task_type": "recipes.run:start",
+                    "node_path": "scenario-caller/submit/adaptive3-merge-queue-submit/submit/sequence/batch",
+                    "attempt": 1,
+                    "occurrence": 1
+                  },
+                  "index": 1,
+                  "output_pointer": "/payload/output/items/0"
+                }
+              },
+              "same_receiver": {
+                "submission": {
+                  "caller": "two",
+                  "task": {
+                    "task_type": "recipes.run:start",
+                    "node_path": "scenario-caller/submit/adaptive3-merge-queue-submit/submit/sequence/batch",
+                    "attempt": 1,
+                    "occurrence": 1
+                  },
+                  "index": 1,
+                  "output_pointer": "/payload/output/items/0"
+                }
+              },
+              "pre": {
+                "child_binding": "pre"
+              }
+            },
+            "admission_holds": [
+              {
+                "id": "batch",
+                "cell": "root",
+                "recipe": "scenario-receiver",
+                "route": {
+                  "jobType": "recipe"
+                },
+                "jobs": [
+                  "receiver",
+                  "same_receiver"
+                ]
+              },
+              {
+                "id": "pre_admission",
+                "cell": "root",
+                "recipe": "pre-advance",
+                "route": {
+                  "jobType": "recipe"
+                },
+                "jobs": [
+                  "pre"
+                ]
+              }
+            ],
+            "dispatch_holds": [
+              {
+                "id": "publish",
+                "job": "receiver",
+                "task": {
+                  "task_type": "recipe_workspace_resolve",
+                  "node_path": "scenario-receiver/production/adaptive3-merge-batch/batch/adaptive3-merge-queue-batch/publish/publish/adaptive3-hooks/publish/publish",
+                  "attempt": 1,
+                  "occurrence": 1
+                }
+              }
+            ],
+            "events": [
+              {
+                "id": "one_submitted",
+                "kind": "submission",
+                "job": "receiver"
+              },
+              {
+                "id": "two_submitted",
+                "kind": "submission",
+                "job": "same_receiver"
+              },
+              {
+                "id": "pre_done",
+                "kind": "settled",
+                "job": "pre",
+                "status": "completed"
+              },
+              {
+                "id": "publishing",
+                "kind": "dispatch",
+                "hold": "publish"
+              },
+              {
+                "id": "landed",
+                "kind": "task_result",
+                "job": "receiver",
+                "task": {
+                  "task_type": "merge:merge",
+                  "node_path": "scenario-receiver/production/adaptive3-merge-batch/batch/adaptive3-merge-queue-batch/land/land/adaptive3-merge-queue-land/install/sequence/merge",
+                  "attempt": 1,
+                  "occurrence": 1
+                },
+                "status": "SUCCEEDED"
+              }
+            ],
+            "actions": [
+              {
+                "id": "prepare_replay",
+                "after_all": [
+                  "one_submitted",
+                  "two_submitted"
+                ],
+                "do": "release",
+                "target": "pre_admission"
+              },
+              {
+                "id": "admit",
+                "after_all": [
+                  "pre_done"
+                ],
+                "do": "release",
+                "target": "batch"
+              },
+              {
+                "id": "cancel",
+                "after_all": [
+                  "publishing",
+                  "landed"
+                ],
+                "do": "cancel_job",
+                "target": "one"
+              },
+              {
+                "id": "finish",
+                "after_all": [
+                  "cancel"
+                ],
+                "do": "release",
+                "target": "publish"
+              }
+            ],
+            "outcomes": {
+              "root": {
+                "status": "completed"
+              },
+              "one": {
+                "status": "cancelled"
+              },
+              "two": {
+                "status": "completed"
+              },
+              "receiver": {
+                "status": "completed"
+              },
+              "same_receiver": {
+                "status": "completed"
+              },
+              "pre": {
+                "status": "completed"
+              }
+            }
+          }
+        }
+      },
+      "mocks": {
+        "ops": [
+          {
+            "match": {
+              "node_path": "queue-scenario/spawn"
+            },
+            "behavior": {
+              "mode": "return",
+              "effects": {
+                "children": [
+                  {
+                    "bind": "one",
+                    "cell": "root",
+                    "recipe": "fixtures/queue-scenario/caller.yaml",
+                    "inputs": {
+                      "marker": "one"
+                    }
+                  },
+                  {
+                    "bind": "two",
+                    "cell": "root",
+                    "recipe": "fixtures/queue-scenario/caller.yaml",
+                    "inputs": {
+                      "marker": "two"
+                    }
+                  },
+                  {
+                    "bind": "pre",
+                    "cell": "root",
+                    "recipe": "fixtures/queue-scenario/pre-advance.yaml"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "match": {
+              "node_path": "queue-scenario/next"
+            },
+            "behavior": {
+              "mode": "return"
+            }
+          },
+          {
+            "match": {
+              "selector": "./recipes/merge-queue"
+            },
+            "repeat": true,
+            "behavior": {
+              "mode": "passthrough"
+            }
+          },
+          {
+            "match": {
+              "op": "command_execution"
+            },
+            "repeat": true,
+            "behavior": {
+              "mode": "passthrough"
+            }
+          },
+          {
+            "match": {
+              "op": "squash"
+            },
+            "repeat": true,
+            "behavior": {
+              "mode": "passthrough"
+            }
+          },
+          {
+            "match": {
+              "op": "merge"
+            },
+            "repeat": true,
+            "behavior": {
+              "mode": "passthrough"
+            }
+          }
+        ]
+      },
+      "assertions": [
+        {
+          "type": "cel_true",
+          "expr": "controls.scenario.complete && controls.dispatch_complete"
+        },
+        {
+          "type": "cel_true",
+          "expr": "calls.filter(c,c.op=='merge' && c.job_id==controls.scenario.jobs.receiver.ref.job_id).size()==1"
+        },
+        {
+          "type": "cel_true",
+          "expr": "calls.filter(c,c.node_path.endsWith('/scenario-publish/source')).size()==1 && calls.filter(c,c.node_path=='scenario-caller/shared_bytes').size()==1"
+        }
+      ]
+    },
+    {
+      "id": "cancel-receiver-before-receiver-publication",
+      "type": "integration_case",
+      "runtime": {
+        "backend": "sqlite",
+        "cells": {
+          "root": {
+            "file_sources": {
+              ".c2/recipes/scenario-receiver.yaml": "./fixtures/queue-scenario/receiver.yaml",
+              ".c2/recipes/hooks/build/publish.yaml": "./fixtures/queue-scenario/publish.yaml",
+              ".c2/recipes/hooks/build/verify.yaml": "./fixtures/queue-scenario/verify.yaml",
+              "merge-batch.yaml": "../../merge-batch.yaml",
+              "merge-check.yaml": "../../merge-check.yaml",
+              "recipes/adaptive3": "../../recipes/adaptive3",
+              "recipes/merge-queue": "../../recipes/merge-queue"
+            },
+            "files": {
+              "README.md": "Receiver publication scenario."
+            }
+          }
+        },
+        "controls": {
+          "scenario": {
+            "jobs": {
+              "root": {
+                "root": true
+              },
+              "one": {
+                "child_binding": "one"
+              },
+              "two": {
+                "child_binding": "two"
+              },
+              "receiver": {
+                "submission": {
+                  "caller": "one",
+                  "task": {
+                    "task_type": "recipes.run:start",
+                    "node_path": "scenario-caller/submit/adaptive3-merge-queue-submit/submit/sequence/batch",
+                    "attempt": 1,
+                    "occurrence": 1
+                  },
+                  "index": 1,
+                  "output_pointer": "/payload/output/items/0"
+                }
+              },
+              "same_receiver": {
+                "submission": {
+                  "caller": "two",
+                  "task": {
+                    "task_type": "recipes.run:start",
+                    "node_path": "scenario-caller/submit/adaptive3-merge-queue-submit/submit/sequence/batch",
+                    "attempt": 1,
+                    "occurrence": 1
+                  },
+                  "index": 1,
+                  "output_pointer": "/payload/output/items/0"
+                }
+              },
+              "pre": {
+                "child_binding": "pre"
+              }
+            },
+            "admission_holds": [
+              {
+                "id": "batch",
+                "cell": "root",
+                "recipe": "scenario-receiver",
+                "route": {
+                  "jobType": "recipe"
+                },
+                "jobs": [
+                  "receiver",
+                  "same_receiver"
+                ]
+              },
+              {
+                "id": "pre_admission",
+                "cell": "root",
+                "recipe": "pre-advance",
+                "route": {
+                  "jobType": "recipe"
+                },
+                "jobs": [
+                  "pre"
+                ]
+              }
+            ],
+            "dispatch_holds": [
+              {
+                "id": "publish",
+                "job": "receiver",
+                "task": {
+                  "task_type": "recipe_workspace_resolve",
+                  "node_path": "scenario-receiver/production/adaptive3-merge-batch/batch/adaptive3-merge-queue-batch/publish/publish/adaptive3-hooks/publish/publish",
+                  "attempt": 1,
+                  "occurrence": 1
+                },
+                "disposition": "cancelled"
+              }
+            ],
+            "events": [
+              {
+                "id": "one_submitted",
+                "kind": "submission",
+                "job": "receiver"
+              },
+              {
+                "id": "two_submitted",
+                "kind": "submission",
+                "job": "same_receiver"
+              },
+              {
+                "id": "pre_done",
+                "kind": "settled",
+                "job": "pre",
+                "status": "completed"
+              },
+              {
+                "id": "publishing",
+                "kind": "dispatch",
+                "hold": "publish"
+              },
+              {
+                "id": "landed",
+                "kind": "task_result",
+                "job": "receiver",
+                "task": {
+                  "task_type": "merge:merge",
+                  "node_path": "scenario-receiver/production/adaptive3-merge-batch/batch/adaptive3-merge-queue-batch/land/land/adaptive3-merge-queue-land/install/sequence/merge",
+                  "attempt": 1,
+                  "occurrence": 1
+                },
+                "status": "SUCCEEDED"
+              }
+            ],
+            "actions": [
+              {
+                "id": "prepare_replay",
+                "after_all": [
+                  "one_submitted",
+                  "two_submitted"
+                ],
+                "do": "release",
+                "target": "pre_admission"
+              },
+              {
+                "id": "admit",
+                "after_all": [
+                  "pre_done"
+                ],
+                "do": "release",
+                "target": "batch"
+              },
+              {
+                "id": "cancel",
+                "after_all": [
+                  "publishing",
+                  "landed"
+                ],
+                "do": "cancel_job",
+                "target": "receiver"
+              }
+            ],
+            "outcomes": {
+              "root": {
+                "status": "completed"
+              },
+              "one": {
+                "status": "completed"
+              },
+              "two": {
+                "status": "completed"
+              },
+              "receiver": {
+                "status": "cancelled"
+              },
+              "same_receiver": {
+                "status": "cancelled"
+              },
+              "pre": {
+                "status": "completed"
+              }
+            }
+          },
+          "dispatch": {
+            "forbid": [
+              {
+                "kind": "task",
+                "job": "receiver",
+                "name": "command_execution:command_execution",
+                "node_path": "scenario-receiver/production/adaptive3-merge-batch/batch/adaptive3-merge-queue-batch/publish/publish/adaptive3-hooks/publish/publish/invoke/scenario-publish/source"
+              }
+            ]
+          }
+        }
+      },
+      "mocks": {
+        "ops": [
+          {
+            "match": {
+              "node_path": "queue-scenario/spawn"
+            },
+            "behavior": {
+              "mode": "return",
+              "effects": {
+                "children": [
+                  {
+                    "bind": "one",
+                    "cell": "root",
+                    "recipe": "fixtures/queue-scenario/caller.yaml",
+                    "inputs": {
+                      "marker": "one"
+                    }
+                  },
+                  {
+                    "bind": "two",
+                    "cell": "root",
+                    "recipe": "fixtures/queue-scenario/caller.yaml",
+                    "inputs": {
+                      "marker": "two"
+                    }
+                  },
+                  {
+                    "bind": "pre",
+                    "cell": "root",
+                    "recipe": "fixtures/queue-scenario/pre-advance.yaml"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "match": {
+              "node_path": "queue-scenario/next"
+            },
+            "behavior": {
+              "mode": "return"
+            }
+          },
+          {
+            "match": {
+              "selector": "./recipes/merge-queue"
+            },
+            "repeat": true,
+            "behavior": {
+              "mode": "passthrough"
+            }
+          },
+          {
+            "match": {
+              "op": "command_execution"
+            },
+            "repeat": true,
+            "behavior": {
+              "mode": "passthrough"
+            }
+          },
+          {
+            "match": {
+              "op": "squash"
+            },
+            "repeat": true,
+            "behavior": {
+              "mode": "passthrough"
+            }
+          },
+          {
+            "match": {
+              "op": "merge"
+            },
+            "repeat": true,
+            "behavior": {
+              "mode": "passthrough"
+            }
+          }
+        ]
+      },
+      "assertions": [
+        {
+          "type": "cel_true",
+          "expr": "controls.scenario.complete && controls.dispatch_complete"
+        },
+        {
+          "type": "cel_true",
+          "expr": "calls.filter(c,c.op=='merge' && c.job_id==controls.scenario.jobs.receiver.ref.job_id).size()==1"
+        },
+        {
+          "type": "cel_true",
+          "expr": "!calls.exists(c,c.node_path.endsWith('/scenario-publish/source')) && calls.filter(c,c.node_path=='scenario-caller/record').all(c,c.inputs.env.STATUS=='stuck')"
+        }
+      ]
+    },
+    {
+      "id": "failed-receiver-worker-reopen-restarts-original-publication",
+      "type": "integration_case",
+      "runtime": {
+        "backend": "sqlite",
+        "cells": {
+          "root": {
+            "file_sources": {
+              ".c2/recipes/scenario-receiver.yaml": "./fixtures/queue-scenario/receiver.yaml",
+              ".c2/recipes/hooks/build/publish.yaml": "./fixtures/queue-scenario/publish-recovery.yaml",
+              ".c2/recipes/hooks/build/verify.yaml": "./fixtures/queue-scenario/verify.yaml",
+              "merge-batch.yaml": "../../merge-batch.yaml",
+              "merge-check.yaml": "../../merge-check.yaml",
+              "recipes/adaptive3": "../../recipes/adaptive3",
+              "recipes/merge-queue": "../../recipes/merge-queue"
+            },
+            "files": {
+              "README.md": "Receiver publication scenario."
+            }
+          }
+        },
+        "controls": {
+          "scenario": {
+            "jobs": {
+              "root": {
+                "root": true
+              },
+              "one": {
+                "child_binding": "one"
+              },
+              "two": {
+                "child_binding": "two"
+              },
+              "receiver": {
+                "submission": {
+                  "caller": "one",
+                  "task": {
+                    "task_type": "recipes.run:start",
+                    "node_path": "scenario-caller/submit/adaptive3-merge-queue-submit/submit/sequence/batch",
+                    "attempt": 1,
+                    "occurrence": 1
+                  },
+                  "index": 1,
+                  "output_pointer": "/payload/output/items/0"
+                }
+              },
+              "same_receiver": {
+                "submission": {
+                  "caller": "two",
+                  "task": {
+                    "task_type": "recipes.run:start",
+                    "node_path": "scenario-caller/submit/adaptive3-merge-queue-submit/submit/sequence/batch",
+                    "attempt": 1,
+                    "occurrence": 1
+                  },
+                  "index": 1,
+                  "output_pointer": "/payload/output/items/0"
+                }
+              },
+              "pre": {
+                "child_binding": "pre"
+              },
+              "advance": {
+                "child_binding": "advance"
+              }
+            },
+            "admission_holds": [
+              {
+                "id": "batch",
+                "cell": "root",
+                "recipe": "scenario-receiver",
+                "route": {
+                  "jobType": "recipe"
+                },
+                "jobs": [
+                  "receiver",
+                  "same_receiver"
+                ]
+              },
+              {
+                "id": "pre_admission",
+                "cell": "root",
+                "recipe": "pre-advance",
+                "route": {
+                  "jobType": "recipe"
+                },
+                "jobs": [
+                  "pre"
+                ]
+              },
+              {
+                "id": "advance_admission",
+                "cell": "root",
+                "recipe": "post-advance",
+                "route": {
+                  "jobType": "recipe"
+                },
+                "jobs": [
+                  "advance"
+                ]
+              }
+            ],
+            "dispatch_holds": [
+              {
+                "id": "recover_checkout",
+                "job": "continuation",
+                "task": {
+                  "task_type": "recipe_workspace_resolve",
+                  "node_path": "scenario-receiver/production/adaptive3-merge-batch/batch/adaptive3-merge-queue-batch/publish/publish/adaptive3-hooks/publish/publish",
+                  "attempt": 1,
+                  "occurrence": 1
+                }
+              }
+            ],
+            "events": [
+              {
+                "id": "one_submitted",
+                "kind": "submission",
+                "job": "receiver"
+              },
+              {
+                "id": "two_submitted",
+                "kind": "submission",
+                "job": "same_receiver"
+              },
+              {
+                "id": "pre_done",
+                "kind": "settled",
+                "job": "pre",
+                "status": "completed"
+              },
+              {
+                "id": "landed",
+                "kind": "task_result",
+                "job": "receiver",
+                "task": {
+                  "task_type": "merge:merge",
+                  "node_path": "scenario-receiver/production/adaptive3-merge-batch/batch/adaptive3-merge-queue-batch/land/land/adaptive3-merge-queue-land/install/sequence/merge",
+                  "attempt": 1,
+                  "occurrence": 1
+                },
+                "status": "SUCCEEDED"
+              },
+              {
+                "id": "failed",
+                "kind": "settled",
+                "job": "receiver",
+                "status": "failed"
+              },
+              {
+                "id": "advanced",
+                "kind": "settled",
+                "job": "advance",
+                "status": "completed"
+              },
+              {
+                "id": "recover_wait",
+                "kind": "dispatch",
+                "hold": "recover_checkout"
+              }
+            ],
+            "actions": [
+              {
+                "id": "prepare_replay",
+                "after_all": [
+                  "one_submitted",
+                  "two_submitted"
+                ],
+                "do": "release",
+                "target": "pre_admission"
+              },
+              {
+                "id": "admit",
+                "after_all": [
+                  "pre_done"
+                ],
+                "do": "release",
+                "target": "batch"
+              },
+              {
+                "id": "stop",
+                "after_all": [
+                  "failed"
+                ],
+                "do": "stop_worker"
+              },
+              {
+                "id": "reopen",
+                "after_all": [
+                  "stop"
+                ],
+                "do": "reopen_runtime"
+              },
+              {
+                "id": "restart",
+                "after_all": [
+                  "reopen"
+                ],
+                "do": "restart_job",
+                "restart": {
+                  "path": [
+                    "$job",
+                    "sequence:scenario-receiver",
+                    "sequence:production",
+                    "sequence:adaptive3-merge-batch",
+                    "sequence:batch",
+                    "state_machine:adaptive3-merge-queue-batch",
+                    "state:publish"
+                  ],
+                  "request_id": "recipes-receiver-publication",
+                  "continuation": "continuation",
+                  "required_prefix": [
+                    {
+                      "task_type": "merge:merge",
+                      "node_path": "scenario-receiver/production/adaptive3-merge-batch/batch/adaptive3-merge-queue-batch/land/land/adaptive3-merge-queue-land/install/sequence/merge",
+                      "attempt": 1,
+                      "occurrence": 1
+                    },
+                    {
+                      "task_type": "extension_execution:extension_execution",
+                      "node_path": "scenario-receiver/production/adaptive3-merge-batch/batch/adaptive3-merge-queue-batch/publication_context/./recipes/merge-queue",
+                      "attempt": 1,
+                      "occurrence": 1
+                    }
+                  ]
+                },
+                "target": "receiver"
+              },
+              {
+                "id": "advance_now",
+                "after_all": [
+                  "restart"
+                ],
+                "do": "release",
+                "target": "advance_admission"
+              },
+              {
+                "id": "start",
+                "after_all": [
+                  "advance_now"
+                ],
+                "do": "start_worker"
+              },
+              {
+                "id": "finish_recovery",
+                "after_all": [
+                  "advanced",
+                  "recover_wait"
+                ],
+                "do": "release",
+                "target": "recover_checkout"
+              }
+            ],
+            "outcomes": {
+              "root": {
+                "status": "completed"
+              },
+              "one": {
+                "status": "completed"
+              },
+              "two": {
+                "status": "completed"
+              },
+              "receiver": {
+                "status": "failed"
+              },
+              "same_receiver": {
+                "status": "failed"
+              },
+              "pre": {
+                "status": "completed"
+              },
+              "continuation": {
+                "status": "completed"
+              },
+              "advance": {
+                "status": "completed"
+              }
+            },
+            "retain": [
+              {
+                "id": "original_merge",
+                "job": "receiver",
+                "task": {
+                  "task_type": "merge:merge",
+                  "node_path": "scenario-receiver/production/adaptive3-merge-batch/batch/adaptive3-merge-queue-batch/land/land/adaptive3-merge-queue-land/install/sequence/merge",
+                  "attempt": 1,
+                  "occurrence": 1
+                },
+                "part": "input"
+              },
+              {
+                "id": "restored_merge",
+                "job": "continuation",
+                "task": {
+                  "task_type": "merge:merge",
+                  "node_path": "scenario-receiver/production/adaptive3-merge-batch/batch/adaptive3-merge-queue-batch/land/land/adaptive3-merge-queue-land/install/sequence/merge",
+                  "attempt": 1,
+                  "occurrence": 1
+                },
+                "part": "input",
+                "compare_to": "original_merge"
+              },
+              {
+                "id": "original_context",
+                "job": "receiver",
+                "task": {
+                  "task_type": "extension_execution:extension_execution",
+                  "node_path": "scenario-receiver/production/adaptive3-merge-batch/batch/adaptive3-merge-queue-batch/publication_context/./recipes/merge-queue",
+                  "attempt": 1,
+                  "occurrence": 1
+                },
+                "part": "output"
+              },
+              {
+                "id": "restored_context",
+                "job": "continuation",
+                "task": {
+                  "task_type": "extension_execution:extension_execution",
+                  "node_path": "scenario-receiver/production/adaptive3-merge-batch/batch/adaptive3-merge-queue-batch/publication_context/./recipes/merge-queue",
+                  "attempt": 1,
+                  "occurrence": 1
+                },
+                "part": "output",
+                "compare_to": "original_context"
+              },
+              {
+                "id": "failed_diagnostic",
+                "job": "receiver",
+                "task": {
+                  "task_type": "command_execution:command_execution",
+                  "node_path": "scenario-receiver/production/adaptive3-merge-batch/batch/adaptive3-merge-queue-batch/publish/publish/adaptive3-hooks/publish/publish/invoke/scenario-publish/fail_once",
+                  "attempt": 1,
+                  "occurrence": 1
+                },
+                "artifact": "failure.txt",
+                "expect_base64": "b3JpZ2luYWwgcmVjZWl2ZXIgcHVibGljYXRpb24gZmFpbGVkIM67Cg=="
+              },
+              {
+                "id": "workspace_request",
+                "job": "continuation",
+                "task": {
+                  "task_type": "recipe_workspace_resolve",
+                  "node_path": "scenario-receiver/production/adaptive3-merge-batch/batch/adaptive3-merge-queue-batch/publish/publish/adaptive3-hooks/publish/publish",
+                  "attempt": 1,
+                  "occurrence": 1
+                },
+                "part": "input"
+              },
+              {
+                "id": "workspace_result",
+                "job": "continuation",
+                "task": {
+                  "task_type": "recipe_workspace_resolve",
+                  "node_path": "scenario-receiver/production/adaptive3-merge-batch/batch/adaptive3-merge-queue-batch/publish/publish/adaptive3-hooks/publish/publish",
+                  "attempt": 1,
+                  "occurrence": 1
+                },
+                "part": "output"
+              },
+              {
+                "id": "actual_checkout",
+                "job": "continuation",
+                "task": {
+                  "task_type": "command_execution:command_execution",
+                  "node_path": "scenario-receiver/production/adaptive3-merge-batch/batch/adaptive3-merge-queue-batch/publish/publish/adaptive3-hooks/publish/publish/invoke/scenario-publish/source",
+                  "attempt": 1,
+                  "occurrence": 1
+                },
+                "artifact": "actual-state.txt"
+              }
+            ]
+          }
+        }
+      },
+      "mocks": {
+        "ops": [
+          {
+            "match": {
+              "node_path": "queue-scenario/spawn"
+            },
+            "behavior": {
+              "mode": "return",
+              "effects": {
+                "children": [
+                  {
+                    "bind": "one",
+                    "cell": "root",
+                    "recipe": "fixtures/queue-scenario/caller.yaml",
+                    "inputs": {
+                      "marker": "one"
+                    }
+                  },
+                  {
+                    "bind": "two",
+                    "cell": "root",
+                    "recipe": "fixtures/queue-scenario/caller.yaml",
+                    "inputs": {
+                      "marker": "two"
+                    }
+                  },
+                  {
+                    "bind": "pre",
+                    "cell": "root",
+                    "recipe": "fixtures/queue-scenario/pre-advance.yaml"
+                  },
+                  {
+                    "bind": "advance",
+                    "cell": "root",
+                    "recipe": "fixtures/queue-scenario/advance.yaml"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "match": {
+              "node_path": "queue-scenario/next"
+            },
+            "behavior": {
+              "mode": "return"
+            }
+          },
+          {
+            "match": {
+              "selector": "./recipes/merge-queue"
+            },
+            "repeat": true,
+            "behavior": {
+              "mode": "passthrough"
+            }
+          },
+          {
+            "match": {
+              "op": "command_execution"
+            },
+            "repeat": true,
+            "behavior": {
+              "mode": "passthrough"
+            }
+          },
+          {
+            "match": {
+              "op": "squash"
+            },
+            "repeat": true,
+            "behavior": {
+              "mode": "passthrough"
+            }
+          },
+          {
+            "match": {
+              "op": "merge"
+            },
+            "repeat": true,
+            "behavior": {
+              "mode": "passthrough"
+            }
+          }
+        ]
+      },
+      "assertions": [
+        {
+          "type": "cel_true",
+          "expr": "controls.scenario.complete && controls.dispatch_complete"
+        },
+        {
+          "type": "cel_true",
+          "expr": "controls.scenario.jobs.receiver.ref.job_id!=controls.scenario.jobs.continuation.ref.job_id && controls.scenario.jobs.receiver.ref.goal_id==controls.scenario.jobs.continuation.ref.goal_id"
+        },
+        {
+          "type": "cel_true",
+          "expr": "!controls.dispatch.exists(d,d.job_id==controls.scenario.jobs.continuation.ref.job_id && d.name in ['recipes.run:start','squash:squash','merge:merge'])"
+        },
+        {
+          "type": "cel_true",
+          "expr": "calls.filter(c,c.node_path.endsWith('/scenario-publish/source')).size()==2 && calls.filter(c,c.node_path.endsWith('/scenario-publish/source')).all(c,c.inputs.env.MERGED==calls.filter(m,m.op=='merge' && m.job_id==controls.scenario.jobs.receiver.ref.job_id)[0].outputs.merged_hash)"
+        },
+        {
+          "type": "cel_true",
+          "expr": "calls.filter(c,c.node_path=='scenario-caller/record').size()==2 && calls.filter(c,c.node_path=='scenario-caller/record').all(c,c.inputs.env.STATUS=='stuck')"
+        }
+      ]
+    },
+    {
+      "id": "mixed-callers-publish-only-accepted-documents",
+      "type": "integration_case",
+      "runtime": {
+        "backend": "sqlite",
+        "cells": {
+          "root": {
+            "file_sources": {
+              ".c2/recipes/scenario-receiver.yaml": "./fixtures/queue-scenario/receiver.yaml",
+              ".c2/recipes/hooks/build/publish.yaml": "./fixtures/queue-scenario/publish.yaml",
+              ".c2/recipes/hooks/build/verify.yaml": "./fixtures/queue-scenario/verify.yaml",
+              "merge-batch.yaml": "../../merge-batch.yaml",
+              "merge-check.yaml": "../../merge-check.yaml",
+              "recipes/adaptive3": "../../recipes/adaptive3",
+              "recipes/merge-queue": "../../recipes/merge-queue"
+            },
+            "files": {
+              "README.md": "Receiver publication scenario."
+            }
+          }
+        },
+        "controls": {
+          "scenario": {
+            "jobs": {
+              "root": {
+                "root": true
+              },
+              "one": {
+                "child_binding": "one"
+              },
+              "two": {
+                "child_binding": "two"
+              },
+              "receiver": {
+                "submission": {
+                  "caller": "one",
+                  "task": {
+                    "task_type": "recipes.run:start",
+                    "node_path": "scenario-caller/submit/adaptive3-merge-queue-submit/submit/sequence/batch",
+                    "attempt": 1,
+                    "occurrence": 1
+                  },
+                  "index": 1,
+                  "output_pointer": "/payload/output/items/0"
+                }
+              },
+              "same_receiver": {
+                "submission": {
+                  "caller": "two",
+                  "task": {
+                    "task_type": "recipes.run:start",
+                    "node_path": "scenario-caller/submit/adaptive3-merge-queue-submit/submit/sequence/batch",
+                    "attempt": 1,
+                    "occurrence": 1
+                  },
+                  "index": 1,
+                  "output_pointer": "/payload/output/items/0"
+                }
+              },
+              "pre": {
+                "child_binding": "pre"
+              },
+              "advance": {
+                "child_binding": "advance"
+              },
+              "rejected": {
+                "child_binding": "rejected"
+              },
+              "rejected_receiver": {
+                "submission": {
+                  "caller": "rejected",
+                  "task": {
+                    "task_type": "recipes.run:start",
+                    "node_path": "scenario-caller/submit/adaptive3-merge-queue-submit/submit/sequence/batch",
+                    "attempt": 1,
+                    "occurrence": 1
+                  },
+                  "index": 1,
+                  "output_pointer": "/payload/output/items/0"
+                }
+              }
+            },
+            "admission_holds": [
+              {
+                "id": "batch",
+                "cell": "root",
+                "recipe": "scenario-receiver",
+                "route": {
+                  "jobType": "recipe"
+                },
+                "jobs": [
+                  "receiver",
+                  "same_receiver",
+                  "rejected_receiver"
+                ]
+              },
+              {
+                "id": "pre_admission",
+                "cell": "root",
+                "recipe": "pre-advance",
+                "route": {
+                  "jobType": "recipe"
+                },
+                "jobs": [
+                  "pre"
+                ]
+              },
+              {
+                "id": "advance_admission",
+                "cell": "root",
+                "recipe": "post-advance",
+                "route": {
+                  "jobType": "recipe"
+                },
+                "jobs": [
+                  "advance"
+                ]
+              }
+            ],
+            "dispatch_holds": [
+              {
+                "id": "publish",
+                "job": "receiver",
+                "task": {
+                  "task_type": "recipe_workspace_resolve",
+                  "node_path": "scenario-receiver/production/adaptive3-merge-batch/batch/adaptive3-merge-queue-batch/publish/publish/adaptive3-hooks/publish/publish",
+                  "attempt": 1,
+                  "occurrence": 1
+                }
+              },
+              {
+                "id": "reject_edit",
+                "job": "rejected",
+                "task": {
+                  "task_type": "command_execution:command_execution",
+                  "node_path": "scenario-caller/edit",
+                  "attempt": 1,
+                  "occurrence": 1
+                }
+              }
+            ],
+            "events": [
+              {
+                "id": "one_submitted",
+                "kind": "submission",
+                "job": "receiver"
+              },
+              {
+                "id": "two_submitted",
+                "kind": "submission",
+                "job": "same_receiver"
+              },
+              {
+                "id": "pre_done",
+                "kind": "settled",
+                "job": "pre",
+                "status": "completed"
+              },
+              {
+                "id": "publishing",
+                "kind": "dispatch",
+                "hold": "publish"
+              },
+              {
+                "id": "landed",
+                "kind": "task_result",
+                "job": "receiver",
+                "task": {
+                  "task_type": "merge:merge",
+                  "node_path": "scenario-receiver/production/adaptive3-merge-batch/batch/adaptive3-merge-queue-batch/land/land/adaptive3-merge-queue-land/install/sequence/merge",
+                  "attempt": 1,
+                  "occurrence": 1
+                },
+                "status": "SUCCEEDED"
+              },
+              {
+                "id": "advanced",
+                "kind": "settled",
+                "job": "advance",
+                "status": "completed"
+              },
+              {
+                "id": "reject_ready",
+                "kind": "dispatch",
+                "hold": "reject_edit"
+              },
+              {
+                "id": "rejected_submitted",
+                "kind": "submission",
+                "job": "rejected_receiver"
+              }
+            ],
+            "actions": [
+              {
+                "id": "prepare_replay",
+                "after_all": [
+                  "one_submitted",
+                  "two_submitted"
+                ],
+                "do": "release",
+                "target": "pre_admission"
+              },
+              {
+                "id": "admit",
+                "after_all": [
+                  "pre_done",
+                  "rejected_submitted"
+                ],
+                "do": "release",
+                "target": "batch"
+              },
+              {
+                "id": "advance_now",
+                "after_all": [
+                  "landed"
+                ],
+                "do": "release",
+                "target": "advance_admission"
+              },
+              {
+                "id": "checkout",
+                "after_all": [
+                  "advanced",
+                  "publishing"
+                ],
+                "do": "release",
+                "target": "publish"
+              },
+              {
+                "id": "reject_later",
+                "after_all": [
+                  "one_submitted",
+                  "two_submitted",
+                  "reject_ready"
+                ],
+                "do": "release",
+                "target": "reject_edit"
+              }
+            ],
+            "outcomes": {
+              "root": {
+                "status": "completed"
+              },
+              "one": {
+                "status": "completed"
+              },
+              "two": {
+                "status": "completed"
+              },
+              "receiver": {
+                "status": "completed"
+              },
+              "same_receiver": {
+                "status": "completed"
+              },
+              "pre": {
+                "status": "completed"
+              },
+              "advance": {
+                "status": "completed"
+              },
+              "rejected": {
+                "status": "completed"
+              },
+              "rejected_receiver": {
+                "status": "completed"
+              }
+            }
+          }
+        }
+      },
+      "mocks": {
+        "ops": [
+          {
+            "match": {
+              "node_path": "queue-scenario/spawn"
+            },
+            "behavior": {
+              "mode": "return",
+              "effects": {
+                "children": [
+                  {
+                    "bind": "one",
+                    "cell": "root",
+                    "recipe": "fixtures/queue-scenario/caller.yaml",
+                    "inputs": {
+                      "marker": "one"
+                    }
+                  },
+                  {
+                    "bind": "two",
+                    "cell": "root",
+                    "recipe": "fixtures/queue-scenario/caller.yaml",
+                    "inputs": {
+                      "marker": "two"
+                    }
+                  },
+                  {
+                    "bind": "pre",
+                    "cell": "root",
+                    "recipe": "fixtures/queue-scenario/pre-advance.yaml"
+                  },
+                  {
+                    "bind": "advance",
+                    "cell": "root",
+                    "recipe": "fixtures/queue-scenario/advance.yaml"
+                  },
+                  {
+                    "bind": "rejected",
+                    "cell": "root",
+                    "recipe": "fixtures/queue-scenario/caller.yaml",
+                    "inputs": {
+                      "marker": "rejected",
+                      "reject": true
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "match": {
+              "node_path": "queue-scenario/next"
+            },
+            "behavior": {
+              "mode": "return"
+            }
+          },
+          {
+            "match": {
+              "selector": "./recipes/merge-queue"
+            },
+            "repeat": true,
+            "behavior": {
+              "mode": "passthrough"
+            }
+          },
+          {
+            "match": {
+              "op": "command_execution"
+            },
+            "repeat": true,
+            "behavior": {
+              "mode": "passthrough"
+            }
+          },
+          {
+            "match": {
+              "op": "squash"
+            },
+            "repeat": true,
+            "behavior": {
+              "mode": "passthrough"
+            }
+          },
+          {
+            "match": {
+              "op": "merge"
+            },
+            "repeat": true,
+            "behavior": {
+              "mode": "passthrough"
+            }
+          }
+        ]
+      },
+      "assertions": [
+        {
+          "type": "cel_true",
+          "expr": "controls.scenario.complete && controls.dispatch_complete"
+        },
+        {
+          "type": "cel_true",
+          "expr": "controls.scenario.jobs.receiver.ref.job_id==controls.scenario.jobs.same_receiver.ref.job_id"
+        },
+        {
+          "type": "cel_true",
+          "expr": "calls.filter(c,c.node_path.endsWith('/scenario-publish/source')).size()==1 && calls.filter(c,c.node_path.endsWith('/scenario-publish/source')).all(c,c.job_id==controls.scenario.jobs.receiver.ref.job_id)"
+        },
+        {
+          "type": "cel_true",
+          "expr": "calls.filter(c,c.node_path=='scenario-caller/shared_bytes').size()==2"
+        },
+        {
+          "type": "cel_true",
+          "expr": "calls.exists(a,a.node_path=='post-advance/land' && calls.exists(p,p.node_path.endsWith('/scenario-publish/source') && a.outputs.merged_hash!=p.inputs.env.MERGED && a.inputs.upstream_branch=='main'))"
+        },
+        {
+          "type": "cel_true",
+          "expr": "calls.filter(c,c.node_path=='scenario-caller/record' && c.inputs.env.STATUS=='passed').size()==2 && calls.filter(c,c.node_path=='scenario-caller/record' && c.inputs.env.STATUS=='changes').size()==1"
+        },
+        {
+          "type": "cel_true",
+          "expr": "calls.filter(c,c.node_path.endsWith('/scenario-publish/source')).all(p,calls.exists(m,m.node_path=='pre-advance/land' && p.inputs.env.BASE==m.outputs.merged_hash))"
+        }
+      ]
+    },
+    {
+      "id": "successor-waits-through-predecessor-publication",
+      "type": "integration_case",
+      "runtime": {
+        "backend": "sqlite",
+        "cells": {
+          "root": {
+            "file_sources": {
+              ".c2/recipes/scenario-receiver.yaml": "./fixtures/queue-scenario/receiver.yaml",
+              ".c2/recipes/hooks/build/publish.yaml": "./fixtures/queue-scenario/publish.yaml",
+              ".c2/recipes/hooks/build/verify.yaml": "./fixtures/queue-scenario/verify.yaml",
+              "merge-batch.yaml": "../../merge-batch.yaml",
+              "merge-check.yaml": "../../merge-check.yaml",
+              "recipes/adaptive3": "../../recipes/adaptive3",
+              "recipes/merge-queue": "../../recipes/merge-queue"
+            },
+            "files": {
+              "README.md": "Receiver publication scenario."
+            }
+          }
+        },
+        "controls": {
+          "scenario": {
+            "jobs": {
+              "root": {
+                "root": true
+              },
+              "one": {
+                "child_binding": "one"
+              },
+              "two": {
+                "child_binding": "two"
+              },
+              "receiver": {
+                "submission": {
+                  "caller": "one",
+                  "task": {
+                    "task_type": "recipes.run:start",
+                    "node_path": "scenario-caller/submit/adaptive3-merge-queue-submit/submit/sequence/batch",
+                    "attempt": 1,
+                    "occurrence": 1
+                  },
+                  "index": 1,
+                  "output_pointer": "/payload/output/items/0"
+                }
+              },
+              "same_receiver": {
+                "submission": {
+                  "caller": "two",
+                  "task": {
+                    "task_type": "recipes.run:start",
+                    "node_path": "scenario-caller/submit/adaptive3-merge-queue-submit/submit/sequence/batch",
+                    "attempt": 1,
+                    "occurrence": 1
+                  },
+                  "index": 1,
+                  "output_pointer": "/payload/output/items/0"
+                }
+              },
+              "pre": {
+                "child_binding": "pre"
+              },
+              "three": {
+                "child_binding": "three"
+              },
+              "successor": {
+                "submission": {
+                  "caller": "three",
+                  "task": {
+                    "task_type": "recipes.run:start",
+                    "node_path": "scenario-caller/submit/adaptive3-merge-queue-submit/submit/sequence/batch",
+                    "attempt": 1,
+                    "occurrence": 1
+                  },
+                  "index": 1,
+                  "output_pointer": "/payload/output/items/0"
+                }
+              }
+            },
+            "admission_holds": [
+              {
+                "id": "batch",
+                "cell": "root",
+                "recipe": "scenario-receiver",
+                "route": {
+                  "jobType": "recipe"
+                },
+                "jobs": [
+                  "receiver",
+                  "same_receiver"
+                ]
+              },
+              {
+                "id": "pre_admission",
+                "cell": "root",
+                "recipe": "pre-advance",
+                "route": {
+                  "jobType": "recipe"
+                },
+                "jobs": [
+                  "pre"
+                ]
+              }
+            ],
+            "dispatch_holds": [
+              {
+                "id": "publish",
+                "job": "receiver",
+                "task": {
+                  "task_type": "recipe_workspace_resolve",
+                  "node_path": "scenario-receiver/production/adaptive3-merge-batch/batch/adaptive3-merge-queue-batch/publish/publish/adaptive3-hooks/publish/publish",
+                  "attempt": 1,
+                  "occurrence": 1
+                }
+              },
+              {
+                "id": "next",
+                "job": "root",
+                "task": {
+                  "task_type": "command_execution:command_execution",
+                  "node_path": "queue-scenario/next",
+                  "attempt": 1,
+                  "occurrence": 1
+                }
+              }
+            ],
+            "events": [
+              {
+                "id": "one_submitted",
+                "kind": "submission",
+                "job": "receiver"
+              },
+              {
+                "id": "two_submitted",
+                "kind": "submission",
+                "job": "same_receiver"
+              },
+              {
+                "id": "pre_done",
+                "kind": "settled",
+                "job": "pre",
+                "status": "completed"
+              },
+              {
+                "id": "publishing",
+                "kind": "dispatch",
+                "hold": "publish"
+              },
+              {
+                "id": "landed",
+                "kind": "task_result",
+                "job": "receiver",
+                "task": {
+                  "task_type": "merge:merge",
+                  "node_path": "scenario-receiver/production/adaptive3-merge-batch/batch/adaptive3-merge-queue-batch/land/land/adaptive3-merge-queue-land/install/sequence/merge",
+                  "attempt": 1,
+                  "occurrence": 1
+                },
+                "status": "SUCCEEDED"
+              },
+              {
+                "id": "next_ready",
+                "kind": "dispatch",
+                "hold": "next"
+              },
+              {
+                "id": "successor_submitted",
+                "kind": "submission",
+                "job": "successor"
+              },
+              {
+                "id": "first_done",
+                "kind": "settled",
+                "job": "receiver",
+                "status": "completed"
+              }
+            ],
+            "actions": [
+              {
+                "id": "prepare_replay",
+                "after_all": [
+                  "one_submitted",
+                  "two_submitted"
+                ],
+                "do": "release",
+                "target": "pre_admission"
+              },
+              {
+                "id": "admit",
+                "after_all": [
+                  "pre_done"
+                ],
+                "do": "release",
+                "target": "batch"
+              },
+              {
+                "id": "third",
+                "after_all": [
+                  "publishing",
+                  "next_ready"
+                ],
+                "do": "release",
+                "target": "next"
+              },
+              {
+                "id": "finish",
+                "after_all": [
+                  "successor_submitted"
+                ],
+                "do": "release",
+                "target": "publish"
+              }
+            ],
+            "outcomes": {
+              "root": {
+                "status": "completed"
+              },
+              "one": {
+                "status": "completed"
+              },
+              "two": {
+                "status": "completed"
+              },
+              "receiver": {
+                "status": "completed"
+              },
+              "same_receiver": {
+                "status": "completed"
+              },
+              "pre": {
+                "status": "completed"
+              },
+              "three": {
+                "status": "completed"
+              },
+              "successor": {
+                "status": "completed"
+              }
+            }
+          }
+        }
+      },
+      "mocks": {
+        "ops": [
+          {
+            "match": {
+              "node_path": "queue-scenario/spawn"
+            },
+            "behavior": {
+              "mode": "return",
+              "effects": {
+                "children": [
+                  {
+                    "bind": "one",
+                    "cell": "root",
+                    "recipe": "fixtures/queue-scenario/caller.yaml",
+                    "inputs": {
+                      "marker": "one"
+                    }
+                  },
+                  {
+                    "bind": "two",
+                    "cell": "root",
+                    "recipe": "fixtures/queue-scenario/caller.yaml",
+                    "inputs": {
+                      "marker": "two"
+                    }
+                  },
+                  {
+                    "bind": "pre",
+                    "cell": "root",
+                    "recipe": "fixtures/queue-scenario/pre-advance.yaml"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "match": {
+              "node_path": "queue-scenario/next"
+            },
+            "behavior": {
+              "mode": "return",
+              "effects": {
+                "children": [
+                  {
+                    "bind": "three",
+                    "cell": "root",
+                    "recipe": "fixtures/queue-scenario/caller.yaml",
+                    "inputs": {
+                      "marker": "three"
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "match": {
+              "selector": "./recipes/merge-queue"
+            },
+            "repeat": true,
+            "behavior": {
+              "mode": "passthrough"
+            }
+          },
+          {
+            "match": {
+              "op": "command_execution"
+            },
+            "repeat": true,
+            "behavior": {
+              "mode": "passthrough"
+            }
+          },
+          {
+            "match": {
+              "op": "squash"
+            },
+            "repeat": true,
+            "behavior": {
+              "mode": "passthrough"
+            }
+          },
+          {
+            "match": {
+              "op": "merge"
+            },
+            "repeat": true,
+            "behavior": {
+              "mode": "passthrough"
+            }
+          }
+        ]
+      },
+      "assertions": [
+        {
+          "type": "cel_true",
+          "expr": "controls.scenario.complete && controls.dispatch_complete"
+        },
+        {
+          "type": "cel_true",
+          "expr": "controls.scenario.jobs.receiver.ref.job_id!=controls.scenario.jobs.successor.ref.job_id"
+        },
+        {
+          "type": "cel_true",
+          "expr": "calls.filter(c,c.node_path.endsWith('/scenario-publish/source')).size()==2 && calls.filter(c,c.node_path=='scenario-caller/shared_bytes').size()==3"
+        },
+        {
+          "type": "cel_true",
+          "expr": "controls.scenario.admission.filter(a,a.job_id==controls.scenario.jobs.successor.ref.job_id && a.kind=='admitted').all(a,a.position>controls.scenario.actions.filter(x,x.id=='finish')[0].position)"
+        },
+        {
+          "type": "cel_true",
+          "expr": "calls.filter(c,c.node_path=='scenario-caller/record').all(c,c.inputs.env.STATUS=='passed')"
+        }
+      ]
+    },
+    {
+      "id": "already-landed-duplicate-cannot-republish",
+      "type": "integration_case",
+      "runtime": {
+        "backend": "sqlite",
+        "cells": {
+          "root": {
+            "file_sources": {
+              ".c2/recipes/scenario-receiver.yaml": "./fixtures/queue-scenario/receiver.yaml",
+              ".c2/recipes/hooks/build/publish.yaml": "./fixtures/queue-scenario/publish.yaml",
+              ".c2/recipes/hooks/build/verify.yaml": "./fixtures/queue-scenario/verify.yaml",
+              "merge-batch.yaml": "../../merge-batch.yaml",
+              "merge-check.yaml": "../../merge-check.yaml",
+              "recipes/adaptive3": "../../recipes/adaptive3",
+              "recipes/merge-queue": "../../recipes/merge-queue"
+            },
+            "files": {
+              "README.md": "Receiver publication scenario."
+            }
+          }
+        },
+        "controls": {
+          "scenario": {
+            "jobs": {
+              "root": {
+                "root": true
+              },
+              "one": {
+                "child_binding": "one"
+              },
+              "two": {
+                "child_binding": "two"
+              },
+              "receiver": {
+                "submission": {
+                  "caller": "one",
+                  "task": {
+                    "task_type": "recipes.run:start",
+                    "node_path": "scenario-caller/submit/adaptive3-merge-queue-submit/submit/sequence/batch",
+                    "attempt": 1,
+                    "occurrence": 1
+                  },
+                  "index": 1,
+                  "output_pointer": "/payload/output/items/0"
+                }
+              },
+              "same_receiver": {
+                "submission": {
+                  "caller": "two",
+                  "task": {
+                    "task_type": "recipes.run:start",
+                    "node_path": "scenario-caller/submit/adaptive3-merge-queue-submit/submit/sequence/batch",
+                    "attempt": 1,
+                    "occurrence": 1
+                  },
+                  "index": 1,
+                  "output_pointer": "/payload/output/items/0"
+                }
+              },
+              "pre": {
+                "child_binding": "pre"
+              },
+              "advance": {
+                "child_binding": "advance"
+              }
+            },
+            "admission_holds": [
+              {
+                "id": "batch",
+                "cell": "root",
+                "recipe": "scenario-receiver",
+                "route": {
+                  "jobType": "recipe"
+                },
+                "jobs": [
+                  "receiver",
+                  "same_receiver"
+                ]
+              },
+              {
+                "id": "pre_admission",
+                "cell": "root",
+                "recipe": "pre-advance",
+                "route": {
+                  "jobType": "recipe"
+                },
+                "jobs": [
+                  "pre"
+                ]
+              },
+              {
+                "id": "advance_admission",
+                "cell": "root",
+                "recipe": "post-advance",
+                "route": {
+                  "jobType": "recipe"
+                },
+                "jobs": [
+                  "advance"
+                ]
+              }
+            ],
+            "dispatch_holds": [
+              {
+                "id": "publish",
+                "job": "receiver",
+                "task": {
+                  "task_type": "recipe_workspace_resolve",
+                  "node_path": "scenario-receiver/production/adaptive3-merge-batch/batch/adaptive3-merge-queue-batch/publish/publish/adaptive3-hooks/publish/publish",
+                  "attempt": 1,
+                  "occurrence": 1
+                }
+              }
+            ],
+            "events": [
+              {
+                "id": "one_submitted",
+                "kind": "submission",
+                "job": "receiver"
+              },
+              {
+                "id": "two_submitted",
+                "kind": "submission",
+                "job": "same_receiver"
+              },
+              {
+                "id": "pre_done",
+                "kind": "settled",
+                "job": "pre",
+                "status": "completed"
+              },
+              {
+                "id": "publishing",
+                "kind": "dispatch",
+                "hold": "publish"
+              },
+              {
+                "id": "landed",
+                "kind": "task_result",
+                "job": "receiver",
+                "task": {
+                  "task_type": "merge:merge",
+                  "node_path": "scenario-receiver/production/adaptive3-merge-batch/batch/adaptive3-merge-queue-batch/land/land/adaptive3-merge-queue-land/install/sequence/merge",
+                  "attempt": 1,
+                  "occurrence": 1
+                },
+                "status": "SUCCEEDED"
+              },
+              {
+                "id": "advanced",
+                "kind": "settled",
+                "job": "advance",
+                "status": "completed"
+              }
+            ],
+            "actions": [
+              {
+                "id": "prepare_replay",
+                "after_all": [
+                  "one_submitted",
+                  "two_submitted"
+                ],
+                "do": "release",
+                "target": "pre_admission"
+              },
+              {
+                "id": "admit",
+                "after_all": [
+                  "pre_done"
+                ],
+                "do": "release",
+                "target": "batch"
+              },
+              {
+                "id": "advance_now",
+                "after_all": [
+                  "landed"
+                ],
+                "do": "release",
+                "target": "advance_admission"
+              },
+              {
+                "id": "checkout",
+                "after_all": [
+                  "advanced",
+                  "publishing"
+                ],
+                "do": "release",
+                "target": "publish"
+              }
+            ],
+            "outcomes": {
+              "root": {
+                "status": "completed"
+              },
+              "one": {
+                "status": "completed"
+              },
+              "two": {
+                "status": "completed"
+              },
+              "receiver": {
+                "status": "completed"
+              },
+              "same_receiver": {
+                "status": "completed"
+              },
+              "pre": {
+                "status": "completed"
+              },
+              "advance": {
+                "status": "completed"
+              }
+            }
+          }
+        }
+      },
+      "mocks": {
+        "ops": [
+          {
+            "match": {
+              "node_path": "queue-scenario/spawn"
+            },
+            "behavior": {
+              "mode": "return",
+              "effects": {
+                "children": [
+                  {
+                    "bind": "one",
+                    "cell": "root",
+                    "recipe": "fixtures/queue-scenario/caller.yaml",
+                    "inputs": {
+                      "marker": "one",
+                      "duplicate": true
+                    }
+                  },
+                  {
+                    "bind": "two",
+                    "cell": "root",
+                    "recipe": "fixtures/queue-scenario/caller.yaml",
+                    "inputs": {
+                      "marker": "two"
+                    }
+                  },
+                  {
+                    "bind": "pre",
+                    "cell": "root",
+                    "recipe": "fixtures/queue-scenario/pre-advance.yaml"
+                  },
+                  {
+                    "bind": "advance",
+                    "cell": "root",
+                    "recipe": "fixtures/queue-scenario/advance.yaml"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "match": {
+              "node_path": "queue-scenario/next"
+            },
+            "behavior": {
+              "mode": "return"
+            }
+          },
+          {
+            "match": {
+              "selector": "./recipes/merge-queue"
+            },
+            "repeat": true,
+            "behavior": {
+              "mode": "passthrough"
+            }
+          },
+          {
+            "match": {
+              "op": "command_execution"
+            },
+            "repeat": true,
+            "behavior": {
+              "mode": "passthrough"
+            }
+          },
+          {
+            "match": {
+              "op": "squash"
+            },
+            "repeat": true,
+            "behavior": {
+              "mode": "passthrough"
+            }
+          },
+          {
+            "match": {
+              "op": "merge"
+            },
+            "repeat": true,
+            "behavior": {
+              "mode": "passthrough"
+            }
+          }
+        ]
+      },
+      "assertions": [
+        {
+          "type": "cel_true",
+          "expr": "controls.scenario.complete && controls.dispatch_complete"
+        },
+        {
+          "type": "cel_true",
+          "expr": "controls.scenario.jobs.receiver.ref.job_id==controls.scenario.jobs.same_receiver.ref.job_id"
+        },
+        {
+          "type": "cel_true",
+          "expr": "calls.filter(c,c.node_path.endsWith('/scenario-publish/source')).size()==1 && calls.filter(c,c.node_path.endsWith('/scenario-publish/source')).all(c,c.job_id==controls.scenario.jobs.receiver.ref.job_id)"
+        },
+        {
+          "type": "cel_true",
+          "expr": "calls.filter(c,c.node_path=='scenario-caller/shared_bytes').size()==2"
+        },
+        {
+          "type": "cel_true",
+          "expr": "calls.filter(c,c.node_path=='scenario-caller/record').all(c,c.inputs.env.STATUS=='passed' && c.inputs.env.SOURCE==calls.filter(p,p.node_path.endsWith('/scenario-publish/source'))[0].inputs.env.MERGED)"
+        },
+        {
+          "type": "cel_true",
+          "expr": "calls.exists(a,a.node_path=='scenario-caller/record' && calls.exists(b,b.node_path=='scenario-caller/record' && a.inputs.env.LANDED!=b.inputs.env.LANDED))"
+        },
+        {
+          "type": "cel_true",
+          "expr": "calls.filter(c,c.node_path=='scenario-caller/record').all(c,c.inputs.env.HEAD!=c.inputs.env.LANDED)"
+        },
+        {
+          "type": "cel_true",
+          "expr": "calls.exists(a,a.node_path=='post-advance/land' && calls.exists(p,p.node_path.endsWith('/scenario-publish/source') && a.outputs.merged_hash!=p.inputs.env.MERGED && a.inputs.upstream_branch=='main'))"
+        },
+        {
+          "type": "cel_true",
+          "expr": "calls.filter(c,c.node_path=='scenario-caller/record').exists(c,c.inputs.env.LANDED!=c.inputs.env.SOURCE)"
+        },
+        {
+          "type": "cel_true",
+          "expr": "calls.filter(c,c.node_path=='scenario-caller/record' && c.inputs.env.REPEAT_REASON=='no-new-merge' && c.inputs.env.REPEAT_SOURCE=='null').size()==1"
+        },
+        {
+          "type": "cel_true",
+          "expr": "calls.filter(c,c.op=='merge' && c.job_id.startsWith('ak-')).size()==1"
+        },
+        {
+          "type": "cel_true",
+          "expr": "calls.filter(c,c.node_path.endsWith('/scenario-publish/source')).all(p,calls.exists(m,m.node_path=='pre-advance/land' && p.inputs.env.BASE==m.outputs.merged_hash))"
+        }
+      ]
+    },
+    {
+      "id": "older-recovery-after-successor-publishes-consumes-original-goal",
+      "type": "integration_case",
+      "runtime": {
+        "backend": "sqlite",
+        "cells": {
+          "root": {
+            "file_sources": {
+              ".c2/recipes/scenario-receiver.yaml": "./fixtures/queue-scenario/receiver.yaml",
+              ".c2/recipes/hooks/build/publish.yaml": "./fixtures/queue-scenario/publish-recovery.yaml",
+              ".c2/recipes/hooks/build/verify.yaml": "./fixtures/queue-scenario/verify.yaml",
+              "merge-batch.yaml": "../../merge-batch.yaml",
+              "merge-check.yaml": "../../merge-check.yaml",
+              "recipes/adaptive3": "../../recipes/adaptive3",
+              "recipes/merge-queue": "../../recipes/merge-queue"
+            },
+            "files": {
+              "README.md": "Receiver publication scenario."
+            }
+          }
+        },
+        "controls": {
+          "scenario": {
+            "jobs": {
+              "root": {
+                "root": true
+              },
+              "one": {
+                "child_binding": "one"
+              },
+              "two": {
+                "child_binding": "two"
+              },
+              "receiver": {
+                "submission": {
+                  "caller": "one",
+                  "task": {
+                    "task_type": "recipes.run:start",
+                    "node_path": "scenario-caller/submit/adaptive3-merge-queue-submit/submit/sequence/batch",
+                    "attempt": 1,
+                    "occurrence": 1
+                  },
+                  "index": 1,
+                  "output_pointer": "/payload/output/items/0"
+                }
+              },
+              "same_receiver": {
+                "submission": {
+                  "caller": "two",
+                  "task": {
+                    "task_type": "recipes.run:start",
+                    "node_path": "scenario-caller/submit/adaptive3-merge-queue-submit/submit/sequence/batch",
+                    "attempt": 1,
+                    "occurrence": 1
+                  },
+                  "index": 1,
+                  "output_pointer": "/payload/output/items/0"
+                }
+              },
+              "pre": {
+                "child_binding": "pre"
+              },
+              "three": {
+                "child_binding": "three"
+              },
+              "successor": {
+                "submission": {
+                  "caller": "three",
+                  "task": {
+                    "task_type": "recipes.run:start",
+                    "node_path": "scenario-caller/submit/adaptive3-merge-queue-submit/submit/sequence/batch",
+                    "attempt": 1,
+                    "occurrence": 1
+                  },
+                  "index": 1,
+                  "output_pointer": "/payload/output/items/0"
+                }
+              }
+            },
+            "admission_holds": [
+              {
+                "id": "batch",
+                "cell": "root",
+                "recipe": "scenario-receiver",
+                "route": {
+                  "jobType": "recipe"
+                },
+                "jobs": [
+                  "receiver",
+                  "same_receiver"
+                ]
+              },
+              {
+                "id": "pre_admission",
+                "cell": "root",
+                "recipe": "pre-advance",
+                "route": {
+                  "jobType": "recipe"
+                },
+                "jobs": [
+                  "pre"
+                ]
+              }
+            ],
+            "dispatch_holds": [
+              {
+                "id": "recover_checkout",
+                "job": "continuation",
+                "task": {
+                  "task_type": "recipe_workspace_resolve",
+                  "node_path": "scenario-receiver/production/adaptive3-merge-batch/batch/adaptive3-merge-queue-batch/publish/publish/adaptive3-hooks/publish/publish",
+                  "attempt": 1,
+                  "occurrence": 1
+                }
+              },
+              {
+                "id": "next",
+                "job": "root",
+                "task": {
+                  "task_type": "command_execution:command_execution",
+                  "node_path": "queue-scenario/next",
+                  "attempt": 1,
+                  "occurrence": 1
+                }
+              },
+              {
+                "id": "caller_recovery",
+                "job": "one",
+                "task": {
+                  "task_type": "command_execution:command_execution",
+                  "node_path": "scenario-caller/before_recovery",
+                  "attempt": 1,
+                  "occurrence": 1
+                }
+              }
+            ],
+            "events": [
+              {
+                "id": "one_submitted",
+                "kind": "submission",
+                "job": "receiver"
+              },
+              {
+                "id": "two_submitted",
+                "kind": "submission",
+                "job": "same_receiver"
+              },
+              {
+                "id": "pre_done",
+                "kind": "settled",
+                "job": "pre",
+                "status": "completed"
+              },
+              {
+                "id": "landed",
+                "kind": "task_result",
+                "job": "receiver",
+                "task": {
+                  "task_type": "merge:merge",
+                  "node_path": "scenario-receiver/production/adaptive3-merge-batch/batch/adaptive3-merge-queue-batch/land/land/adaptive3-merge-queue-land/install/sequence/merge",
+                  "attempt": 1,
+                  "occurrence": 1
+                },
+                "status": "SUCCEEDED"
+              },
+              {
+                "id": "failed",
+                "kind": "settled",
+                "job": "receiver",
+                "status": "failed"
+              },
+              {
+                "id": "recover_wait",
+                "kind": "dispatch",
+                "hold": "recover_checkout"
+              },
+              {
+                "id": "next_ready",
+                "kind": "dispatch",
+                "hold": "next"
+              },
+              {
+                "id": "successor_done",
+                "kind": "settled",
+                "job": "successor",
+                "status": "completed"
+              },
+              {
+                "id": "repaired",
+                "kind": "settled",
+                "job": "continuation",
+                "status": "completed"
+              },
+              {
+                "id": "caller_wait",
+                "kind": "dispatch",
+                "hold": "caller_recovery"
+              }
+            ],
+            "actions": [
+              {
+                "id": "prepare_replay",
+                "after_all": [
+                  "one_submitted",
+                  "two_submitted"
+                ],
+                "do": "release",
+                "target": "pre_admission"
+              },
+              {
+                "id": "admit",
+                "after_all": [
+                  "pre_done"
+                ],
+                "do": "release",
+                "target": "batch"
+              },
+              {
+                "id": "stop",
+                "after_all": [
+                  "successor_done",
+                  "caller_wait"
+                ],
+                "do": "stop_worker"
+              },
+              {
+                "id": "reopen",
+                "after_all": [
+                  "stop"
+                ],
+                "do": "reopen_runtime"
+              },
+              {
+                "id": "restart",
+                "after_all": [
+                  "reopen"
+                ],
+                "do": "restart_job",
+                "restart": {
+                  "path": [
+                    "$job",
+                    "sequence:scenario-receiver",
+                    "sequence:production",
+                    "sequence:adaptive3-merge-batch",
+                    "sequence:batch",
+                    "state_machine:adaptive3-merge-queue-batch",
+                    "state:publish"
+                  ],
+                  "request_id": "recipes-receiver-publication",
+                  "continuation": "continuation",
+                  "required_prefix": [
+                    {
+                      "task_type": "merge:merge",
+                      "node_path": "scenario-receiver/production/adaptive3-merge-batch/batch/adaptive3-merge-queue-batch/land/land/adaptive3-merge-queue-land/install/sequence/merge",
+                      "attempt": 1,
+                      "occurrence": 1
+                    },
+                    {
+                      "task_type": "extension_execution:extension_execution",
+                      "node_path": "scenario-receiver/production/adaptive3-merge-batch/batch/adaptive3-merge-queue-batch/publication_context/./recipes/merge-queue",
+                      "attempt": 1,
+                      "occurrence": 1
+                    }
+                  ]
+                },
+                "target": "receiver"
+              },
+              {
+                "id": "start",
+                "after_all": [
+                  "restart"
+                ],
+                "do": "start_worker"
+              },
+              {
+                "id": "finish_recovery",
+                "after_all": [
+                  "successor_done",
+                  "recover_wait"
+                ],
+                "do": "release",
+                "target": "recover_checkout"
+              },
+              {
+                "id": "third",
+                "after_all": [
+                  "failed",
+                  "next_ready"
+                ],
+                "do": "release",
+                "target": "next"
+              },
+              {
+                "id": "consume_repair",
+                "after_all": [
+                  "repaired"
+                ],
+                "do": "release",
+                "target": "caller_recovery"
+              }
+            ],
+            "outcomes": {
+              "root": {
+                "status": "completed"
+              },
+              "one": {
+                "status": "completed"
+              },
+              "two": {
+                "status": "completed"
+              },
+              "receiver": {
+                "status": "failed"
+              },
+              "same_receiver": {
+                "status": "failed"
+              },
+              "pre": {
+                "status": "completed"
+              },
+              "continuation": {
+                "status": "completed"
+              },
+              "three": {
+                "status": "completed"
+              },
+              "successor": {
+                "status": "completed"
+              }
+            },
+            "retain": [
+              {
+                "id": "original_merge",
+                "job": "receiver",
+                "task": {
+                  "task_type": "merge:merge",
+                  "node_path": "scenario-receiver/production/adaptive3-merge-batch/batch/adaptive3-merge-queue-batch/land/land/adaptive3-merge-queue-land/install/sequence/merge",
+                  "attempt": 1,
+                  "occurrence": 1
+                },
+                "part": "input"
+              },
+              {
+                "id": "restored_merge",
+                "job": "continuation",
+                "task": {
+                  "task_type": "merge:merge",
+                  "node_path": "scenario-receiver/production/adaptive3-merge-batch/batch/adaptive3-merge-queue-batch/land/land/adaptive3-merge-queue-land/install/sequence/merge",
+                  "attempt": 1,
+                  "occurrence": 1
+                },
+                "part": "input",
+                "compare_to": "original_merge"
+              },
+              {
+                "id": "original_context",
+                "job": "receiver",
+                "task": {
+                  "task_type": "extension_execution:extension_execution",
+                  "node_path": "scenario-receiver/production/adaptive3-merge-batch/batch/adaptive3-merge-queue-batch/publication_context/./recipes/merge-queue",
+                  "attempt": 1,
+                  "occurrence": 1
+                },
+                "part": "output"
+              },
+              {
+                "id": "restored_context",
+                "job": "continuation",
+                "task": {
+                  "task_type": "extension_execution:extension_execution",
+                  "node_path": "scenario-receiver/production/adaptive3-merge-batch/batch/adaptive3-merge-queue-batch/publication_context/./recipes/merge-queue",
+                  "attempt": 1,
+                  "occurrence": 1
+                },
+                "part": "output",
+                "compare_to": "original_context"
+              },
+              {
+                "id": "failed_diagnostic",
+                "job": "receiver",
+                "task": {
+                  "task_type": "command_execution:command_execution",
+                  "node_path": "scenario-receiver/production/adaptive3-merge-batch/batch/adaptive3-merge-queue-batch/publish/publish/adaptive3-hooks/publish/publish/invoke/scenario-publish/fail_once",
+                  "attempt": 1,
+                  "occurrence": 1
+                },
+                "artifact": "failure.txt",
+                "expect_base64": "b3JpZ2luYWwgcmVjZWl2ZXIgcHVibGljYXRpb24gZmFpbGVkIM67Cg=="
+              },
+              {
+                "id": "workspace_request",
+                "job": "continuation",
+                "task": {
+                  "task_type": "recipe_workspace_resolve",
+                  "node_path": "scenario-receiver/production/adaptive3-merge-batch/batch/adaptive3-merge-queue-batch/publish/publish/adaptive3-hooks/publish/publish",
+                  "attempt": 1,
+                  "occurrence": 1
+                },
+                "part": "input"
+              },
+              {
+                "id": "workspace_result",
+                "job": "continuation",
+                "task": {
+                  "task_type": "recipe_workspace_resolve",
+                  "node_path": "scenario-receiver/production/adaptive3-merge-batch/batch/adaptive3-merge-queue-batch/publish/publish/adaptive3-hooks/publish/publish",
+                  "attempt": 1,
+                  "occurrence": 1
+                },
+                "part": "output"
+              },
+              {
+                "id": "actual_checkout",
+                "job": "continuation",
+                "task": {
+                  "task_type": "command_execution:command_execution",
+                  "node_path": "scenario-receiver/production/adaptive3-merge-batch/batch/adaptive3-merge-queue-batch/publish/publish/adaptive3-hooks/publish/publish/invoke/scenario-publish/source",
+                  "attempt": 1,
+                  "occurrence": 1
+                },
+                "artifact": "actual-state.txt"
+              }
+            ]
+          }
+        }
+      },
+      "mocks": {
+        "ops": [
+          {
+            "match": {
+              "node_path": "queue-scenario/spawn"
+            },
+            "behavior": {
+              "mode": "return",
+              "effects": {
+                "children": [
+                  {
+                    "bind": "one",
+                    "cell": "root",
+                    "recipe": "fixtures/queue-scenario/caller.yaml",
+                    "inputs": {
+                      "marker": "one",
+                      "recover": true
+                    }
+                  },
+                  {
+                    "bind": "two",
+                    "cell": "root",
+                    "recipe": "fixtures/queue-scenario/caller.yaml",
+                    "inputs": {
+                      "marker": "two"
+                    }
+                  },
+                  {
+                    "bind": "pre",
+                    "cell": "root",
+                    "recipe": "fixtures/queue-scenario/pre-advance.yaml"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "match": {
+              "node_path": "queue-scenario/next"
+            },
+            "behavior": {
+              "mode": "return",
+              "effects": {
+                "children": [
+                  {
+                    "bind": "three",
+                    "cell": "root",
+                    "recipe": "fixtures/queue-scenario/caller.yaml",
+                    "inputs": {
+                      "marker": "three"
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "match": {
+              "selector": "./recipes/merge-queue"
+            },
+            "repeat": true,
+            "behavior": {
+              "mode": "passthrough"
+            }
+          },
+          {
+            "match": {
+              "op": "command_execution"
+            },
+            "repeat": true,
+            "behavior": {
+              "mode": "passthrough"
+            }
+          },
+          {
+            "match": {
+              "op": "squash"
+            },
+            "repeat": true,
+            "behavior": {
+              "mode": "passthrough"
+            }
+          },
+          {
+            "match": {
+              "op": "merge"
+            },
+            "repeat": true,
+            "behavior": {
+              "mode": "passthrough"
+            }
+          }
+        ]
+      },
+      "assertions": [
+        {
+          "type": "cel_true",
+          "expr": "controls.scenario.complete && controls.dispatch_complete"
+        },
+        {
+          "type": "cel_true",
+          "expr": "controls.scenario.jobs.receiver.ref.job_id!=controls.scenario.jobs.continuation.ref.job_id && controls.scenario.jobs.receiver.ref.goal_id==controls.scenario.jobs.continuation.ref.goal_id"
+        },
+        {
+          "type": "cel_true",
+          "expr": "!controls.dispatch.exists(d,d.job_id==controls.scenario.jobs.continuation.ref.job_id && d.name in ['recipes.run:start','squash:squash','merge:merge'])"
+        },
+        {
+          "type": "cel_true",
+          "expr": "calls.filter(c,c.node_path.endsWith('/scenario-publish/source')).size()==3 && calls.filter(c,c.node_path.endsWith('/scenario-publish/source') && c.job_id==controls.scenario.jobs.continuation.ref.job_id).all(c,c.inputs.env.MERGED==calls.filter(m,m.op=='merge' && m.job_id==controls.scenario.jobs.receiver.ref.job_id)[0].outputs.merged_hash)"
+        },
+        {
+          "type": "cel_true",
+          "expr": "calls.filter(c,c.node_path=='scenario-caller/recovered').size()==1 && calls.filter(c,c.node_path=='scenario-caller/recovered').all(c,c.inputs.env.STATUS=='passed' && c.inputs.env.OWNER==controls.scenario.jobs.receiver.ref.job_id)"
+        },
+        {
+          "type": "cel_true",
+          "expr": "calls.filter(c,c.op=='recipes.run' && c.job_id==controls.scenario.jobs.one.ref.job_id).size()==1 && !calls.exists(c,c.op=='merge' && c.job_id==controls.scenario.jobs.one.ref.job_id)"
+        }
+      ]
+    }
+  ]
+}
