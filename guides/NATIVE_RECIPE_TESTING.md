@@ -67,6 +67,11 @@ Git processes can outlive their parents; collecting those descendants prevents
 zombie accumulation when the worker container's PID 1 does not reap them. Suite
 selection, concurrency and per-case allowances are unchanged.
 A verify-hook change follows this same candidate verification path.
+The shared script also runs the [question resumption check](../recipe-tests/checks/ask_resumption.py).
+It builds a bounded native client against the immutable c2j source pin using the
+already configured Go toolchain, then exercises actual question input and artifact
+storage across separate SQLite runner processes. It also checks native child
+cancellation and Adaptive's existing child collector. No deployed service is used.
 The shared script also runs `test_tools.py` and `test_schemas.py` through Python
 unittest discovery, before the native suites. These exercise the production
 validators and response schemas; a failed test stops verification and remains in
@@ -170,6 +175,31 @@ c2j test run --directory . --include-live --case-timeout 45m --out-dir .c2/live-
 
 Only run this when live model work is intended. A missing credential or tool
 fails the selected case; exclusion is never reported as a passing test.
+
+For the question recipe's ASK-18–20 agent observations, submit the diagnostic
+from the candidate workspace:
+
+```sh
+c2j submit 'Run live publication-question acceptance samples.' --self \
+  --advanced-recipe-file recipes/smoke/ask-agent-acceptance.yaml \
+  --from-workspace-now --json
+```
+
+This root recipe declares the model credential and uses the configured provider,
+model and reasoning settings. It runs the pinned native test runner against six
+disposable consumers and an actual separate candidate Recipes Git source. Only
+source facts and human replies are controlled; model operations run live. No
+production publication occurs. Credentials remain in private temporary declarations
+and are redacted from retained reports. The result contains native forms, replies,
+child results, selected agent transcripts and executable check records under
+`observations/`. Inspect failures there before submitting a corrected attempt.
+Ordinary verification runs the driver's `--validate-only` path without credentials.
+For a focused retry, add `--inputs-json '{"cases":["automated","git-only","optional"]}'`
+to the submission. The default remains all six samples. Live reports retain up to
+8 MiB per artifact so verbose agent transcripts remain inspectable.
+Use `--inspect-summary PATH --out-dir DIR` to check retained native samples again
+without duplicating live work. A successful behavior check does not override a
+failed runner assertion; diagnose any difference and report both honestly.
 
 ## Ownership
 

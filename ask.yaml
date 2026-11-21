@@ -1,0 +1,81 @@
+schema_version: 2
+id: ask
+version: 1.0.0
+input_schema:
+  prompt:
+    type: string
+    default_value: ''
+    description: CLI submission text; the form displays question.
+  title:
+    type: string
+    required: true
+  question:
+    type: string
+    required: true
+  directions:
+    type: array
+    items: {type: object}
+    default_value:
+    - id: reply
+      label: Send reply
+      feedback_mode: required
+      allow_attachments: true
+      continues_review: false
+  documents:
+    type: artifact_map
+    default_value: {}
+  document_metadata:
+    type: object
+    default_value: {}
+  overview_document_id:
+    type: string
+    required: false
+inputs:
+  title: ${{ inputs.title }}
+  question: ${{ inputs.question }}
+  directions: ${{ inputs.directions }}
+  documents: ${{ inputs.documents }}
+  document_metadata: ${{ inputs.document_metadata }}
+  overview_document_id: ${{ inputs.?overview_document_id.orValue(null) }}
+sequence:
+- id: prepare
+  inputs:
+    request:
+      title: ${{ inputs.title }}
+      question: ${{ inputs.question }}
+      directions: ${{ inputs.directions }}
+      documents: ${{ inputs.documents }}
+      document_metadata: ${{ inputs.document_metadata }}
+      feedback: {label: Reply or supporting information}
+      conversation: []
+    overview: ${{ inputs.overview_document_id }}
+  sequence: []
+  outputs:
+    request: ${{ jq([inputs.request,inputs.overview], vars.prepare) }}
+- id: build_form
+  include: ./recipes/review-v2.yaml
+  inputs:
+    request: ${{ sequence.prepare.outputs.request }}
+- id: contribute
+  op: input
+  inputs:
+    form: ${{ sequence.build_form.outputs.form }}
+outputs:
+  request: ${{ sequence.build_form.outputs.form.request }}
+  review_id: ${{ sequence.build_form.outputs.form.request.review_id }}
+  native: ${{ sequence.contribute.outputs }}
+  summary: "${{ 'Human reply received (' + sequence.contribute.outputs.response.direction + '). Inspect request and native for the exact question, reply, files and receipt.' }}"
+  artifact_refs: ${{ jq([sequence.build_form.outputs.form.request.documents,sequence.contribute.outputs], vars.artifacts) }}
+vars:
+  prepare: |-
+    .[0] as $request | .[1] as $overview | $request |
+    if (.title | test("[^\\s\\p{Z}\\x{0085}]")) | not then error("title must be nonblank")
+    elif (.question | test("[^\\s\\p{Z}\\x{0085}]")) | not then error("question must be nonblank")
+    elif any(.directions[]; .continues_review != false) then error("directions must each declare continues_review: false")
+    else . + (if $overview == null then {} else {overview_document_id:$overview} end) end
+  artifacts: |-
+    .[1] as $native |
+    (.[0] | with_entries(.key = "originals/" + .key | .value.name = .key)) +
+    ($native.response.attachments | to_entries | map(
+      .key = ("feedback/" + $native.receipt.request_id + "/" + (.key|tostring) + "/" + ((.value.name // .value.stored.key.name)|split("/")|last))
+      | .value.name = .key) | from_entries)

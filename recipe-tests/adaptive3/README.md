@@ -34,6 +34,13 @@ child waits; its submission fixture creates a disposable local child in place
 of the remote, unpublished adaptive3 selector. This tests result consumption,
 not deployment of that selector.
 
+The standalone [question recipe](../../guides/ASK_RECIPE.md) has
+[acceptance statements](../ask-statements.md), native input and foreign-source
+suites, and `ask.test.yaml` here for containing lifecycle checks. The bounded
+SQLite driver in `../checks/ask_resumption.py` verifies pending and accepted-reply
+resumption, stored uploads and the existing collector's cancellation behavior.
+Scripted choices do not establish the separate live agent judgment expectations.
+
 `change-count-scope.test.yaml` inspects resolved prompts for all six purposes,
 both directly and through real validation routes, including configured specialists.
 Only Outcome receives change-count report requirements. `reporting.test.yaml`

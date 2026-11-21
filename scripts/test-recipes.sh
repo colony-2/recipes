@@ -11,6 +11,10 @@ c2j test run --file recipe-tests/adaptive/consultation-continuation.test.yaml \
   --case native-nested-advice-returns-once --case-timeout 5m --out-dir "$results/authored-smoke" \
   2>&1 | tee "$results/authored-smoke.log"
 python3 recipe-tests/checks/recipe_timeout_policy.py .
+python3 recipe-tests/checks/ask_resumption.py --out-dir "$results/ask-resumption" \
+  2>&1 | tee "$results/ask-resumption.log"
+python3 recipe-tests/checks/ask_agent_acceptance.py --validate-only --out-dir "$results/ask-agent-declarations" \
+  2>&1 | tee "$results/ask-agent-declarations.log"
 python3 -B -m unittest discover -s recipe-tests -p test_merge_queue.py
 python3 recipe-tests/checks/package_restore_control.py --out-dir "$results/package-restore-unfiltered" \
   2>&1 | tee "$results/package-restore-unfiltered.log"

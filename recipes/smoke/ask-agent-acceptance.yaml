@@ -1,0 +1,39 @@
+schema_version: 2
+id: ask-agent-acceptance
+input_schema:
+  title:
+    type: string
+    required: false
+  prompt:
+    type: string
+    required: false
+  cases:
+    type: array
+    items: {type: string}
+    default_value: [affirmative, unavailable, ambiguous, automated, git-only, optional]
+inputs:
+  cases: ${{ inputs.cases }}
+sequence:
+- id: observe_live_agents
+  op: command_execution
+  const: true
+  execution_needs:
+    packages:
+    - nix:github:NixOS/nixpkgs/e7439b6b14ad3cc35d05608ebca9bce01a25f5f8#go
+  inputs:
+    env:
+      ASK_ACCEPTANCE_API_KEY: ${{ context.secrets.codex_api_key }}
+      ASK_ACCEPTANCE_API_BASE_URL: ${{ context.config.codex_api_base_url }}
+      ASK_ACCEPTANCE_MODEL: ${{ context.config.?codex_model.orValue('') }}
+      ASK_ACCEPTANCE_REASONING: ${{ context.config.?codex_reasoning_effort.orValue('') }}
+      ASK_ACCEPTANCE_CASES: ${{ json_stringify(inputs.cases) }}
+      OUTBOX: ${{ context.environment.op.outbox }}
+    run: |
+      set -eu
+      scratch=$(mktemp -d)
+      trap 'rm -rf "$scratch"' EXIT
+      bash scripts/install-c2j.sh "$scratch"
+      PATH="$scratch/bin:$PATH" python3 recipe-tests/checks/ask_agent_acceptance.py --out-dir "$OUTBOX/observations"
+outputs:
+  summary: Live Adaptive publication acceptance samples completed.
+  artifact_refs: ${{ sequence.observe_live_agents.artifacts }}

@@ -1,0 +1,73 @@
+recipe: ask-source.yaml
+cases:
+- id: question-and-helper-resolve-from-foreign-source
+  type: integration_case
+  runtime:
+    cells: &cells
+      root:
+        files:
+          README.md: Application with no Recipes helper files.
+          question.json: '{"title":"Confirm staging workers","question":"Are staging workers running abc123?"}'
+      library:
+        file_sources:
+          ask.yaml: ../ask.yaml
+          recipes/review-v2.yaml: ../recipes/review-v2.yaml
+          recipes/review-v2/op.yaml: ../recipes/review-v2/op.yaml
+          recipes/review-v2.py: ../recipes/review-v2.py
+      wrong:
+        file_sources:
+          ask.yaml: ../ask.yaml
+          recipes/review-v2.yaml: ../recipes/review-v2.yaml
+    responses:
+    - node_path: ask/contribute
+      response: {direction: reply, feedback: Workers are available., attachments: [], settings: {}}
+  mocks: &mocks
+    ops:
+    - match: {node_path: ask-source/sources}
+      behavior:
+        mode: return
+        fixture_refs:
+          library: {cell: library, field: repo}
+          wrong: {cell: wrong, field: repo}
+        outputs_fixture_expr: '{"library":library,"wrong":wrong}'
+    - match: {op: command_execution}
+      repeat: true
+      behavior: {mode: passthrough}
+    - match: {op: extension_execution}
+      repeat: true
+      behavior: {mode: passthrough}
+  assertions:
+  - type: cel_true
+    expr: outputs.result.status=="completed" && outputs.result.outputs.native.response.feedback=="Workers are available."
+  - type: cel_true
+    expr: outputs.result.outputs.request.question=="Are staging workers running abc123?"
+  - type: cel_true
+    expr: size(reviews)==1 && reviews[0].form.presentation.type=="review/v2" && outputs.result.outputs.native.receipt==reviews[0].receipt
+  - type: cel_true
+    expr: repositories.root.new_commits==0 && repositories.root.clean && size(repositories.root.changed_files)==0
+  - type: cel_true
+    expr: calls.exists(c,c.op=="extension_execution" && c.inputs.selector=="./recipes/review-v2" && c.inputs.repository_source.contains(repositories.library.repo))
+- id: source-with-missing-helper-cannot-open-question
+  type: integration_case
+  inputs: {source: wrong}
+  runtime:
+    cells: *cells
+  mocks:
+    ops:
+    - match: {node_path: ask-source/sources}
+      behavior:
+        mode: return
+        fixture_refs:
+          library: {cell: library, field: repo}
+          wrong: {cell: wrong, field: repo}
+        outputs_fixture_expr: '{"library":library,"wrong":wrong}'
+    - match: {op: command_execution}
+      repeat: true
+      behavior: {mode: passthrough}
+  assertions:
+  - type: cel_true
+    expr: outputs.result.status in ["failed","rejected"] && size(reviews)==0
+  - type: cel_true
+    expr: outputs.result.failure_message.contains("missing op.yaml")
+  - type: cel_true
+    expr: '!calls.exists(c,c.op=="input")'

@@ -1,0 +1,31 @@
+schema_version: 2
+id: ask-source
+input_schema:
+  source:
+    type: string
+    default_value: library
+inputs:
+  source: ${{ inputs.source }}
+sequence:
+- id: sources
+  op: command_execution
+  inputs: {run: unused}
+- id: launch
+  op: command_execution
+  inputs:
+    env:
+      QUESTION_SOURCE: "${{ inputs.source == 'library' ? sequence.sources.outputs.library : sequence.sources.outputs.wrong }}"
+    run: |
+      c2j submit "Ask about required publication." --cell root --advanced-recipe "git+https://$QUESTION_SOURCE//ask.yaml@main" --inputs-file question.json --jobdb embed:/// --json
+    continue_on_error: true
+- id: wait
+  op: recipe.await_result_soft
+  when: size(sequence.launch.jobs.job_ids)>0
+  inputs:
+    target:
+      job: ${{ sequence.launch.jobs.job_ids[0] }}
+    wait: {'on': job, condition: complete}
+    return_when: terminal
+outputs:
+  result: ${{ sequence.?wait.orValue({}).?outputs.orValue({'status':'rejected'}) }}
+  submission_error: ${{ sequence.launch.outputs.stderr }}

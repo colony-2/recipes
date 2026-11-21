@@ -57,6 +57,10 @@ wait. A request addressed to the current cell returns to the existing worker.
 
 ## Dependency publication
 
+For required manual publication, deployment or worker upgrades, use the standalone
+[question recipe](../../guides/ASK_RECIPE.md). Submit it once, let Adaptive wait for
+the child and inspect its complete reply before continuing the dependent check.
+
 Consumer-initiated work: B is updating its feature and discovers it needs an API
 change in A. B can keep its work, ask A to implement and publish that change, wait,
 then update its dependency and finish locally. B is the workflow parent of A’s
