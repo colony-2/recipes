@@ -22,9 +22,22 @@ class DocumentSchemas(unittest.TestCase):
         for name,report in reports.items():
             schema=SCHEMAS[name]
             report['document_details']=[detail]
+            if name in ('backstop','recovery'):
+                report.update(instruction=None,destination=None,report=None)
             jsonschema.Draft202012Validator.check_schema(schema)
             jsonschema.validate(report,schema)
             invalid=[]
+            if name in ('backstop','recovery'):
+                for key in ('instruction','destination','report'):
+                    invalid.append({k:v for k,v in report.items() if k!=key})
+                for patch in ({'instruction':{'text':'','scope_change':True}},
+                              {'instruction':{'text':'Remove phone criterion','scope_change':'yes'}},
+                              {'destination':'cancel'}, {'report':{'origin':'Someone'}}):
+                    invalid.append({**report,**patch})
+                directed={**report,'instruction':{'text':'Remove phone criterion','scope_change':True},
+                          'report':dict(origin='Human request',work='Implementation saved',blocker='No phone',
+                                        options=['Remove criterion','Supply a phone'],recommendation='Supply a phone',research=None)}
+                jsonschema.validate(directed,schema)
             for key in ('document_details','primary','title'):
                 invalid.append({k:v for k,v in report.items() if k!=key})
             invalid.extend([{**report,'unexpected':True},{**report,'document_details':None},

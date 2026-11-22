@@ -16,10 +16,20 @@ input_schema:
   agent_settings:
     type: object
     default_value: {}
+  automatic:
+    type: boolean
+    default_value: true
+  prerequisites:
+    type: object
+    default_value: {}
+  include_origin: {type: boolean, default_value: false}
   probe_prerequisite:
     type: boolean
     default_value: false
 inputs:
+  include_origin: ${{ inputs.include_origin }}
+  automatic: ${{ inputs.automatic }}
+  prerequisites: ${{ inputs.prerequisites }}
   agent_settings: ${{ inputs.agent_settings }}
   stage: ${{ inputs.stage }}
   request: ${{ inputs.request }}
@@ -27,6 +37,17 @@ inputs:
   prior_job: ${{ inputs.?prior_job.orValue('') }}
   probe_prerequisite: ${{ inputs.?probe_prerequisite.orValue(false) }}
 sequence:
+- id: origin
+  op: command_execution
+  when: inputs.include_origin
+  const: true
+  inputs:
+    env:
+      OUTBOX: ${{ context.environment.op.outbox }}
+    run: |
+      mkdir -p "$OUTBOX/review/negotiations/origin"
+      printf '%s\n' 'The parent needs browser validation. [Transcript](transcript.md)' > "$OUTBOX/review/negotiations/origin/report.md"
+      printf '%s\n' 'Request and agreed browser check.' > "$OUTBOX/review/negotiations/origin/transcript.md"
 - id: discovery
   op: command_execution
   when: inputs.probe_prerequisite
@@ -50,12 +71,16 @@ sequence:
 - id: backstop
   include: ../../recipes/adaptive3/backstop.yaml
   inputs:
+    documents: ${{ sequence.?origin.orValue({}).?artifacts.orValue({}) }}
+    automatic: ${{ inputs.automatic }}
+    prerequisites: ${{ inputs.prerequisites }}
     stage: ${{ inputs.stage }}
     request: ${{ inputs.request }}
     problem: ${{ inputs.problem }}
     prior_job: ${{ inputs.prior_job }}
     agent_settings: ${{ inputs.agent_settings }}
 outputs:
+  documents: ${{ sequence.backstop.outputs.documents }}
   result: ${{ sequence.backstop.outputs.result }}
   discovery: ${{ sequence.?discovery.orValue({}).?outputs.orValue({}) }}
   prerequisite: ${{ sequence.?prerequisite.orValue({}).?outputs.orValue({}) }}

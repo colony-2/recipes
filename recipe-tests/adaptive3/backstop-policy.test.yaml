@@ -1,0 +1,133 @@
+recipe: backstop-policy.yaml
+cases:
+- id: current-native-prerequisites-allow-forward-return
+  type: integration_case
+  runtime: {}
+  inputs:
+    direction: &id005
+      result:
+        status: accepted
+        receipt:
+          submission_id: direction-original
+      documents: &id001
+        scope: current-direction
+    preparation: &id002
+      result: &id006
+        status: accepted
+      documents:
+        plan: current-plan
+      basis: &id007
+        result:
+          status: accepted
+          receipt:
+            submission_id: direction-original
+        documents:
+          scope: current-direction
+    implementation: &id003
+      result: &id008
+        status: accepted
+      basis: &id009
+        result:
+          status: accepted
+        documents:
+          plan: current-plan
+      candidate:
+        hash: current-candidate
+      verification: &id010
+        hash: current-candidate
+        status: passed
+    outcome: &id004
+      result:
+        status: accepted
+        receipt:
+          submission_id: outcome-original
+      basis:
+        basis: *id009
+        candidate:
+          hash: current-candidate
+        verification:
+          hash: current-candidate
+          status: passed
+  assertions:
+  - type: cel_true
+    expr: outputs.prerequisites.integration && outputs.prerequisites.outcome && outputs.prerequisites.implementation
+- id: changed-direction-blocks-stale-plan-and-acceptance
+  type: integration_case
+  runtime: {}
+  inputs:
+    direction:
+      result:
+        status: accepted
+        receipt:
+          submission_id: new-scope
+      documents: *id001
+    preparation: *id002
+    implementation: *id003
+    outcome: *id004
+  assertions:
+  - type: cel_true
+    expr: outputs.prerequisites.preparation && !outputs.prerequisites.implementation && !outputs.prerequisites.outcome
+      && !outputs.prerequisites.integration
+- id: changed-test-plan-blocks-stale-implementation
+  type: integration_case
+  runtime: {}
+  inputs:
+    direction: *id005
+    preparation:
+      result: *id006
+      documents:
+        plan: amended-plan
+      basis: *id007
+    implementation: *id003
+    outcome: *id004
+  assertions:
+  - type: cel_true
+    expr: outputs.prerequisites.implementation && !outputs.prerequisites.outcome && !outputs.prerequisites.integration
+- id: changed-candidate-blocks-stale-outcome-acceptance
+  type: integration_case
+  runtime: {}
+  inputs:
+    direction: *id005
+    preparation: *id002
+    implementation:
+      result: *id008
+      basis: *id009
+      candidate:
+        hash: new-candidate
+      verification: *id010
+    outcome: *id004
+  assertions:
+  - type: cel_true
+    expr: outputs.prerequisites.outcome && !outputs.prerequisites.integration
+- id: missing-approved-direction-blocks-later-entry
+  type: integration_case
+  runtime: {}
+  inputs:
+    direction: {}
+    preparation: *id002
+    implementation: *id003
+    outcome: *id004
+  assertions:
+  - type: cel_true
+    expr: outputs.prerequisites.direction && !outputs.prerequisites.preparation && !outputs.prerequisites.implementation
+- id: short-path-recovery-uses-current-direction
+  type: integration_case
+  runtime: {}
+  inputs:
+    direction: {<<: *id005, short_path: true}
+    implementation: {<<: *id003, basis: *id007}
+    outcome: *id004
+  assertions:
+  - type: cel_true
+    expr: outputs.prerequisites.implementation && outputs.prerequisites.outcome && !outputs.prerequisites.integration
+- id: renewed-plan-cannot-reuse-older-outcome-for-same-candidate
+  type: integration_case
+  runtime: {}
+  inputs:
+    direction: *id005
+    preparation: {<<: *id002, documents: &new_plan {plan: amended-plan}}
+    implementation: {<<: *id003, basis: {result: *id006, documents: *new_plan}}
+    outcome: *id004
+  assertions:
+  - type: cel_true
+    expr: outputs.prerequisites.outcome && !outputs.prerequisites.integration

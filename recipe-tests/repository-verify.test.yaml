@@ -14,9 +14,16 @@ cases:
           scripts/install-c2j.sh: |
             set -eu
             printf 'fixture installer\n'
+          scripts/test-backstop.sh: |
+            set -eu
+            mkdir -p "$1"
+            printf 'focused Backstop checks completed\n' > "$1/check.txt"
+            printf 'focused Backstop checks ran\n'
           scripts/test-recipes.sh: |
             set -eu
             test -f README.md
+            mkdir -p "$1"
+            test -f "$1/../backstop/check.txt"
             python3 -c 'import yaml, PIL, jsonschema; from importlib.metadata import version; assert [version(p) for p in ("PyYAML", "Pillow", "jsonschema")] == ["6.0.3", "12.0.0", "4.26.0"]'
             cmark --version >/dev/null
             yq --version >/dev/null
@@ -39,6 +46,7 @@ cases:
       && outputs.evidence.log.contains("fixture installer")
       && outputs.evidence.log.contains("c2j version ")
       && outputs.evidence.log.contains("tini version 0.19.0")
+      && outputs.evidence.log.contains("focused Backstop checks ran")
       && outputs.evidence.log.contains("validator dependencies available")
       && outputs.evidence.log.contains("shared suite reached from repository root")
   - type: cel_true
@@ -69,6 +77,8 @@ cases:
       && outputs.evidence.log.contains("fixture suite failure")
   - type: cel_true
     expr: '"tests.log" in outputs.result.artifact_refs && "test-reports.tar.gz" in outputs.result.artifact_refs'
+  - type: cel_true
+    expr: outputs.evidence.focused_report=="focused Backstop checks completed\n"
 - id: candidate-hook-collects-orphaned-session-leaders
   type: integration_case
   runtime:
@@ -87,3 +97,25 @@ cases:
   - type: cel_true
     expr: >-
       outputs.evidence.log.contains("orphan session leaders collected: 16")
+- id: candidate-hook-retains-early-backstop-failure-and-skips-shared-suite
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        file_sources: *sources
+        files:
+          <<: *files
+          scripts/test-backstop.sh: |
+            set -eu
+            mkdir -p "$1"
+            printf 'required Backstop check failed\n' > "$1/check.txt"
+            printf 'focused Backstop failure\n' >&2
+            exit 9
+  mocks: *mocks
+  assertions:
+  - type: cel_true
+    expr: outputs.result.status=="failed" && outputs.evidence.report==null && outputs.evidence.focused_report=="required Backstop check failed\n"
+  - type: cel_true
+    expr: outputs.evidence.log.contains("focused Backstop failure") && !outputs.evidence.log.contains("shared suite reached from repository root")
+  - type: cel_true
+    expr: '"tests.log" in outputs.result.artifact_refs && "test-reports.tar.gz" in outputs.result.artifact_refs'

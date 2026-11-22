@@ -9,6 +9,7 @@ inputs:
   agent_settings: ${{ inputs.?agent_settings.orValue({}) }}
   prior_job: ${{ inputs.?prior_job.orValue('') }}
   automatic: ${{ inputs.?automatic.orValue(true) }}
+  prerequisites: ${{ inputs.?prerequisites.orValue({}) }}
 state:
   initial: turn
   states:
@@ -44,6 +45,7 @@ state:
         inputs:
           stage: ${{ inputs.stage }}
           recovery: true
+          prerequisites: ${{ inputs.prerequisites }}
       outputs:
         schema: '${{ inputs.prior_job != '''' ? sequence.schemas.outputs.recovery : sequence.schemas.outputs.backstop
           }}'
@@ -61,6 +63,7 @@ state:
         feedback: ${{ states.turn.outputs.feedback }}
         agent_settings: ${{ inputs.agent_settings }}
         prior_job: ${{ inputs.prior_job }}
+        prerequisites: ${{ inputs.prerequisites }}
     investigate:
       include: ./agent.yaml
       inputs:
@@ -93,13 +96,16 @@ state:
         response: ${{ states.investigate.outputs.response }}
         destinations: ${{ states.setup.outputs.destinations }}
         stage: ${{ inputs.stage }}
+        human: ${{ states.turn.outputs.human }}
       outputs:
         eligible: ${{ inputs.response.status in ['ask','resume'] && inputs.response.?stage.orValue('') in inputs.destinations
+          && (inputs.response.?instruction.orValue(null) == null || (size(inputs.human)>0 && (!inputs.response.instruction.scope_change || inputs.response.stage == 'direction')))
+          && (inputs.response.?destination.orValue(null) == null || (inputs.response.stage == 'configure' && inputs.response.destination in inputs.destinations))
           && jq(inputs.response, '(.action // "") | if type == "string" then test("[^[:space:]]") else false end')
           }}
       transitions:
       - to: done
-        when: outputs.eligible && states.investigate.outputs.response.status == 'resume' && states.turn.outputs.allow_resume
+        when: outputs.eligible && states.investigate.outputs.response.status == 'resume' && (states.turn.outputs.allow_resume || (size(states.turn.outputs.human)>0 && states.investigate.outputs.response.?instruction.orValue(null) != null))
         payload:
           result: '${{ size(states.turn.outputs.human)>0 ? jq([states.investigate.outputs.response,{''human'':states.turn.outputs.human,''documents'':states.turn.outputs.feedback.?documents.orValue({})}],
             ''add'') : states.investigate.outputs.response }}'
@@ -110,14 +116,17 @@ state:
       sequence: []
       outputs:
         session: ${{ inputs.session }}
-        result: ${{ jq(inputs.result, 'if .approval then .approval as $a | .approval = {result:{status:"accepted",receipt:$a.receipt,source_job:$a.source_job,source_task:$a.source_task},patch:$a.patch}
+        result: ${{ jq([inputs.result,inputs.presentation], '.[1] as $presentation | .[0] | if $presentation != null then .primary = $presentation.primary | .document_details = ($presentation.document_metadata | to_entries | map(.value + {document_id:.key})) else . end | .additional_attempts = (.additional_attempts // 1) | if .instruction != null and .human != null and .instruction.scope_change then .amendment = {instruction:.instruction.text,human:.human,documents:(.documents // {})} else . end | if .approval then .approval as $a | .approval = {result:{status:"accepted",receipt:$a.receipt,source_job:$a.source_job,source_task:$a.source_task},patch:$a.patch}
           else . end') }}
         documents: ${{ jq([inputs.artifacts,inputs.result], '(.[1].approval.patch // "") as $patch | .[0] | with_entries(select((.key
           | startswith("review/")) or .key == $patch))') }}
       inputs:
         result: ${{ transition.payload.result }}
         session: ${{ transition.payload.session }}
-        artifacts: ${{ states.investigate.outputs.artifacts }}
+        presentation: >-
+          ${{ state_exists('prepare_review') ? states.prepare_review.outputs : null }}
+        artifacts: >-
+          ${{ state_exists('prepare_review') ? jq([states.prepare_review.outputs.documents,states.investigate.outputs.artifacts,transition.payload.result.?approval.orValue({}).?patch.orValue('')], '.[2] as $patch | .[0] + (.[1] | with_entries(select(.key == $patch)))') : states.investigate.outputs.artifacts }}
     prepare_review:
       sequence:
       - id: files
@@ -125,6 +134,7 @@ state:
         when: size(inputs.documents)>0 || size(inputs.document_details)>0 || inputs.primary != '' || inputs.summary.contains('[') || inputs.summary.contains('<')
         inputs:
           check: review_files
+          require_document_details: ${{ inputs.primary != '' || size(inputs.document_details)>0 || inputs.documents.exists(k,!(k in inputs.negotiations)) }}
           documents: ${{ inputs.documents }}
           title: ${{ inputs.title }}
           primary: ${{ inputs.primary }}
@@ -138,7 +148,21 @@ state:
                 status: changes
                 summary: ${{ failure.message }}
               artifacts: {}
+      - id: report
+        include: ./backstop-report.yaml
+        inputs:
+          request: ${{ inputs.request }}
+          problem: ${{ inputs.problem }}
+          response: ${{ inputs.response }}
+          documents: ${{ inputs.documents }}
+          negotiations: ${{ inputs.negotiations }}
+          document_metadata: ${{ sequence.?files.orValue({}).?outputs.orValue({}).?document_metadata.orValue({}) }}
+          valid: ${{ sequence.?files.orValue({}).?outputs.orValue({}).?result.orValue({'status':'passed'}).status == 'passed' }}
       inputs:
+        request: ${{ inputs.request }}
+        problem: ${{ inputs.problem }}
+        response: ${{ states.investigate.outputs.response }}
+        negotiations: ${{ jq(inputs.documents,'with_entries(select(.key|startswith("review/negotiations/")))') }}
         documents: ${{ jq([states.investigate.outputs.artifacts,inputs.documents],'(.[0] | with_entries(select(.key|startswith("review/")))) + (.[1] | with_entries(select(.key|startswith("review/negotiations/"))))')
           }}
         title: ${{ states.investigate.outputs.response.?title.orValue('Agent needs help') }}
@@ -149,28 +173,28 @@ state:
         document_details: ${{ states.investigate.outputs.response.?document_details.orValue([]) }}
       outputs:
         result: ${{ sequence.?files.orValue({}).?outputs.orValue({}).?result.orValue({'status':'passed'}) }}
-        documents: ${{ inputs.documents }}
-        primary: ${{ inputs.primary }}
+        documents: ${{ sequence.report.outputs.documents }}
+        primary: ${{ sequence.report.outputs.primary }}
         message: ${{ inputs.summary }}
-        document_metadata: ${{ sequence.?files.orValue({}).?outputs.orValue({}).?document_metadata.orValue({}) }}
+        document_metadata: ${{ sequence.report.outputs.document_metadata }}
       transitions:
       - to: discuss
         when: 'true'
     discuss:
       include: ./discussion.yaml
       inputs:
+        instructions: true
         request: '${{ jq([{''title'':''Backstop — '' + states.investigate.outputs.response.?title.orValue(''Agent
           needs help''),''question'':(states.prepare_review.outputs.result.status == ''passed'' ? states.prepare_review.outputs.message
-          : states.setup.outputs.text.unreadable + ''\n'' + states.prepare_review.outputs.result.summary),''documents'':states.prepare_review.outputs.result.status
-          == ''passed'' ? states.prepare_review.outputs.documents : {},''document_metadata'':states.prepare_review.outputs.result.status == ''passed'' ? states.prepare_review.outputs.document_metadata : {},''directions'':(states.assess.outputs.eligible
+          : states.setup.outputs.text.unreadable + ''\n'' + states.prepare_review.outputs.result.summary),''documents'':states.prepare_review.outputs.documents,''document_metadata'':states.prepare_review.outputs.document_metadata,''directions'':(states.assess.outputs.eligible
           && states.prepare_review.outputs.result.status == ''passed'' ? [{''id'':''continue'',''label'':inputs.problem.?loop.orValue('''')
           != '''' ? states.setup.outputs.text.retry + '' '' + string(states.investigate.outputs.response.?additional_attempts.orValue(null)
-          != null ? states.investigate.outputs.response.additional_attempts : 4) + '' '' + states.setup.outputs.text.attempts
+          != null ? states.investigate.outputs.response.additional_attempts : 1) + '' '' + (states.investigate.outputs.response.?additional_attempts.orValue(null) == null || states.investigate.outputs.response.additional_attempts == 1 ? states.setup.outputs.text.attempt : states.setup.outputs.text.attempts)
           : states.setup.outputs.text.continue,''feedback_mode'':''forbidden'',''allow_attachments'':false,''continues_review'':false}]
           : []) + [{''id'':''question'',''label'':states.setup.outputs.text.question,''feedback_mode'':''required'',''allow_attachments'':true,''continues_review'':true},{''id'':''revise'',''label'':states.setup.outputs.text.change,''feedback_mode'':''required'',''allow_attachments'':true,''continues_review'':false}]
           + (states.prepare_review.outputs.result.status == ''passed'' && size(states.prepare_review.outputs.documents)>0
           ? [{''id'':''annotate'',''label'':''Review doc comments'',''feedback_mode'':''required'',''allow_attachments'':true,''continues_review'':false}]
-          : []),''feedback'':{''label'':states.setup.outputs.text.message},''settings'':[states.setup.outputs.setting],''conversation'':[]},states.prepare_review.outputs.primary],
+          : []),''feedback'':{''label'':states.setup.outputs.text.message},''settings'':[states.setup.outputs.setting],''conversation'':states.turn.outputs.feedback.?conversation.orValue([])},states.prepare_review.outputs.primary],
           ''.[1] as $primary | .[0] + (if $primary != "" and (.[0].documents|has($primary)) then {overview_document_id:$primary} else {} end)'')
           }}'
         prompt: ${{ states.setup.outputs.text.task }}

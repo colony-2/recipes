@@ -10,7 +10,8 @@
             "files": {
               ".c2j-version": "source:1111111111111111111111111111111111111111",
               "scripts/install-c2j.sh": "#!/bin/sh\nmkdir -p \"$1/bin\"\nprintf \"fixture installer\\n\"\n",
-              "scripts/test-recipes.sh": "#!/bin/sh\nset -eu\ntest -f .c2j-version\ntest -f scripts/install-c2j.sh\nmkdir -p \"$1\"\nprintf \"report body\\n\" > \"$1/check.txt\"\nprintf \"candidate suite ran at repository root\\n\"\ntest ! -f fail-suite\n"
+              "scripts/test-recipes.sh": "#!/bin/sh\nset -eu\ntest -f .c2j-version\ntest -f scripts/install-c2j.sh\nmkdir -p \"$1\"\nprintf \"report body\\n\" > \"$1/check.txt\"\nprintf \"candidate suite ran at repository root\\n\"\ntest ! -f fail-suite\n",
+              "scripts/test-backstop.sh": "#!/bin/sh\nset -eu\nmkdir -p \"$1\"\nprintf \"focused report\\n\" > \"$1/backstop.txt\"\nprintf \"Backstop focused checks ran\\n\"\ntest ! -f fail-backstop\n"
             }
           }
         }
@@ -45,6 +46,10 @@
         {
           "type": "cel_true",
           "expr": "outputs.diagnostics.contains(\"Candidate:\") && outputs.diagnostics.contains(\"Runtime pin: source:\") && outputs.diagnostics.contains(\"candidate suite ran at repository root\")"
+        },
+        {
+          "type": "cel_true",
+          "expr": "outputs.diagnostics.contains(\"Backstop focused checks ran\")"
         }
       ]
     },
@@ -58,7 +63,8 @@
               ".c2j-version": "source:1111111111111111111111111111111111111111",
               "scripts/install-c2j.sh": "#!/bin/sh\nmkdir -p \"$1/bin\"\nprintf \"fixture installer\\n\"\n",
               "scripts/test-recipes.sh": "#!/bin/sh\nset -eu\ntest -f .c2j-version\ntest -f scripts/install-c2j.sh\nmkdir -p \"$1\"\nprintf \"report body\\n\" > \"$1/check.txt\"\nprintf \"candidate suite ran at repository root\\n\"\ntest ! -f fail-suite\n",
-              "fail-suite": "fail"
+              "fail-suite": "fail",
+              "scripts/test-backstop.sh": "#!/bin/sh\nset -eu\nmkdir -p \"$1\"\nprintf \"focused report\\n\" > \"$1/backstop.txt\"\nprintf \"Backstop focused checks ran\\n\"\ntest ! -f fail-backstop\n"
             }
           }
         }
@@ -97,6 +103,51 @@
         {
           "type": "cel_true",
           "expr": "outputs.diagnostics.contains(\"check.txt\")"
+        },
+        {
+          "type": "cel_true",
+          "expr": "outputs.diagnostics.contains(\"Backstop focused checks ran\")"
+        }
+      ]
+    },
+    {
+      "id": "early-backstop-failure-retains-focused-diagnostics",
+      "type": "integration_case",
+      "runtime": {
+        "cells": {
+          "root": {
+            "files": {
+              ".c2j-version": "source:1111111111111111111111111111111111111111",
+              "scripts/install-c2j.sh": "#!/bin/sh\nmkdir -p \"$1/bin\"\nprintf \"fixture installer\\n\"\n",
+              "scripts/test-recipes.sh": "#!/bin/sh\nset -eu\ntest -f .c2j-version\ntest -f scripts/install-c2j.sh\nmkdir -p \"$1\"\nprintf \"report body\\n\" > \"$1/check.txt\"\nprintf \"candidate suite ran at repository root\\n\"\ntest ! -f fail-suite\n",
+              "scripts/test-backstop.sh": "#!/bin/sh\nset -eu\nmkdir -p \"$1\"\nprintf \"focused report\\n\" > \"$1/backstop.txt\"\nprintf \"Backstop focused checks ran\\n\"\ntest ! -f fail-backstop\n",
+              "fail-backstop": "fail"
+            }
+          }
+        }
+      },
+      "mocks": {
+        "ops": [
+          {
+            "match": {
+              "op": "command_execution"
+            },
+            "repeat": true,
+            "behavior": {
+              "mode": "passthrough"
+            }
+          }
+        ]
+      },
+      "assertions": [
+        {
+          "type": "output_equals",
+          "path": "result.status",
+          "value": "failed"
+        },
+        {
+          "type": "cel_true",
+          "expr": "outputs.diagnostics.contains(\"Backstop focused checks ran\") && outputs.diagnostics.contains(\"backstop-focused/backstop.txt\") && !outputs.diagnostics.contains(\"candidate suite ran at repository root\")"
         }
       ]
     }

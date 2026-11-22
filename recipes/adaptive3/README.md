@@ -189,16 +189,42 @@ work and failing boundaries, using retained results and earlier attempts. It
 explains realistic options, owners, uncertainty and prerequisites. Authorized
 read-only investigation needs no extra approval.
 
-Both recovery responses require nullable `action` and `stage` fields. A nonblank
-available action and an allowed destination gate automatic resume and Apply;
-a destination alone grants no work. Apply also requires readable presentation.
-Automatic corrections retain existing authority and finite limits. Diagnosis or
-externally blocked repairs stay open for discussion without Apply or extra
-attempts. Human approval cannot supply missing routes, credentials or deployment.
-Questions and correction-destination edits grant no stage work or attempts.
-Apply accepts the displayed correction with no new feedback or uploads. Request
-changes reopens the diagnosis; a replaced action needs a fresh decision. Human
-cancellation remains terminal.
+Backstop can return to Configure, Direction, Preparation, Implementation, Outcome or
+Integration when the destination has its native entry prerequisites. An earlier
+failure does not restrict the destination vocabulary. The accepted Preparation packet, or the current Direction on the short path,
+establishes the basis for Implementation. A changed plan or candidate makes historical verification and acceptance ineligible.
+Configure retains the intended destination. Prior-job restoration retains its
+existing inspected approval/publication recovery contract.
+
+Both recovery responses require nullable `action`, `stage`, `instruction`,
+`destination` and `report` fields. A concrete available action and an eligible
+stage gate automatic resume and Apply. A destination alone supplies no missing
+plan, route, credentials or publication authority. Automatic correction defaults
+to one extra pass; explicit integer allowances remain 1–20. Only the matching
+paused loop is extended. Phase visits retain the counters for unchanged work;
+two consecutive automatic recoveries remain finite.
+
+When help is needed, the primary report explains requester/rationale, completed
+work and effects, the blocker and failed approaches, options with prerequisites,
+a recommendation and useful research. Unknowns are explicit. A native report
+remains readable after diagnosis or supporting-file validation failure; invalid
+supporting files still disable Apply. `review/backstop-report.md` is reserved for
+this report. Selected agent files remain supporting evidence.
+
+**Give instructions** supplies native human authority for the precise request.
+A clear instruction can also arrive through Ask a question; informational and
+hypothetical questions remain discussion. Preserve original words, notes and
+receipts. Requirement changes return to Direction and update the affected plan.
+After validation confirms exactly that amendment, reuse its native receipt
+and present the revised design and acceptance criteria at Preparation. Outcome and merge reviews
+remain separate. Ambiguity, conflicting destinations or additional consequential
+choices need clarification. A newly dispatched human action renews a finite
+allowance; replaying the same native receipt does not renew it again.
+
+Cancellation stays manual under the latest human scope. Prefer a return within
+this job; an
+exceptional explicit separate-job request can be routed to execution using the
+existing create-job operation. Creating a job does not cancel this source.
 
 Human checkpoints use Cortex `review/v2`. Ask a question keeps the original
 documents and logical review identity, saves the exact contribution and native

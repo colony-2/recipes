@@ -54,7 +54,7 @@ Agent decisions are scripted unless a case is explicitly marked live.
 - **A3-41 · critical · integration · c2j:** Continue with text or annotations is reconsidered before Backstop resumes a stage. (`backstop.test.yaml`)
 - **A3-42 · high · integration · c2j/Cortex:** Questions keep review pending and expose working feedback and attachment controls. (`review.test.yaml`, `backstop.test.yaml`, `consumer/feedback.test.tsx`)
 - **A3-43 · critical · integration · c2j:** Declining tools launches no probe and returns the original human notes to the requester. (`packages.test.yaml`)
-- **A3-44 · high · unit/integration · Python/cmark:** Missing correction links cannot become an actionable approval; useful attached corrections can open first. (`test_tools.py`, `backstop.test.yaml`)
+- **A3-44 · high · unit/integration · Python/cmark:** Missing correction links cannot authorize work; the native diagnosis opens before useful supporting corrections. (`test_tools.py`, `backstop.test.yaml`)
 - **A3-45 · critical · integration · c2j/Git/Nix:** Foreign includes require explicit input-secret authorization and cannot exceed the caller's ceiling. (`reuse-permissions.test.yaml`)
 - **A3-46 · high · integration · c2j:** Successful diagnostic collection returns negative findings to the requester; required acceptance probes fail on negative results. (`child-recovery.test.yaml`, `diagnostic-child.test.yaml`)
 - **A3-47 · critical · worker integration · Nix/Python/cmark:** The shipped validator imports its declared libraries, parses Markdown and decodes images in separate task environments. (`guides/repros/validator-environment-check.yaml`)
@@ -95,7 +95,7 @@ Agent decisions are scripted unless a case is explicitly marked live.
 | Invalid coverage, text, primary agreement or native presentation size returns correction findings before human review. | `test_tools.py`, `tools.test.yaml` | critical | unit/integration; Pillow, cmark, c2j |
 | Corrected metadata receives full validation and reaches exactly one human review. | `lifecycle.test.yaml`, `cycle.test.yaml` | critical | integration; c2j |
 | Replacement, reuse and question replies retain only the selected documents and their current descriptions. | `cycle.test.yaml`, `review.test.yaml` | critical | integration; c2j |
-| Tool and recovery reviews require checked details; failed preparation remains a document-free question. | `packages.test.yaml`, `backstop.test.yaml`, `resume.test.yaml` | critical | integration; c2j |
+| Tool reviews require checked details; Backstop retains a readable native report when supporting-file preparation fails. | `packages.test.yaml`, `backstop.test.yaml`, `resume.test.yaml` | critical | integration; c2j |
 | Generated forms display explicit titles, purposes and roles through the real reader while preserving drafts. | `consumer/feedback.test.tsx` | critical | integration; Cortex, locked UI tools |
 | Independent validation rejects misleading titles and irrelevant purposes with concrete rewrites, then accepts corrected descriptions. | `../../guides/repros/misleading-document-details-check.yaml` | critical | live worker integration; c2j, Codex |
 
@@ -186,3 +186,29 @@ critical, integration, pinned c2j.)
 | A short assignment goes directly to implementation and requires human Outcome acceptance. | adaptive3.yaml | High | Integration, c2j |
 | A receiving owner can request evidence or propose an alternative. Delivery starts only on mutually agreed terms. | recipes/adaptive3/consultation.yaml | High | Integration, c2j |
 | Parent and child reviews expose each relevant request, its origin, the agreement and its transcript even when delivery stalls. | recipes/adaptive3/consultation.yaml, recipes/adaptive3/backstop.yaml | High | Integration, c2j |
+
+## Backstop human instructions and current-job recovery
+
+The latest human direction defers native cancellation and supersession. Cancellation
+stays manual; prefer phase returns within this job. These expectations supplement
+the earlier recovery checks and supersede their report-free fallback expectations.
+All filenames below are relative to `recipe-tests/adaptive3/`.
+
+| Expectation | Files | Importance | Coverage and dependencies |
+| --- | --- | --- | --- |
+| Clear human instructions return once with original words and a native receipt, without a second Apply. | `backstop-instructions.test.yaml` | critical | integration; c2j |
+| Polite instructions through Ask a question can authorize the precise correction; informational questions remain discussion. | `backstop-instructions.test.yaml`, `backstop.test.yaml` | critical | integration; c2j |
+| A validated scope amendment returns to Preparation for approval of the revised plan. | `backstop-amendment.test.yaml` | critical | integration; c2j |
+| Changed Direction, plans or candidates block later returns that depend on superseded results. | `backstop-policy.test.yaml` | critical | integration; c2j |
+| Short-path recovery uses the current Direction. An Outcome from a superseded plan cannot authorize integration of the same candidate. | `backstop-policy.test.yaml` | critical | integration; c2j |
+| Current native prerequisites permit forward returns; missing prerequisites withhold Apply. | `backstop-instructions.test.yaml`, `backstop-policy.test.yaml` | critical | integration; c2j |
+| Amendment validation reads original attached notes while retaining the current revised direction. | `backstop-validation-notes.test.yaml` | critical | integration; c2j |
+| Configure recovery retains its selected next phase after configuration completes. | `backstop-configure.test.yaml` | high | integration; c2j |
+| An extra pass extends only the paused loop at its matching phase. | `backstop-return.test.yaml`, `renewal.test.yaml` | critical | integration; c2j |
+| Phase changes and replayed human receipts cannot renew automatic allowances indefinitely. | `backstop-return.test.yaml`, `renewal.test.yaml` | critical | integration; c2j |
+| Escalation shows origin, progress, blocker, options and research; agent failure retains a readable stored report. | `backstop-instructions.test.yaml`, `consumer/browser-backstop.yaml` | high | integration; c2j, Cortex, Chromium |
+| Removing the phone criterion refreshes Direction, Preparation, verification and Outcome acceptance while browser validation remains required. | `backstop-scope-flow.test.yaml` | critical | integration; c2j |
+| Backstop checks run before the repository suite; early failures retain focused diagnostics. | `repository-verify.test.yaml`, `../repository-verify.test.yaml` | high | integration; c2j, Nix |
+| Provider failures retain a readable report and reject unavailable model-setting edits. | `models.test.yaml` | critical | integration; c2j |
+| Human cancellation stays terminal and cannot trigger automatic replacement. | `cancellation.test.yaml` | critical | integration; c2j |
+| Prior-job Configure recovery defaults omitted or null destinations to Direction without consuming another recovery attempt. | `backstop-configure-recovery.test.yaml` | critical | integration; c2j |

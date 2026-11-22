@@ -1,5 +1,6 @@
 id: adaptive3-discussion
 inputs:
+  instructions: ${{ inputs.?instructions.orValue(false) }}
   request: ${{ inputs.request }}
   prompt: ${{ inputs.prompt }}
   schema: ${{ inputs.schema }}
@@ -64,8 +65,7 @@ state:
         prompt: |-
           {{ inputs.prompt }}
           Answer the latest question directly, using the complete ordered discussion below.
-          This is discussion only. Do not revise documents, approve work, move stages,
-          replenish attempts, or apply a correction, even if your answer proposes one.
+          ${{ inputs.instructions ? 'For Backstop, interpret intent in context. A polite request can be an instruction even on Ask a question. If the human clearly instructs a correction, return resume with instruction describing that exact change and its scope_change flag. Do not execute it here; the caller checks authority and entry prerequisites. An informational or hypothetical question remains discussion: return ask with instruction null. Cancellation remains manual; prefer recovery in this job. Read attached notes before interpreting intent.' : 'This is discussion only. Do not revise documents, approve work, move stages, replenish attempts, or apply a correction, even if your answer proposes one.' }}
           Return the actual answer in summary. Read original documents and all discussion
           attachments in inbox/work/; feedback files have separate per-request paths.
           ${{ json_stringify(states.record.outputs.conversation) }}
@@ -75,6 +75,11 @@ state:
         read_only: true
         agent_settings: ${{ inputs.agent_settings }}
       transitions:
+      - to: done
+        when: inputs.instructions && outputs.response.status == 'resume' && outputs.response.?instruction.orValue(null) != null
+        payload:
+          session: ${{ outputs.session }}
+          interpretation: ${{ outputs.response }}
       - to: append_answer
         when: 'true'
     append_answer:
@@ -104,10 +109,13 @@ state:
         session: ${{ inputs.session }}
         conversation: ${{ inputs.record.conversation }}
         documents: ${{ inputs.record.documents }}
+        interpretation: ${{ inputs.interpretation }}
       inputs:
         record: ${{ states.record.outputs }}
-        session: ${{ states.build.outputs.session }}
+        interpretation: ${{ transition.payload.?interpretation.orValue({}) }}
+        session: ${{ transition.payload.?session.orValue(states.build.outputs.session) }}
 outputs:
+  interpretation: ${{ states.done.outputs.interpretation }}
   session: ${{ states.done.outputs.session }}
   native: ${{ states.done.outputs.native }}
   conversation: ${{ states.done.outputs.conversation }}

@@ -1,0 +1,85 @@
+recipe: backstop-return.yaml
+cases:
+- id: matching-paused-loop-gets-one-extra-pass
+  type: integration_case
+  runtime: {}
+  inputs:
+    result:
+      status: resume
+      stage: implementation
+      additional_attempts: 1
+    problem: &id001
+      loop: work
+      budget: &id002
+        stage: implementation
+        counts:
+          work: 3
+        limits:
+          work: 3
+  assertions:
+  - type: cel_true
+    expr: outputs.result.budget.limits.work==4 && outputs.result.budget.counts.work==3
+  - type: cel_true
+    expr: outputs.automatic_used==1
+- id: phase-hop-does-not-replenish-another-budget
+  type: integration_case
+  runtime: {}
+  inputs:
+    result:
+      status: resume
+      stage: direction
+      additional_attempts: 1
+    problem: *id001
+  assertions:
+  - type: cel_true
+    expr: '!has(outputs.result.budget)'
+  - type: cel_true
+    expr: outputs.automatic_used==1
+- id: new-human-instruction-renews-finite-automatic-allowance
+  type: integration_case
+  runtime: {}
+  inputs:
+    result:
+      status: resume
+      stage: implementation
+      additional_attempts: 1
+      human:
+        receipt:
+          submission_id: native-2
+    problem: *id001
+    automatic_used: 2
+    last_authorization: {submission_id: native-1}
+  assertions:
+  - type: cel_true
+    expr: outputs.automatic_used==0 && outputs.authorization.submission_id=="native-2"
+- id: duplicate-human-receipt-does-not-renew-allowance
+  type: integration_case
+  runtime: {}
+  inputs:
+    result:
+      status: resume
+      stage: implementation
+      additional_attempts: 1
+      human:
+        receipt:
+          submission_id: native-1
+    problem: *id001
+    automatic_used: 2
+    last_authorization: {submission_id: native-1}
+  assertions:
+  - type: cel_true
+    expr: outputs.automatic_used==3 && outputs.authorization.submission_id=="native-1"
+- id: merge-allowance-does-not-change-for-direction
+  type: integration_case
+  runtime: {}
+  inputs:
+    result:
+      status: resume
+      stage: direction
+      additional_attempts: 1
+    problem:
+      loop: merge
+      budget: *id002
+  assertions:
+  - type: cel_true
+    expr: outputs.merge_limit==3 && !has(outputs.result.budget)

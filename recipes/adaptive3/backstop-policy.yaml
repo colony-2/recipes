@@ -1,0 +1,24 @@
+# Derive entry eligibility from current native lifecycle outputs. No validity ledger.
+id: adaptive3-backstop-policy
+inputs:
+  direction: ${{ inputs.direction }}
+  preparation: ${{ inputs.preparation }}
+  implementation: ${{ inputs.implementation }}
+  outcome: ${{ inputs.outcome }}
+  publication_recovery: ${{ inputs.?publication_recovery.orValue(false) }}
+  prior_job_recovery: ${{ inputs.?prior_job_recovery.orValue(false) }}
+sequence: []
+outputs:
+  prerequisites: >-
+    ${{ inputs.prior_job_recovery ? {} : jq([inputs.direction,inputs.preparation,inputs.implementation,inputs.outcome,inputs.publication_recovery], vars.program) }}
+vars:
+  program: |
+    .[0] as $d | .[1] as $p | .[2] as $i | .[3] as $o | .[4] as $publication |
+    ($d.result.status == "accepted") as $direction |
+    ($direction and $p.result.status == "accepted" and $p.basis == {result:$d.result,documents:$d.documents}) as $preparation |
+    ($direction and $d.short_path == true) as $short |
+    (if $short then $d else $p end | {result,documents}) as $implementation_basis |
+    (($preparation or $short) and $i.result.status == "accepted" and $i.basis == $implementation_basis) as $implementation |
+    {configure:true, direction:true, preparation:$direction, implementation:($preparation or $short),
+     outcome:$implementation,
+     integration:($implementation and $o.result.receipt != null and $o.basis == {basis:$i.basis,candidate:$i.candidate,verification:$i.verification}) or $publication}

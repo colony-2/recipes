@@ -78,15 +78,15 @@ const test = base.extend<{
 
     try {
       mkdirSync(join(repo, '.c2/recipes'), { recursive: true });
-      copyFileSync(recipeFixture==='browser-legacy-review' ? resolve('tests/fixtures/recipes/browser-review.yaml') : recipeFixture==='browser-review-workflow' ? resolve(process.env.ADAPTIVE3_BROWSER_SOURCE!,'browser-review-workflow.yaml') : resolve(process.env.ADAPTIVE3_BROWSER_FIXTURE!), join(repo, '.c2/recipes/browser-input.yaml'));
+      copyFileSync(recipeFixture==='browser-legacy-review' ? resolve('tests/fixtures/recipes/browser-review.yaml') : recipeFixture==='browser-backstop' ? resolve(process.env.ADAPTIVE3_BROWSER_SOURCE!,'browser-backstop.yaml') : recipeFixture==='browser-review-workflow' ? resolve(process.env.ADAPTIVE3_BROWSER_SOURCE!,'browser-review-workflow.yaml') : resolve(process.env.ADAPTIVE3_BROWSER_FIXTURE!), join(repo, '.c2/recipes/browser-input.yaml'));
       copyFileSync(resolve(process.env.ADAPTIVE3_FORM_HELPER!), join(repo, '.c2/recipes/review-v2.yaml'));
       mkdirSync(join(repo,'recipes/review-v2'),{recursive:true});
       copyFileSync(resolve(process.env.ADAPTIVE3_REVIEW_SOURCE!,'review-v2/op.yaml'),join(repo,'recipes/review-v2/op.yaml'));
       copyFileSync(resolve(process.env.ADAPTIVE3_REVIEW_SOURCE!,'review-v2.py'),join(repo,'recipes/review-v2.py'));
       mkdirSync(join(repo,'.c2/recipes/adaptive3/prompts'),{recursive:true});
-      for(const file of ['review.yaml','discussion.yaml','review-policy.yaml','schemas.yaml','tools.yaml','prompts/review.yaml'])
+      for(const file of ['review.yaml','discussion.yaml','review-policy.yaml','schemas.yaml','tools.yaml','prompts/review.yaml','backstop.yaml','backstop-report.yaml','prompts/backstop.yaml'])
         copyFileSync(resolve(process.env.ADAPTIVE3_REVIEW_SOURCE!,'adaptive3',file),join(repo,'.c2/recipes/adaptive3',file));
-      copyFileSync(resolve(process.env.ADAPTIVE3_BROWSER_SOURCE!,'scripted-agent.yaml'),join(repo,'.c2/recipes/adaptive3/agent.yaml'));
+      copyFileSync(resolve(process.env.ADAPTIVE3_BROWSER_SOURCE!,recipeFixture==='browser-backstop'?'scripted-backstop-agent.yaml':'scripted-agent.yaml'),join(repo,'.c2/recipes/adaptive3/agent.yaml'));
       copyFileSync(resolve('tests/fixtures/recipes/browser-document-producer.yaml'), join(repo, '.c2/recipes/producer.yaml'));
       const git = (...args: string[]) => execFileSync('git', ['-C', repo, ...args], { stdio: 'pipe' });
       git('init', '-b', 'main');
@@ -398,5 +398,39 @@ test.describe('frozen legacy review control',()=>{
   await page.reload();
   await expect(page.getByText('Immutable original',{exact:true})).toBeVisible();
   await page.screenshot({path:info.outputPath('adaptive3-legacy.png'),fullPage:true});
+ });
+});
+
+
+test.describe('Backstop recovery', () => {
+ test.use({recipeFixture:'browser-backstop'});
+ test('native report and instructions keep the correction in this job', async ({page,request,recipeRun},info) => {
+  const {tenant,jobID}=recipeRun;
+  await page.goto(`/project/${tenant}/reviews/${jobID}`);
+  await expect(page.getByRole('button',{name:'Give instructions',exact:true})).toBeVisible();
+  await expect(page.getByRole('heading',{name:'Backstop diagnosis and options',exact:true})).toBeVisible();
+  const initial=await (await request.get(`/api/projects/${tenant}/user-inputs/${jobID}`)).json();
+  expect(initial.form.request.documents['review/backstop-report.md'].kind).toBe('stored');
+  expect(initial.form.request.overview_document_id).toBe('review/backstop-report.md');
+  await page.setViewportSize({width:1280,height:2000});
+  await page.screenshot({path:info.outputPath('backstop-report.png'),fullPage:true});
+  await page.setViewportSize({width:1280,height:900});
+  await page.getByRole('button',{name:'Give instructions',exact:true}).click();
+  await page.getByLabel('Question or requested change (required)',{exact:true}).fill('Remove only the phone acceptance criterion. Keep browser validation.');
+  await page.getByRole('button',{name:'Review settings',exact:true}).click();
+  const dialog=page.getByRole('dialog');
+  await expect(dialog.getByLabel('Return to',{exact:true})).toBeVisible();
+  await expect(dialog.getByLabel('Return to',{exact:true}).locator('option')).toHaveText(['Choose a value','Auto','configure','direction','preparation','implementation']);
+  await dialog.getByLabel('Return to',{exact:true}).selectOption({label:'direction'});
+  await page.screenshot({path:info.outputPath('backstop-return-settings.png')});
+  await dialog.getByRole('button',{name:'Done',exact:true}).click();
+  await page.getByRole('button',{name:'Send · Give instructions',exact:true}).click();
+  await expect.poll(async()=>{
+   const r=await request.get(`/api/projects/${tenant}/jobs/${jobID}/outcome`);
+   return r.status()===200?(await r.json()).output?.result?.stage:null;
+  },{timeout:90000}).toBe('direction');
+  const outcome=await (await request.get(`/api/projects/${tenant}/jobs/${jobID}/outcome`)).json();
+  expect(outcome.output.result.amendment.human.receipt.submission_id).toBeTruthy();
+  expect(outcome.output.result.amendment.human.response.feedback).toBe('Remove only the phone acceptance criterion. Keep browser validation.');
  });
 });
