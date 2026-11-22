@@ -2,7 +2,7 @@ recipe: consultation.yaml
 cases:
 - id: inline-owner-advice
   type: integration_case
-  runtime:
+  runtime: &owner_cells
     cells:
       root:
         files:
@@ -16,7 +16,8 @@ cases:
     request: Can we retain old saves?
   mocks:
     ops:
-    - match:
+    - &counteroffer
+      match:
         selector: nix:github:colony-2/c2ops/published#codex
       behavior:
         mode: return
@@ -36,7 +37,8 @@ cases:
               type: c2ops.codex.session/v1
               metadata:
                 label: I suggest keeping three distinct saves.
-    - match:
+    - &valid_advice
+      match:
         selector: nix:github:colony-2/c2ops/published#codex
       behavior:
         mode: return
@@ -52,7 +54,19 @@ cases:
               type: c2ops.codex.session/v1
               metadata:
                 label: Checked the assignment.
-    - match:
+    - &agree_terms
+      match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: agree
+            summary: These terms solve the consumer need.
+    - &run_command
+      match:
         op: command_execution
       repeat: true
       behavior:
@@ -64,6 +78,8 @@ cases:
     expr: '!calls.exists(c,c.op=="recipes.run")'
   - type: cel_true
     expr: calls.exists(c,c.cell=="storage" && c.op=="extension_execution")
+  - type: cel_true
+    expr: outputs.agreement.documents.exists(k,k.endsWith("/report.md")) && outputs.agreement.documents.exists(k,k.endsWith("/transcript.md"))
 - id: nested-owner-advice
   type: integration_case
   runtime:
@@ -176,6 +192,16 @@ cases:
               metadata:
                 label: Checked the assignment.
     - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: agree
+            summary: These terms solve the consumer need.
+    - match:
         op: command_execution
       repeat: true
       behavior:
@@ -240,6 +266,16 @@ cases:
               type: c2ops.codex.session/v1
               metadata:
                 label: Checked the assignment.
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: agree
+            summary: These terms solve the consumer need.
     - match:
         op: recipes.run
       behavior:
@@ -326,6 +362,16 @@ cases:
               metadata:
                 label: Checked the assignment.
     - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: agree
+            summary: These terms solve the consumer need.
+    - match:
         op: recipes.run
       behavior:
         mode: return
@@ -410,6 +456,16 @@ cases:
               type: c2ops.codex.session/v1
               metadata:
                 label: Checked the assignment.
+    - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: agree
+            summary: These terms solve the consumer need.
     - match:
         op: recipes.run
       behavior:
@@ -515,6 +571,16 @@ cases:
               metadata:
                 label: Checked the assignment.
     - match:
+        selector: nix:github:colony-2/c2ops/published#codex
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: agree
+            summary: These terms solve the consumer need.
+    - match:
         op: recipes.run
       behavior:
         mode: return
@@ -553,3 +619,56 @@ cases:
       a descriptive title"))
   - type: cel_true
     expr: calls.exists(c,c.op=="recipes.run" && c.inputs.recipes[0].title=="Retain three distinct saves")
+- id: requester-answers-before-agreeing
+  type: integration_case
+  runtime: *owner_cells
+  inputs:
+    cell: storage
+    request: Can the save API help us restore a draft?
+  mocks:
+    ops:
+    - match: {selector: 'nix:github:colony-2/c2ops/published#codex'}
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response: {status: ready, negotiation_reply: question, summary: "Which version was lost?", document_details: []}
+    - *valid_advice
+    - match: {selector: 'nix:github:colony-2/c2ops/published#codex'}
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response: {status: reply, summary: The previous autosave disappears after reopening.}
+    - *counteroffer
+    - *valid_advice
+    - *agree_terms
+    - *run_command
+  assertions:
+  - type: cel_true
+    expr: outputs.agreement.assignment.contains("three distinct saves") && !calls.exists(c,c.op=="recipes.run")
+  - type: cel_true
+    expr: >-
+      calls.exists(c,c.node_path.endsWith("/write") && c.inputs.env.CONTENT.contains("previous autosave")
+      && c.inputs.env.CONTENT.contains("Which version was lost?") && c.inputs.env.CONTENT.contains("These terms solve the consumer need."))
+- id: requester-declines-delivery
+  type: integration_case
+  runtime: *owner_cells
+  inputs: {cell: storage, request: Retain every version., mode: delivery}
+  mocks:
+    ops:
+    - *counteroffer
+    - *valid_advice
+    - match: {selector: 'nix:github:colony-2/c2ops/published#codex'}
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response: {status: close, summary: The existing API covers our actual case.}
+    - *run_command
+  assertions:
+  - type: cel_true
+    expr: outputs.agreement.assignment=="" && !calls.exists(c,c.op=="recipes.run")

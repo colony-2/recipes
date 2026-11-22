@@ -1,5 +1,8 @@
 id: adaptive3-consultation
 inputs:
+  objective: ${{ inputs.?objective.orValue(inputs.request) }}
+  requester: ${{ inputs.?requester.orValue({}) }}
+  agreements: ${{ inputs.?agreements.orValue([]) }}
   cell: ${{ inputs.cell }}
   request: ${{ inputs.request }}
   documents: ${{ inputs.?documents.orValue({}) }}
@@ -14,15 +17,33 @@ state:
     when: inputs.job != ''
   - to: local
     when: inputs.cell == context.workspace.cell
+  - to: reuse
+    when: inputs.mode == 'delivery' && size(vars.matches) == 1
   - to: call
     when: 'true'
   states:
+    reuse:
+      inputs:
+        agreement: ${{ vars.matches[0] }}
+      sequence: []
+      outputs:
+        agreement: ${{ inputs.agreement }}
+      transitions:
+      - to: wait
+        when: nonempty(outputs.agreement.?job.orValue(''))
+      - to: submit
+        when: 'true'
+        payload:
+          agreement: ${{ outputs.agreement }}
     call:
       inputs:
         cell: ${{ transition.payload.?cell.orValue(inputs.cell) }}
         request: ${{ transition.payload.?request.orValue(inputs.request) }}
         documents: ${{ transition.payload.?documents.orValue(inputs.documents) }}
         feedback: ${{ transition.payload.?feedback.orValue(inputs.feedback) }}
+        turns: ${{ transition.payload.?turns.orValue([]) }}
+        requester_session: ${{ transition.payload.?requester_session.orValue(inputs.requester) }}
+        sender: ${{ transition.payload.?sender.orValue(context.workspace.cell) }}
         mode: ${{ transition.payload.?mode.orValue(inputs.mode) }}
         parents: ${{ transition.payload.?parents.orValue([]) }}
         used: ${{ transition.payload.?used.orValue(0) }}
@@ -31,8 +52,7 @@ state:
       - id: prompts
         include: ./prompts/consultation.yaml
         inputs:
-          sender: '${{ size(inputs.parents)>0 ? inputs.parents[size(inputs.parents)-1].cell : context.workspace.cell
-            }}'
+          sender: ${{ inputs.sender }}
           request: ${{ inputs.request }}
           feedback: ${{ inputs.feedback }}
       outputs:
@@ -45,6 +65,9 @@ state:
         used: ${{ inputs.used }}
         prompt: ${{ sequence.prompts.outputs.task }}
         session: ${{ inputs.session }}
+        turns: ${{ inputs.turns }}
+        sender: ${{ inputs.sender }}
+        requester_session: ${{ inputs.requester_session }}
       transitions:
       - to: stuck
         when: outputs.used >= vars.limit || size(outputs.parents) >= 4
@@ -54,7 +77,10 @@ state:
       include: ./cycle.yaml
       inputs:
         purpose: advice
-        request: ${{ states.call.outputs.prompt }}
+        request: |-
+          {{ states.call.outputs.prompt }}
+          Parent objective: {{ inputs.objective }}
+          Previous turns on this request: ${{ json_stringify(states.call.outputs.turns) }}
         documents: ${{ states.call.outputs.documents }}
         feedback: ${{ states.call.outputs.feedback }}
         agent_settings: ${{ inputs.agent_settings }}
@@ -70,6 +96,9 @@ state:
           cell: ${{ states.call.outputs.cell }}
           request: ${{ states.call.outputs.request }}
           mode: ${{ states.call.outputs.mode }}
+          turns: ${{ states.call.outputs.turns }}
+          sender: ${{ states.call.outputs.sender }}
+          requester_session: ${{ states.call.outputs.requester_session }}
           parents: ${{ states.call.outputs.parents }}
           documents: ${{ outputs.documents }}
           feedback:
@@ -83,9 +112,11 @@ state:
           cell: ${{ outputs.result.consultation.cell }}
           request: ${{ outputs.result.consultation.request }}
           mode: advice
+          sender: ${{ states.call.outputs.cell }}
+          requester_session: ${{ outputs.session }}
           documents: ${{ outputs.documents }}
           feedback: {}
-          parents: ${{ states.call.outputs.parents + [{'cell':states.call.outputs.cell,'request':states.call.outputs.request,'mode':states.call.outputs.mode,'documents':states.call.outputs.documents,'session':outputs.session,'used':states.call.outputs.used+1}]
+          parents: ${{ states.call.outputs.parents + [{'cell':states.call.outputs.cell,'request':states.call.outputs.request,'mode':states.call.outputs.mode,'documents':states.call.outputs.documents,'session':outputs.session,'used':states.call.outputs.used+1,'turns':states.call.outputs.turns,'sender':states.call.outputs.sender,'requester_session':states.call.outputs.requester_session}]
             }}
           used: 0
       - to: call
@@ -94,23 +125,132 @@ state:
           cell: ${{ states.call.outputs.cell }}
           request: ${{ states.call.outputs.request }}
           mode: ${{ states.call.outputs.mode }}
+          turns: ${{ states.call.outputs.turns }}
+          sender: ${{ states.call.outputs.sender }}
+          requester_session: ${{ states.call.outputs.requester_session }}
           parents: ${{ states.call.outputs.parents }}
           documents: ${{ outputs.documents }}
           feedback: ${{ outputs.result }}
           used: ${{ states.call.outputs.used+1 }}
           session: ${{ outputs.session }}
+      - to: record
+        when: outputs.result.status != 'accepted' && size(states.call.outputs.parents)==0
+        payload:
+          turns: ${{ states.call.outputs.turns + [{'cell':states.call.outputs.sender,'text':states.call.outputs.request},{'cell':inputs.cell,'text':outputs.result.summary}] }}
+          resolution: ${{ outputs.result.summary }}
+          assignment: ''
+          unresolved: true
       - to: stuck
         when: outputs.result.status != 'accepted'
+      - to: owner_reply
+        when: 'true'
+    owner_reply:
+      sequence: []
+      inputs:
+        turns: >-
+          ${{ states.call.outputs.turns + [{'cell':states.call.outputs.sender,'text':states.call.outputs.request},
+            {'cell':states.call.outputs.cell,'text':states.advice.outputs.work.summary + (nonempty(states.advice.outputs.work.?assignment.orValue('')) ? '\nProposed assignment: ' + states.advice.outputs.work.assignment : '')}] }}
+      outputs:
+        turns: ${{ inputs.turns }}
+      transitions:
+      - to: respond
+        when: states.advice.outputs.work.?negotiation_reply.orValue('') in ['question','alternative'] ||
+          (nonempty(states.advice.outputs.work.?assignment.orValue('')) && states.advice.outputs.work.assignment != states.call.outputs.request
+          && (size(states.call.outputs.parents)==0 || states.advice.outputs.work.?work_kind.orValue('') != 'explanation'))
+      - to: record
+        when: 'true'
+        payload:
+          turns: ${{ outputs.turns }}
+          resolution: ${{ states.advice.outputs.work.summary }}
+          assignment: ${{ states.advice.outputs.work.?assignment.orValue('') }}
+    respond:
+      include: ./agent.yaml
+      workspace:
+        cell: ${{ states.call.outputs.sender }}
+      inputs:
+        prompt: |-
+          You represent the requesting cell. Parent objective: {{ inputs.objective }}
+          Read the receiving owner's actual reply and proposed terms below. Answer its question,
+          give concrete evidence of any remaining gap, agree to the exact offered assignment,
+          or close this request with the reason. Accept an alternative only if it serves the
+          parent outcome. Return reply, agree, or close with your words in summary.
+          ${{ json_stringify(states.owner_reply.outputs.turns) }}
+        session: ${{ states.call.outputs.requester_session }}
+        read_only: true
+        documents: ${{ states.advice.outputs.documents }}
+        agent_settings: ${{ inputs.agent_settings }}
+        schema:
+          type: object
+          additionalProperties: false
+          properties:
+            status: {type: string, enum: [reply, agree, close]}
+            summary: {type: string, minLength: 1, maxLength: 4000}
+          required: [status, summary]
+      transitions:
+      - to: call
+        when: outputs.response.status == 'reply' && states.call.outputs.used+1 < vars.limit
+        payload:
+          cell: ${{ states.call.outputs.cell }}
+          request: ${{ outputs.response.summary }}
+          turns: ${{ states.owner_reply.outputs.turns }}
+          sender: ${{ states.call.outputs.sender }}
+          requester_session: ${{ outputs.session }}
+          parents: ${{ states.call.outputs.parents }}
+          mode: ${{ states.call.outputs.mode }}
+          documents: ${{ states.advice.outputs.documents }}
+          session: ${{ states.advice.outputs.session }}
+          used: ${{ states.call.outputs.used+1 }}
+      - to: record
+        when: 'true'
+        payload:
+          turns: ${{ states.owner_reply.outputs.turns + [{'cell':states.call.outputs.sender,'text':outputs.response.summary}] }}
+          resolution: ${{ states.advice.outputs.work.summary + '\n' + outputs.response.summary }}
+          assignment: >-
+            ${{ outputs.response.status == 'agree' ? states.advice.outputs.work.?assignment.orValue('') : '' }}
+          unresolved: ${{ !(outputs.response.status in ['agree','close']) }}
+    record:
+      include: ./negotiation-report.yaml
+      inputs:
+        owner: ${{ states.call.outputs.cell }}
+        objective: ${{ inputs.objective }}
+        turns: ${{ transition.payload.turns }}
+        resolution: ${{ transition.payload.resolution }}
+        assignment: ${{ transition.payload.assignment }}
+        unresolved: ${{ transition.payload.?unresolved.orValue(false) }}
+      transitions:
+      - to: negotiated
+        when: 'true'
+    negotiated:
+      sequence: []
+      inputs:
+        agreement:
+          cell: ${{ states.call.outputs.cell }}
+          work: ${{ jq(states.advice.outputs.work,'{title,delivery_recipe}|with_entries(select(.value != null))') }}
+          support: ${{ jq(states.advice.outputs.documents,'with_entries(select(.key | startswith("review/negotiations/") | not))') }}
+          documents: ${{ states.record.outputs.documents }}
+          thread: ${{ states.record.outputs.thread }}
+          objective: ${{ states.record.outputs.objective }}
+          resolution: ${{ states.record.outputs.resolution }}
+          assignment: ${{ states.record.outputs.assignment }}
+      outputs:
+        agreement: ${{ inputs.agreement }}
+      transitions:
       - to: return_to_owner
         when: size(states.call.outputs.parents)>0
+        payload:
+          result: >-
+            ${{ jq([states.advice.outputs.work,{'assignment':outputs.agreement.assignment,'summary':states.record.outputs.resolution}],'add') }}
+          documents: ${{ jq([states.advice.outputs.documents,outputs.agreement.documents],'add') }}
       - to: submit
-        when: states.call.outputs.mode == 'delivery' && has(outputs.work.assignment) && outputs.work.assignment
-          != ''
+        when: inputs.mode == 'delivery' && nonempty(outputs.agreement.assignment)
+        payload:
+          agreement: ${{ outputs.agreement }}
       - to: done
         when: 'true'
         payload:
-          result: ${{ outputs.work }}
-          documents: ${{ outputs.documents }}
+          result: >-
+            ${{ jq([states.advice.outputs.work,{'assignment':outputs.agreement.assignment,'summary':states.record.outputs.resolution,'status':states.record.outputs.unresolved ? 'stuck' : 'ready'}],'add') }}
+          documents: ${{ states.advice.outputs.documents }}
     return_to_owner:
       sequence: []
       outputs:
@@ -127,6 +267,9 @@ state:
           documents: ${{ outputs.parent.documents }}
           feedback: ${{ {'consultation':outputs.reply,'documents':outputs.documents} }}
           parents: ${{ jq(states.call.outputs.parents, ' .[0:-1]') }}
+          turns: ${{ outputs.parent.turns }}
+          sender: ${{ outputs.parent.sender }}
+          requester_session: ${{ outputs.parent.requester_session }}
           used: ${{ outputs.parent.used }}
           session: ${{ outputs.parent.session }}
       inputs:
@@ -137,31 +280,90 @@ state:
       id: submit
       op: recipes.run
       workspace:
-        cell: ${{ states.call.outputs.cell }}
+        cell: ${{ inputs.cell }}
       inputs:
         git_ref: ${{ context.git.ref }}
         recipes:
-        - cell_name: ${{ states.call.outputs.cell }}
-          name: ${{ states.advice.outputs.work.?delivery_recipe.orValue('git+https://github.com/colony-2/recipes.git//adaptive3.yaml@main')
+        - cell_name: ${{ inputs.cell }}
+          name: ${{ transition.payload.agreement.work.?delivery_recipe.orValue('git+https://github.com/colony-2/recipes.git//adaptive3.yaml@main')
             }}
-          title: ${{ states.advice.outputs.work.title }}
+          title: ${{ transition.payload.agreement.work.title }}
           inputs:
-            prompt: ${{ states.advice.outputs.work.assignment }}
-            documents: ${{ states.advice.outputs.documents }}
+            prompt: ${{ transition.payload.agreement.assignment }}
+            documents: ${{ jq([transition.payload.agreement.support,transition.payload.agreement.documents],'add') }}
       transitions:
       - to: wait
         when: 'true'
+      catch:
+      - when: failure.kind != 'cancellation'
+        to: done
+        payload:
+          result: ${{ {'status':'stuck','summary':failure.message,'failure':failure} }}
+          documents: ${{ state_output('negotiated','agreement',state_output('reuse','agreement',{})).documents }}
     wait:
       include: ./children.yaml
       inputs:
-        jobs: '${{ inputs.job != '''' ? [inputs.job] : states.submit.outputs.job_ids }}'
+        jobs: '${{ inputs.job != '''' ? [inputs.job] : state_output(''reuse'',''agreement'',{}).?job.orValue('''') != '''' ? [states.reuse.outputs.agreement.job] : states.submit.outputs.job_ids }}'
+      transitions:
+      - to: delivery_report
+        when: state_exists('negotiated') || state_exists('reuse')
+      - to: adopted_report
+        when: 'true'
+      catch:
+      - when: failure.kind != 'cancellation'
+        to: done
+        payload:
+          result: ${{ {'status':'stuck','summary':failure.message,'failure':failure} }}
+          documents: ${{ state_output('negotiated','agreement',state_output('reuse','agreement',{})).?documents.orValue(inputs.documents) }}
+    adopted_report:
+      include: ./negotiation-report.yaml
+      inputs:
+        owner: ${{ inputs.cell }}
+        objective: ${{ inputs.objective }}
+        turns: ${{ [{'cell':context.workspace.cell,'text':inputs.request}] }}
+        resolution: The requester adopted an existing delivery. Inspect that job for the initiating exchange.
+        job: ${{ states.wait.outputs.results[0] }}
+      transitions:
+      - to: received
+        when: 'true'
+    delivery_report:
+      id: delivery_report
+      op: command_execution
+      const: true
+      artifacts:
+        ./: ${{ state_output('reuse','agreement',state_output('negotiated','agreement',{})).documents }}
+      inputs:
+        env:
+          INBOX: ${{ context.environment.op.inbox }}
+          OUTBOX: ${{ context.environment.op.outbox }}
+          CHILD: ${{ json_stringify(states.wait.outputs.results[0]) }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          child = json.loads(os.environ['CHILD'])
+          inbox = Path(os.environ['INBOX'])
+          report, = inbox.glob('review/negotiations/*/report.md')
+          output = Path(os.environ['OUTBOX'], report.relative_to(inbox))
+          output.parent.mkdir(parents=True, exist_ok=True)
+          summary = child.get('summary') or child.get('message') or ''
+          text = '\n'.join('    ' + s for s in summary.splitlines())
+          job = child['job_id']
+          # An adopted or replayed delivery can already carry this section.
+          original = report.read_text().partition('\n## Delivery\n')[0]
+          output.write_text(original + f"\n## Delivery\n\n[Job {job}](https://jobs.colony2.com/c2/jobs/{job}) · {child['status']}\n\n{text}\n")
+          PY
+      transitions:
+      - to: received
+        when: 'true'
+    received:
+      sequence: []
       transitions:
       - to: done
         when: 'true'
         payload:
-          result: ${{ {'status':'ready','summary':'Review the child outcome and decide what to do next.','child':outputs.results[0]}
-            }}
-          documents: ${{ outputs.documents }}
+          result: ${{ {'status':'ready','summary':'Review the child outcome and decide what to do next.','child':states.wait.outputs.results[0]} }}
+          documents: ${{ states.wait.outputs.documents }}
     stuck:
       sequence: []
       outputs:
@@ -178,6 +380,13 @@ state:
         payload:
           result: ${{ outputs.result }}
           documents: ${{ outputs.documents }}
+      - to: record
+        when: 'true'
+        payload:
+          turns: ${{ states.call.outputs.turns + [{'cell':states.call.outputs.sender,'text':states.call.outputs.request},{'cell':states.call.outputs.cell,'text':outputs.result.summary}] }}
+          resolution: ${{ outputs.result.summary }}
+          assignment: ''
+          unresolved: true
     local:
       sequence: []
       transitions:
@@ -204,6 +413,9 @@ state:
           cell: ${{ states.call.outputs.cell }}
           request: ${{ states.call.outputs.request }}
           mode: ${{ states.call.outputs.mode }}
+          turns: ${{ states.call.outputs.turns }}
+          sender: ${{ states.call.outputs.sender }}
+          requester_session: ${{ states.call.outputs.requester_session }}
           parents: ${{ states.call.outputs.parents }}
           documents: ${{ states.advice.outputs.documents }}
           feedback: ${{ {'consultation':{'summary':'Review the existing child outcome and decide what to do next.','child':outputs.results[0]},'documents':outputs.documents}
@@ -211,7 +423,15 @@ state:
           used: ${{ states.call.outputs.used+1 }}
           session: ${{ states.advice.outputs.session }}
 outputs:
+  agreement: >-
+    ${{ state_exists('adopted_report') ?
+      {'thread':states.adopted_report.outputs.thread,'documents':states.adopted_report.outputs.documents,'cell':inputs.cell,'assignment':'','job':inputs.job} :
+      state_exists('negotiated') || state_exists('reuse') ?
+      jq([state_output('reuse','agreement',state_output('negotiated','agreement',{})),state_exists('delivery_report') ? states.delivery_report.artifacts : {},
+          state_output('wait','results',[]),state_output('submit','job_ids',[])],
+         '.[0] + {documents:(.[0].documents + (.[1]|with_entries(select(.key|startswith("review/negotiations/"))))),job:(.[2][0].job_id // .[3][0] // .[0].job // "")}') : {} }}
   result: '${{ state_exists(''done'') ? states.done.outputs.result : states.stuck.outputs.result }}'
   documents: '${{ state_exists(''done'') ? states.done.outputs.documents : states.stuck.outputs.documents }}'
 vars:
+  matches: ${{ inputs.agreements.filter(a,a.cell == inputs.cell && nonempty(a.assignment) && a.assignment == inputs.request) }}
   limit: '${{ inputs.max_iterations >= 1 ? int(inputs.max_iterations) : 4 }}'

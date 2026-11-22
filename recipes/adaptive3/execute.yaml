@@ -7,6 +7,7 @@ inputs:
   merge_queue: ${{ inputs.?merge_queue.orValue(false) }}
   refresh: ${{ inputs.?refresh.orValue(false) }}
   require_verification: ${{ inputs.?require_verification.orValue(false) }}
+  plan: ${{ inputs.?plan.orValue({}) }}
   purpose: ${{ inputs.purpose }}
   contribution: ${{ inputs.?contribution.orValue({}) }}
   verification: ${{ inputs.?verification.orValue({}) }}
@@ -120,7 +121,7 @@ state:
             ? states.context.outputs.task + "\n\n" + states.refresh.outputs.result.summary
             : states.context.outputs.task }}
         schema: ${{ states.context.outputs.schema }}
-        documents: ${{ jq([inputs.documents,inputs.feedback.?documents.orValue({}),inputs.feedback.?errors.orValue({}),state_output('before_design','artifacts',{}),state_output('refresh','artifacts',{})],
+        documents: ${{ jq([inputs.documents,jq(inputs.plan.?documents.orValue({}),'with_entries(.key = "approved/" + .key | .value.name = .key)'),inputs.feedback.?documents.orValue({}),inputs.feedback.?errors.orValue({}),state_output('before_design','artifacts',{}),state_output('refresh','artifacts',{})],
           'add') }}
         session: ${{ inputs.session }}
         read_only: ${{ inputs.purpose != 'implementation' }}
@@ -276,7 +277,7 @@ outputs:
           ? {'status':'changes','summary':states.before_design.outputs.result.summary,'errors':states.before_design.outputs.artifacts}
           : states.work.outputs.response)) }}
   documents: '${{ state_exists(''work'') && size(jq(states.work.outputs.artifacts,''with_entries(select(.key|startswith("review/")))''))>0
-    ? jq(states.work.outputs.artifacts,''with_entries(select(.key|startswith("review/")))'') : inputs.documents
+    ? jq([states.work.outputs.artifacts,inputs.documents],''(.[0] | with_entries(select(.key|startswith("review/")))) + (.[1] | with_entries(select(.key|startswith("review/negotiations/"))))'') : inputs.documents
     }}'
   session: ${{ state_output('work','session',{}) }}
   artifacts: >-

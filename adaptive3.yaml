@@ -66,6 +66,39 @@ state:
         feedback: ${{ transition.payload.?feedback.orValue({}) }}
         destination: ${{ transition.payload.?destination.orValue('direction') }}
       sequence:
+      - id: origin
+        op: command_execution
+        const: true
+        when: '!inputs.documents.exists(k,k.startsWith("review/negotiations/")) || inputs.documents.exists(k,k.startsWith("review/negotiations/") && inputs.documents[k].kind == "value")'
+        artifacts:
+          ./: ${{ jq(inputs.documents,'with_entries(select((.key | startswith("review/negotiations/")) and .value.kind == "value"))') }}
+        inputs:
+          env:
+            REQUEST: ${{ inputs.request }}
+            INBOX: ${{ context.environment.op.inbox }}
+            OUTBOX: ${{ context.environment.op.outbox }}
+          run: |
+            python3 - <<'PY'
+            import json, os, shutil, subprocess
+            from pathlib import Path
+            inbox = Path(os.environ['INBOX'])
+            inline = inbox / 'review/negotiations'
+            if inline.is_dir():
+                # Native review expects stored references. Materialize caller-provided
+                # inline evidence once and pass existing stored references through.
+                shutil.copytree(inline, Path(os.environ['OUTBOX'], 'review/negotiations'))
+                raise SystemExit(0)
+            info = json.loads(subprocess.check_output(['c2j', 'self', '--json']))
+            parent = info['execution'].get('parent') or {}
+            if parent.get('job_id'):
+                job = parent['job_id']
+                out = Path(os.environ['OUTBOX'], 'review/negotiations/origin/report.md')
+                out.parent.mkdir(parents=True, exist_ok=True)
+                assignment = '\n'.join('    ' + s for s in os.environ['REQUEST'].splitlines())
+                out.write_text(f"# Why this job was requested\n\nDirect assignment from {parent.get('cell_name') or 'parent agent'} "
+                               f"in [job {job}](https://jobs.colony2.com/c2/jobs/{job}).\n\n"
+                               f"Initiating task: {parent.get('invocation_path') or parent.get('op_step') or job}\n\n{assignment}\n")
+            PY
       - id: hook
         include: ./recipes/adaptive3/hooks.yaml
         inputs:
@@ -78,7 +111,7 @@ state:
         result: ${{ sequence.hook.outputs.result }}
         settings: ${{ sequence.hook.outputs.settings }}
         destination: ${{ inputs.destination }}
-        documents: ${{ inputs.documents }}
+        documents: ${{ jq([inputs.documents,sequence.?origin.orValue({}).?artifacts.orValue({})],'.[0] + (.[1] | with_entries(select(.key | startswith("review/negotiations/"))))') }}
         feedback: ${{ inputs.feedback }}
       transitions:
       - to: direction
@@ -122,7 +155,7 @@ state:
       id: direction
       include: ./recipes/adaptive3/lifecycle.yaml
       inputs:
-        sessions: ${{ transition.payload.?sessions.orValue({}) }}
+        sessions: ${{ jq(transition.payload.?sessions.orValue({}),'del(.plan,.short_path)') }}
         purpose: direction
         request: |-
           {{ inputs.title }}
@@ -147,6 +180,13 @@ state:
         when: outputs.result.status == 'accepted' && outputs.work.?work_kind.orValue('') == 'explanation'
         payload:
           result: ${{ outputs }}
+      - to: implementation
+        when: outputs.result.status == 'accepted' && outputs.work.?delivery_route.orValue('standard') == 'short' && !state_exists('preparation') && !outputs.sessions.?agreements.orValue([]).exists(a,nonempty(a.assignment))
+          && !states.configure.outputs.settings.?require_design.orValue(false)
+        payload:
+          sessions: ${{ jq([outputs.sessions,{'short_path':true}],'add') }}
+          documents: ${{ outputs.documents }}
+          feedback: ${{ outputs.work }}
       - to: preparation
         when: outputs.result.status == 'accepted'
         payload:
@@ -163,7 +203,7 @@ state:
       id: preparation
       include: ./recipes/adaptive3/lifecycle.yaml
       inputs:
-        sessions: ${{ transition.payload.?sessions.orValue({}) }}
+        sessions: ${{ jq(transition.payload.?sessions.orValue({}),'del(.plan,.short_path)') }}
         purpose: preparation
         request: |-
           {{ inputs.title }}
@@ -195,7 +235,9 @@ state:
       - to: implementation
         when: outputs.result.status == 'accepted'
         payload:
-          sessions: ${{ outputs.sessions }}
+          sessions: ${{ jq([outputs.sessions,outputs.documents,outputs.result],vars.approve_plan) }}
+          documents: ${{ outputs.documents }}
+          feedback: ${{ outputs.result }}
       - to: backstop
         when: 'true'
         payload:
@@ -412,7 +454,9 @@ state:
         sessions: ${{ transition.payload.?sessions.orValue({}) }}
         stage: ${{ transition.payload.stage }}
         problem: ${{ transition.payload.problem }}
-        documents: ${{ transition.payload.documents }}
+        documents: >-
+          ${{ jq([state_output('configure','documents',inputs.documents),transition.payload.documents,transition.payload.?sessions.orValue({}).?agreements.orValue([])],
+            '(.[0] | with_entries(select(.key|startswith("review/negotiations/")))) + .[1] + ([.[2][].documents] | add // {})') }}
         request: ${{ inputs.prompt }}
         feedback: ${{ transition.payload.?feedback.orValue(state_output('backstop','result',{})) }}
         agent_settings: ${{ jq({'model':inputs.model,'reasoning_effort':inputs.reasoning_effort},'with_entries(select(.value != ""))') }}
@@ -573,8 +617,12 @@ outputs:
     ${{ jq([states.complete.outputs.result.documents,
       states.complete.outputs.result.work.?publish.orValue({}).?artifact_refs.orValue({})],
       '.[0] + (.[1] | with_entries(.key = "publication/" + .key | .value.name = .key))') }}
-  reviews: '${{ (state_exists(''direction'') ? [states.direction.outputs.result] : []) + (state_exists(''outcome'')
+  reviews: '${{ (state_output(''direction'',''result'',{}).?human.hasValue() ? [states.direction.outputs.result] : []) + (state_output(''preparation'',''result'',{}).?human.hasValue() ? [states.preparation.outputs.result] : []) + (state_exists(''outcome'')
     ? [states.outcome.outputs.result] : []) }}'
   merge: ${{ states.complete.outputs.result.work.?publication.orValue({}) }}
   publication: ${{ states.complete.outputs.result.work.?publish.orValue({}) }}
   queue_publication: ${{ states.complete.outputs.result.work.?queue_publication.orValue({}) }}
+vars:
+  approve_plan: |
+    .[0] + {plan:{assignments:[.[0].agreements[]? | {cell,assignment}], documents:.[1],
+                  receipt:.[2].receipt, human:.[2].human, review_id:.[2].review_id}}

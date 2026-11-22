@@ -55,6 +55,32 @@ class Validators(unittest.TestCase):
         self.assertEqual(p.returncode, 0, p.stderr)
         return json.loads(p.stdout)
 
+    def test_preparation_links_origin_design_and_criteria(self):
+        brief = 'review/one-pager.md'
+        report = 'review/negotiations/storage/report.md'
+        links = '[Design](design.md) and [Criteria](acceptance.md)'
+        self.put(brief, links)
+        self.put('review/design.md', 'Expose the existing retained version.')
+        self.put('review/acceptance.md', 'The consumer can restore the preceding version.')
+        self.put(report, '[Exchange](transcript.md)')
+        self.put('review/negotiations/storage/transcript.md', 'Requester and owner agreed.')
+        details = [
+            dict(document_id=path, title=title, description=title, role=role, order=order)
+            for path, title, role, order in [
+                (brief, 'Restore a version', 'primary', 0),
+                ('review/design.md', 'Design', 'supporting', 0),
+                ('review/acceptance.md', 'Acceptance criteria', 'supporting', 1)]]
+        def check():
+            return self.check('review_files', PRIMARY=brief, PREPARATION_PACKET='true',
+                              DOCUMENT_DETAILS=json.dumps(details))
+        self.assertEqual(check()['status'], 'changes')
+        self.put(brief, links + ' [Why this job exists](negotiations/storage/report.md)')
+        result = check()
+        self.assertEqual(result['status'], 'passed')
+        self.assertEqual(result['document_metadata'][report]['order'], 2)
+        self.put('review/acceptance.md', '  ')
+        self.assertEqual(check()['status'], 'changes')
+
     def test_valid_links_and_image(self):
         from PIL import Image
         self.put('review/README.md', '# Review\n![UI](screen.png)\n`[example](absent.md)`')

@@ -11,6 +11,7 @@ input_schema:
   requests: {type: array, items: {type: object}, default_value: []}
   write: {type: boolean, default_value: false}
   approved: {type: object, default_value: {}}
+  preparation_packet: {type: boolean, default_value: false}
   message: {type: string, default_value: ''}
 inputs:
   check: ${{ inputs.check }}
@@ -22,6 +23,7 @@ inputs:
   requests: ${{ inputs.?requests.orValue([]) }}
   write: ${{ inputs.?write.orValue(false) }}
   approved: ${{ inputs.?approved.orValue({}) }}
+  preparation_packet: ${{ inputs.?preparation_packet.orValue(false) }}
   message: ${{ inputs.?message.orValue('') }}
 state:
   initial:
@@ -54,6 +56,8 @@ state:
           DOCUMENT_IDS: ${{ json_stringify(inputs.documents.map(k,k)) }}
           DOCUMENT_DETAILS: ${{ json_stringify(inputs.document_details) }}
           REQUIRE_DOCUMENT_DETAILS: ${{ string(inputs.require_document_details) }}
+          REVIEW_JOB: ${{ context.workflow.job_id }}
+          PREPARATION_PACKET: ${{ string(inputs.preparation_packet) }}
           MESSAGE: ${{ inputs.message }}
         run: |
           python3 - <<'PY'
@@ -86,6 +90,31 @@ state:
           # Validate exact selected IDs before converting the producer list to native metadata.
           selected=json.loads(os.environ['DOCUMENT_IDS']) or []
           details=json.loads(os.environ['DOCUMENT_DETAILS'])
+          # The recipe attaches immutable negotiation evidence to the producer's current packet.
+          # Give it review metadata even when a later author replaces all its own documents.
+          reports = [key for key in selected if key.startswith('review/negotiations/')]
+          if reports and isinstance(details, list):
+           details = [item for item in details if not isinstance(item,dict) or item.get('document_id') not in reports]
+           for key in sorted(reports):
+            report = key.endswith('/report.md')
+            incoming = key == 'review/negotiations/origin/report.md'
+            heading = 'Negotiation report' if report else 'Negotiation transcript'
+            if report:
+             try:
+              contents = local(key).read_text()
+              parent = '[Parent job ' + os.environ.get('REVIEW_JOB','') + ']('
+              incoming = incoming or parent not in contents
+              first = contents.split('## Original request\n\n',1)[-1].split('\n\n',1)[0].strip()
+              if first and '## Original request' in contents:
+               heading = (('Why this job exists · ' if incoming else 'Request · ') + ' '.join(first.split()))[:120]
+              elif incoming:
+               heading = 'Why this job exists'
+             except (ValueError,OSError,UnicodeError):
+              pass  # Readability is reported by the regular file check below.
+            details.append({'document_id': key, 'role': 'primary' if key == primary else 'supporting',
+                            'title': heading,
+                            'description': 'Read the original request, rationale and decision.' if report else 'Read the exact exchange between the two owners.',
+                            'order': (2 if incoming else 3) if report else 4})
           metadata={}; presentation_bytes=0; detail_start=len(issues)
           if os.environ['REQUIRE_DOCUMENT_DETAILS']=='true':
            if not isinstance(details,list):
@@ -126,6 +155,27 @@ state:
             presentation_bytes=len(encoded.encode('utf-8'))
             if presentation_bytes>65536: issue('Document presentation exceeds 65536 native JSON bytes; shorten purposes or select a focused collection without dropping material evidence.')
            except UnicodeError: issue('Document presentation must contain valid Unicode attachment IDs and text.')
+          if os.environ.get('PREPARATION_PACKET') == 'true':
+           brief = 'review/one-pager.md'
+           main = ('review/design.md', 'review/acceptance.md')
+           if primary != brief: issue('Open the Preparation review with review/one-pager.md.')
+           for order, name in enumerate(main):
+            item = metadata.get(name, {})
+            if item.get('role') != 'supporting' or item.get('order') != order:
+             issue('Include '+name+' with supporting order '+str(order)+'.')
+           for name, item in metadata.items():
+            if name not in main and item.get('role') == 'supporting' and item.get('order',0) < 2:
+             issue('Place supporting evidence after design and acceptance criteria.')
+           try:
+            for name in (brief, *main):
+             if not local(name).read_text().strip(): issue(name+' must contain reviewable content.')
+            parsed = Links()
+            parsed.feed(subprocess.check_output(['cmark','--unsafe'],input=local(brief).read_text(),text=True))
+            targets = {(local(brief).parent / unquote(urlsplit(link).path)).resolve()
+                       for link in parsed.links if not urlsplit(link).scheme and not urlsplit(link).netloc}
+            for name in (*main, *(key for key in reports if key.endswith('/report.md'))):
+             if local(name) not in targets: issue('Link '+name+' from the one-pager.')
+           except (ValueError,OSError) as ex: issue('Incomplete Preparation packet: '+str(ex))
           detail_findings=issues[detail_start:]
           def links(text, name, parent):
            parser=Links(); parser.feed(text)

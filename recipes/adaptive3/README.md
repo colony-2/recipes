@@ -2,7 +2,11 @@
 
 Adaptive3 uses two author sessions and one independent assessor for the standard
 build. Direction and Preparation share a planning author. Implementation and
-Outcome share a core implementer. Direction and Outcome retain human approval.
+Outcome share a core implementer. Standard deliveries pause at Preparation with the one-pager, detailed design and
+acceptance criteria. Accept to Outcome requests a final review. Accept fully
+authorizes completion or merge when the independent Outcome assessment confirms
+the verified candidate meets the frozen plan. A short local assignment goes
+directly from Direction to Implementation and requires human Outcome acceptance.
 Review questions resume the author in a read-only turn. Autonomous acceptance
 uses the independent assessment result.
 
@@ -43,15 +47,20 @@ one-pager: problem, non-goals, approach, compatibility, and important questions
 and answers. Outcome explains the change, other owners' work, tests, omissions,
 public API changes and differences from the approved direction.
 
-The producing agent owns the current `review/` collection. Validation checks
+The producing agent owns its current review documents. The recipe also attaches the original negotiation reports and transcripts. Validation checks
 those files; human input receives the same references. No recipe step builds a
 second review packet or overlays older files. Documents worth retaining belong
 in the agent's current work; other material remains accessible through native
 job inspection. Diagnostics stay in files, with concise findings in responses.
 
 For more detail, use the [job inspection playbook](../../guides/JOB_INSPECTION_PLAYBOOK.md).
-Owner questions and replies appear as task responses in the receiving cell's
-workspace. The receiver writes any delivery assignment. Consultation advice is
+Each cross-cell negotiation has a report with the parent objective, original request,
+decision and linked transcript. A child receives the report with the agreed
+assignment. Its Preparation review includes it immediately after the three planning
+documents. Outcome and Backstop retain the same context. A direct assignment
+identifies its parent and the initiating task. Owners can ask for evidence or
+suggest an existing capability or a smaller enhancement. The requester confirms
+changed terms before delivery. The receiver writes any delivery assignment. Consultation advice is
 inline between different cells. Delivery uses a child adaptive3 job and a native
 wait. A request addressed to the current cell returns to the existing worker.
 
@@ -110,7 +119,8 @@ The caller refreshes retained work before implementation. After rebase and the
 prepare hook, a candidate touching both publisher and product paths returns to
 implementation for splitting, including in direct-merge mode. Eligible queued
 changes are squashed into one commit with a durable KSUID Change-Id. The caller
-verifies the candidate and waits for outcome approval before entering the queue. The
+verifies the candidate before entering the queue. Entry requires Outcome approval or
+confirmed coverage under full Preparation acceptance. The
 same change retains its initial submission time on retry. The queue groups by
 cell and canonical branch ref, with up to 50 contributions per serial batch.
 Each batch uses the creator's verification policy.
@@ -222,7 +232,8 @@ General `feedback.publication` never selects publication, including dependency,
 null, malformed and copied receipts. An explicit cross-job Integration recovery
 may propose that field as a producer lookup hint. `merge-receipt.yaml` checks the
 exact successful native merge task, source cell/repository/branch and native human
-acceptance. It binds the approved patch to the acceptance workspace, then checks
+acceptance. For full Preparation acceptance, it also checks the original coverage task
+and the Preparation receipt recorded for that candidate. It binds the approved patch to the acceptance workspace, then checks
 the full landed edit and reachability in a fresh fetch of the target branch. Batch
 recovery can select an accepted contribution behind the native published tip with
 its original Change-Id and complete patch equivalence. Unavailable or contradictory

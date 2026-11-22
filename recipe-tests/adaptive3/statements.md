@@ -176,3 +176,13 @@ critical, integration, pinned c2j.)
 | A3-105 | Valid YAML aliases, merge overrides and scalar spellings retain existing configuration meaning during approved additions. | High | Unit / Python, PyYAML, yq, Git | `test_tools.py`, `recipes/adaptive3/tools.yaml` |
 | A3-106 | Cold-install controls prepare validator Python dependencies using the real environment tool, while synthetic repository-package installs retain exact allowlists and isolated logs. | Critical | Unit/integration / Python, uv, pinned c2j, Nix | `preparation-installer/uv`, `test_preparation_installer.py`, `../checks/package_negative_preparation.py` |
 | A3-107 | Unknown installer commands and unexpected repository packages reject without invoking the real installer; Python preparation failures remain failures. | Critical | Unit / Python, shell | `preparation-installer/uv`, `test_preparation_installer.py` |
+
+## Preparation review and cross-cell negotiation
+
+| Expectation | Files | Priority | Level and dependencies |
+| --- | --- | --- | --- |
+| A standard delivery presents the one-pager, design and acceptance criteria together before implementation. Incomplete packets return to planning. | adaptive3.yaml, recipes/adaptive3/validate.yaml | High | Integration, c2j |
+| A full approval completes verified work within the reviewed scope. A changed plan requires a fresh decision. | recipes/adaptive3/review.yaml, adaptive3.yaml | High | Integration, c2j |
+| A short assignment goes directly to implementation and requires human Outcome acceptance. | adaptive3.yaml | High | Integration, c2j |
+| A receiving owner can request evidence or propose an alternative. Delivery starts only on mutually agreed terms. | recipes/adaptive3/consultation.yaml | High | Integration, c2j |
+| Parent and child reviews expose each relevant request, its origin, the agreement and its transcript even when delivery stalls. | recipes/adaptive3/consultation.yaml, recipes/adaptive3/backstop.yaml | High | Integration, c2j |

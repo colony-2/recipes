@@ -182,9 +182,30 @@ sequence:
           if not approval_job or not approval_task:
               raise ValueError('Recovery requires the exact native approval source')
           inspect.target(approval_job, target)
-          _, accepted = inspect.task(approval_job, approval_task, 'input:collect_user_input')
-          if accepted.get('receipt') != approval.get('receipt') or accepted.get('response', {}).get('direction') != 'accept':
-              raise ValueError('Recovered approval does not match the native acceptance')
+          _, tasks = inspect.tasks(approval_job)
+          producer = next((t for t in tasks if t['id'] == approval_task), {})
+          if producer.get('type') == 'command_execution:command_execution':
+              # A plan receipt predates the candidate. Only the successful Outcome coverage
+              # checkpoint can connect it to the verified patch in this job.
+              outcome_path = '/outcome/outcome/adaptive3-lifecycle/cycle/cycle/adaptive3-cycle/confirm_coverage/confirm_coverage'
+              if not producer.get('path', '').endswith(outcome_path):
+                  raise ValueError('Recovery requires the Outcome coverage checkpoint')
+              _, output = inspect.task(approval_job, approval_task, producer['type'])
+              proof = json.loads(output['stdout'])
+              if (proof['source_job'], proof['source_task'], proof['receipt']) != (approval_job, approval_task, approval.get('receipt')):
+                  raise ValueError('Outcome coverage does not match the supplied plan receipt')
+              plan_path = '/preparation/preparation/adaptive3-lifecycle/cycle/cycle/adaptive3-cycle/review/review/adaptive3-review/discuss/discuss/adaptive3-discussion/ask/ask'
+              for t in tasks:
+                  if t.get('path','').endswith(plan_path) and t['type'] == 'input:collect_user_input' and t['status'] == 'succeeded':
+                      _, decision = inspect.task(approval_job, t['id'], t['type'])
+                      if decision.get('receipt') == proof['receipt'] and decision.get('response',{}).get('direction') == 'accept_fully':
+                          break
+              else:
+                  raise ValueError('Native full acceptance of the covered plan is unavailable')
+          else:
+              _, accepted = inspect.task(approval_job, approval_task, 'input:collect_user_input')
+              if accepted.get('receipt') != approval.get('receipt') or accepted.get('response', {}).get('direction') != 'accept':
+                  raise ValueError('Recovered approval does not match the native acceptance')
 
           approved_workspace = inspect.snapshot(approval_job, approval_task, target)
 

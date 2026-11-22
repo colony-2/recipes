@@ -1,0 +1,62 @@
+id: adaptive3-negotiation-report
+inputs:
+  turns: ${{ inputs.turns }}
+  objective: ${{ inputs.objective }}
+  owner: ${{ inputs.owner }}
+  resolution: ${{ inputs.resolution }}
+  job: ${{ inputs.?job.orValue({}) }}
+  unresolved: ${{ inputs.?unresolved.orValue(false) }}
+  assignment: ${{ inputs.?assignment.orValue('') }}
+sequence:
+- id: write
+  op: command_execution
+  const: true
+  inputs:
+    env:
+      CONTENT: ${{ json_stringify(inputs) }}
+      JOB: ${{ context.workflow.job_id }}
+      OUTBOX: ${{ context.environment.op.outbox }}
+    run: |
+      python3 - <<'PY'
+      import json, os, uuid
+      from pathlib import Path
+      from urllib.parse import quote
+
+      data = json.loads(os.environ['CONTENT'])
+      thread = uuid.uuid4().hex
+      folder = Path(os.environ['OUTBOX'], 'review', 'negotiations', thread)
+      folder.mkdir(parents=True)
+      # Literal blocks preserve each author's words and prevent quoted links being
+      # mistaken for additional review attachments.
+      def literal(text):
+          return '\n'.join('    ' + line for line in text.splitlines())
+      transcript = ['# Negotiation transcript']
+      for turn in data['turns']:
+          transcript.extend([literal(turn['cell']), literal(turn['text'])])
+      (folder / 'transcript.md').write_text('\n\n'.join(transcript) + '\n')
+      job = os.environ['JOB']
+      sections = ['# Why this job was requested',
+                  f"[Parent job {job}](https://jobs.colony2.com/c2/jobs/{quote(job, safe='')})",
+                  '## Requesting cell', literal(data['turns'][0]['cell']),
+                  '## Receiving cell', literal(data['owner']),
+                  '## Parent objective', literal(data['objective']),
+                  '## Original request', literal(data['turns'][0]['text']),
+                  '## Decision', literal(data['resolution'])]
+      if data['assignment']:
+          sections.extend(['## Agreed assignment', literal(data['assignment'])])
+      if data['job']:
+          child = data['job']
+          child_id = quote(child['job_id'], safe='')
+          sections.extend(['## Delivery', f"[Delivery job {child_id}](https://jobs.colony2.com/c2/jobs/{child_id})",
+                           literal(child['status']), literal(child.get('summary') or child.get('message') or '')])
+      sections.append('[Read the negotiation transcript](transcript.md)')
+      (folder / 'report.md').write_text('\n\n'.join(sections) + '\n')
+      print(json.dumps(thread))
+      PY
+outputs:
+  objective: ${{ inputs.objective }}
+  resolution: ${{ inputs.resolution }}
+  assignment: ${{ inputs.assignment }}
+  unresolved: ${{ inputs.unresolved }}
+  thread: ${{ json_parse(sequence.write.outputs.stdout) }}
+  documents: ${{ jq(sequence.write.artifacts,'with_entries(select(.key | startswith("review/negotiations/")))') }}

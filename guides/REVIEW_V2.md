@@ -1,6 +1,6 @@
 # Structured adaptive3 reviews
 
-Adaptive3 emits Cortex `review/v2` forms for Direction, explanation, Outcome,
+Adaptive3 emits Cortex `review/v2` forms for Preparation, explanation, Outcome,
 merge, package and Backstop decisions. This presentation format is independent
 of recipe YAML `schema_version: 2`.
 

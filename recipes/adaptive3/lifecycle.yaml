@@ -25,6 +25,7 @@ state:
       inputs:
         documents: ${{ transition.payload.?documents.orValue(inputs.documents) }}
         feedback: ${{ transition.payload.?feedback.orValue(inputs.feedback) }}
+        agreements: ${{ transition.payload.?agreements.orValue(state_output('execute','agreements',inputs.sessions.?agreements.orValue([]))) }}
         session: ${{ transition.payload.?session.orValue(inputs.sessions[?vars.author].orValue({})) }}
         used: ${{ transition.payload.?used.orValue(state_output('execute','used',vars.prior.?counts.orValue({}).?work.orValue(0)))
           }}
@@ -38,6 +39,7 @@ state:
       outputs:
         documents: ${{ inputs.documents }}
         feedback: ${{ inputs.feedback }}
+        agreements: ${{ inputs.agreements }}
         session: ${{ inputs.session }}
         used: ${{ inputs.used }}
         consulted: ${{ inputs.consulted }}
@@ -66,12 +68,13 @@ state:
         contribution: ${{ inputs.contribution }}
         queue_history: >-
           ${{ state_output('cycle','work',{}).?receiver.hasValue() ? states.cycle.outputs.work : inputs.queue_history }}
+        plan: ${{ inputs.sessions.?plan.orValue({}) }}
         purpose: ${{ inputs.purpose }}
         request: ${{ inputs.request }}
         target_directory: ${{ inputs.target_directory }}
         settings: ${{ inputs.settings }}
         require_verification: ${{ inputs.require_verification }}
-        documents: ${{ states.execute.outputs.documents }}
+        documents: ${{ jq([states.execute.outputs.documents,states.execute.outputs.agreements],'.[0] + ([.[1][].documents] | add // {})') }}
         feedback: ${{ states.execute.outputs.feedback }}
         session: ${{ states.execute.outputs.session }}
         verification: ${{ state_output('cycle','verification',inputs.verification) }}
@@ -92,6 +95,12 @@ state:
         when: outputs.result.status == 'consult' && states.execute.outputs.consulted >= vars.consultation_limit
         payload:
           loop: consultation
+      - to: done
+        when: outputs.result.status == 'consult' && inputs.purpose == 'implementation' && outputs.result.consultation.mode == 'delivery'
+          && (inputs.sessions.?short_path.orValue(false) || (inputs.sessions.?plan.hasValue() && !inputs.sessions.plan.?assignments.orValue([]).exists(a,a.cell == outputs.result.consultation.cell && a.assignment == outputs.result.consultation.request)))
+        payload:
+          result: ${{ {'status':'changes','stage':'preparation','summary':'Review the newly required external assignment during Preparation.','consultation':outputs.result.consultation} }}
+          documents: ${{ outputs.documents }}
       - to: consult
         when: outputs.result.status == 'consult'
       - to: limit
@@ -115,6 +124,9 @@ state:
     consult:
       include: ./consultation.yaml
       inputs:
+        requester: ${{ states.cycle.outputs.session }}
+        agreements: ${{ states.execute.outputs.agreements }}
+        objective: ${{ inputs.request }}
         cell: ${{ states.cycle.outputs.result.consultation.cell }}
         request: ${{ states.cycle.outputs.result.consultation.request }}
         documents: ${{ states.cycle.outputs.documents }}
@@ -127,6 +139,8 @@ state:
         when: 'true'
         payload:
           documents: ${{ states.cycle.outputs.documents }}
+          agreements: >-
+            ${{ size(outputs.agreement)>0 ? states.execute.outputs.agreements.filter(a,a.thread != outputs.agreement.thread) + [outputs.agreement] : states.execute.outputs.agreements }}
           feedback: ${{ {'consultation':outputs.result,'documents':outputs.documents} }}
           session: ${{ states.cycle.outputs.session }}
           used: ${{ states.execute.outputs.used }}
@@ -195,7 +209,7 @@ outputs:
   patch: ${{ state_output('cycle','patch',null) }}
   candidate: ${{ state_output('cycle','candidate',{}) }}
   feedback: ${{ state_output('execute','feedback',inputs.?feedback.orValue({})) }}
-  sessions: ${{ jq([inputs.sessions,{vars.author:state_output('cycle','session',inputs.sessions[?vars.author].orValue({})),'assessor':state_output('cycle','assessor',inputs.sessions.?assessor.orValue({})),'packages':state_output('packages','session',inputs.sessions.?packages.orValue({})),'specialists':state_output('cycle','specialists',inputs.sessions.?specialists.orValue({}))}], 'add') }}
+  sessions: ${{ jq([inputs.sessions,{'agreements':state_output('execute','agreements',inputs.sessions.?agreements.orValue([])),vars.author:state_output('cycle','session',inputs.sessions[?vars.author].orValue({})),'assessor':state_output('cycle','assessor',inputs.sessions.?assessor.orValue({})),'packages':state_output('packages','session',inputs.sessions.?packages.orValue({})),'specialists':state_output('cycle','specialists',inputs.sessions.?specialists.orValue({}))}], 'add') }}
 catch:
 - when: failure.kind != 'cancellation'
   continue:
@@ -212,7 +226,7 @@ catch:
       candidate: {}
       patch: null
       feedback: ${{ inputs.?feedback.orValue({}) }}
-      sessions: ${{ inputs.sessions }}
+      sessions: ${{ jq([inputs.sessions,{'agreements':state_output('execute','agreements',inputs.sessions.?agreements.orValue([]))}],'add') }}
 vars:
   author: '${{ inputs.purpose in [''direction'',''preparation''] ? ''planning'' : ''implementation'' }}'
   prior: '${{ inputs.feedback.?budget.orValue({}).?stage.orValue('''') == inputs.purpose ? inputs.feedback.budget
