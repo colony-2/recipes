@@ -10,6 +10,7 @@ Start with [PURPOSE.md](../PURPOSE.md), the actual recipe, and
 | Need | Start here | Related references |
 | --- | --- | --- |
 | Understand the current build | [Adaptive process](../ADAPTIVE_BUILD_PROCESS.md), [Adaptive3 implementation](../recipes/adaptive3/README.md) | [Public build inputs](../build.yaml), [cell creation](../recipes/create/README.md) |
+| Evolve Adaptive3 in place | [Draft principles and primitives](adaptive3/PRINCIPLES.md) | Approval scope, test statements, stage handoffs and module boundaries |
 | Author or change a recipe | [Authoring guide](RECIPE_AUTHORING_GUIDE.md), [starter guide](RECIPE_STARTER_GUIDE.md) | [CLI guide](C2J_USER_GUIDE.md), [schema v2 migration](IMPLEMENTATION_RECIPE_SCHEMA_V2.md) |
 | Wire state, sequences, and values | [Node scope](NODE_SCOPE_SPEC.md), [template cheatsheet](TEMPLATE_REFERENCE_CHEATSHEET.md) | [State machines](STATE_MACHINE_GUIDE.md), [sequences](SEQUENCE_GUIDE.md), [template resolution](template_resolution.md), [CEL functions](CEL_FUNCTIONS.md) |
 | Move documents and evidence | [Artifact reference](RECIPE_ARTIFACTS_REFERENCE.md), [historical Adaptive2 evidence](ADAPTIVE2_OUTPUT_SELECTION.md) | [Artifact set bindings](C2J_ARTIFACT_SET_BINDINGS_USER_GUIDE.md), [submission artifacts](C2J_SUBMIT_ARTIFACTS_USER_GUIDE.md), [standard agent inbox](IMPLEMENTATION_STANDARD_AGENT_INBOX.md) |
