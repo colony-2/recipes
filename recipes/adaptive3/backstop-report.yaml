@@ -41,25 +41,24 @@ vars:
        then {title:"Negotiation report",description:"Read the original request and decision.",role:"supporting",order:2}
        else {title:"Negotiation transcript",description:"Read the exact exchange.",role:"supporting",order:4} end))) +
     (.[1] | with_entries(if .value.role == "primary" then .value.role = "supporting" else . end)) +
-    {"review/backstop-report.md":{title:"Backstop diagnosis and options",description:"Read why this job exists, completed work, the blocker and available choices.",role:"primary",order:0}}
+    {"review/backstop-report.md":{title:"Decision and options",description:"See what stopped, what you can do and the evidence.",role:"primary",order:0}}
   program: |
     .[0] as $request | .[1] as $p | .[2] as $r | .[3] as $files | .[4] as $job |
     def block: @html | gsub("\\["; "&#91;") | gsub("\\]"; "&#93;") | split("\n") | map("> " + .) | join("\n");
-    "# Backstop diagnosis and options\n\n## Why this job exists\n\n" +
-    (($r.report.origin // "Requester and rationale are not established in the available diagnosis. The original request follows.") | block) +
-    "\n\nOriginal request:\n\n" + ($request | block) +
-    "\n\n## Work completed and external effects\n\n" +
-    (($r.report.work // "Completed work and external effects have not been established. Inspect the retained job results before repeating any effect.") | block) +
-    "\n\n## Where work stopped\n\n" +
-    (($r.report.blocker // $p.summary // "The failing boundary has not been established.") | block) +
-    "\n\nCurrent diagnosis:\n\n" + (($r.summary // "The diagnosis agent was unavailable.") | block) +
-    "\n\n## Available options\n\n" +
-    (($r.report.options // ["Give instructions for a correction in this job; the destination must have its required inputs.", "Supply the missing evidence or external prerequisite described above.", "Use the manual job cancellation control if you want to stop. Backstop cannot cancel this job."]) |
-    to_entries | map(((.key+1|tostring) + ". " + .value) | block) | join("\n\n")) +
-    "\n\n## Recommendation\n\n" +
-    (($r.report.recommendation // $r.action // "No executable recommendation is established. Give instructions or clarify the missing prerequisite.") | block) +
-    "\n\n## Background and sources\n\n" +
-    (($r.report.research // "No additional background research was established by the diagnosis.") | block) +
-    "\n\nSource job: `" + $job + "`. Retained task results remain available through job inspection.\n\n" +
+    def section($heading; $text):
+      if ($text // "") == "" then "" else "\n\n## " + $heading + "\n\n" + ($text | block) end;
+    ($r.report.blocker // $p.summary // $r.summary // "The worker stopped before identifying the cause.") as $blocker |
+    "# What needs your decision\n\n" +
+    ($blocker | block) +
+    section("Suggested next step"; $r.report.recommendation // $r.action) +
+    "\n\n## Your options\n\n" +
+    (($r.report.options // ["Give instructions or supply the missing evidence.", "Use the job’s cancellation control to stop."]) |
+     to_entries | map(((.key+1|tostring) + ". " + .value) | block) | join("\n\n")) +
+    (if $r.summary == $blocker then "" else section("Latest update"; $r.summary) end) +
+    section("Work already done"; $r.report.work) +
+    section("Original request"; $request) +
+    section("Request source"; $r.report.origin) +
+    section("Supporting evidence"; $r.report.research) +
+    "\n\nSource job: `" + $job + "`.\n\n" +
     ($files | keys | map(select(. != "review/backstop-report.md")) |
     map("- [Supporting evidence](" + (ltrimstr("review/") | split("/") | map(@uri) | join("/")) + ")") | join("\n")) + "\n"

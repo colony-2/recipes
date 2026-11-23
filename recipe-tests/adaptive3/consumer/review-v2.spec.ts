@@ -408,7 +408,7 @@ test.describe('Backstop recovery', () => {
   const {tenant,jobID}=recipeRun;
   await page.goto(`/project/${tenant}/reviews/${jobID}`);
   await expect(page.getByRole('button',{name:'Give instructions',exact:true})).toBeVisible();
-  await expect(page.getByRole('heading',{name:'Backstop diagnosis and options',exact:true})).toBeVisible();
+  await expect(page.getByRole('heading',{name:'What needs your decision',exact:true})).toBeVisible();
   const initial=await (await request.get(`/api/projects/${tenant}/user-inputs/${jobID}`)).json();
   expect(initial.form.request.documents['review/backstop-report.md'].kind).toBe('stored');
   expect(initial.form.request.overview_document_id).toBe('review/backstop-report.md');
