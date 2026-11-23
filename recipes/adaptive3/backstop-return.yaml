@@ -2,19 +2,22 @@ id: adaptive3-backstop-return
 inputs:
   result: ${{ inputs.result }}
   problem: ${{ inputs.problem }}
-  automatic_used: ${{ inputs.?automatic_used.orValue(0) }}
-  last_authorization: ${{ inputs.?last_authorization.orValue({}) }}
-  merge_limit: ${{ inputs.?merge_limit.orValue(3) }}
-sequence: []
+  retry: ${{ inputs.?retry.orValue({}) }}
+sequence:
+- id: dispatch
+  include: ./retry.yaml
+  inputs:
+    previous: ${{ inputs.retry }}
+    receipt: ${{ inputs.result.?human.orValue({}).?receipt.orValue({}) }}
+    dispatch: true
+    merge_extension: >-
+      ${{ inputs.problem.?loop.orValue('') == 'merge' && inputs.result.stage == 'implementation' ? inputs.result.?additional_attempts.orValue(1) : 0 }}
 outputs:
-  result: ${{ jq([inputs.result, inputs.problem], vars.program) }}
-  authorization: '${{ size(vars.authorization)>0 ? vars.authorization : inputs.last_authorization }}'
-  automatic_used: '${{ size(vars.authorization)>0 && vars.authorization != inputs.last_authorization ? 0 : inputs.automatic_used
-    + 1 }}'
-  merge_limit: '${{ inputs.merge_limit + (inputs.problem.?loop.orValue('''') == ''merge'' && inputs.result.stage == ''implementation''
-    ? inputs.result.?additional_attempts.orValue(1) : 0) }}'
+  retry: ${{ sequence.dispatch.outputs.change.retry }}
+  result: >-
+    ${{ jq([inputs.result, inputs.problem], vars.visit) }}
 vars:
-  authorization: ${{ inputs.result.?human.orValue({}).?receipt.orValue({}) }}
-  program: ".[0] as $r | .[1] as $p | $r |\n  if $p.budget.stage == $r.stage and ($p.loop | IN(\"work\",\"consultation\",\"\
-    children\",\"packages\"))\n  then .budget = ($p.budget | .limits[$p.loop] += ($r.additional_attempts // 1))\n  else del(.budget)\
-    \ end"
+  visit: |-
+    .[0] as $r | .[1] as $p | $r | del(.budget,.visit_allowance) |
+    if $p.budget.stage == $r.stage and ($p.loop | IN("work","consultation","children","packages")) and ($r.additional_attempts // 1)>1
+    then .visit_allowance = {($p.loop):$r.additional_attempts} else . end

@@ -9,21 +9,32 @@ inputs:
   agent_settings: ${{ inputs.?agent_settings.orValue({}) }}
   prior_job: ${{ inputs.?prior_job.orValue('') }}
   automatic: ${{ inputs.?automatic.orValue(true) }}
+  retry: >-
+    ${{ inputs.?retry.orValue({'automatic_used':(inputs.?automatic.orValue(true) ? 0 : 2)}) }}
   prerequisites: ${{ inputs.?prerequisites.orValue({}) }}
 state:
   initial: turn
   states:
     turn:
       inputs:
-        feedback: ${{ transition.payload.?feedback.orValue(inputs.feedback) }}
+        feedback: >-
+          ${{ transition.payload.?feedback.orValue(jq([inputs.feedback,inputs.problem,vars.review_instruction],
+            'if (.[2]|length)>0 then .[0] + .[2] + (.[1] | {documents,conversation,review_id} | with_entries(select(.value!=null))) else .[0] end')) }}
         session: ${{ transition.payload.?session.orValue(inputs.session) }}
         allow_resume: ${{ transition.payload.?allow_resume.orValue(inputs.automatic) }}
-        human: ${{ transition.payload.?human.orValue({}) }}
-      sequence: []
+        human: ${{ transition.payload.?human.orValue(vars.review_instruction) }}
+        previous: ${{ state_output('turn','retry',inputs.retry) }}
+      sequence:
+      - id: instruction
+        include: ./retry.yaml
+        inputs:
+          previous: ${{ inputs.previous }}
+          receipt: ${{ inputs.human.?receipt.orValue({}) }}
       outputs:
         feedback: ${{ inputs.feedback }}
         session: ${{ inputs.session }}
         allow_resume: ${{ inputs.allow_resume }}
+        retry: ${{ sequence.instruction.outputs.change.retry }}
         human: ${{ inputs.human }}
       transitions:
       - to: setup
@@ -184,11 +195,13 @@ state:
       include: ./discussion.yaml
       inputs:
         instructions: true
+        proposed_action: ${{ states.investigate.outputs.response.?action.orValue('') }}
+        proposed_stage: ${{ states.investigate.outputs.response.?stage.orValue('') }}
         request: '${{ jq([{''title'':''Backstop — '' + states.investigate.outputs.response.?title.orValue(''Agent
           needs help''),''question'':(states.prepare_review.outputs.result.status == ''passed'' ? states.prepare_review.outputs.message
           : states.setup.outputs.text.unreadable + ''\n'' + states.prepare_review.outputs.result.summary),''documents'':states.prepare_review.outputs.documents,''document_metadata'':states.prepare_review.outputs.document_metadata,''directions'':(states.assess.outputs.eligible
           && states.prepare_review.outputs.result.status == ''passed'' ? [{''id'':''continue'',''label'':inputs.problem.?loop.orValue('''')
-          != '''' ? states.setup.outputs.text.retry + '' '' + string(states.investigate.outputs.response.?additional_attempts.orValue(null)
+          != '''' && inputs.problem.loop != ''merge'' ? ''Resume '' + states.investigate.outputs.response.stage : inputs.problem.?loop.orValue('''') == ''merge'' ? states.setup.outputs.text.retry + '' '' + string(states.investigate.outputs.response.?additional_attempts.orValue(null)
           != null ? states.investigate.outputs.response.additional_attempts : 1) + '' '' + (states.investigate.outputs.response.?additional_attempts.orValue(null) == null || states.investigate.outputs.response.additional_attempts == 1 ? states.setup.outputs.text.attempt : states.setup.outputs.text.attempts)
           : states.setup.outputs.text.continue,''feedback_mode'':''forbidden'',''allow_attachments'':false,''continues_review'':false}]
           : []) + [{''id'':''question'',''label'':states.setup.outputs.text.question,''feedback_mode'':''required'',''allow_attachments'':true,''continues_review'':true},{''id'':''revise'',''label'':states.setup.outputs.text.change,''feedback_mode'':''required'',''allow_attachments'':true,''continues_review'':false}]
@@ -213,13 +226,20 @@ state:
       - to: turn
         when: 'true'
         payload:
-          feedback: ${{ jq([outputs.native,{'validation':states.prepare_review.outputs.result,'documents':outputs.documents,'conversation':outputs.conversation,'review_id':outputs.review_id}],
+          feedback: ${{ jq([outputs.native,{'validation':states.prepare_review.outputs.result,'documents':outputs.documents,'conversation':outputs.conversation,'review_id':outputs.review_id,'reassessment':outputs.interpretation}],
             'add') }}
-          human: ${{ outputs.native }}
+          human: >-
+            ${{ outputs.native.response.direction != 'question' || outputs.interpretation.?instruction.orValue(null) != null ? outputs.native : {} }}
           session: ${{ outputs.session }}
-          allow_resume: false
+          allow_resume: ${{ outputs.native.response.direction == 'question' && states.turn.outputs.retry.automatic_used < 2 }}
 outputs:
+  retry: ${{ states.turn.outputs.retry }}
   session: ${{ states.done.outputs.session }}
   result: ${{ jq([states.done.outputs.result,states.done.outputs.documents], '.[1] as $files | .[0] | if .approval.patch
     then .approval.patch = $files[.approval.patch] else . end') }}
   documents: '${{ size(states.done.outputs.documents)>0 ? states.done.outputs.documents : inputs.documents }}'
+vars:
+  review_instruction: >-
+    ${{ inputs.problem.?status.orValue('') == 'changes' && nonempty(inputs.problem.?human.orValue({}).?receipt.orValue({}).?submission_id.orValue(''))
+      && inputs.problem.human.?response.orValue({}).?direction.orValue('') in ['revise','annotate','decline']
+      ? inputs.problem.human : {} }}

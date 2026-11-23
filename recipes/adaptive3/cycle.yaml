@@ -1,5 +1,6 @@
 id: adaptive3-cycle
 inputs:
+  retry: ${{ inputs.?retry.orValue({}) }}
   merge_state: ${{ inputs.?merge_state.orValue({}) }}
   accepted: ${{ inputs.?accepted.orValue({}) }}
   recovery: ${{ inputs.?recovery.orValue(false) }}
@@ -153,11 +154,27 @@ state:
           documents: ${{ states.execute.outputs.documents }}
           session: ${{ outputs.session }}
     done:
-      sequence: []
-      outputs:
+      inputs:
         result: ${{ transition.payload.result }}
+        checkpoints: ${{ state_output('validate','checkpoints',[]) }}
+        purpose: ${{ inputs.purpose }}
+        retry: ${{ inputs.retry }}
         documents: ${{ transition.payload.documents }}
         session: ${{ transition.payload.session }}
+      sequence:
+      - id: progress
+        include: ./retry.yaml
+        inputs:
+          previous: ${{ inputs.retry }}
+          receipt: >-
+            ${{ inputs.result.?status.orValue('') == 'changes' ? inputs.result.?human.orValue({}).?receipt.orValue({}) : {} }}
+          checkpoints: >-
+            ${{ inputs.checkpoints + (inputs.result.status == 'accepted' ? ['phase/' + inputs.purpose] : []) }}
+      outputs:
+        retry: ${{ sequence.progress.outputs.change.retry }}
+        result: ${{ inputs.result }}
+        documents: ${{ inputs.documents }}
+        session: ${{ inputs.session }}
     children:
       include: ./children.yaml
       inputs:
@@ -190,6 +207,7 @@ state:
           documents: ${{ state_output('execute','documents',inputs.documents) }}
           session: ${{ state_output('execute','session',inputs.session) }}
 outputs:
+  retry: ${{ states.done.outputs.retry }}
   merge_state: ${{ state_output('execute','merge_state',inputs.merge_state) }}
   result: ${{ states.done.outputs.result }}
   documents: ${{ states.done.outputs.documents }}

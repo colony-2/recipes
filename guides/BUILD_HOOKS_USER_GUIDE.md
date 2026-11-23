@@ -42,6 +42,12 @@ tasks; a changed hash alone is not evidence that a hook edited the repository.
 A missing hook produces a `skipped` report. Invalid YAML, malformed results,
 permission errors, and timeouts fail the invocation; they do not count as absence.
 
+A verify hook can optionally return a `checks` object keyed by stable requirement
+or test IDs, for example `{"tenant-switch":"passed","token-denial":"failed"}`.
+Each value is `passed`, `failed`, or `skipped`. Report the overall status as usual.
+Adaptive3 records newly passing checks even when the overall result is failed.
+Use the same IDs on every retry so repeated results count once.
+
 ## Start with verification
 
 There is no automatic `build.sh` discovery. If you already have that script, install

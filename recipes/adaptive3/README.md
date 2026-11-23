@@ -200,9 +200,12 @@ Both recovery responses require nullable `action`, `stage`, `instruction`,
 `destination` and `report` fields. A concrete available action and an eligible
 stage gate automatic resume and Apply. A destination alone supplies no missing
 plan, route, credentials or publication authority. Automatic correction defaults
-to one extra pass; explicit integer allowances remain 1–20. Only the matching
-paused loop is extended. Phase visits retain the counters for unchanged work;
-two consecutive automatic recoveries remain finite.
+to one extra pass; explicit integer allowances remain 1–20. Every phase visit starts with fresh counters. An explicit allowance can grant
+a larger visit for the paused loop. Backstop spends one of two returns on dispatch.
+Newly accepted phases and newly passing verification checks replenish those two
+returns once per requirement per instruction. The progress step records the
+evidence and resulting count. A fresh human instruction at any review resets
+phase and merge retries and restores both returns before the next decision.
 
 When help is needed, the primary report explains requester/rationale, completed
 work and effects, the blocker and failed approaches, options with prerequisites,
@@ -218,8 +221,8 @@ receipts. Requirement changes return to Direction and update the affected plan.
 After validation confirms exactly that amendment, reuse its native receipt
 and present the revised design and acceptance criteria at Preparation. Outcome and merge reviews
 remain separate. Ambiguity, conflicting destinations or additional consequential
-choices need clarification. A newly dispatched human action renews a finite
-allowance; replaying the same native receipt does not renew it again.
+choices need clarification. Forward the original human receipt when a review hands an instruction to Backstop.
+After answering a question, reassess the blocker under the existing authority.
 
 Cancellation stays manual under the latest human scope. Prefer a return within
 this job; an

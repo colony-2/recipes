@@ -1,5 +1,6 @@
 id: adaptive3-packages
 inputs:
+  retry: ${{ inputs.?retry.orValue({}) }}
   requests: ${{ inputs.requests }}
   reason: ${{ inputs.reason }}
   session: ${{ inputs.?session.orValue({}) }}
@@ -84,6 +85,23 @@ state:
         session: ${{ states.prepare.outputs.session }}
         assessor: ${{ states.prepare.outputs.session }}
       transitions:
+      - to: record_decision
+        when: 'true'
+    record_decision:
+      inputs:
+        result: ${{ states.approval.outputs.result }}
+        retry: ${{ state_output('record_decision','retry',inputs.retry) }}
+      sequence:
+      - id: progress
+        include: ./retry.yaml
+        inputs:
+          previous: ${{ inputs.retry }}
+          receipt: >-
+            ${{ inputs.result.status == 'changes' ? inputs.result.?human.orValue({}).?receipt.orValue({}) : {} }}
+      outputs:
+        result: ${{ inputs.result }}
+        retry: ${{ sequence.progress.outputs.change.retry }}
+      transitions:
       - to: prepare
         when: outputs.result.?document_comments.orValue(false)
         payload:
@@ -158,6 +176,7 @@ state:
       outputs:
         result: ${{ transition.payload.result }}
 outputs:
+  retry: ${{ state_output('record_decision','retry',inputs.retry) }}
   session: ${{ state_output('adopt','session',state_output('approval','session',state_output('prepare','session',inputs.session))) }}
   result: '${{ states.done.outputs.result.status == ''passed'' && state_exists(''approval'') ? jq([states.done.outputs.result,{''human'':states.approval.outputs.result}],
     ''add'') : states.done.outputs.result }}'

@@ -1,5 +1,13 @@
 # Adaptive3 follow-ups
 
+## Backstop and retry counters — 2026-11-23
+
+- [x] **Reset phase counters on reentry.** Count retries within one visit. When work returns to a phase it previously left, give that phase its full allowance and retain its prior work.
+- [x] **Reset all retry counters on a fresh human instruction.** At any review, clear phase and merge retry counts and restore both Backstop returns before the next decision. Count each instruction once, including when it passes between phases.
+- [x] **Restore both Backstop returns on confirmed progress.** Spend one return when Backstop sends work to a phase. Restore both when evidence first confirms a newly satisfied requirement under the current instruction. Record the evidence and count change in the chapter trace. If the same checks still fail, carry the remaining allowance forward. [Counter rules and worked example](PROPOSAL_BACKSTOP_COUNTERS.md)
+- [x] **Let Backstop act on clear instructions from any review.** Carry the reviewer's words and original receipt into Backstop so it can dispatch the requested correction without asking for a second approval. Cover the Cortex menu change from Preparation review in job `3MUJ9HshLaK9WMP7VficJq1NUD0`, chapters 108–122.
+- [x] **Reassess the blocker after answering a question.** If the answer reveals a next step Backstop can take under the existing instruction, take it. If human input is still needed, update the form with the remaining question. Cover the c2ops publish-hook job `3MULUmaG4CR19S2peTyGcVmiVkY`, chapters 60–66, where Backstop identified a way to check for existing build outputs and the form kept asking for a Pulse operator.
+
 ## Open findings from 2026-11-13
 
 Scope: the [review-options audit](AUDIT_REVIEW_OPTIONS.md), Python preparation,

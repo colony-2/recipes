@@ -753,3 +753,37 @@ cases:
   - type: cel_true
     expr: reviews[0].form.request.document_metadata==reviews[1].form.request.document_metadata && reviews[0].form.request.documents==reviews[1].form.request.documents
       && reviews[0].form.request.overview_document_id==reviews[1].form.request.overview_document_id
+- id: one-passing-check-restores-returns-while-verification-still-fails
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        files:
+          .c2/recipes/hooks/build/verify.yaml: |
+            id: partial-verification
+            sequence: []
+            outputs:
+              api_version: c2.build-hook/v1
+              status: failed
+              summary: Tenant switching passes. Token rejection still fails.
+              checks: {tenant-switch: passed, token-denial: failed}
+              artifact_refs: {}
+  inputs:
+    purpose: implementation
+    request: Verify tenant switching and token rejection.
+    retry: {automatic_used: 2}
+  mocks:
+    ops:
+    - match: {selector: 'nix:github:colony-2/c2ops/published#codex'}
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response: {status: ready, summary: Ready for verification.}
+    - match: {op: command_execution}
+      repeat: true
+      behavior: {mode: passthrough}
+  assertions:
+  - {type: cel_true, expr: 'outputs.result.status=="changes" && outputs.retry.automatic_used==0'}
+  - {type: cel_true, expr: 'outputs.retry.checkpoints==["verify/tenant-switch"]'}

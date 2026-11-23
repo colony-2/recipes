@@ -204,7 +204,7 @@ All filenames below are relative to `recipe-tests/adaptive3/`.
 | Current native prerequisites permit forward returns; missing prerequisites withhold Apply. | `backstop-instructions.test.yaml`, `backstop-policy.test.yaml` | critical | integration; c2j |
 | Amendment validation reads original attached notes while retaining the current revised direction. | `backstop-validation-notes.test.yaml` | critical | integration; c2j |
 | Configure recovery retains its selected next phase after configuration completes. | `backstop-configure.test.yaml` | high | integration; c2j |
-| An extra pass extends only the paused loop at its matching phase. | `backstop-return.test.yaml`, `renewal.test.yaml` | critical | integration; c2j |
+| An explicit larger allowance applies to the paused loop on the next matching visit. | `backstop-return.test.yaml`, `renewal.test.yaml` | critical | integration; c2j |
 | Phase changes and replayed human receipts cannot renew automatic allowances indefinitely. | `backstop-return.test.yaml`, `renewal.test.yaml` | critical | integration; c2j |
 | Escalation shows origin, progress, blocker, options and research; agent failure retains a readable stored report. | `backstop-instructions.test.yaml`, `consumer/browser-backstop.yaml` | high | integration; c2j, Cortex, Chromium |
 | Removing the phone criterion refreshes Direction, Preparation, verification and Outcome acceptance while browser validation remains required. | `backstop-scope-flow.test.yaml` | critical | integration; c2j |
@@ -212,3 +212,13 @@ All filenames below are relative to `recipe-tests/adaptive3/`.
 | Provider failures retain a readable report and reject unavailable model-setting edits. | `models.test.yaml` | critical | integration; c2j |
 | Human cancellation stays terminal and cannot trigger automatic replacement. | `cancellation.test.yaml` | critical | integration; c2j |
 | Prior-job Configure recovery defaults omitted or null destinations to Direction without consuming another recovery attempt. | `backstop-configure-recovery.test.yaml` | critical | integration; c2j |
+
+## Phase retries and Backstop
+
+| Expectation | Files | Importance | Test |
+| --- | --- | --- | --- |
+| Each phase visit starts with fresh counts. Retries within the visit use its allowance. | `adaptive3.yaml`, `recipes/adaptive3/lifecycle.yaml` | Critical | Integration, c2j |
+| Fresh human instructions renew phase, merge and Backstop allowances once, including instructions forwarded from another review. | `recipes/adaptive3/retry.yaml`, `adaptive3.yaml` | Critical | Integration, c2j |
+| Newly confirmed checks restore both automatic returns. Repeated evidence and phase changes alone spend or preserve the remaining allowance. | `recipes/adaptive3/retry.yaml`, `recipes/adaptive3/hooks.yaml` | Critical | Integration, c2j |
+| Backstop can act on a clear Preparation revision using its original receipt without requesting confirmation again. | `recipes/adaptive3/backstop.yaml` | Critical | Integration, c2j |
+| After answering a question Backstop reassesses its blocker, takes an authorized action, or presents the remaining question. | `recipes/adaptive3/discussion.yaml`, `recipes/adaptive3/backstop.yaml` | Critical | Integration, c2j |

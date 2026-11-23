@@ -1,0 +1,36 @@
+recipe: retry.yaml
+cases:
+- id: newly-passing-check-restores-both-returns
+  type: integration_case
+  runtime: {}
+  inputs:
+    previous: {automatic_used: 2, checkpoints: [verify/C]}
+    checkpoints: [verify/C, verify/A]
+  assertions:
+  - {type: cel_true, expr: 'outputs.retry.automatic_used == 0 && outputs.retry.checkpoints == ["verify/C","verify/A"]'}
+  - {type: cel_true, expr: 'outputs.event.confirmed==["verify/A"] && outputs.event.returns_before==0 && outputs.event.returns_after==2'}
+- id: repeated-passing-check-preserves-remaining-return
+  type: integration_case
+  runtime: {}
+  inputs:
+    previous: {automatic_used: 1, checkpoints: [verify/A]}
+    checkpoints: [verify/A]
+  assertions:
+  - {type: cel_true, expr: 'outputs.retry.automatic_used == 1 && outputs.event==null'}
+- id: new-instruction-starts-new-checkpoints-before-dispatch
+  type: integration_case
+  runtime: {}
+  inputs:
+    previous: {automatic_used: 2, instructions: [first], checkpoints: [verify/A], merge_used: 3, merge_limit: 6}
+    receipt: {submission_id: second}
+    dispatch: true
+  assertions:
+  - {type: cel_true, expr: 'outputs.retry.automatic_used == 1 && outputs.retry.checkpoints == [] && outputs.retry.merge_used == 0 && outputs.retry.merge_limit == 3'}
+- id: replaying-earlier-instruction-keeps-spent-returns
+  type: integration_case
+  runtime: {}
+  inputs:
+    previous: {automatic_used: 2, instructions: [first,second], checkpoints: [verify/A]}
+    receipt: {submission_id: first}
+  assertions:
+  - {type: cel_true, expr: 'outputs.retry.automatic_used == 2 && outputs.retry.checkpoints == ["verify/A"]'}
