@@ -1,0 +1,60 @@
+recipe: ../../adaptive3.yaml
+cases:
+- id: outcome-defect-returns-to-implementation-and-back
+  type: integration_case
+  runtime: {}
+  inputs: {prompt: Keep the drawer open outside Review.}
+  mocks:
+    ops:
+    - &origin
+      match: {op: command_execution}
+      behavior: {mode: return, outputs: {stdout: ''}}
+    includes:
+      root/configure/[1]: &config
+      - mode: return
+        outputs: {result: {status: passed}, settings: {}}
+      root/direction: &direction
+      - mode: return
+        outputs: {result: {status: accepted}, work: {work_kind: feature, delivery_route: short}, basis: {}, documents: {}, sessions: {}}
+      root/implementation:
+      - &implemented
+        mode: return
+        outputs: {result: {status: accepted}, work: {summary: Saved the drawer change.}, basis: {}, documents: {}, sessions: {}, verification: {}, candidate: {}, feedback: {}}
+      - *implemented
+      root/outcome:
+      - mode: return
+        outputs: {result: {status: changes, stage: implementation, summary: Navigation outside Review closes the drawer.}, work: {}, documents: {}, sessions: {}}
+      - &finished
+        mode: return
+        outputs: {result: {status: accepted}, work: {summary: Drawer verified.}, documents: {}, candidate: {changed: false}, sessions: {}}
+  assertions:
+  - type: cel_true
+    expr: >-
+      include_calls.map(c,c.node_path)==['root/configure/[1]','root/direction','root/implementation','root/outcome','root/implementation','root/outcome']
+      && include_calls[4].inputs.feedback.summary.contains('outside Review') && outputs.summary=='Drawer verified.'
+- id: wording-correction-stays-with-outcome
+  type: integration_case
+  runtime: {}
+  inputs: {prompt: Keep the drawer open outside Review.}
+  mocks:
+    ops: [*origin]
+    includes:
+      root/configure/[1]: *config
+      root/direction: *direction
+      root/implementation:
+      - mode: return
+        outputs:
+          result: {status: accepted, summary: Name the drawer in the report title.}
+          work: {summary: Saved the drawer change.}
+          documents: {}
+          sessions: {}
+          feedback: {approval: {result: {status: accepted}}}
+          basis: {}
+          verification: {result: {status: passed}}
+          candidate: {}
+      root/outcome: [*finished]
+  assertions:
+  - type: cel_true
+    expr: >-
+      include_calls.map(c,c.node_path)==['root/configure/[1]','root/direction','root/implementation','root/outcome']
+      && include_calls[3].inputs.feedback.summary.contains('report title') && include_calls[3].inputs.feedback.approval.result.status=='accepted' && size(reviews)==0

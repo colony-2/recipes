@@ -79,3 +79,54 @@ cases:
     expr: >-
       calls.filter(c,c.op=="extension_execution" && has(c.inputs.inputs.prompt)).all(c,
       c.inputs.inputs.prompt.contains("Review reply from source unrecorded: \nRead original human notes"))
+
+- id: equivalent-dependency-check-covers-the-promise
+  type: integration_case
+  runtime: *runtime
+  inputs: {purpose: outcome, request: Let a child wait for its prerequisite.}
+  mocks:
+    ops:
+    - &judge
+      match: {selector: 'nix:github:colony-2/c2ops/published#codex'}
+      behavior:
+        mode: return
+        outputs: {status: completed, output_schema_valid: true, response: {status: covered, summary: The existing dependency waited until the prerequisite finished.}}
+    - &commands
+      match: {op: command_execution}
+      repeat: true
+      behavior: {mode: passthrough}
+  assertions: [{type: output_equals, path: result.status, value: covered}]
+- id: early-start-needs-code-repair
+  type: integration_case
+  runtime: *runtime
+  inputs: {purpose: outcome, request: Let a child wait for its prerequisite.}
+  mocks:
+    ops:
+    - <<: *judge
+      behavior: {mode: return, outputs: {status: completed, output_schema_valid: true, response: {status: repair_implementation, summary: The child started early.}}}
+    - *commands
+  assertions: &repair
+  - {type: output_equals, path: result.stage, value: implementation}
+  - {type: output_equals, path: result.status, value: changes}
+- id: explicitly-required-trace-is-missing
+  type: integration_case
+  runtime: *runtime
+  inputs: {purpose: outcome, request: Let a child wait for its prerequisite and include the start trace.}
+  mocks:
+    ops:
+    - <<: *judge
+      behavior: {mode: return, outputs: {status: completed, output_schema_valid: true, response: {status: repair_implementation, summary: The required trace is missing.}}}
+    - *commands
+  assertions: *repair
+- id: verified-implementation-with-a-report-edit
+  type: integration_case
+  runtime: *runtime
+  inputs: {purpose: implementation, request: Keep the drawer open outside Review.}
+  mocks:
+    ops:
+    - <<: *judge
+      behavior: {mode: return, outputs: {status: completed, output_schema_valid: true, response: {status: report_edit, summary: Name the drawer in the report title.}}}
+    - *commands
+  assertions:
+  - {type: output_equals, path: result.status, value: passed}
+  - {type: output_equals, path: result.summary, value: Name the drawer in the report title.}

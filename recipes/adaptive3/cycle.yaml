@@ -49,14 +49,22 @@ state:
         session: ${{ inputs.session }}
         agent_settings: ${{ inputs.agent_settings }}
       transitions:
+      - to: children
+        when: size(outputs.jobs)>0
+      - to: done
+        when: inputs.purpose == 'implementation' && outputs.response.status == 'repair'
+        payload:
+          result: >-
+            ${{ {'status':inputs.feedback.?author_retry.orValue(false) ? 'stuck' : 'changes',
+              'author_retry':true,'summary':outputs.response.summary,'errors':outputs.artifacts} }}
+          documents: ${{ outputs.documents }}
+          session: ${{ outputs.session }}
       - to: done
         when: inputs.purpose == 'implementation' && outputs.response.status == 'revise_plan'
         payload:
           result: ${{ {'status':'changes','stage':'preparation','summary':outputs.response.summary} }}
           documents: ${{ outputs.documents }}
           session: ${{ outputs.session }}
-      - to: children
-        when: size(outputs.jobs)>0
       - to: done
         when: inputs.purpose == 'integration' && outputs.response.status == 'ready'
         payload:
@@ -158,6 +166,7 @@ state:
         result: ${{ transition.payload.result }}
         checkpoints: ${{ state_output('validate','checkpoints',[]) }}
         purpose: ${{ inputs.purpose }}
+        previous_failure: ${{ inputs.feedback.?failed_checks.orValue([]) }}
         retry: ${{ inputs.retry }}
         documents: ${{ transition.payload.documents }}
         session: ${{ transition.payload.session }}
@@ -166,11 +175,14 @@ state:
         include: ./retry.yaml
         inputs:
           previous: ${{ inputs.retry }}
+          previous_failure: ${{ inputs.previous_failure }}
+          failed: ${{ inputs.result.?failed_checks.orValue([]) }}
           receipt: >-
             ${{ inputs.result.?status.orValue('') == 'changes' ? inputs.result.?human.orValue({}).?receipt.orValue({}) : {} }}
           checkpoints: >-
             ${{ inputs.checkpoints + (inputs.result.status == 'accepted' ? ['phase/' + inputs.purpose] : []) }}
       outputs:
+        repair: ${{ sequence.progress.outputs.change.repair }}
         retry: ${{ sequence.progress.outputs.change.retry }}
         result: ${{ inputs.result }}
         documents: ${{ inputs.documents }}
@@ -207,6 +219,7 @@ state:
           documents: ${{ state_output('execute','documents',inputs.documents) }}
           session: ${{ state_output('execute','session',inputs.session) }}
 outputs:
+  repair: ${{ states.done.outputs.repair }}
   retry: ${{ states.done.outputs.retry }}
   merge_state: ${{ state_output('execute','merge_state',inputs.merge_state) }}
   result: ${{ states.done.outputs.result }}

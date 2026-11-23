@@ -72,7 +72,8 @@ state:
       - to: done
         when: outputs.result.status == 'changes'
         payload:
-          result: ${{ outputs.result }}
+          result: >-
+            ${{ jq(outputs.result, '. + {failed_checks: [(.checks // {}) | to_entries[] | select(.value == "failed") | .key] | sort}') }}
       - to: compare_approval
         when: size(inputs.approval)>0
       - to: specialists
@@ -127,7 +128,9 @@ state:
         include: ./agent.yaml
         inputs:
           prompt: ${{ sequence.prompts.outputs.task }}
-          schema: ${{ sequence.schemas.outputs.validate }}
+          schema: >-
+            ${{ jq([sequence.schemas.outputs.validate,inputs.purpose],
+              '.[1] as $stage | .[0] | .properties.status.enum += (if $stage == "outcome" then ["repair_implementation"] elif $stage == "implementation" then ["report_edit"] else [] end)') }}
           documents: ${{ inputs.documents }}
           read_only: true
           session: ${{ inputs.session }}
@@ -168,6 +171,8 @@ outputs:
     ${{ jq(state_output('verify','result',{}), '[(if .status == "passed" then "verify" else empty end), ((.checks // {}) | to_entries[] | select(.value == "passed") | "verify/" + .key)]') }}
   document_metadata: ${{ states.files.outputs.document_metadata }}
   result: '${{ size(states.done.outputs.findings)>0 ? {''status'':''changes'',''summary'':jq(states.done.outputs.findings,''join("\n\n")'')}
+     : states.done.outputs.result.status == ''repair_implementation'' ? {''status'':''changes'',''stage'':''implementation'',''summary'':states.done.outputs.result.summary}
+    : states.done.outputs.result.status == ''report_edit'' ? {''status'':''passed'',''summary'':states.done.outputs.result.summary}
     : states.done.outputs.result.status == ''revise_plan'' ? {''status'':''changes'',''stage'':''preparation'',''summary'':states.done.outputs.result.summary} : states.done.outputs.result }}'
   session: ${{ state_output('assess','session',inputs.session) }}
   specialists: ${{ state_output('specialists','sessions',inputs.specialists) }}
@@ -191,7 +196,7 @@ vars:
       ? ['Provide the primary review document and a descriptive review title.']
       : inputs.purpose == 'preparation' && (inputs.work.?primary.orValue('') != 'review/one-pager.md'
         || !['review/design.md','review/acceptance.md'].all(k,k in inputs.documents))
-      ? ['Supply the Preparation one-pager, design and acceptance criteria in the required review files.']
+      ? ['Supply the Preparation one-pager, design and promised behaviors in the required review files.']
       : inputs.purpose == 'advice' && nonempty(inputs.work.?assignment.orValue('')) && !nonempty(inputs.work.?title.orValue(''))
       ? ['Give the proposed assignment a descriptive title before submitting it.'] : [] }}
   policies:

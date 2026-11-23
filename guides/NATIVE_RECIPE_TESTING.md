@@ -12,8 +12,8 @@ c2j version
 `.c2j-version` accepts an npm release or `source:<full Git commit ID>`.
 The current pin includes native child bindings, terminal ordering, response
 gates, grouped submission, and SQLite scenario controls used by the merge queue
-integration tests. The
-installer fetches that exact commit, checks its identity and builds with readonly
+integration tests. It also supports optional extension inputs and per-site include mocks.
+The installer fetches that exact commit, checks its identity and builds with readonly
 module resolution. It labels the CLI as a source build; it does not manufacture
 a release number or require deployment. CI uses the same installer and records
 the pin, CLI identity and Recipes commit. Keep this binary first on `PATH`,
@@ -28,6 +28,13 @@ because seeded cells already exist; `cell-registration.test.yaml` exercises the
 real registration command and grant boundaries. `creation-lifecycle.test.yaml`
 uses native response gates and an isolated child timeout; no production timeout
 is added.
+For a parent routing test, put each include site under `mocks.includes`. A state
+uses `root/<state>`. An include inside a sequence uses its zero-based position,
+such as `root/configure/[1]`. Give each site one response per visit. Assert the
+order and bound inputs in `include_calls`. The parent still executes its own
+commands and transitions. Exercise the real included recipe where its effects
+matter. [Working multi-site example](../recipe-tests/adaptive3/pilot-routing.test.yaml)
+
 Configure the op's declared tools, including Nix, as described in
 [c2ops worker setup](https://github.com/colony-2/c2ops/blob/published/NIX_PACKAGES.md).
 Runtime cases still resolve op manifests when model responses are mocked.

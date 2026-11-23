@@ -2,13 +2,15 @@
 id: adaptive3-retry
 inputs:
   previous: ${{ inputs.?previous.orValue({}) }}
+  previous_failure: ${{ inputs.?previous_failure.orValue([]) }}
+  failed: ${{ inputs.?failed.orValue([]) }}
   receipt: ${{ inputs.?receipt.orValue({}) }}
   checkpoints: ${{ inputs.?checkpoints.orValue([]) }}
   merge_extension: ${{ inputs.?merge_extension.orValue(0) }}
   dispatch: ${{ inputs.?dispatch.orValue(false) }}
 sequence: []
 outputs:
-  change: ${{ jq([inputs.previous,inputs.receipt,inputs.checkpoints,inputs.dispatch,inputs.merge_extension],vars.update) }}
+  change: ${{ jq([inputs.previous,inputs.receipt,inputs.checkpoints,inputs.dispatch,inputs.merge_extension,inputs.previous_failure,inputs.failed],vars.update) }}
 vars:
   update: |-
     .[0] as $previous | .[1] as $receipt | .[2] as $checks | .[3] as $dispatch | .[4] as $extension |
@@ -19,7 +21,9 @@ vars:
     (if $fresh then [] else ($checks | unique) - $seen end) as $advance |
     ($previous.automatic_used // 0) as $before |
     ((if $fresh or ($advance|length)>0 then 0 else $before end) + (if $dispatch then 1 else 0 end)) as $after |
-    {retry:{instructions:(if $fresh then $instructions + [$id] else $instructions end),
+    {repair:{advanced:(($advance|length)>0),
+             repeated:($fresh == false and ($advance|length)==0 and (.[6]|length)>0 and .[6]==.[5])},
+     retry:{instructions:(if $fresh then $instructions + [$id] else $instructions end),
      checkpoints:($seen + $advance),
      merge_used:(if $fresh then 0 else ($previous.merge_used // 0) end),
      merge_limit:((if $fresh then 3 else ($previous.merge_limit // 3) end) + $extension),
