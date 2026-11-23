@@ -126,7 +126,12 @@ state:
         when: outputs.result.status == 'changes' && (!has(outputs.result.stage) || outputs.result.stage == inputs.purpose)
         payload:
           documents: ${{ outputs.documents }}
-          feedback: ${{ jq([outputs.result,{'local_repair':true}],'add') }}
+          feedback: >-
+            ${{ jq([states.execute.outputs.feedback,outputs.result],
+              '.[0] as $prior | .[1] + {local_repair:true} |
+               if has("human") or ($prior.human // null) == null then . else
+                 . + {human:$prior.human, documents:(($prior.documents // {} | with_entries(select(.key | startswith("feedback/")))) + (.documents // {}))}
+               end') }}
           session: ${{ outputs.session }}
           fresh_instruction: ${{ outputs.retry.instructions != states.execute.outputs.retry.?instructions.orValue([]) }}
           used: >-
