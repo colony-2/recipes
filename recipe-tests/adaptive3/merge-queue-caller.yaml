@@ -19,6 +19,9 @@ input_schema:
   retry_rejection:
     type: boolean
     default_value: false
+  read_rejection:
+    type: boolean
+    default_value: false
 inputs:
   branch: ${{ inputs.branch }}
   saved_receipt: ${{ inputs.saved_receipt }}
@@ -26,6 +29,7 @@ inputs:
   replace_hook: ${{ inputs.replace_hook }}
   retry_after_advance: ${{ inputs.retry_after_advance }}
   retry_rejection: ${{ inputs.retry_rejection }}
+  read_rejection: ${{ inputs.read_rejection }}
 sequence:
 - id: initialize_branch
   when: inputs.branch!='main'
@@ -43,6 +47,7 @@ sequence:
     replace_hook: ${{ inputs.replace_hook }}
     retry_after_advance: ${{ inputs.retry_after_advance }}
     retry_rejection: ${{ inputs.retry_rejection }}
+    read_rejection: ${{ inputs.read_rejection }}
   workspace:
     cell: ${{ context.workflow.cell }}
     ref: ${{ inputs.branch }}
@@ -85,6 +90,25 @@ sequence:
       require_verification: true
       target_directory: .
       settings: {}
+  - id: read_rejection
+    when: inputs.read_rejection && sequence.submit.outputs.result.status=='changes' && sequence.submit.outputs.result.stage=='implementation'
+    op: command_execution
+    const: true
+    artifacts:
+      change-id.txt:
+        kind: value
+        format: text
+        value: ${{ sequence.prepare.outputs.candidate.changeid }}
+      returned.json:
+        kind: value
+        format: json
+        value: ${{ sequence.submit.outputs.result.errors }}
+      errors/: ${{ sequence.submit.outputs.result.errors }}
+    inputs:
+      env:
+        INBOX: ${{ context.environment.op.inbox }}
+        OUTBOX: ${{ context.environment.op.outbox }}
+      run: python3 read-rejection.py "$INBOX" "$OUTBOX"
   - id: read_target
     when: sequence.submit.outputs.result.status=='passed'
     op: command_execution
@@ -147,9 +171,11 @@ sequence:
     result: ${{ sequence.submit.outputs.result }}
     repeated: ${{ sequence[?'repeat'].orValue({}).?outputs.orValue({}).?result.orValue({}) }}
     verified: ${{ sequence[?'read_target'].orValue({}).?outputs.orValue({}).?success.orValue(false) }}
+    rejection_verified: ${{ sequence[?'read_rejection'].orValue({}).?outputs.orValue({}).?success.orValue(false) }}
     candidate: ${{ sequence.prepare.outputs.candidate }}
 outputs:
   result: ${{ sequence.candidate.outputs.result }}
   repeated: ${{ sequence.candidate.outputs.repeated }}
   verified: ${{ sequence.candidate.outputs.verified }}
+  rejection_verified: ${{ sequence.candidate.outputs.rejection_verified }}
   candidate: ${{ sequence.candidate.outputs.candidate }}

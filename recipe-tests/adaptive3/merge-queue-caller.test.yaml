@@ -13,6 +13,7 @@ cases:
           merge-check.yaml: ../../merge-check.yaml
           recipes/adaptive3: ../../recipes/adaptive3
           recipes/merge-queue: ../../recipes/merge-queue
+          read-rejection.py: read-rejection.py
         files:
           README.md: A merge queue test cell.
           .c2/recipes/hooks/build/verify.yaml: |
@@ -169,6 +170,7 @@ cases:
     expr: outputs.result.summary.contains('could not be confirmed')
 - id: rejected-only-candidate-returns-original-logs-after-one-baseline-check
   type: integration_case
+  inputs: {read_rejection: true}
   runtime:
     backend: sqlite
     cells:
@@ -193,26 +195,55 @@ cases:
                   else
                     echo passed
                   fi
+            - id: capture_origin
+              op: command_execution
+              const: true
+              artifacts:
+                original.json:
+                  kind: value
+                  format: json
+                  value: ${{ jq(sequence.health.artifacts,'with_entries(select(.key | endswith(".log")))') }}
+              inputs:
+                env:
+                  INBOX: ${{ context.environment.op.inbox }}
+                  OUTBOX: ${{ context.environment.op.outbox }}
+                run: cp "$INBOX/original.json" "$OUTBOX/diagnostic-origin.json"
             outputs:
               api_version: c2.build-hook/v1
               status: ${{ sequence.health.outputs.stdout }}
               summary: Checked worker health.
-              artifact_refs: ${{ jq(sequence.health.artifacts,'with_entries(select(.key | endswith(".log")))') }}
+              artifact_refs: ${{ jq([jq(sequence.health.artifacts,'with_entries(select(.key | endswith(".log")))'),{'diagnostic-origin.json':sequence.capture_origin.artifacts['diagnostic-origin.json']}],'add') }}
   mocks: *without_merge
   assertions:
   - type: cel_true
-    expr: outputs.result.status=='changes' && outputs.result.stage=='implementation' && outputs.result.rejected_changeid==outputs.candidate.changeid
+    expr: outputs.rejection_verified && outputs.result.status=='changes' && outputs.result.stage=='implementation' && outputs.result.rejected_changeid==outputs.candidate.changeid
   - type: cel_true
     expr: >-
       ['restoration.log','input-failure.log'].all(name,
         outputs.result.errors.exists(key,outputs.result.errors[key].stored.key.name==name))
   - type: cel_true
-    expr: calls.filter(c,c.node_path.endsWith('/health')).map(c,c.outputs.stdout)==['failed','passed']
+    expr: |
+      calls.filter(c,c.node_path.endsWith('/health')).map(c,c.outputs.stdout)==['failed','passed'] &&
+      calls.filter(c,c.node_path.endsWith('/health')).exists(c,c.node_path.contains('/full/')) &&
+      calls.filter(c,c.node_path.endsWith('/health')).exists(c,c.node_path.contains('/baseline/')) &&
+      !calls.exists(c,c.node_path.contains('adaptive3-merge-queue-land/final/') || c.node_path.contains('adaptive3-merge-queue-land/install/'))
   - type: cel_true
     expr: >-
-      repositories.root.new_commits==0 && !calls.exists(c,c.op=='merge' || c.node_path.endsWith('/publish_source')) &&
+      repositories.root.new_commits==0 && repositories.root.head==outputs.candidate.base_hash &&
+      !calls.exists(c,c.op=='merge' || c.node_path.endsWith('/publish_source')) &&
       calls.exists(c,c.op=='recipe.await_result_soft' && c.outputs.outputs.publication.reason=='no-new-merge' &&
-        c.outputs.outputs.results.size()==1 && c.outputs.outputs.results[0].status=='fail-validation')
+        c.outputs.outputs.publication.source==null && c.outputs.outputs.publication.owner_job==c.inputs.target.job &&
+        c.outputs.outputs.requested==[outputs.candidate.changeid] &&
+        c.outputs.outputs.results.size()==1 && c.outputs.outputs.results[0].changeid==outputs.candidate.changeid &&
+        c.outputs.outputs.results[0].status=='fail-validation')
+  - type: cel_true
+    expr: >-
+      ['restoration.log','input-failure.log'].all(name,
+        calls.filter(c,c.node_path.endsWith('/health') && c.node_path.contains('/full/')).size()==1 &&
+        calls.exists(c,c.node_path.endsWith('/health') && c.node_path.contains('/full/') &&
+          outputs.result.errors.exists(alias,outputs.result.errors[alias].stored.key.name==name &&
+            outputs.result.errors[alias].stored.key.jobId==c.job_id &&
+            calls.exists(reader,reader.node_path.endsWith('/read_rejection') && reader.job_id!=c.job_id))))
 - id: failed-baseline-keeps-receiver-failure-operational
   type: integration_case
   runtime:
@@ -236,7 +267,14 @@ cases:
   - type: cel_true
     expr: calls.exists(c,c.op=='command_execution' && has(c.inputs.env) && has(c.inputs.env.REASON) && c.inputs.env.REASON.contains('Verification failed on the published baseline'))
   - type: cel_true
-    expr: "repositories.root.new_commits==0 && !calls.exists(c,c.op=='merge' || c.node_path.endsWith('/publish_source'))"
+    expr: >-
+      outputs.result.failure.outputs.attrs.c2j_failure.attrs.command.diagnostics.exists(k,
+        outputs.result.failure.outputs.attrs.c2j_failure.attrs.command.diagnostics[k].stored.key.jobId==outputs.result.receiver.job_id)
+  - type: cel_true
+    expr: >-
+      repositories.root.new_commits==0 && repositories.root.head==outputs.candidate.base_hash &&
+      !calls.exists(c,c.op=='merge' || c.node_path.endsWith('/publish_source') ||
+        c.node_path.contains('adaptive3-merge-queue-land/install/'))
 - id: unchanged-rejection-does-not-resubmit
   type: integration_case
   inputs: {retry_rejection: true}
