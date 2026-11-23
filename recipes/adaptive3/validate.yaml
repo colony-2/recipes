@@ -170,10 +170,16 @@ outputs:
   checkpoints: >-
     ${{ jq(state_output('verify','result',{}), '[(if .status == "passed" then "verify" else empty end), ((.checks // {}) | to_entries[] | select(.value == "passed") | "verify/" + .key)]') }}
   document_metadata: ${{ states.files.outputs.document_metadata }}
-  result: '${{ size(states.done.outputs.findings)>0 ? {''status'':''changes'',''summary'':jq(states.done.outputs.findings,''join("\n\n")'')}
-     : states.done.outputs.result.status == ''repair_implementation'' ? {''status'':''changes'',''stage'':''implementation'',''summary'':states.done.outputs.result.summary}
-    : states.done.outputs.result.status == ''report_edit'' ? {''status'':''passed'',''summary'':states.done.outputs.result.summary}
-    : states.done.outputs.result.status == ''revise_plan'' ? {''status'':''changes'',''stage'':''preparation'',''summary'':states.done.outputs.result.summary} : states.done.outputs.result }}'
+  result: >-
+    ${{ size(states.done.outputs.findings)>0
+      ? {'status':'changes','summary':jq(states.done.outputs.findings,'join("\n\n")')}
+      : inputs.purpose == 'outcome' && states.done.outputs.result.status == 'repair_implementation'
+      ? {'status':'changes','stage':'implementation','summary':states.done.outputs.result.summary}
+      : inputs.purpose == 'implementation' && states.done.outputs.result.status == 'report_edit'
+      ? {'status':'passed','summary':states.done.outputs.result.summary}
+      : states.done.outputs.result.status == 'revise_plan'
+      ? {'status':'changes','stage':'preparation','summary':states.done.outputs.result.summary}
+      : states.done.outputs.result }}
   session: ${{ state_output('assess','session',inputs.session) }}
   specialists: ${{ state_output('specialists','sessions',inputs.specialists) }}
   verification: >-
