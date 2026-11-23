@@ -23,8 +23,10 @@ At each handoff, display the originating request, the latest applicable human de
 
 For the JobDB bridge example, the handoff should have read:
 
-> **Requested outcome** — When I create a job, let it wait for an existing job ID.  
-> **Parent’s proposal** — Reserve a goal so a particular receiver can complete it.  
+> **Requested outcome** — When I create a job, let it wait for an existing job ID.
+>
+> **Parent’s proposal** — Reserve a goal so a particular receiver can complete it.
+>
 > **Question for JobDB** — Can the existing dependency or receiver contract do this? If a change is needed, identify the smallest one and the evidence for it.
 
 Change the consultation prompt to answer “How can I do this today?” Finish there. Only the requester can open negotiation with a specific change it wants. The receiver can make an offer or decline. Delivery needs agreement from both. [Consultation prompt](../../../recipes/adaptive3/prompts/consultation.yaml) · [Coordination](../../../recipes/adaptive3/consultation.yaml)
@@ -172,4 +174,4 @@ The extension starts November 1 and ends at `c3e0b1e` on November 13 at 04:03 UT
 3. **Measure at job and decision level.** The main rate is distinct eligible build IDs whose own execution enters Backstop divided by all eligible build IDs. Also report mature/terminal cohorts, inherited history, recorded-parent status, source revision and incident exclusions. Count B visits and forms separately. Track Implementation → Backstop → Implementation, direct repair cycles, phase reentries, human corrections to new requirements, unnecessary access requests, active agent time, time waiting on operators, and successful delivery. Sample the actual checks and outcome documents for missed defects. A lower Backstop rate bought by abandoning jobs earlier fails the pilot.
 4. **Use the stated target.** Review the next 100 eligible jobs as an early signal, then a second 100. Aim for at most one or two jobs touching Backstop per hundred. Inspect every exception and any increase in failures, cancellations, unverified merges, duplicated external effects or human questions. Keep valid escalations. One small or unfinished cohort cannot establish a stable 1% rate. If the counter fix alone brings escalation into range with comparable delivery and quality, retain that simpler change. If the pilot reduces detours without losing defects or approval integrity, promote it in stages. If a revision loses defects or approval integrity, return new work to the last proven Adaptive3 revision.
 
-**Ownership fits this cell** for the recipe, prompt, guide, tests and pilot design. Framework include substitution, runtime retry and provider allocation have named external owners above. The present deliverable is the audit and proposal set. No jobs, recipes or runtime behavior were changed.
+Recipes owns the recipe, prompts, guide, tests and pilot design. c2j owns framework include substitution and runtime retry. Providers own worker allocation. The implementation record lists the local pilot revisions and the checks completed after this plan was written. [Pilot implementation](implementation.md) · [Test results and rollout status](test-results.md)

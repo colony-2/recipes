@@ -1,8 +1,10 @@
 # c2j feature requests for recipe authors
 
+Both features landed on c2j main. The current authoring guides show the released syntax. [Optional extension inputs](ops/EXTENSION_OPS_GUIDE.md) · [Test-only include replacements](NATIVE_RECIPE_TESTING.md)
+
 ## 1. Forward an optional recipe input to an extension op
 
-Suppose a compression op declares an integer input `level` with a default of 6. A recipe that passes only `file` already gets level 6. The awkward case is a recipe that accepts an optional override from its own caller. Writing `level: ${{ inputs.?level.orValue(null) }}` sends an explicit null when the caller omits the override. Today the author can branch between two calls, one with the `level` line and one without.
+Suppose a compression op declares an integer input `level` with a default of 6. A recipe that passes only `file` already gets level 6. The awkward case is a recipe that accepts an optional override from its own caller. Writing `level: ${{ inputs.?level.orValue(null) }}` sends an explicit null when the caller omits the override. Before optional forwarding, an author had to branch between two calls, one with the `level` line and one without.
 
 **Suggested c2j syntax.** Allow a direct extension call to forward a CEL optional through an `optional_inputs` block:
 
