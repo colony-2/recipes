@@ -5,7 +5,7 @@ Adaptive3 keeps two authors and an independent reviewer. The planning author can
 | When | What changes |
 | --- | --- |
 | A reviewer finds a code defect at Outcome | The writable author gets the finding. A verified implementation needing only a report edit goes forward to the Outcome author with the correction and earlier approval. |
-| Implementation retries | The check supplies the current finding. The review supplies the latest reply, its receipt and its uploads. The author gets both on each repair. A fresh author gets the assignment and orientation. One author-requested local retry is available. A second identical named failure without verified progress ends the local loop. Older hooks with only free text keep the finite visit limit. |
+| Implementation retries | The check supplies the current finding. The review supplies the latest reply, its receipt and its uploads. The author gets both at phase entry and on each repair. A fresh author gets the assignment and orientation. One author-requested local retry is available. A second identical named failure without verified progress ends the local loop. Older hooks with only free text keep the finite visit limit. |
 | One cell asks another how something works | The answer returns directly. Only the requester opens negotiation. The receiver can ask a question, decline or offer terms. A separate delivery requires agreement and the existing planning checks. |
 | A person needs to decide | The title names the issue. The delegate’s report opens with the blocker and suggested action. The original request, work and sources follow. A review reply travels with its recorded actor. |
 | An agent needs help with C2 | Every agent receives an offline task guide. It covers worker bases and capabilities, packages, exact job and review lookups, child work, publication and escalation. The short orientation points to it. |
@@ -25,6 +25,7 @@ Apply through the existing build entrypoint. Each revision includes its predeces
 | `bd6c75f` | Keep the original review words and attachments on a repair. Finish nested advice on the answer. Exercise the delegate's return to the implementer and check retained queue records across pages. |
 | `e388505` | Lead the delegate report with the blocker and action. Keep tool-installation guidance with planning and tool decisions. Attribute quoted feedback to the actor listed on the receipt. |
 | `fea3941` | Give each repair the latest check finding and the recorded review reply as separate inputs. A newer reply replaces the previous words and uploads. |
+| `b8f446f` | Use the same inputs at phase entry. Each caller passes its finding directly. The latest recorded reply travels with the phase’s saved sessions. |
 
 The c2j pin also retires shared goal waits. After a group has merged, recovery can consume a separate publication job only when its retained queue assembly belongs to the original receiver and its source matches the original native merge. Each caller still checks its own Change-Id on the branch. A later independent batch cannot release an earlier caller. [Queue recovery](../../BUILD_HOOKS_USER_GUIDE.md#queue-receipt-and-upgrade)
 
