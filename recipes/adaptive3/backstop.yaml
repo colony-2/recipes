@@ -102,18 +102,11 @@ state:
             artifacts: {}
             session: ${{ states.turn.outputs.session }}
     assess:
-      sequence: []
+      include: ./backstop-action.yaml
       inputs:
         response: ${{ states.investigate.outputs.response }}
         destinations: ${{ states.setup.outputs.destinations }}
-        stage: ${{ inputs.stage }}
         human: ${{ states.turn.outputs.human }}
-      outputs:
-        eligible: ${{ inputs.response.status in ['ask','resume'] && inputs.response.?stage.orValue('') in inputs.destinations
-          && (inputs.response.?instruction.orValue(null) == null || (size(inputs.human)>0 && (!inputs.response.instruction.scope_change || inputs.response.stage == 'direction')))
-          && (inputs.response.?destination.orValue(null) == null || (inputs.response.stage == 'configure' && inputs.response.destination in inputs.destinations))
-          && jq(inputs.response, '(.action // "") | if type == "string" then test("[^[:space:]]") else false end')
-          }}
       transitions:
       - to: done
         when: outputs.eligible && states.investigate.outputs.response.status == 'resume' && (states.turn.outputs.allow_resume || (size(states.turn.outputs.human)>0 && states.investigate.outputs.response.?instruction.orValue(null) != null))
@@ -197,8 +190,7 @@ state:
         instructions: true
         proposed_action: ${{ states.investigate.outputs.response.?action.orValue('') }}
         proposed_stage: ${{ states.investigate.outputs.response.?stage.orValue('') }}
-        request: '${{ jq([{''title'':''Backstop — '' + states.investigate.outputs.response.?title.orValue(''Agent
-          needs help''),''question'':(states.prepare_review.outputs.result.status == ''passed'' ? states.prepare_review.outputs.message
+        request: '${{ jq([{''title'':states.investigate.outputs.response.?title.orValue(''Your decision is needed''),''question'':(states.prepare_review.outputs.result.status == ''passed'' ? states.prepare_review.outputs.message
           : states.setup.outputs.text.unreadable + ''\n'' + states.prepare_review.outputs.result.summary),''documents'':states.prepare_review.outputs.documents,''document_metadata'':states.prepare_review.outputs.document_metadata,''directions'':(states.assess.outputs.eligible
           && states.prepare_review.outputs.result.status == ''passed'' ? [{''id'':''continue'',''label'':inputs.problem.?loop.orValue('''')
           != '''' && inputs.problem.loop != ''merge'' ? ''Resume '' + states.investigate.outputs.response.stage : inputs.problem.?loop.orValue('''') == ''merge'' ? states.setup.outputs.text.retry + '' '' + string(states.investigate.outputs.response.?additional_attempts.orValue(null)

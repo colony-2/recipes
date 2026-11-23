@@ -222,3 +222,9 @@ All filenames below are relative to `recipe-tests/adaptive3/`.
 | Newly confirmed checks restore both automatic returns. Repeated evidence and phase changes alone spend or preserve the remaining allowance. | `recipes/adaptive3/retry.yaml`, `recipes/adaptive3/hooks.yaml` | Critical | Integration, c2j |
 | Backstop can act on a clear Preparation revision using its original receipt without requesting confirmation again. | `recipes/adaptive3/backstop.yaml` | Critical | Integration, c2j |
 | After answering a question Backstop reassesses its blocker, takes an authorized action, or presents the remaining question. | `recipes/adaptive3/discussion.yaml`, `recipes/adaptive3/backstop.yaml` | Critical | Integration, c2j |
+| Equivalent evidence can cover a suggested check. A broken promise or missing expressly required check returns to its author. | `validation-feedback.test.yaml`, `build.test.yaml` | Critical | Integration, c2j |
+| A verified report correction reaches Outcome with the earlier approval. A code defect returns to Implementation. | `pilot-routing.test.yaml` | Critical | Integration, c2j |
+| A continuing author sees the diagnostic and original review words. A fresh author receives the assignment. | `lifecycle.test.yaml` | High | Integration, c2j |
+| A second unchanged named failure uses the delegate. A newly passing check renews repair. | `repair-progress.test.yaml` | High | Unit, c2j |
+| An explanation ends at the receiver’s answer. Only the requester can open negotiation for a change. | `consultation.test.yaml` | Critical | Integration, c2j |
+| An agent in a consuming cell can read its offline guide and inherit worker defaults or use explicit overrides. | `agent-settings.test.yaml` | High | Integration, c2j and c2ops |

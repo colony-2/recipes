@@ -3,9 +3,10 @@
 Adaptive3 uses two author sessions and one independent assessor for the standard
 build. Direction and Preparation share a planning author. Implementation and
 Outcome share a core implementer. Standard deliveries pause at Preparation with the one-pager, detailed design and
-acceptance criteria. Accept to Outcome requests a final review. Accept fully
-authorizes completion or merge when the independent Outcome assessment confirms
-the verified candidate meets the frozen plan. A short local assignment goes
+promised behaviors and suggested checks. “Show me the result” requests a final review.
+“Finish if verified” permits completion or merge once independent assessment confirms the
+verified candidate meets the promise and any explicitly required checks. An equivalent
+check can replace an author’s example. A short local assignment goes
 directly from Direction to Implementation and requires human Outcome acceptance.
 Review questions resume the author in a read-only turn. Autonomous acceptance
 uses the independent assessment result.
@@ -271,9 +272,9 @@ build input or agent trust flag can establish the internal record.
 
 Queued publication belongs to the merge receiver at the final assembled tip;
 callers consume the shared result and retain their individual merge hashes.
-Recover failed grouped publication in the original receiver, then consume its native goal
-result through `queue_recovery`; never submit a replacement batch or invoke a
-caller publisher. [Receipt, recovery and drain-first upgrade details](../../guides/BUILD_HOOKS_USER_GUIDE.md#queue-receipt-and-upgrade)
+Resume the original receiver at its saved publication step. If c2j assigns the repair
+a new job ID, supply it in `queue_recovery.repair_job`. The caller checks the retained
+assembly, original merge, and its own contribution before consuming the result. [Receipt, recovery and drain-first upgrade details](../../guides/BUILD_HOOKS_USER_GUIDE.md#queue-receipt-and-upgrade)
 cover the v2 paired caller/receiver contract. Product hooks still own branch
 eligibility, durable release identity and ancestry-aware ordering.
 

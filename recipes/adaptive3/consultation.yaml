@@ -53,6 +53,7 @@ state:
         include: ./prompts/consultation.yaml
         inputs:
           sender: ${{ inputs.sender }}
+          mode: ${{ inputs.mode }}
           request: ${{ inputs.request }}
           feedback: ${{ inputs.feedback }}
       outputs:
@@ -134,7 +135,7 @@ state:
           used: ${{ states.call.outputs.used+1 }}
           session: ${{ outputs.session }}
       - to: record
-        when: outputs.result.status != 'accepted' && size(states.call.outputs.parents)==0
+        when: outputs.result.status != 'accepted' && states.call.outputs.mode != 'advice' && size(states.call.outputs.parents)==0
         payload:
           turns: ${{ states.call.outputs.turns + [{'cell':states.call.outputs.sender,'text':states.call.outputs.request},{'cell':inputs.cell,'text':outputs.result.summary}] }}
           resolution: ${{ outputs.result.summary }}
@@ -142,8 +143,30 @@ state:
           unresolved: true
       - to: stuck
         when: outputs.result.status != 'accepted'
+      - to: answer
+        when: states.call.outputs.mode == 'advice'
       - to: owner_reply
         when: 'true'
+    answer:
+      inputs:
+        summary: ${{ states.advice.outputs.work.summary }}
+        documents: ${{ states.advice.outputs.documents }}
+      sequence: []
+      outputs:
+        result:
+          status: ready
+          summary: ${{ inputs.summary }}
+          assignment: ''
+        documents: ${{ inputs.documents }}
+      transitions:
+      - to: return_to_owner
+        when: size(states.call.outputs.parents)>0
+        payload: &answer
+          result: ${{ outputs.result }}
+          documents: ${{ outputs.documents }}
+      - to: done
+        when: 'true'
+        payload: *answer
     owner_reply:
       sequence: []
       inputs:
@@ -380,6 +403,9 @@ state:
         payload:
           result: ${{ outputs.result }}
           documents: ${{ outputs.documents }}
+      - to: done
+        when: inputs.mode == 'advice'
+        payload: *answer
       - to: record
         when: 'true'
         payload:
