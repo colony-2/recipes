@@ -4,11 +4,13 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "recipes" / "merge-queue"))
 
 from git_work import Git, GitError, confirm_landed, install, reuse_verification
 from policy import UnidentifiedContribution, caller_receipt, landing_results, plan_probes, publication_context, record_probes, screen_contributions, reusable_receipt
+from recovery import assembly_receipts
 
 
 BASE = "a" * 40
@@ -36,6 +38,19 @@ def append(change_id, age, *, policy=POLICY, head=HEAD):
 
 
 class MergeQueuePolicyTest(unittest.TestCase):
+    def test_restarted_assembly_reads_beyond_the_task_preview(self):
+        task = {"id": "assembly", "attempt": 2, "type": "extension_execution:extension_execution",
+                "status": "succeeded", "path": "receiver/adaptive3-merge-queue-replay/replay",
+                "artifacts": [], "inventory_truncated": True}
+
+        def artifact(job):
+            key = {"jobId": job, "taskOrdinal": 12, "name": "assembled.bundle"}
+            return {"name": "assembled.bundle", "reference": {"stored": {"key": key}}}
+
+        with patch("recovery.pages", return_value=[artifact("unrelated"), artifact("original")]) as pages:
+            self.assertEqual(assembly_receipts([task], "repair", "original"), {("assembly", 12, "assembled.bundle")})
+            pages.assert_called_once_with("artifacts", "repair", "artifacts", "--task", "assembly", "--attempt", "2")
+
     def test_screening_preserves_age_and_excludes_incompatible_or_ambiguous_changes(self):
         oldest = append(OLDER, "2026-11-18T12:00:00.000000001Z")
         newer = append(NEWER, "2026-11-18T12:00:00.000000010Z")

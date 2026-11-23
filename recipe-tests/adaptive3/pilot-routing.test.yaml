@@ -58,3 +58,34 @@ cases:
     expr: >-
       include_calls.map(c,c.node_path)==['root/configure/[1]','root/direction','root/implementation','root/outcome']
       && include_calls[3].inputs.feedback.summary.contains('report title') && include_calls[3].inputs.feedback.approval.result.status=='accepted' && size(reviews)==0
+- id: delegate-receives-the-stalled-check-and-returns-one-correction
+  type: integration_case
+  runtime: {}
+  inputs: {prompt: Restore drafts after reopening the notebook.}
+  mocks:
+    ops: [*origin]
+    includes:
+      root/configure/[1]: *config
+      root/direction: *direction
+      root/implementation:
+      - mode: return
+        outputs:
+          result: {status: stuck, loop: work, summary: Restore still fails after a local repair., failed_checks: [restore]}
+          documents: {}
+          sessions: {short_path: true}
+          feedback: {}
+      - *implemented
+      root/backstop/[1]:
+      - mode: return
+        outputs:
+          result: {status: resume, stage: implementation, summary: Use the recovered fixture to repair restore.}
+          session: {}
+          documents: {}
+          retry: {}
+      root/outcome: [*finished]
+  assertions:
+  - type: cel_true
+    expr: >-
+      include_calls.map(c,c.node_path)==['root/configure/[1]','root/direction','root/implementation','root/backstop/[1]','root/implementation','root/outcome']
+      && include_calls[3].inputs.problem.failed_checks==['restore']
+      && include_calls[4].inputs.feedback.summary.contains('recovered fixture') && size(reviews)==0

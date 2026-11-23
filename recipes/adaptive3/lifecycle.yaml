@@ -126,12 +126,7 @@ state:
         when: outputs.result.status == 'changes' && (!has(outputs.result.stage) || outputs.result.stage == inputs.purpose)
         payload:
           documents: ${{ outputs.documents }}
-          feedback: >-
-            ${{ jq([states.execute.outputs.feedback,outputs.result],
-              '.[0] as $prior | .[1] + {local_repair:true} |
-               if has("human") or ($prior.human // null) == null then . else
-                 . + {human:$prior.human, documents:(($prior.documents // {} | with_entries(select(.key | startswith("feedback/")))) + (.documents // {}))}
-               end') }}
+          feedback: ${{ jq([states.execute.outputs.feedback,outputs.result],vars.repair_feedback) }}
           session: ${{ outputs.session }}
           fresh_instruction: ${{ outputs.retry.instructions != states.execute.outputs.retry.?instructions.orValue([]) }}
           used: >-
@@ -268,6 +263,11 @@ catch:
       feedback: ${{ inputs.?feedback.orValue({}) }}
       sessions: ${{ jq([inputs.sessions,{'retry':state_output('done','retry',state_output('execute','retry',inputs.sessions.?retry.orValue({}))),'agreements':state_output('execute','agreements',inputs.sessions.?agreements.orValue([]))}],'add') }}
 vars:
+  repair_feedback: |-
+    .[0] as $prior | .[1] + {local_repair:true} |
+    if has("human") or ($prior.human // null) == null then . else
+      . + {human:$prior.human, documents:(($prior.documents // {} | with_entries(select(.key | startswith("feedback/")))) + (.documents // {}))}
+    end
   author: '${{ inputs.purpose in [''direction'',''preparation''] ? ''planning'' : ''implementation'' }}'
   limits: >-
     ${{ jq([inputs.max_iterations,inputs.feedback.?visit_allowance.orValue({})],
