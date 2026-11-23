@@ -15,9 +15,9 @@ inputs:
   request: ${{ inputs.request }}
   target_directory: ${{ inputs.?target_directory.orValue('.') }}
   documents: ${{ inputs.?documents.orValue({}) }}
-  feedback: ${{ inputs.?feedback.orValue({}) }}
-  finding: ${{ inputs.?finding.orValue(null) }}
-  review_notes: ${{ inputs.?review_notes.orValue({}) }}
+  finding: ${{ inputs.?finding.orValue({}) }}
+  local_repair: ${{ inputs.?local_repair.orValue(false) }}
+  review_reply: ${{ inputs.?review_reply.orValue({}) }}
   settings: ${{ inputs.?settings.orValue({}) }}
   session: ${{ inputs.?session.orValue({}) }}
   agent_settings: ${{ inputs.?agent_settings.orValue({}) }}
@@ -26,13 +26,12 @@ state:
   states:
     context:
       inputs:
-        resumed_repair: ${{ inputs.purpose == 'implementation' && size(inputs.session)>0 && inputs.finding != null }}
+        resumed_repair: ${{ inputs.purpose == 'implementation' && size(inputs.session)>0 && inputs.local_repair }}
         purpose: ${{ inputs.purpose }}
         request: ${{ inputs.request }}
         target_directory: ${{ inputs.target_directory }}
-        feedback: ${{ inputs.feedback }}
-        finding: >-
-          ${{ inputs.finding != null ? inputs.finding : inputs.feedback }}
+        finding: ${{ inputs.finding }}
+        review_reply: ${{ inputs.review_reply }}
         settings: ${{ inputs.settings }}
       sequence:
       - id: schemas
@@ -43,13 +42,11 @@ state:
           purpose: ${{ inputs.purpose }}
           request: ${{ inputs.request }}
           target_directory: ${{ inputs.target_directory }}
-          feedback: ${{ inputs.feedback }}
           finding: ${{ inputs.finding }}
+          review_reply: ${{ inputs.review_reply }}
           guidance: ${{ inputs.settings.?prompt_additions.orValue({})[?{'direction':'design','preparation':'test_plan','implementation':'implementation','outcome':'','integration':'','advice':'design'}[inputs.purpose]].orValue('')
             }}
       outputs:
-        finding_documents: ${{ inputs.finding.?documents.orValue({}) }}
-        errors: ${{ inputs.finding.?errors.orValue({}) }}
         schema: >-
           ${{ inputs.purpose == 'implementation' ? jq(sequence.schemas.outputs.execute,
             '.properties.status.enum += ["repair"]') : sequence.schemas.outputs.execute }}
@@ -57,7 +54,7 @@ state:
           ${{ inputs.resumed_repair ? sequence.prompts.outputs.repair : sequence.prompts.outputs.task }}
       transitions:
       - to: queue
-        when: inputs.purpose == 'integration' && (has(inputs.feedback.queue_recovery) || (inputs.queue_history.?status.orValue('')=='stuck' && inputs.queue_history.?receiver.orValue(null)!=null))
+        when: inputs.purpose == 'integration' && (has(inputs.finding.queue_recovery) || (inputs.queue_history.?status.orValue('')=='stuck' && inputs.queue_history.?receiver.orValue(null)!=null))
       - to: receipt
         when: inputs.purpose == 'integration'
       - to: refresh
@@ -135,8 +132,8 @@ state:
         documents: >-
           ${{ jq([inputs.documents,
             jq(inputs.plan.?documents.orValue({}),'with_entries(.key = "approved/" + .key | .value.name = .key)'),
-            states.context.outputs.finding_documents, inputs.review_notes,
-            states.context.outputs.errors, state_output('before_design','artifacts',{}), state_output('refresh','artifacts',{})], 'add') }}
+            inputs.finding.?documents.orValue({}), inputs.review_reply.?documents.orValue({}),
+            inputs.finding.?errors.orValue({}), state_output('before_design','artifacts',{}), state_output('refresh','artifacts',{})], 'add') }}
         session: ${{ inputs.session }}
         read_only: ${{ inputs.purpose != 'implementation' }}
         agent_settings: ${{ inputs.agent_settings }}
@@ -165,8 +162,8 @@ state:
         contribution: ${{ inputs.contribution }}
         verification: ${{ inputs.verification }}
         queue_history: ${{ inputs.queue_history }}
-        recovery: ${{ inputs.feedback.?queue_recovery.orValue({}) }}
-        recovering: ${{ has(inputs.feedback.queue_recovery) }}
+        recovery: ${{ inputs.finding.?queue_recovery.orValue({}) }}
+        recovering: ${{ has(inputs.finding.queue_recovery) }}
         documents: ${{ inputs.documents }}
         require_verification: ${{ inputs.require_verification }}
         target_directory: ${{ inputs.target_directory }}

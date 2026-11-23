@@ -119,31 +119,31 @@ state:
         payload:
           sessions: ${{ outputs.sessions }}
           documents: ${{ outputs.documents }}
-          feedback: ${{ outputs.feedback }}
+          finding: ${{ outputs.feedback }}
       - to: preparation
         when: outputs.result.status in ['passed','skipped'] && outputs.destination == 'preparation'
         payload:
           sessions: ${{ outputs.sessions }}
           documents: ${{ outputs.documents }}
-          feedback: ${{ outputs.feedback }}
+          finding: ${{ outputs.feedback }}
       - to: implementation
         when: outputs.result.status in ['passed','skipped'] && outputs.destination == 'implementation'
         payload:
           sessions: ${{ outputs.sessions }}
           documents: ${{ outputs.documents }}
-          feedback: ${{ outputs.feedback }}
+          finding: ${{ outputs.feedback }}
       - to: outcome
         when: outputs.result.status in ['passed','skipped'] && outputs.destination == 'outcome'
         payload:
           sessions: ${{ outputs.sessions }}
           documents: ${{ outputs.documents }}
-          feedback: ${{ outputs.feedback }}
+          finding: ${{ outputs.feedback }}
       - to: integration
         when: outputs.result.status in ['passed','skipped'] && outputs.destination == 'integration'
         payload:
           sessions: ${{ outputs.sessions }}
           documents: ${{ outputs.documents }}
-          feedback: ${{ outputs.feedback }}
+          finding: ${{ outputs.feedback }}
       - to: backstop
         when: 'true'
         payload:
@@ -157,15 +157,15 @@ state:
       include: ./recipes/adaptive3/lifecycle.yaml
       inputs:
         sessions: ${{ jq(transition.payload.?sessions.orValue({}),'del(.plan,.short_path)') }}
-        basis: ${{ transition.payload.?feedback.orValue({}).?amendment.orValue({}).?human.orValue({}).?receipt.orValue({}) }}
+        basis: ${{ transition.payload.finding.?amendment.orValue({}).?human.orValue({}).?receipt.orValue({}) }}
         purpose: direction
         request: |-
           {{ inputs.title }}
           {{ inputs.prompt }}
         target_directory: ${{ inputs.target_directory }}
         documents: ${{ transition.payload.?documents.orValue(inputs.documents) }}
-        feedback: >-
-          ${{ transition.payload.?feedback.orValue({}) }}
+        review_reply: ${{ transition.payload.?sessions.orValue({}).?review_reply.orValue({}) }}
+        finding: ${{ transition.payload.finding }}
         settings: ${{ states.configure.outputs.settings }}
         require_verification: ${{ inputs.require_verification }}
         max_iterations: ${{ inputs.max_iterations }}
@@ -178,7 +178,7 @@ state:
           stage: direction
           problem: ${{ outputs.result }}
           documents: ${{ outputs.documents }}
-          feedback: ${{ outputs.feedback }}
+          feedback: ${{ outputs.prior_finding }}
       - to: complete
         when: outputs.result.status == 'accepted' && outputs.work.?work_kind.orValue('') == 'explanation'
         payload:
@@ -189,10 +189,12 @@ state:
         payload:
           sessions: ${{ jq([outputs.sessions,{'short_path':true}],'add') }}
           documents: ${{ outputs.documents }}
-          feedback: ${{ outputs.work }}
+          finding: ${{ outputs.work }}
       - to: preparation
         when: outputs.result.status == 'accepted'
         payload:
+          finding: >-
+            ${{ outputs.prior_finding.?approval.hasValue() ? outputs.prior_finding : outputs.finding }}
           sessions: ${{ outputs.sessions }}
       - to: backstop
         when: 'true'
@@ -201,7 +203,7 @@ state:
           stage: direction
           problem: ${{ outputs.result }}
           documents: ${{ outputs.documents }}
-          feedback: ${{ outputs.feedback }}
+          feedback: ${{ outputs.prior_finding }}
     preparation:
       id: preparation
       include: ./recipes/adaptive3/lifecycle.yaml
@@ -215,9 +217,8 @@ state:
         target_directory: ${{ inputs.target_directory }}
         documents: ${{ transition.payload.?documents.orValue(state_output('direction','documents',inputs.documents))
           }}
-        feedback: >-
-          ${{ transition.payload.?feedback.orValue(state_output('direction','feedback',{}).?approval.hasValue()
-          ? state_output('direction','feedback',{}) : state_output('direction','result',{})) }}
+        review_reply: ${{ transition.payload.?sessions.orValue({}).?review_reply.orValue({}) }}
+        finding: ${{ transition.payload.finding }}
         settings: ${{ states.configure.outputs.settings }}
         require_verification: ${{ inputs.require_verification }}
         max_iterations: ${{ inputs.max_iterations }}
@@ -230,19 +231,19 @@ state:
           stage: preparation
           problem: ${{ outputs.result }}
           documents: ${{ outputs.documents }}
-          feedback: ${{ outputs.feedback }}
+          feedback: ${{ outputs.prior_finding }}
       - to: direction
         when: outputs.result.status == 'changes' && outputs.result.?stage.orValue('') == 'direction'
         payload:
           sessions: ${{ outputs.sessions }}
           documents: ${{ outputs.documents }}
-          feedback: ${{ outputs.result }}
+          finding: ${{ outputs.finding }}
       - to: implementation
         when: outputs.result.status == 'accepted'
         payload:
           sessions: ${{ jq([outputs.sessions,outputs.documents,outputs.result],vars.approve_plan) }}
           documents: ${{ outputs.documents }}
-          feedback: ${{ outputs.result }}
+          finding: ${{ outputs.finding }}
       - to: backstop
         when: 'true'
         payload:
@@ -250,7 +251,7 @@ state:
           stage: preparation
           problem: ${{ outputs.result }}
           documents: ${{ outputs.documents }}
-          feedback: ${{ outputs.feedback }}
+          feedback: ${{ outputs.prior_finding }}
     implementation:
       id: implementation
       include: ./recipes/adaptive3/lifecycle.yaml
@@ -267,9 +268,8 @@ state:
         target_directory: ${{ inputs.target_directory }}
         documents: ${{ transition.payload.?documents.orValue(state_output('preparation','documents',state_output('direction','documents',inputs.documents)))
           }}
-        feedback: >-
-          ${{ transition.payload.?feedback.orValue(state_output('preparation','feedback',{}).?approval.hasValue()
-          ? state_output('preparation','feedback',{}) : state_output('preparation','result',state_output('direction','result',{}))) }}
+        review_reply: ${{ transition.payload.?sessions.orValue({}).?review_reply.orValue({}) }}
+        finding: ${{ transition.payload.finding }}
         settings: ${{ states.configure.outputs.settings }}
         require_verification: ${{ inputs.require_verification }}
         max_iterations: ${{ inputs.max_iterations }}
@@ -282,29 +282,30 @@ state:
           stage: implementation
           problem: ${{ outputs.result }}
           documents: ${{ outputs.documents }}
-          feedback: ${{ outputs.feedback }}
+          feedback: ${{ outputs.prior_finding }}
       - to: direction
         when: outputs.result.status == 'changes' && outputs.result.?stage.orValue('') == 'direction'
         payload:
           sessions: ${{ outputs.sessions }}
           documents: ${{ outputs.documents }}
-          feedback: ${{ outputs.result }}
+          finding: ${{ outputs.finding }}
       - to: preparation
         when: outputs.result.status == 'changes' && outputs.result.?stage.orValue('') == 'preparation'
         payload:
           sessions: ${{ outputs.sessions }}
           documents: ${{ outputs.documents }}
-          feedback: ${{ outputs.result }}
+          finding: ${{ outputs.finding }}
       - to: integration
         when: outputs.result.status == 'accepted' && outputs.result.?approval_reused.orValue(false)
         payload:
           sessions: ${{ outputs.sessions }}
-          accepted: ${{ outputs.feedback.approval }}
+          accepted: ${{ outputs.prior_finding.approval }}
           documents: ${{ outputs.documents }}
-          feedback: {}
+          finding: {}
       - to: outcome
         when: outputs.result.status == 'accepted'
         payload:
+          finding: ${{ jq([outputs.prior_finding,outputs.finding], 'add') }}
           sessions: ${{ outputs.sessions }}
       - to: backstop
         when: 'true'
@@ -313,7 +314,7 @@ state:
           stage: implementation
           problem: ${{ outputs.result }}
           documents: ${{ outputs.documents }}
-          feedback: ${{ outputs.feedback }}
+          feedback: ${{ outputs.prior_finding }}
     outcome:
       id: outcome
       include: ./recipes/adaptive3/lifecycle.yaml
@@ -327,9 +328,8 @@ state:
         target_directory: ${{ inputs.target_directory }}
         documents: ${{ transition.payload.?documents.orValue(state_output('implementation','documents',inputs.documents))
           }}
-        feedback: >-
-          ${{ transition.payload.?feedback.orValue(jq([state_output('implementation','feedback',{}),
-            state_output('implementation','result',{})], 'add')) }}
+        review_reply: ${{ transition.payload.?sessions.orValue({}).?review_reply.orValue({}) }}
+        finding: ${{ transition.payload.finding }}
         settings: ${{ states.configure.outputs.settings }}
         require_verification: ${{ inputs.require_verification }}
         max_iterations: ${{ inputs.max_iterations }}
@@ -346,28 +346,29 @@ state:
           stage: outcome
           problem: ${{ outputs.result }}
           documents: ${{ outputs.documents }}
-          feedback: ${{ outputs.feedback }}
+          feedback: ${{ outputs.prior_finding }}
       - to: direction
         when: outputs.result.status == 'changes' && outputs.result.?stage.orValue('') == 'direction'
         payload:
           sessions: ${{ outputs.sessions }}
           documents: ${{ outputs.documents }}
-          feedback: ${{ outputs.result }}
+          finding: ${{ outputs.finding }}
       - to: preparation
         when: outputs.result.status == 'changes' && outputs.result.?stage.orValue('') == 'preparation'
         payload:
           sessions: ${{ outputs.sessions }}
           documents: ${{ outputs.documents }}
-          feedback: ${{ outputs.result }}
+          finding: ${{ outputs.finding }}
       - to: implementation
         when: outputs.result.status == 'changes' && outputs.result.?stage.orValue('') == 'implementation'
         payload:
           sessions: ${{ outputs.sessions }}
           documents: ${{ outputs.documents }}
-          feedback: ${{ outputs.result }}
+          finding: ${{ outputs.finding }}
       - to: integration
         when: outputs.result.status == 'accepted'
         payload:
+          finding: ${{ outputs.finding }}
           sessions: ${{ outputs.sessions }}
           accepted: ${{ {'result':outputs.result,'patch':outputs.patch,'contribution':state_output('implementation','verification',{}).?contribution.orValue({})} }}
       - to: backstop
@@ -377,7 +378,7 @@ state:
           stage: outcome
           problem: ${{ outputs.result }}
           documents: ${{ outputs.documents }}
-          feedback: ${{ outputs.feedback }}
+          feedback: ${{ outputs.prior_finding }}
     integration:
       id: integration
       include: ./recipes/adaptive3/lifecycle.yaml
@@ -387,11 +388,11 @@ state:
         accepted: >-
           ${{ transition.payload.?accepted.orValue(
             !state_exists('outcome') && !state_exists('implementation') && inputs.resume_from != '' && size(state_output('integration','merge_state',{}))==0
-              ? transition.payload.?feedback.orValue(state_output('configure','feedback',{})).?approval.orValue(state_output('integration','accepted',{}))
+              ? transition.payload.finding.?approval.orValue(state_output('integration','accepted',{}))
               : state_output('integration','accepted',{})) }}
         merge_state: ${{ state_output('integration','merge_state',{}) }}
         recovery: ${{ !state_exists('outcome') && !state_exists('implementation') && inputs.resume_from != '' }}
-        prior_publication: ${{ transition.payload.?feedback.orValue(state_output('configure','feedback',{})).?publication.orValue(null) }}
+        prior_publication: ${{ transition.payload.finding.?publication.orValue(null) }}
         merge_queue: ${{ inputs.merge_queue }}
         contribution: ${{ state_output('implementation','verification',{}).?contribution.orValue({}) }}
         verification: ${{ state_output('implementation','verification',{}) }}
@@ -404,7 +405,8 @@ state:
         target_directory: ${{ inputs.target_directory }}
         documents: ${{ transition.payload.?documents.orValue(state_output('outcome','documents',inputs.documents))
           }}
-        feedback: ${{ transition.payload.?feedback.orValue(state_output('outcome','result',{})) }}
+        review_reply: ${{ transition.payload.?sessions.orValue({}).?review_reply.orValue({}) }}
+        finding: ${{ transition.payload.finding }}
         settings: ${{ states.configure.outputs.settings }}
         require_verification: ${{ inputs.require_verification }}
         max_iterations: ${{ inputs.max_iterations }}
@@ -422,31 +424,31 @@ state:
           stage: integration
           problem: ${{ outputs.result }}
           documents: ${{ outputs.documents }}
-          feedback: ${{ outputs.feedback }}
+          feedback: ${{ outputs.prior_finding }}
       - to: direction
         when: outputs.result.status == 'changes' && outputs.result.?stage.orValue('') == 'direction'
         payload:
           sessions: ${{ outputs.sessions }}
           documents: ${{ outputs.documents }}
-          feedback: ${{ outputs.result }}
+          finding: ${{ outputs.finding }}
       - to: preparation
         when: outputs.result.status == 'changes' && outputs.result.?stage.orValue('') == 'preparation'
         payload:
           sessions: ${{ outputs.sessions }}
           documents: ${{ outputs.documents }}
-          feedback: ${{ outputs.result }}
+          finding: ${{ outputs.finding }}
       - to: implementation
         when: outputs.result.status == 'changes' && outputs.result.?stage.orValue('') == 'implementation'
         payload:
           sessions: ${{ outputs.sessions }}
           documents: ${{ outputs.documents }}
-          feedback: ${{ outputs.result }}
+          finding: ${{ outputs.finding }}
       - to: outcome
         when: outputs.result.status == 'changes' && outputs.result.?stage.orValue('') == 'outcome'
         payload:
           sessions: ${{ outputs.sessions }}
           documents: ${{ outputs.documents }}
-          feedback: ${{ outputs.result }}
+          finding: ${{ outputs.finding }}
       - to: complete
         when: outputs.result.status == 'accepted'
         payload:
@@ -458,7 +460,7 @@ state:
           stage: integration
           problem: ${{ outputs.result }}
           documents: ${{ outputs.documents }}
-          feedback: ${{ outputs.feedback }}
+          feedback: ${{ outputs.prior_finding }}
     backstop:
       inputs:
         sessions: ${{ transition.payload.?sessions.orValue({}) }}
@@ -512,6 +514,7 @@ state:
           feedback: ${{ inputs.feedback }}
           agent_settings: ${{ inputs.agent_settings }}
           prior_job: ${{ inputs.prior_job }}
+          review_reply: ${{ inputs.sessions.?review_reply.orValue({}) }}
           session: ${{ inputs.sessions.?backstop.orValue({}) }}
           retry: ${{ inputs.retry }}
           automatic: ${{ inputs.retry.?automatic_used.orValue(0) < 2 }}
@@ -523,7 +526,7 @@ state:
           problem: ${{ inputs.problem }}
           retry: ${{ sequence.backstop.outputs.retry }}
       outputs:
-        sessions: ${{ jq([inputs.sessions,{'backstop':sequence.backstop.outputs.session,'retry':sequence.dispatch.outputs.retry}], 'add') }}
+        sessions: ${{ jq([inputs.sessions,{'review_reply':sequence.backstop.outputs.review_reply,'backstop':sequence.backstop.outputs.session,'retry':sequence.dispatch.outputs.retry}], 'add') }}
         result: ${{ sequence.dispatch.outputs.result }}
         handoff: ${{ jq([inputs.problem,sequence.dispatch.outputs.result], '(.[0] | del(.budget,.visit_allowance)) + .[1]') }}
         documents: ${{ sequence.backstop.outputs.documents }}
@@ -551,25 +554,25 @@ state:
         payload:
           sessions: ${{ outputs.sessions }}
           documents: ${{ outputs.documents }}
-          feedback: ${{ outputs.handoff }}
+          finding: ${{ outputs.handoff }}
       - to: preparation
         when: outputs.result.stage == 'preparation'
         payload:
           sessions: ${{ outputs.sessions }}
           documents: ${{ outputs.documents }}
-          feedback: ${{ outputs.handoff }}
+          finding: ${{ outputs.handoff }}
       - to: implementation
         when: outputs.result.stage == 'implementation'
         payload:
           sessions: ${{ outputs.sessions }}
           documents: ${{ outputs.documents }}
-          feedback: ${{ outputs.handoff }}
+          finding: ${{ outputs.handoff }}
       - to: outcome
         when: outputs.result.stage == 'outcome'
         payload:
           sessions: ${{ outputs.sessions }}
           documents: ${{ outputs.documents }}
-          feedback: ${{ outputs.handoff }}
+          finding: ${{ outputs.handoff }}
       - to: integration
         when: outputs.result.stage == 'integration'
         payload:
@@ -577,7 +580,7 @@ state:
             ${{ state_output('outcome','result',{}).?receipt.hasValue() ? {'result':states.outcome.outputs.result,'patch':state_output('outcome','patch',null),'contribution':state_output('implementation','verification',{}).?contribution.orValue({})} : state_output('integration','accepted',{}) }}
           sessions: ${{ outputs.sessions }}
           documents: ${{ outputs.documents }}
-          feedback: ${{ outputs.handoff }}
+          finding: ${{ outputs.handoff }}
     complete:
       sequence: []
       outputs:
@@ -588,8 +591,8 @@ state:
         used: ${{ transition.payload.?sessions.orValue({}).?retry.orValue({}).?merge_used.orValue(0)+1 }}
         limit: ${{ transition.payload.?sessions.orValue({}).?retry.orValue({}).?merge_limit.orValue(3) }}
         documents: ${{ states.integration.outputs.documents }}
-        feedback: '${{ jq([states.integration.outputs.feedback,{''failure'':states.integration.outputs.result.failure,''summary'':states.integration.outputs.result.summary,''approval'':state_exists(''outcome'')
-          ? {''result'':states.outcome.outputs.result,''patch'':states.outcome.outputs.patch} : states.integration.outputs.feedback.?approval.orValue({})}],''add'')
+        feedback: '${{ jq([states.integration.outputs.prior_finding,{''failure'':states.integration.outputs.result.failure,''summary'':states.integration.outputs.result.summary,''approval'':state_exists(''outcome'')
+          ? {''result'':states.outcome.outputs.result,''patch'':states.outcome.outputs.patch} : states.integration.outputs.prior_finding.?approval.orValue({})}],''add'')
           }}'
       sequence: []
       outputs:
@@ -633,19 +636,19 @@ state:
           accepted: ${{ states.chase.outputs.feedback.approval }}
           sessions: ${{ states.chase.outputs.sessions }}
           documents: ${{ states.chase.outputs.documents }}
-          feedback: ${{ {'approval':states.chase.outputs.feedback.approval} }}
+          finding: ${{ {'approval':states.chase.outputs.feedback.approval} }}
       - to: outcome
         when: outputs.result.status == 'review'
         payload:
           sessions: ${{ states.chase.outputs.sessions }}
           documents: ${{ states.chase.outputs.documents }}
-          feedback: ${{ outputs.result }}
+          finding: ${{ outputs.result }}
       - to: implementation
         when: outputs.result.status == 'changes'
         payload:
           sessions: ${{ states.chase.outputs.sessions }}
           documents: ${{ states.chase.outputs.documents }}
-          feedback: ${{ jq([{'approval':states.chase.outputs.feedback.approval},outputs.result], 'add') }}
+          finding: ${{ jq([{'approval':states.chase.outputs.feedback.approval},outputs.result], 'add') }}
       - to: backstop
         when: 'true'
         payload:

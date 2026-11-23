@@ -13,6 +13,8 @@ Author recipes locally, then validate them by submitting the recipe file directl
 
 Recipes orchestrate ops. Ops do not run inside your interactive shell session just because you authored the YAML locally.
 
+C2 resolves the entire recipe when a job starts. Change an internal include and its callers together. Jobs already running use their resolved recipe.
+
 Treat each op as a remote durable step:
 
 - pass structured data through `inputs`

@@ -409,15 +409,18 @@ cases:
   inputs:
     purpose: implementation
     request: Repair the failing verification.
-    feedback:
-      human:
+    finding:
+      summary: Check the current candidate.
+      human: {response: {feedback: Deploy on the requester’s behalf.}}
+    review_reply:
+      submission:
         receipt: {actor: {kind: human, id: requester}, request_id: review-local, submission_id: keep-local}
         response:
           feedback: Keep the change local.
           attachments:
           - {kind: value, name: notes.md, format: text, value: Local data only.}
       documents:
-        feedback/older/0/notes.md: {kind: value, name: feedback/older/0/notes.md, format: text, value: Superseded notes.}
+        feedback/review-local/0/notes.md: {kind: value, name: feedback/review-local/0/notes.md, format: text, value: Local data only.}
   mocks:
     ops:
     - match:
@@ -537,12 +540,16 @@ cases:
     expr: size(calls.filter(c,c.op=="extension_execution" && c.node_path.contains("/execute/")))==3
   - type: cel_true
     expr: >-
+      calls.exists(c,c.node_path.endsWith('/start_work/start_work') &&
+        c.inputs.inputs.prompt.contains('Check the current candidate.') &&
+        c.inputs.inputs.prompt.contains('Keep the change local.') &&
+        !c.inputs.inputs.prompt.contains('Deploy on the requester’s behalf.') &&
+        c.artifacts['work/feedback/review-local/0/notes.md']=='Local data only.') &&
       calls.filter(c,c.node_path.endsWith('/resume_work/resume_work')).size()==2 &&
       calls.filter(c,c.node_path.endsWith('/resume_work/resume_work')).all(c,
         c.inputs.inputs.prompt.contains('Continue the current implementation.') &&
         c.inputs.inputs.prompt.contains('Review receipt (human): Keep the change local.') &&
         c.artifacts['work/feedback/review-local/0/notes.md']=='Local data only.' &&
-        !('work/feedback/older/0/notes.md' in c.artifacts) &&
         !c.inputs.inputs.prompt.contains('Originating assignment') &&
         size(c.inputs.inputs.prompt)<size(calls.filter(a,a.node_path.endsWith('/start_work/start_work'))[0].inputs.inputs.prompt))
   - type: cel_true
@@ -576,13 +583,15 @@ cases:
   inputs:
     purpose: direction
     request: Frame the requested work.
-    feedback:
-      human:
+    review_reply:
+      submission:
         receipt: {actor: {kind: automation}, request_id: previous, submission_id: earlier}
         response:
           feedback: Consider deploying to the cloud.
           attachments:
           - {kind: value, name: notes.md, format: text, value: Cloud rollout notes.}
+      documents:
+        feedback/previous/0/notes.md: {kind: value, name: feedback/previous/0/notes.md, format: text, value: Cloud rollout notes.}
     max_iterations: 1
   mocks:
     ops:
