@@ -228,4 +228,5 @@ All filenames below are relative to `recipe-tests/adaptive3/`.
 | A second unchanged named failure uses the delegate. A newly passing check renews repair. | `repair-progress.test.yaml` | High | Unit, c2j |
 | An explanation ends at the receiver’s answer. Only the requester can open negotiation for a change. | `consultation.test.yaml` | Critical | Integration, c2j |
 | An agent in a consuming cell can read its offline guide and inherit worker defaults or use explicit overrides. | `agent-settings.test.yaml` | High | Integration, c2j and c2ops |
+| Fresh agents learn to request missing worker tools because manual installs may disappear between tasks. | `agent-settings.test.yaml` | High | Integration, c2j and c2ops |
 | A person sees the blocker and suggested action before the job history. The original request and evidence remain readable. | `backstop.test.yaml`, `backstop-report.yaml` | High | Integration, c2j |
