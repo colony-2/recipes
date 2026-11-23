@@ -4,6 +4,7 @@ inputs:
   proposed_stage: ${{ inputs.?proposed_stage.orValue('') }}
   instructions: ${{ inputs.?instructions.orValue(false) }}
   request: ${{ inputs.request }}
+  previous: ${{ inputs.?previous.orValue({}) }}
   prompt: ${{ inputs.prompt }}
   schema: ${{ inputs.schema }}
   documents: ${{ inputs.?documents.orValue({}) }}
@@ -15,14 +16,16 @@ state:
     snapshot:
       include: ../review-v2.yaml
       inputs:
-        request: ${{ inputs.request }}
+        request: ${{ jq([inputs.request,inputs.previous], vars.open_revision) }}
       transitions:
       - to: build
         when: 'true'
     build:
       inputs:
-        conversation: ${{ transition.payload.?conversation.orValue(inputs.request.?conversation.orValue([])) }}
-        documents: ${{ transition.payload.?documents.orValue(inputs.documents) }}
+        conversation: ${{ transition.payload.?conversation.orValue(states.snapshot.outputs.form.request.conversation) }}
+        documents: >-
+          ${{ transition.payload.?documents.orValue(jq([states.snapshot.outputs.form.request.conversation,inputs.documents],
+            '(.[0] | map(.attachments[]) | INDEX(.name)) + .[1]')) }}
         session: ${{ transition.payload.?session.orValue(inputs.session) }}
         snapshot: ${{ transition.payload.?snapshot.orValue(states.snapshot.outputs.form.request) }}
       sequence:
@@ -49,17 +52,19 @@ state:
     record:
       inputs:
         native: ${{ states.ask.outputs }}
+        revision: ${{ states.snapshot.outputs.form.request.revision }}
         conversation: ${{ states.build.outputs.conversation }}
         documents: ${{ states.build.outputs.documents }}
       sequence:
       - id: review_notes
         include: ./review-reply.yaml
         inputs:
-          reply: ${{ inputs.native }}
+          # Native uploads can contain runtime artifact handles. The reply schema takes JSON.
+          reply: ${{ json_parse(json_stringify(inputs.native)) }}
       outputs:
         native: ${{ inputs.native }}
         review_reply: ${{ sequence.review_notes.outputs.reply }}
-        conversation: ${{ jq([inputs.conversation,inputs.native,sequence.review_notes.outputs.ordered], vars.record) }}
+        conversation: ${{ jq([inputs.conversation,inputs.native,sequence.review_notes.outputs.ordered,inputs.revision], vars.record) }}
         documents: ${{ jq([inputs.documents,sequence.review_notes.outputs.reply.documents],'add') }}
       transitions:
       - to: answer
@@ -71,7 +76,7 @@ state:
       inputs:
         prompt: |-
           {{ inputs.prompt }}
-          Answer the latest question directly, using the ordered discussion below. A review reply carries its recorded actor. Use that source when quoting it.
+          Answer the latest question about revision ${{ states.snapshot.outputs.form.request.revision }}. Each earlier turn identifies its speaker and revision.
           ${{ inputs.instructions ? 'For Backstop, interpret intent in context. A polite request can be an instruction even on Ask a question. If the human clearly instructs a correction, return resume with instruction describing that exact change and its scope_change flag. Do not execute it here; the caller checks the recorded decision and prerequisites. Answer the question and reassess the blocker. If your answer identifies an available next step within the current assignment, return resume with its concrete action, stage, and instruction null. If human input is still needed, return ask and state the current remaining question in summary. An informational question supplies no new approval. Cancellation remains manual; prefer recovery in this job. Read attached notes before interpreting intent.' : 'This is discussion only. Do not revise documents, approve work, move stages, replenish attempts, or apply a correction, even if your answer proposes one.' }}
           Return the actual answer in summary. Read original documents and all discussion
           attachments in inbox/work/; feedback files have separate per-request paths.
@@ -92,7 +97,7 @@ state:
     append_answer:
       sequence: []
       outputs:
-        conversation: ${{ inputs.record.conversation + [{'role':'agent','text':inputs.answer.response.summary,'attachments':jq([inputs.answer.artifacts,size(inputs.record.conversation)],
+        conversation: ${{ inputs.record.conversation + [{'role':'agent','revision':inputs.revision,'text':inputs.answer.response.summary,'attachments':jq([inputs.answer.artifacts,size(inputs.record.conversation)],
           '.[1] as $n | .[0] | to_entries | map(select(.key | startswith("review/")) | .value.name = ("answers/"
           + ($n|tostring) + "/" + .key) | .value)')}] }}
         documents: ${{ jq([inputs.record.documents,inputs.answer.artifacts,size(inputs.record.conversation)], '.[2]
@@ -118,6 +123,7 @@ state:
           session: ${{ outputs.session }}
       inputs:
         record: ${{ states.record.outputs }}
+        revision: ${{ states.snapshot.outputs.form.request.revision }}
         answer: ${{ states.answer.outputs }}
     done:
       sequence: []
@@ -139,11 +145,21 @@ outputs:
   conversation: ${{ states.done.outputs.conversation }}
   documents: ${{ states.done.outputs.documents }}
   review_id: ${{ states.snapshot.outputs.form.request.review_id }}
+  thread:
+    review_id: ${{ states.snapshot.outputs.form.request.review_id }}
+    revision: ${{ states.snapshot.outputs.form.request.revision }}
+    conversation: ${{ states.done.outputs.conversation }}
 vars:
+  open_revision: |-
+    .[1] as $previous | .[0] |
+    if $previous.review_id then
+      . + {review_id:$previous.review_id, revision:($previous.revision + 1), conversation:$previous.conversation}
+    else .revision //= 1 end |
+    if .revision > 1 then .title += (" · v" + (.revision | tostring)) else . end
   record: |-
     .[0] as $turns | .[1] as $native |
     ($turns | map(select(.role == "human" and .receipt.request_id == $native.receipt.request_id))) as $recorded |
-    {role:"human",direction:$native.response.direction,text:$native.response.feedback,
+    {role:"human",revision:.[3],direction:$native.response.direction,text:$native.response.feedback,
      attachments:.[2],settings:$native.response.settings,receipt:$native.receipt} as $turn |
     if ($recorded|length) == 0 then $turns + [$turn]
     elif $recorded == [$turn] then $turns

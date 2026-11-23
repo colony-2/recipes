@@ -4,7 +4,7 @@ import { fixtureGitTransport } from './helpers/gitTransport';
 import { expect, type Page } from '@playwright/test';
 import { test as base } from './helpers/nativeZoom';
 import { spawn, execFileSync, type ChildProcess } from 'node:child_process';
-import { mkdtempSync, mkdirSync, copyFileSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, copyFileSync, cpSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -83,9 +83,7 @@ const test = base.extend<{
       mkdirSync(join(repo,'recipes/review-v2'),{recursive:true});
       copyFileSync(resolve(process.env.ADAPTIVE3_REVIEW_SOURCE!,'review-v2/op.yaml'),join(repo,'recipes/review-v2/op.yaml'));
       copyFileSync(resolve(process.env.ADAPTIVE3_REVIEW_SOURCE!,'review-v2.py'),join(repo,'recipes/review-v2.py'));
-      mkdirSync(join(repo,'.c2/recipes/adaptive3/prompts'),{recursive:true});
-      for(const file of ['review.yaml','discussion.yaml','review-policy.yaml','schemas.yaml','tools.yaml','prompts/review.yaml','backstop.yaml','backstop-report.yaml','prompts/backstop.yaml'])
-        copyFileSync(resolve(process.env.ADAPTIVE3_REVIEW_SOURCE!,'adaptive3',file),join(repo,'.c2/recipes/adaptive3',file));
+      cpSync(resolve(process.env.ADAPTIVE3_REVIEW_SOURCE!,'adaptive3'),join(repo,'.c2/recipes/adaptive3'),{recursive:true});
       copyFileSync(resolve(process.env.ADAPTIVE3_BROWSER_SOURCE!,recipeFixture==='browser-backstop'?'scripted-backstop-agent.yaml':'scripted-agent.yaml'),join(repo,'.c2/recipes/adaptive3/agent.yaml'));
       copyFileSync(resolve('tests/fixtures/recipes/browser-document-producer.yaml'), join(repo, '.c2/recipes/producer.yaml'));
       const git = (...args: string[]) => execFileSync('git', ['-C', repo, ...args], { stdio: 'pipe' });
@@ -314,8 +312,16 @@ test.describe.serial('unchanged adaptive3 discussion and correction routing',()=
   const api=`/api/projects/${tenant}`;
   const details=async()=>{const response=await request.get(`${api}/user-inputs/${jobID}`);return response.status()===200?(await response.json()).form:null;};
   await page.goto(`/project/${tenant}/reviews/${jobID}`);
-  await expect(page.getByRole('radio',{name:/Accept outcome/})).toBeVisible();
+  const approve = page.getByRole('button',{name:'Show me the result',exact:true});
+  const discussion = page.getByRole('region',{name:'Discussion'});
+  const download = page.getByRole('region',{name:'Selected document'}).getByRole('link',{name:'Download',exact:true});
+  await expect(approve).toBeVisible();
+  await expect(download).toBeVisible();
+  const originalDocument = new URL((await download.getAttribute('href'))!,page.url());
+  // Reopen this retained occurrence against the latest job history.
+  originalDocument.searchParams.delete('snapshot_token');
   const first=await details();const receipts:any[]=[];const points:any[]=[];
+  expect(first.request.revision).toBe(1);
   expect(Object.keys(first.request.document_metadata).sort()).toEqual(Object.keys(first.request.documents).sort());
   expect(first.request.overview_document_id).toBe('review/design.md');
   await page.getByRole('button',{name:'Show documents',exact:true}).click();
@@ -340,11 +346,12 @@ test.describe.serial('unchanged adaptive3 discussion and correction routing',()=
    if(restart)await stopWorker();
    const saved=await submit(current,'question',text,{},index===0?'first note':'second note');
    expect(saved.response.attachments).toHaveLength(1);
-   if(restart){await expect(page.getByText('Waiting for the next turn',{exact:true})).toBeVisible();await page.reload();await expect(page.getByText(text,{exact:true})).toHaveCount(1);startWorker();}
+   if(restart){await expect(discussion.getByText(text,{exact:true})).toBeVisible();await page.reload();await expect(discussion.getByText(text,{exact:true})).toHaveCount(1);startWorker();}
    let successor:any;
    await expect.poll(async()=>{successor=await details();return successor?.request_id!==current.request_id&&successor?.request?.conversation?.length===(index+1)*2;},{timeout:90000}).toBe(true);
    current=successor;
    expect(current.request.review_id).toBe(first.request.review_id);expect(current.request.documents).toEqual(first.request.documents);
+   expect(current.request.revision).toBe(1);
    expect(current.request.document_metadata).toEqual(first.request.document_metadata);
    expect(current.request.overview_document_id).toBe(first.request.overview_document_id);
    expect(current.request.conversation[index*2].receipt).toEqual(saved.receipt);
@@ -352,8 +359,8 @@ test.describe.serial('unchanged adaptive3 discussion and correction routing',()=
    if(restart){await stopWorker();await page.reload();await expect(page.getByText(current.request.conversation[index*2+1].text,{exact:true})).toBeVisible();startWorker();}
    points.push({turns:current.request.conversation.map((t:any)=>({role:t.role,text:t.text,direction:t.direction,files:t.attachments.map((f:any)=>f.stored.key.sizeBytes)})),originals:Object.keys(current.request.documents).sort()});
   }
-  await page.reload();await expect(page.getByRole('region',{name:'Discussion'}).getByRole('article')).toHaveCount(4);
-  await page.getByRole('radio',{name:/Request changes/}).check();
+  await page.reload();await expect(discussion.getByText('Actual second answer.',{exact:true})).toBeVisible();
+  await page.getByRole('button',{name:'Request changes',exact:true}).click();
   await page.getByLabel('Question or requested change (required)',{exact:true}).fill('UNSENT PREVIOUS REVIEW');
   await page.getByLabel('Attach notes',{exact:true}).setInputFiles([{name:'unsent.md',mimeType:'text/markdown',buffer:Buffer.from('unsent draft')}]);
   // Accept the routing contribution while the restarted worker is stopped.
@@ -363,22 +370,44 @@ test.describe.serial('unchanged adaptive3 discussion and correction routing',()=
   const correction=await submit(current,'revise','Keep scope. Revise Direction.',{return_to:'direction'});
   await expect(page.getByText('Review state unavailable',{exact:true})).toBeVisible();
   await expect(page.getByText('Actual second answer.',{exact:true})).toBeVisible();
-  await expect(page.getByRole('radio',{name:/Accept outcome/})).toHaveCount(0);
+  await expect(approve).toBeHidden();
   await page.unroute(`**${api}/jobs/${jobID}/conversation?*`);
   await page.getByRole('button',{name:'Refresh',exact:true}).click();
   if(restart)startWorker();
   let revised:any;
-  await expect.poll(async()=>{revised=await details();return revised?.request?.review_id&&revised.request.review_id!==first.request.review_id;},{timeout:90000}).toBeTruthy();
+  await expect.poll(async()=>{revised=await details();return revised?.request?.revision;},{timeout:90000}).toBe(2);
+  expect(revised.request_id).not.toBe(current.request_id);
+  expect(revised.request.review_id).toBe(first.request.review_id);
+  expect(revised.request.documents['review/design.md'].stored.key).not.toEqual(first.request.documents['review/design.md'].stored.key);
+  const stale=await page.request.post(`${api}/reviews/${jobID}/respond`,{multipart:{submission:JSON.stringify({request_id:current.request_id,submission_id:randomUUID(),response:{direction:'accept',feedback:'',attachments:[],settings:{}}})}});
+  expect(stale.status()).toBe(409);
   await page.goto(`/project/${tenant}/reviews/${jobID}`);
-  await expect(page.getByRole('radio',{name:/Approve direction/})).toBeVisible();
-  await expect(page.getByRole('region',{name:'Discussion'}).getByRole('article')).toHaveCount(0);
-  expect(revised.request.settings[0].value).toBe('auto');expect(revised.request.conversation).toEqual([]);
-  await expect(page.locator('#review-v2-feedback')).toHaveValue('');
+  await expect(approve).toBeVisible();
+  await expect(page.getByRole('heading',{name:'Revised saved drafts · v2',exact:true})).toBeVisible();
+  for(const turn of revised.request.conversation) await expect(discussion.getByText(turn.text,{exact:true})).toHaveCount(1);
+  await expect(page.getByText('Revised original after explicit correction.',{exact:true})).toBeVisible();
+  expect(await (await page.request.get(originalDocument.href)).text()).toContain('Original bytes 日本語.');
+  expect(await (await page.request.get((await download.getAttribute('href'))!)).text()).toContain('Revised original after explicit correction.');
+  expect(revised.request.settings[0].value).toBe('auto');
+  expect(revised.request.conversation.slice(0,4)).toEqual(current.request.conversation);
+  expect(revised.request.conversation[4]).toMatchObject({revision:1,receipt:correction.receipt});
+  expect(revised.request.conversation.some((turn:any)=>turn.text==='UNSENT PREVIOUS REVIEW')).toBe(false);
   await expect(page.getByText('unsent.md (12 bytes)',{exact:true})).toHaveCount(0);
-  const final=await submit(revised,'accept','');
+  await submit(revised,'question','Do the original notes still apply?');
+  await expect(discussion.getByText('Both original notes are available with the revised plan.',{exact:true})).toBeVisible({timeout:90000});
+  const afterQuestion=await details();
+  expect(afterQuestion.request.review_id).toBe(first.request.review_id);
+  expect(afterQuestion.request.revision).toBe(2);
+  expect(afterQuestion.request.conversation.slice(-2).map((turn:any)=>turn.revision)).toEqual([2,2]);
+  expect(afterQuestion.request.documents).toEqual(revised.request.documents);
+  const accepted = page.waitForResponse(r=>r.url().endsWith(`/reviews/${jobID}/respond`)&&r.request().method()==='POST');
+  await approve.click();
+  const final = await (await accepted).json();
+  expect(final.receipt.request_id).toBe(afterQuestion.request_id);
   let outcome:any;
   await expect.poll(async()=>{const result=await request.get(`${api}/jobs/${jobID}/outcome`);if(result.status()!==200)return false;outcome=(await result.json()).output;return !!outcome?.revised;},{timeout:90000}).toBe(true);
   expect(outcome.original.human.receipt).toEqual(correction.receipt);expect(outcome.revised.receipt).toEqual(final.receipt);
+  expect(outcome.revised.reviewed_documents).toEqual(revised.request.documents);
   expect(outcome.original.conversation.filter((t:any)=>t.direction==='question')).toHaveLength(2);
   expect(outcome.original.conversation.some((t:any)=>t.direction==='accept')).toBe(false);
   const normalized={points,correction:outcome.original.stage,approved:outcome.revised.status,uploads:outcome.original.conversation.flatMap((t:any)=>t.attachments.map((f:any)=>f.stored.key.sizeBytes))};

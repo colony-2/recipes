@@ -8,8 +8,8 @@ Producers also return the complete [document details](adaptive3/DOCUMENT_DETAILS
 required by adaptive3. The ordinary validation cycle checks exact attachment IDs,
 titles, purposes, roles, reading order and the primary document. Checked metadata
 and the overview travel inside `request`, including discussion and routing
-clarifications. Questions retain that frozen collection; explicit corrections
-receive full validation before a new review.
+clarifications. Questions keep the current documents. The producer validates
+revised documents before presenting them again.
 
 Use `recipes/review-v2.yaml` with a `request` containing `title`, `question`,
 `documents`, `directions`, `feedback`, `conversation` and optional `settings`,
@@ -38,18 +38,39 @@ on larger schemas. With normal Git recipe selectors, the relative operation is
 resolved from the recipe source repository/ref. Inline test fixtures must provide
 those source files explicitly. No new runtime service is required.
 
-`recipes/adaptive3/discussion.yaml` freezes the original request and identity,
-retains each exact human contribution and receipt, and appends actual read-only
-answers. Questions reopen the same review with full ordered conversation and a
-fresh native request. Uploads use distinct per-request/per-binding paths; originals
-keep their producer references. The answering session resumes independently from
-producer and diagnosis sessions. Questions never approve work or grant attempts.
+### Following a review across revisions
+
+A plan keeps its `review_id` for the life of the job, including a return to
+planning after implementation. An outcome, a package proposal and a Backstop
+decision each have their own thread.
+
+| What the reviewer sees | `review_id` | `revision` | Native `request_id` |
+| --- | --- | --- | --- |
+| Plan presented | A | 1 | First request |
+| Answer to a question about the plan | A | 1 | Second request |
+| Revised plan presented | A | 2 | Third request |
+| Outcome presented | B | 1 | Fourth request |
+
+Group the job's native requests by `review_id` to find a decision. Group those
+requests by `revision` to find each version's documents. Read the producer
+references from that version's form. A file can keep its name and change its
+contents. Approval records the submitted request's receipt, revision and reviewed
+document references.
+
+The next form includes the ordered discussion and uploaded notes. Each turn
+records the revision it belongs to. Answering a question or clarifying where a
+correction belongs keeps the revision open. Presenting the author's revised work
+increments the revision and asks for a fresh decision.
+
+When calling `adaptive3/review.yaml` again, pass its previous `threads` output
+to the next call's `threads` input. The `decision` key selects the thread. A new
+package request or a separate escalation starts with an empty thread.
 
 Request changes routes through the selected complete stage cycle. Scope changes
-require Direction; conflicting instructions require clarification. Review doc
+require Direction. Conflicting instructions require clarification. Review doc
 comments appears only with originals and reruns their producer and validation,
-requiring fresh approval under a new identity. Package comments regenerate the
-proposal before probing; refusal runs no probe. Backstop comments repeat read-only
+keeping the discussion with the revised documents. Package comments regenerate the
+proposal before probing. Backstop comments repeat read-only
 investigation before any correction decision.
 
 New jobs require compatible published Cortex reader support. Existing frozen legacy

@@ -188,6 +188,7 @@ state:
     discuss:
       include: ./discussion.yaml
       inputs:
+        previous: ${{ state_output('discuss','thread',{}) }}
         instructions: true
         proposed_action: ${{ states.investigate.outputs.response.?action.orValue('') }}
         proposed_stage: ${{ states.investigate.outputs.response.?stage.orValue('') }}
@@ -199,7 +200,7 @@ state:
           : []) + [{''id'':''question'',''label'':states.setup.outputs.text.question,''feedback_mode'':''required'',''allow_attachments'':true,''continues_review'':true},{''id'':''revise'',''label'':states.setup.outputs.text.change,''feedback_mode'':''required'',''allow_attachments'':true,''continues_review'':false}]
           + (states.prepare_review.outputs.result.status == ''passed'' && size(states.prepare_review.outputs.documents)>0
           ? [{''id'':''annotate'',''label'':''Review doc comments'',''feedback_mode'':''required'',''allow_attachments'':true,''continues_review'':false}]
-          : []),''feedback'':{''label'':states.setup.outputs.text.message},''settings'':[states.setup.outputs.setting],''conversation'':states.turn.outputs.feedback.?conversation.orValue([])},states.prepare_review.outputs.primary],
+          : []),''feedback'':{''label'':states.setup.outputs.text.message},''settings'':[states.setup.outputs.setting],''conversation'':[]},states.prepare_review.outputs.primary],
           ''.[1] as $primary | .[0] + (if $primary != "" and (.[0].documents|has($primary)) then {overview_document_id:$primary} else {} end)'')
           }}'
         prompt: ${{ states.setup.outputs.text.task }}
@@ -212,7 +213,7 @@ state:
         when: outputs.native.response.direction == 'continue' && states.assess.outputs.eligible && states.prepare_review.outputs.result.status
           == 'passed'
         payload:
-          result: ${{ jq([states.investigate.outputs.response,{'status':'resume','human':outputs.native,'documents':outputs.documents,'conversation':outputs.conversation,'review_id':outputs.review_id}],
+          result: ${{ jq([states.investigate.outputs.response,{'status':'resume','human':outputs.native,'documents':outputs.documents,'conversation':outputs.conversation,'review_id':outputs.review_id,'revision':outputs.thread.revision,'reviewed_documents':states.prepare_review.outputs.documents}],
             'add') }}
           session: ${{ outputs.session }}
       - to: turn

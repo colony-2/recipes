@@ -13,6 +13,7 @@ inputs:
   assessor: ${{ inputs.?assessor.orValue({}) }}
   agent_settings: ${{ inputs.?agent_settings.orValue({}) }}
   decision: ${{ inputs.?decision.orValue(inputs.purpose) }}
+  threads: ${{ inputs.?threads.orValue({}) }}
 state:
   initial: setup
   states:
@@ -84,6 +85,7 @@ state:
     discuss:
       include: ./discussion.yaml
       inputs:
+        previous: ${{ inputs.threads[?inputs.decision].orValue({}) }}
         request: '${{ jq([{''title'':states.setup.outputs.text.title,''question'':states.setup.outputs.text.decision
           + (size(inputs.documents)==0 ? ''\nThere are no attached review documents to revise. Use Request changes
           to request changes.'' : ''''),''documents'':inputs.documents,''document_metadata'':inputs.document_metadata,''directions'':states.setup.outputs.text.directions
@@ -105,6 +107,8 @@ state:
             receipt: ${{ outputs.native.receipt }}
             human: ${{ outputs.native }}
             review_id: ${{ outputs.review_id }}
+            revision: ${{ outputs.thread.revision }}
+            reviewed_documents: ${{ inputs.documents }}
             conversation: ${{ outputs.conversation }}
       - to: done
         when: outputs.native.response.direction == 'decline'
@@ -161,7 +165,7 @@ state:
     clarification:
       include: ./discussion.yaml
       inputs:
-        request: '${{ jq([{''review_id'':states.correction.outputs.reply.review_id,''title'':states.setup.outputs.text.title,
+        request: '${{ jq([{''review_id'':states.correction.outputs.reply.review_id,''revision'':states.correction.outputs.reply.thread.revision,''title'':states.setup.outputs.text.title,
           ''question'':states.resolve.outputs.response.summary + ''\nChoose Request changes with a compatible destination
           or clarify the conflict.'',''documents'':inputs.documents,''document_metadata'':inputs.document_metadata,
           ''directions'':states.setup.outputs.text.directions.filter(d,!(d.id in [''accept'',''accept_fully'',''decline''])),
@@ -203,6 +207,8 @@ state:
       - to: resolve
         when: 'true'
 outputs:
+  threads: >-
+    ${{ state_exists('discuss') ? jq([inputs.threads,{inputs.decision:state_output('clarification','thread',states.discuss.outputs.thread)}],'add') : inputs.threads }}
   review_reply: ${{ state_output('clarification','review_reply',state_output('discuss','review_reply',inputs.review_reply)) }}
   finding: >-
     ${{ state_exists('discuss') && states.done.outputs.result.status == 'changes'
