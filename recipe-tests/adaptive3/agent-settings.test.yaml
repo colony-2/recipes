@@ -1,0 +1,32 @@
+recipe: agent-settings.yaml
+cases:
+- id: guide-and-worker-defaults-in-a-consuming-cell
+  type: integration_case
+  runtime: &runtime {config: {codex_model: from-worker, codex_reasoning_effort: medium}, cells: {root: {files: {README.md: A consuming cell.}}}}
+  inputs:
+    prompt: Find a worker for the Docker check.
+    schema: &schema {type: object, properties: {status: {type: string}}, required: [status], additionalProperties: false}
+  mocks: &mock
+    ops:
+    - match: {selector: 'nix:github:colony-2/c2ops/published#codex'}
+      behavior: {mode: return, outputs: {status: completed, output_schema_valid: true, response: {status: passed}}}
+  assertions:
+  - type: cel_true
+    expr: >-
+      size(calls)==1 && calls[0].node_path.contains('start_read_only') &&
+      calls[0].inputs.inputs.model == 'from-worker' && calls[0].inputs.inputs.reasoning_effort == 'medium' &&
+      calls[0].inputs.inputs.instructions.contains('inbox/C2-guide.md') &&
+      calls[0].artifacts['C2-guide.md'].contains('--require-capability docker') &&
+      calls[0].artifacts['C2-guide.md'].contains('--cursor CURSOR')
+- id: writable-author-gets-only-the-requested-override
+  type: integration_case
+  runtime: *runtime
+  inputs:
+    prompt: Fix the issue.
+    schema: *schema
+    read_only: false
+    agent_settings: {model: '', reasoning_effort: high}
+  mocks: *mock
+  assertions:
+  - type: cel_true
+    expr: size(calls)==1 && calls[0].node_path.contains('start_work') && calls[0].inputs.inputs.model == 'from-worker' && calls[0].inputs.inputs.reasoning_effort == 'high'

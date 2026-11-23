@@ -312,12 +312,12 @@ restart the receiver immediately before publication. Preserve the original sourc
 base, owner and document references. Do not resubmit or remerge to retry publish.
 A continuation has a new job ID; `owner_job` remains the original receiver.
 
-Caller recovery carries `feedback.queue_recovery` with the original native
-`receiver` start item, canonical `branch` and `changeid`. It reads that receiver's
-goal with `return_when: current_status`, validates the successful native result
-binding and receipt owner, and never invokes a caller hook, even if queue settings
-have since been disabled. An open goal means repair is pending. Legacy queue
-publication evidence without an owner requires diagnosis rather than fallback.
+Caller recovery carries the original receiver start item, branch and Change-Id in
+`feedback.queue_recovery`. For a restarted publication, supply `repair_job` from
+the native restart receipt. The caller reads that exact job and verifies its
+retained assembly against the original receiver’s stored bundle and merge. It
+then checks its contribution and the published source. A pending, unrelated or
+unreadable repair keeps publication open. The receiver owns the publish hook.
 
 Successful receiver generations remain serialized through publish. Failure or
 cancellation permits successors; older recovery may therefore run after newer

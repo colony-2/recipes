@@ -1,5 +1,19 @@
 # Extension Ops Guide
 
+## Forward a caller’s optional setting
+
+Keep the default in the extension manifest. Use a CEL optional at the call site
+when the caller might omit a value.
+
+```yaml
+optional_inputs:
+  model: ${{ inputs.agent_settings.?model }}
+```
+
+An absent key leaves the manifest default in effect. A present value is passed
+to the extension. Normalize legacy empty strings before lookup if your caller
+treats them as omission. [Adaptive3 agent calls](../../recipes/adaptive3/agent.yaml)
+
 ## Overview
 
 Extension ops package an operation with a manifest and executable command.

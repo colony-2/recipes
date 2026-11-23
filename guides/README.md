@@ -5,6 +5,13 @@ it is not a requirement to load every document into each agent session.
 Start with [PURPOSE.md](../PURPOSE.md), the actual recipe, and
 [general improvement guidance](RECIPE_IMPROVEMENT_GUIDE.md).
 
+## Working in C2
+
+Every Adaptive3 agent receives a local `C2-guide.md` in its task inbox, including
+in cells without a Recipes checkout. It covers workspace permissions, choosing a
+worker base and capabilities, requesting packages, finding an original decision,
+consulting another cell, and checking a deployment. [Offline guide source](../recipes/adaptive3/prompts/context.yaml)
+
 ## Authoring and runtime contracts
 
 | Need | Start here | Related references |

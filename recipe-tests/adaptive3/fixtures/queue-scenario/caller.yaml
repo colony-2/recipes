@@ -82,12 +82,35 @@ sequence:
   when: inputs.recover
   op: command_execution
   const: true
-  inputs: {run: 'true'}
+  inputs:
+    run: |
+      set -eu
+      source=$(git ls-remote origin refs/heads/publication-probe | cut -f1)
+      git ls-remote origin "refs/test/publication/$source/*" | cut -f2 | awk -F/ '{printf "%s",$NF}'
+- id: unrelated
+  when: inputs.recover
+  op: command_execution
+  const: true
+  inputs:
+    run: |
+      set -eu
+      original=$(git ls-remote origin refs/heads/publication-probe | cut -f1)
+      git ls-remote origin 'refs/test/publication/*' | awk -F/ -v orig="$original" '$(NF-1)!=orig{printf "%s",$NF}'
+- id: wrong_repair
+  when: inputs.recover
+  include: ../../../../recipes/adaptive3/merge-queue-submit.yaml
+  inputs:
+    recovery: {repair_job: '${{ sequence.unrelated.outputs.stdout }}'}
+    queue_history: ${{ sequence.submit.outputs.result }}
+    require_verification: true
+    target_directory: .
+    settings: {}
 - id: recovery
   when: inputs.recover
   include: ../../../../recipes/adaptive3/merge-queue-submit.yaml
   inputs:
     recovering: true
+    recovery: {repair_job: '${{ sequence.before_recovery.outputs.stdout }}'}
     queue_history: ${{ sequence.submit.outputs.result }}
     require_verification: true
     target_directory: .
@@ -99,12 +122,14 @@ sequence:
   inputs:
     env:
       STATUS: ${{ sequence.recovery.outputs.result.status }}
+      OTHER: ${{ sequence.wrong_repair.outputs.result.status }}
       ORIGINAL_OWNER: ${{ sequence.submit.outputs.result.receiver.job_id }}
       OWNER: ${{ sequence.recovery.outputs.result.queue_publication.owner_job }}
       SOURCE: ${{ sequence.recovery.outputs.result.queue_publication.source.merged_hash }}
       RESULT: ${{ json_stringify(sequence.recovery.outputs.result) }}
     run: |
       set -eu
+      test "$OTHER" = stuck
       test "$STATUS" = passed
       test "$OWNER" = "$ORIGINAL_OWNER"
       printf '%s\n' "$RESULT"

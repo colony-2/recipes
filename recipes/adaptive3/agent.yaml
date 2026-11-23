@@ -7,11 +7,10 @@ inputs:
   read_only: ${{ inputs.?read_only.orValue(true) }}
   agent_settings: ${{ inputs.?agent_settings.orValue({}) }}
 vars:
-  invocation: '${{ (inputs.read_only ? (size(inputs.session)>0 ? ''resume_read_only'' : ''start_read_only'') : (size(inputs.session)>0
-    ? ''resume_work'' : ''start_work'')) + (nonempty(inputs.agent_settings.?model.orValue('''')) ? ''_model'' :
-    '''') + (nonempty(inputs.agent_settings.?reasoning_effort.orValue('''')) ? ''_reasoning'' : '''') }}'
-# Each invocation runs one direct Nix operation. The variants omit unset settings
-# so the c2ops manifest supplies worker defaults; YAML merges share the actual call.
+  invocation: >-
+    ${{ inputs.read_only ? (size(inputs.session)>0 ? 'resume_read_only' : 'start_read_only') : (size(inputs.session)>0 ? 'resume_work' : 'start_work') }}
+  # Empty strings from older callers select the manifest defaults.
+  overrides: ${{ jq(inputs.agent_settings,'with_entries(select(.value != null and .value != ""))') }}
 state:
   initial: context
   states:
@@ -20,41 +19,17 @@ state:
       transitions:
       - to: start_read_only
         when: vars.invocation == 'start_read_only'
-      - to: start_read_only_model
-        when: vars.invocation == 'start_read_only_model'
-      - to: start_read_only_reasoning
-        when: vars.invocation == 'start_read_only_reasoning'
-      - to: start_read_only_model_reasoning
-        when: vars.invocation == 'start_read_only_model_reasoning'
       - to: resume_read_only
         when: vars.invocation == 'resume_read_only'
-      - to: resume_read_only_model
-        when: vars.invocation == 'resume_read_only_model'
-      - to: resume_read_only_reasoning
-        when: vars.invocation == 'resume_read_only_reasoning'
-      - to: resume_read_only_model_reasoning
-        when: vars.invocation == 'resume_read_only_model_reasoning'
       - to: start_work
         when: vars.invocation == 'start_work'
-      - to: start_work_model
-        when: vars.invocation == 'start_work_model'
-      - to: start_work_reasoning
-        when: vars.invocation == 'start_work_reasoning'
-      - to: start_work_model_reasoning
-        when: vars.invocation == 'start_work_model_reasoning'
       - to: resume_work
         when: vars.invocation == 'resume_work'
-      - to: resume_work_model
-        when: vars.invocation == 'resume_work_model'
-      - to: resume_work_reasoning
-        when: vars.invocation == 'resume_work_reasoning'
-      - to: resume_work_model_reasoning
-        when: vars.invocation == 'resume_work_model_reasoning'
-    start_read_only: &start_read_only
+    start_read_only:
       id: start_read_only
       op: nix:github:colony-2/c2ops/published#codex
       const: true
-      inputs: &start_read_only_inputs
+      inputs:
         api:
           api_key: ${{ context.secrets.?codex_api_key.orValue(null) }}
         prompt: |-
@@ -67,32 +42,21 @@ state:
         output:
           schema: ${{ inputs.schema }}
         instructions: '{{ states.context.outputs.instructions }}'
+      optional_inputs: &overrides
+        model: ${{ vars.overrides.?model }}
+        reasoning_effort: ${{ vars.overrides.?reasoning_effort }}
       artifacts:
+        C2-guide.md: &guide
+          kind: value
+          name: C2-guide.md
+          format: text
+          value: ${{ states.context.outputs.guide }}
         work/: ${{ inputs.documents }}
-    start_read_only_model:
-      <<: *start_read_only
-      id: start_read_only_model
-      inputs:
-        <<: *start_read_only_inputs
-        model: ${{ inputs.agent_settings.model }}
-    start_read_only_reasoning:
-      <<: *start_read_only
-      id: start_read_only_reasoning
-      inputs:
-        <<: *start_read_only_inputs
-        reasoning_effort: ${{ inputs.agent_settings.reasoning_effort }}
-    start_read_only_model_reasoning:
-      <<: *start_read_only
-      id: start_read_only_model_reasoning
-      inputs:
-        <<: *start_read_only_inputs
-        model: ${{ inputs.agent_settings.model }}
-        reasoning_effort: ${{ inputs.agent_settings.reasoning_effort }}
-    resume_read_only: &resume_read_only
+    resume_read_only:
       id: resume_read_only
       op: nix:github:colony-2/c2ops/published#codex
       const: true
-      inputs: &resume_read_only_inputs
+      inputs:
         api:
           api_key: ${{ context.secrets.?codex_api_key.orValue(null) }}
         prompt: |-
@@ -105,31 +69,14 @@ state:
         output:
           schema: ${{ inputs.schema }}
         session: ${{ inputs.session }}
+      optional_inputs: *overrides
       artifacts:
+        C2-guide.md: *guide
         work/: ${{ inputs.documents }}
-    resume_read_only_model:
-      <<: *resume_read_only
-      id: resume_read_only_model
-      inputs:
-        <<: *resume_read_only_inputs
-        model: ${{ inputs.agent_settings.model }}
-    resume_read_only_reasoning:
-      <<: *resume_read_only
-      id: resume_read_only_reasoning
-      inputs:
-        <<: *resume_read_only_inputs
-        reasoning_effort: ${{ inputs.agent_settings.reasoning_effort }}
-    resume_read_only_model_reasoning:
-      <<: *resume_read_only
-      id: resume_read_only_model_reasoning
-      inputs:
-        <<: *resume_read_only_inputs
-        model: ${{ inputs.agent_settings.model }}
-        reasoning_effort: ${{ inputs.agent_settings.reasoning_effort }}
-    start_work: &start_work
+    start_work:
       id: start_work
       op: nix:github:colony-2/c2ops/published#codex
-      inputs: &start_work_inputs
+      inputs:
         api:
           api_key: ${{ context.secrets.?codex_api_key.orValue(null) }}
         prompt: |-
@@ -142,31 +89,14 @@ state:
         output:
           schema: ${{ inputs.schema }}
         instructions: '{{ states.context.outputs.instructions }}'
+      optional_inputs: *overrides
       artifacts:
+        C2-guide.md: *guide
         work/: ${{ inputs.documents }}
-    start_work_model:
-      <<: *start_work
-      id: start_work_model
-      inputs:
-        <<: *start_work_inputs
-        model: ${{ inputs.agent_settings.model }}
-    start_work_reasoning:
-      <<: *start_work
-      id: start_work_reasoning
-      inputs:
-        <<: *start_work_inputs
-        reasoning_effort: ${{ inputs.agent_settings.reasoning_effort }}
-    start_work_model_reasoning:
-      <<: *start_work
-      id: start_work_model_reasoning
-      inputs:
-        <<: *start_work_inputs
-        model: ${{ inputs.agent_settings.model }}
-        reasoning_effort: ${{ inputs.agent_settings.reasoning_effort }}
-    resume_work: &resume_work
+    resume_work:
       id: resume_work
       op: nix:github:colony-2/c2ops/published#codex
-      inputs: &resume_work_inputs
+      inputs:
         api:
           api_key: ${{ context.secrets.?codex_api_key.orValue(null) }}
         prompt: |-
@@ -179,27 +109,10 @@ state:
         output:
           schema: ${{ inputs.schema }}
         session: ${{ inputs.session }}
+      optional_inputs: *overrides
       artifacts:
+        C2-guide.md: *guide
         work/: ${{ inputs.documents }}
-    resume_work_model:
-      <<: *resume_work
-      id: resume_work_model
-      inputs:
-        <<: *resume_work_inputs
-        model: ${{ inputs.agent_settings.model }}
-    resume_work_reasoning:
-      <<: *resume_work
-      id: resume_work_reasoning
-      inputs:
-        <<: *resume_work_inputs
-        reasoning_effort: ${{ inputs.agent_settings.reasoning_effort }}
-    resume_work_model_reasoning:
-      <<: *resume_work
-      id: resume_work_model_reasoning
-      inputs:
-        <<: *resume_work_inputs
-        model: ${{ inputs.agent_settings.model }}
-        reasoning_effort: ${{ inputs.agent_settings.reasoning_effort }}
 outputs:
   response: '${{ states[vars.invocation].outputs.?output_schema_valid.orValue(false) && states[vars.invocation].outputs.status
     == ''completed'' ? jq(states[vars.invocation].outputs.response,''walk(if type == "object" then with_entries(select(.value != null)) else . end)'') : {''status'':states[vars.invocation].outputs.status

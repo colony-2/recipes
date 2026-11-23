@@ -25,16 +25,18 @@ state:
     recover:
       inputs:
         receiver: ${{ inputs.queue_history.?receiver.orValue(inputs.recovery.?receiver.orValue({})) }}
+        repair_job: ${{ inputs.recovery.?repair_job.orValue('') }}
         branch: ${{ inputs.queue_history.?branch.orValue(inputs.recovery.?branch.orValue('')) }}
         changeid: ${{ inputs.queue_history.?changeid.orValue(inputs.recovery.?changeid.orValue('')) }}
       sequence: []
       outputs:
         receiver: ${{ inputs.receiver }}
+        repair_job: ${{ inputs.repair_job }}
         branch: ${{ inputs.branch }}
         changeid: ${{ inputs.changeid }}
       transitions:
       - to: repair_result
-        when: nonempty(outputs.receiver.?job_id.orValue('')) && nonempty(outputs.receiver.?goal_id.orValue('')) && nonempty(outputs.branch) && nonempty(outputs.changeid)
+        when: nonempty(outputs.receiver.?job_id.orValue('')) && nonempty(outputs.branch) && nonempty(outputs.changeid)
       - to: done
         when: 'true'
         payload:
@@ -45,19 +47,41 @@ state:
       op: recipe.await_result_soft
       inputs:
         target:
-          goal: ${{ states.recover.outputs.receiver.goal_id }}
-        wait: {on: goal, condition: success}
+          job: >-
+            ${{ nonempty(states.recover.outputs.repair_job) ? states.recover.outputs.repair_job : states.recover.outputs.receiver.job_id }}
+        wait: {on: job, condition: complete}
         return_when: current_status
       transitions:
+      - to: confirm_restart
+        when: outputs.status=='completed' && nonempty(states.recover.outputs.repair_job) && outputs.result.job==states.recover.outputs.repair_job && outputs.result.job!=states.recover.outputs.receiver.job_id
       - to: receipt
-        when: outputs.status=='completed' && outputs.result.?goal.orValue('')==states.recover.outputs.receiver.goal_id && nonempty(outputs.result.?job.orValue(''))
+        when: outputs.status=='completed' && outputs.result.job==states.recover.outputs.receiver.job_id
         payload:
           receipt: ${{ outputs.outputs }}
       - to: unavailable
         when: 'true'
         payload:
-          summary: The original receiver has no successful repair result. Recover its recorded publication boundary; do not submit another batch.
+          summary: Publication is still open. Supply the exact repair job from the restart receipt for the original receiver.
           failure: ${{ outputs }}
+    confirm_restart:
+      op: ./recipes/merge-queue
+      const: true
+      inputs:
+        action: confirm_restart
+        request:
+          owner: ${{ states.recover.outputs.receiver.job_id }}
+          repair: ${{ states.recover.outputs.repair_job }}
+          source: ${{ states.repair_result.outputs.outputs.?publication.orValue({}).?source.orValue({}) }}
+      transitions:
+      - to: receipt
+        when: outputs.result.confirmed
+        payload:
+          receipt: ${{ states.repair_result.outputs.outputs }}
+      - to: unavailable
+        when: 'true'
+        payload:
+          summary: ${{ outputs.result.summary }}
+          failure: ${{ outputs.result }}
     unchanged_rejection:
       sequence: []
       transitions:
