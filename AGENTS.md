@@ -118,7 +118,7 @@ Test statements are a list of statements that can be used to test the outcome of
 - **MUST** include both positive and negative test cases for critical functionality
 - **MUST** focus on integration points and avoid testing trivial getters/setters
 
-Any time changes are made to the codebase, the test statements must be updated to reflect the new state of the codebase. Test statements are defined before implementation. Test statements that are modified/reviewed as part of a change should only be done in the case of a deprecation plan.
+Any time changes are made to the codebase, the test statements must be updated to reflect the new state of the codebase. Test statements are defined before implementation. A published statement protecting an established cell guarantee follows the deprecation process when that guarantee changes. A proposed test in the current design can be corrected or replaced with equivalent evidence. Preserve the requested behavior and any expressly required check. Cite the decision when that distinction matters.
 
 Test statements should be stored as c2 artifacts.
 
