@@ -272,6 +272,13 @@ class MergeQueuePolicyTest(unittest.TestCase):
             self.assertEqual((outbox / rows[0]["log_name"]).read_text(), "Verifier failed.\n")
             self.assertEqual(rows[1]["failure_logs"], [{"name": "conflict.log"}])
 
+    def test_empty_selection_requires_failure_evidence_for_each_applied_change(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            replay = [{"changeid": OLDER, "status": "applied"}]
+            evidence = [{"ids": [NEWER], "passed": False}, {"ids": [], "passed": True}]
+            with self.assertRaisesRegex(RuntimeError, f"Missing validation evidence for {OLDER}"):
+                landing_results(Path(temporary), [], replay, {}, evidence)
+
 
 class MergeQueueInstallTest(unittest.TestCase):
     def test_confirmation_requires_reachability_change_id_and_source_ancestry(self):

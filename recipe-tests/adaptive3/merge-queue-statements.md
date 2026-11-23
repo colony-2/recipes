@@ -121,6 +121,8 @@ Suite: `recipe-tests/adaptive3/merge-queue-selection.test.yaml`.
 | MQ-36 | An older passing large contribution wins over more numerous incompatible younger contributions. | `merge-batch.yaml` | Critical | Integration / c2j, priority fixture |
 | MQ-37 | Faster younger checks cannot evict verified older work or bypass unresolved older probes. | `merge-batch.yaml` | Critical | Integration / c2j, delayed child results |
 | MQ-38 | A demonstrably failing older contribution permits compatible younger work to land with retained rejection evidence. | `merge-batch.yaml` | Critical | Integration / c2j, healthy baseline |
+| MQ-82 | A failed candidate on a passing baseline returns its original diagnostics to implementation, checks the baseline once, and leaves the branch and publisher untouched. | `merge-queue-land.yaml`, `merge-queue-caller.test.yaml` | Critical | Integration / c2j, Git, verification hook |
+| MQ-83 | When the baseline also fails, the caller receives an operational failure without a candidate rejection, merge, or publication. | `merge-queue-land.yaml`, `merge-queue-caller.test.yaml` | Critical | Integration / c2j, Git, verification hook |
 | MQ-39 | Compatible excluded contributions found during oldest-first add-back join the final verified set. | `merge-batch.yaml` | High | Integration / c2j, add-back fixture |
 | MQ-40 | Discovered passing combinations containing older dependent work retain priority over younger alternatives. | `merge-batch.yaml` | High | Integration / c2j, non-monotonic verifier |
 | MQ-41 | Search exhaustion preserves partial evidence without inventing rejection or claiming exact optimality for untested work. | `merge-batch.yaml` | Critical | Integration / c2j, incomplete-search fixture |

@@ -6,7 +6,7 @@ cases:
     backend: sqlite
     cells:
       root: &root_cell
-        file_sources:
+        file_sources: &queue_sources
           merge-batch.yaml: merge-queue-title-receiver.yaml
           merge-batch-implementation.yaml: ../../merge-batch.yaml
           .c2/recipes/hooks/build/publish.yaml: ./fixtures/queue-publish.yaml
@@ -167,6 +167,76 @@ cases:
     expr: outputs.result.status=='stuck' && !has(outputs.result.publication) && !outputs.verified
   - type: cel_true
     expr: outputs.result.summary.contains('could not be confirmed')
+- id: rejected-only-candidate-returns-original-logs-after-one-baseline-check
+  type: integration_case
+  runtime:
+    backend: sqlite
+    cells:
+      root:
+        file_sources: *queue_sources
+        files:
+          .c2/recipes/hooks/build/verify.yaml: |
+            id: verify
+            sequence:
+            - id: health
+              op: command_execution
+              const: true
+              inputs:
+                env:
+                  OUTBOX: ${{ context.environment.op.outbox }}
+                run: |
+                  set -eu
+                  if test -f contribution.txt; then
+                    echo 'Expected an activity selector.' > "$OUTBOX/restoration.log"
+                    echo 'Expected an artifact error.' > "$OUTBOX/input-failure.log"
+                    echo failed
+                  else
+                    echo passed
+                  fi
+            outputs:
+              api_version: c2.build-hook/v1
+              status: ${{ sequence.health.outputs.stdout }}
+              summary: Checked worker health.
+              artifact_refs: ${{ jq(sequence.health.artifacts,'with_entries(select(.key | endswith(".log")))') }}
+  mocks: *without_merge
+  assertions:
+  - type: cel_true
+    expr: outputs.result.status=='changes' && outputs.result.stage=='implementation' && outputs.result.rejected_changeid==outputs.candidate.changeid
+  - type: cel_true
+    expr: >-
+      ['restoration.log','input-failure.log'].all(name,
+        outputs.result.errors.exists(key,outputs.result.errors[key].stored.key.name==name))
+  - type: cel_true
+    expr: calls.filter(c,c.node_path.endsWith('/health')).map(c,c.outputs.stdout)==['failed','passed']
+  - type: cel_true
+    expr: >-
+      repositories.root.new_commits==0 && !calls.exists(c,c.op=='merge' || c.node_path.endsWith('/publish_source')) &&
+      calls.exists(c,c.op=='recipe.await_result_soft' && c.outputs.outputs.publication.reason=='no-new-merge' &&
+        c.outputs.outputs.results.size()==1 && c.outputs.outputs.results[0].status=='fail-validation')
+- id: failed-baseline-keeps-receiver-failure-operational
+  type: integration_case
+  runtime:
+    backend: sqlite
+    cells:
+      root:
+        file_sources: *queue_sources
+        files:
+          .c2/recipes/hooks/build/verify.yaml: |
+            id: verify
+            sequence: []
+            outputs:
+              api_version: c2.build-hook/v1
+              status: failed
+              summary: Worker health failed on every commit.
+              artifact_refs: {}
+  mocks: *without_merge
+  assertions:
+  - type: cel_true
+    expr: outputs.result.status=='stuck' && !has(outputs.result.rejected_changeid)
+  - type: cel_true
+    expr: calls.exists(c,c.op=='command_execution' && has(c.inputs.env) && has(c.inputs.env.REASON) && c.inputs.env.REASON.contains('Verification failed on the published baseline'))
+  - type: cel_true
+    expr: "repositories.root.new_commits==0 && !calls.exists(c,c.op=='merge' || c.node_path.endsWith('/publish_source'))"
 - id: unchanged-rejection-does-not-resubmit
   type: integration_case
   inputs: {retry_rejection: true}
