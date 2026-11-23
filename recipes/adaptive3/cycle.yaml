@@ -15,6 +15,8 @@ inputs:
   target_directory: ${{ inputs.?target_directory.orValue('.') }}
   documents: ${{ inputs.?documents.orValue({}) }}
   feedback: ${{ inputs.?feedback.orValue({}) }}
+  finding: ${{ inputs.?finding.orValue(null) }}
+  review_reply: ${{ inputs.?review_reply.orValue({}) }}
   settings: ${{ inputs.?settings.orValue({}) }}
   require_verification: ${{ inputs.?require_verification.orValue(false) }}
   session: ${{ inputs.?session.orValue({}) }}
@@ -45,6 +47,8 @@ state:
         target_directory: ${{ inputs.target_directory }}
         documents: ${{ inputs.documents }}
         feedback: ${{ inputs.feedback }}
+        finding: ${{ inputs.finding }}
+        review_notes: ${{ inputs.review_reply.?documents.orValue({}) }}
         settings: ${{ inputs.settings }}
         session: ${{ inputs.session }}
         agent_settings: ${{ inputs.agent_settings }}
@@ -55,7 +59,7 @@ state:
         when: inputs.purpose == 'implementation' && outputs.response.status == 'repair'
         payload:
           result: >-
-            ${{ {'status':inputs.feedback.?author_retry.orValue(false) ? 'stuck' : 'changes',
+            ${{ {'status':vars.latest_finding.?author_retry.orValue(false) ? 'stuck' : 'changes',
               'author_retry':true,'summary':outputs.response.summary,'errors':outputs.artifacts} }}
           documents: ${{ outputs.documents }}
           session: ${{ outputs.session }}
@@ -91,6 +95,8 @@ state:
         settings: ${{ inputs.settings }}
         require_verification: ${{ inputs.require_verification }}
         feedback: ${{ inputs.feedback }}
+        finding: ${{ vars.latest_finding }}
+        review_notes: ${{ inputs.review_reply.?documents.orValue({}) }}
         work: ${{ states.execute.outputs.response }}
         session: ${{ inputs.assessor }}
         specialists: ${{ inputs.specialists }}
@@ -148,6 +154,7 @@ state:
         document_metadata: ${{ states.validate.outputs.document_metadata }}
         session: ${{ states.execute.outputs.session }}
         assessor: ${{ states.validate.outputs.session }}
+        review_reply: ${{ inputs.review_reply }}
         feedback: ${{ inputs.feedback }}
         agent_settings: ${{ inputs.agent_settings }}
         decision: '${{ inputs.purpose == ''direction'' && states.execute.outputs.response.?work_kind.orValue('''')
@@ -166,7 +173,7 @@ state:
         result: ${{ transition.payload.result }}
         checkpoints: ${{ state_output('validate','checkpoints',[]) }}
         purpose: ${{ inputs.purpose }}
-        previous_failure: ${{ inputs.feedback.?failed_checks.orValue([]) }}
+        previous_failure: ${{ vars.latest_finding.?failed_checks.orValue([]) }}
         retry: ${{ inputs.retry }}
         documents: ${{ transition.payload.documents }}
         session: ${{ transition.payload.session }}
@@ -218,7 +225,12 @@ state:
           result: ${{ outputs.result }}
           documents: ${{ state_output('execute','documents',inputs.documents) }}
           session: ${{ state_output('execute','session',inputs.session) }}
+vars:
+  latest_finding: >-
+    ${{ inputs.finding != null ? inputs.finding : inputs.feedback }}
 outputs:
+  review_reply: ${{ state_output('review','review_reply',inputs.review_reply) }}
+  finding: ${{ state_output('review','finding',states.done.outputs.result) }}
   repair: ${{ states.done.outputs.repair }}
   retry: ${{ states.done.outputs.retry }}
   merge_state: ${{ state_output('execute','merge_state',inputs.merge_state) }}

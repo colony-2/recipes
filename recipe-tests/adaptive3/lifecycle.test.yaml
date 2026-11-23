@@ -411,8 +411,13 @@ cases:
     request: Repair the failing verification.
     feedback:
       human:
-        receipt: {actor: {kind: human, id: requester}, submission_id: keep-local}
-        response: {feedback: Keep the change local.}
+        receipt: {actor: {kind: human, id: requester}, request_id: review-local, submission_id: keep-local}
+        response:
+          feedback: Keep the change local.
+          attachments:
+          - {kind: value, name: notes.md, format: text, value: Local data only.}
+      documents:
+        feedback/older/0/notes.md: {kind: value, name: feedback/older/0/notes.md, format: text, value: Superseded notes.}
   mocks:
     ops:
     - match:
@@ -449,6 +454,7 @@ cases:
                 inputs:
                   run: |
                     if [ ! -f fixed.txt ]; then echo missing-fixed >&2; exit 9; fi
+                    if [ ! -f checked.txt ]; then echo missing-confirmation >&2; exit 9; fi
               outputs:
                 api_version: c2.build-hook/v1
                 status: passed
@@ -462,7 +468,7 @@ cases:
         selector: nix:github:colony-2/c2ops/published#codex
       behavior:
         mode: return
-        outputs:
+        outputs: &ready_after_fix
           status: completed
           output_schema_valid: true
           response:
@@ -491,6 +497,13 @@ cases:
           review/README.md: '# Requested outcome
 
             '
+    - match: {selector: 'nix:github:colony-2/c2ops/published#codex'}
+      behavior:
+        mode: return
+        outputs: *ready_after_fix
+        effects:
+          worktree: {checked.txt: confirmed}
+        artifacts: {review/README.md: '# Requested outcome'}
     - match:
         selector: nix:github:colony-2/c2ops/published#codex
       behavior:
@@ -519,16 +532,23 @@ cases:
     expr: calls.exists(c,(c.op=="extension_execution" && has(c.inputs.inputs.prompt)) && c.node_path.contains("/execute/")
       && has(c.artifacts) && c.artifacts.exists(k,k.contains("error/hooks/verify/") && c.artifacts[k].contains("missing-fixed")))
   - type: cel_true
-    expr: size(calls.filter(c,c.node_path.endsWith("/probe")))==2
+    expr: size(calls.filter(c,c.node_path.endsWith("/probe")))==3
   - type: cel_true
-    expr: size(calls.filter(c,c.op=="extension_execution" && c.node_path.contains("/execute/")))==2
+    expr: size(calls.filter(c,c.op=="extension_execution" && c.node_path.contains("/execute/")))==3
   - type: cel_true
     expr: >-
-      calls.exists(c,c.node_path.endsWith('/resume_work/resume_work') &&
+      calls.filter(c,c.node_path.endsWith('/resume_work/resume_work')).size()==2 &&
+      calls.filter(c,c.node_path.endsWith('/resume_work/resume_work')).all(c,
         c.inputs.inputs.prompt.contains('Continue the current implementation.') &&
         c.inputs.inputs.prompt.contains('Review receipt (human): Keep the change local.') &&
+        c.artifacts['work/feedback/review-local/0/notes.md']=='Local data only.' &&
+        !('work/feedback/older/0/notes.md' in c.artifacts) &&
         !c.inputs.inputs.prompt.contains('Originating assignment') &&
         size(c.inputs.inputs.prompt)<size(calls.filter(a,a.node_path.endsWith('/start_work/start_work'))[0].inputs.inputs.prompt))
+  - type: cel_true
+    expr: >-
+      calls.filter(c,c.node_path.endsWith('/resume_work/resume_work')).map(c,
+        c.artifacts.exists(k,k.contains('error/hooks/verify/') && c.artifacts[k].contains('[stderr] missing-confirmation'))) == [false,true]
 - id: human-scope-feedback-reaches-review-and-execute
   type: integration_case
   runtime:
@@ -556,6 +576,13 @@ cases:
   inputs:
     purpose: direction
     request: Frame the requested work.
+    feedback:
+      human:
+        receipt: {actor: {kind: automation}, request_id: previous, submission_id: earlier}
+        response:
+          feedback: Consider deploying to the cloud.
+          attachments:
+          - {kind: value, name: notes.md, format: text, value: Cloud rollout notes.}
     max_iterations: 1
   mocks:
     ops:
@@ -684,6 +711,12 @@ cases:
     expr: calls.filter(c,c.op=="extension_execution" && has(c.inputs.inputs.prompt) && c.node_path.contains("/execute/")).size()==2
       && calls.filter(c,c.op=="extension_execution" && has(c.inputs.inputs.prompt) && c.node_path.contains("/execute/"))[1].inputs.inputs.prompt.contains("Exclude
       cloud deployment")
+  - type: cel_true
+    expr: >-
+      calls.filter(c,c.op=="extension_execution" && c.node_path.contains("/execute/")).map(c,
+        "work/feedback/previous/0/notes.md" in c.artifacts)==[true,false] &&
+      calls.filter(c,c.op=="extension_execution" && c.node_path.contains("/execute/")).map(c,
+        c.inputs.inputs.prompt.contains("Consider deploying to the cloud."))==[true,false]
   - type: cel_true
     expr: reviews[1].form.request.settings[0].value=="auto"
 - id: details-corrected-before-human-review

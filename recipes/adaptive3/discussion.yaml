@@ -51,11 +51,16 @@ state:
         native: ${{ states.ask.outputs }}
         conversation: ${{ states.build.outputs.conversation }}
         documents: ${{ states.build.outputs.documents }}
-      sequence: []
+      sequence:
+      - id: review_notes
+        include: ./review-reply.yaml
+        inputs:
+          reply: ${{ inputs.native }}
       outputs:
         native: ${{ inputs.native }}
-        conversation: ${{ jq([inputs.conversation,inputs.native], vars.record) }}
-        documents: ${{ jq([inputs.documents,inputs.native], vars.uploads) }}
+        review_reply: ${{ sequence.review_notes.outputs.reply }}
+        conversation: ${{ jq([inputs.conversation,inputs.native,sequence.review_notes.outputs.ordered], vars.record) }}
+        documents: ${{ jq([inputs.documents,sequence.review_notes.outputs.reply.documents],'add') }}
       transitions:
       - to: answer
         when: outputs.native.response.direction == 'question'
@@ -127,6 +132,7 @@ state:
         interpretation: ${{ transition.payload.?interpretation.orValue({}) }}
         session: ${{ transition.payload.?session.orValue(states.build.outputs.session) }}
 outputs:
+  review_reply: ${{ states.record.outputs.review_reply }}
   interpretation: ${{ states.done.outputs.interpretation }}
   session: ${{ states.done.outputs.session }}
   native: ${{ states.done.outputs.native }}
@@ -138,11 +144,7 @@ vars:
     .[0] as $turns | .[1] as $native |
     ($turns | map(select(.role == "human" and .receipt.request_id == $native.receipt.request_id))) as $recorded |
     {role:"human",direction:$native.response.direction,text:$native.response.feedback,
-     attachments:($native.response.attachments | to_entries | map(.value.name = ("feedback/" + $native.receipt.request_id + "/" + (.key|tostring) + "/" + ((.value.name // .value.stored.key.name)|split("/")|last))) | map(.value)),settings:$native.response.settings,receipt:$native.receipt} as $turn |
+     attachments:.[2],settings:$native.response.settings,receipt:$native.receipt} as $turn |
     if ($recorded|length) == 0 then $turns + [$turn]
     elif $recorded == [$turn] then $turns
     else error("Conflicting contributions for one native receipt") end
-  uploads: |-
-    .[1] as $native | .[0] + ($native.response.attachments | to_entries | map(
-      .key = ("feedback/" + $native.receipt.request_id + "/" + (.key|tostring) + "/" + ((.value.name // .value.stored.key.name)|split("/")|last))
-      | .value.name = .key) | from_entries)

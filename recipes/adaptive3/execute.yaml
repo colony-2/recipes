@@ -16,6 +16,8 @@ inputs:
   target_directory: ${{ inputs.?target_directory.orValue('.') }}
   documents: ${{ inputs.?documents.orValue({}) }}
   feedback: ${{ inputs.?feedback.orValue({}) }}
+  finding: ${{ inputs.?finding.orValue(null) }}
+  review_notes: ${{ inputs.?review_notes.orValue({}) }}
   settings: ${{ inputs.?settings.orValue({}) }}
   session: ${{ inputs.?session.orValue({}) }}
   agent_settings: ${{ inputs.?agent_settings.orValue({}) }}
@@ -24,11 +26,13 @@ state:
   states:
     context:
       inputs:
-        resumed_repair: ${{ inputs.purpose == 'implementation' && size(inputs.session)>0 && inputs.feedback.?local_repair.orValue(false) }}
+        resumed_repair: ${{ inputs.purpose == 'implementation' && size(inputs.session)>0 && inputs.finding != null }}
         purpose: ${{ inputs.purpose }}
         request: ${{ inputs.request }}
         target_directory: ${{ inputs.target_directory }}
         feedback: ${{ inputs.feedback }}
+        finding: >-
+          ${{ inputs.finding != null ? inputs.finding : inputs.feedback }}
         settings: ${{ inputs.settings }}
       sequence:
       - id: schemas
@@ -40,9 +44,12 @@ state:
           request: ${{ inputs.request }}
           target_directory: ${{ inputs.target_directory }}
           feedback: ${{ inputs.feedback }}
+          finding: ${{ inputs.finding }}
           guidance: ${{ inputs.settings.?prompt_additions.orValue({})[?{'direction':'design','preparation':'test_plan','implementation':'implementation','outcome':'','integration':'','advice':'design'}[inputs.purpose]].orValue('')
             }}
       outputs:
+        finding_documents: ${{ inputs.finding.?documents.orValue({}) }}
+        errors: ${{ inputs.finding.?errors.orValue({}) }}
         schema: >-
           ${{ inputs.purpose == 'implementation' ? jq(sequence.schemas.outputs.execute,
             '.properties.status.enum += ["repair"]') : sequence.schemas.outputs.execute }}
@@ -125,8 +132,11 @@ state:
             ? states.context.outputs.task + "\n\n" + states.refresh.outputs.result.summary
             : states.context.outputs.task }}
         schema: ${{ states.context.outputs.schema }}
-        documents: ${{ jq([inputs.documents,jq(inputs.plan.?documents.orValue({}),'with_entries(.key = "approved/" + .key | .value.name = .key)'),inputs.feedback.?documents.orValue({}),inputs.feedback.?errors.orValue({}),state_output('before_design','artifacts',{}),state_output('refresh','artifacts',{})],
-          'add') }}
+        documents: >-
+          ${{ jq([inputs.documents,
+            jq(inputs.plan.?documents.orValue({}),'with_entries(.key = "approved/" + .key | .value.name = .key)'),
+            states.context.outputs.finding_documents, inputs.review_notes,
+            states.context.outputs.errors, state_output('before_design','artifacts',{}), state_output('refresh','artifacts',{})], 'add') }}
         session: ${{ inputs.session }}
         read_only: ${{ inputs.purpose != 'implementation' }}
         agent_settings: ${{ inputs.agent_settings }}

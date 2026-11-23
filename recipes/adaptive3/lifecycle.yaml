@@ -26,7 +26,8 @@ state:
       inputs:
         retry: ${{ transition.payload.?retry.orValue(state_output('cycle','retry',inputs.sessions.?retry.orValue({}))) }}
         documents: ${{ transition.payload.?documents.orValue(inputs.documents) }}
-        feedback: ${{ transition.payload.?feedback.orValue(inputs.feedback) }}
+        feedback: ${{ transition.payload.?review_reply.or(transition.payload.?feedback).orValue(inputs.feedback) }}
+        finding: ${{ transition.payload.?finding.orValue(null) }}
         agreements: ${{ transition.payload.?agreements.orValue(state_output('execute','agreements',inputs.sessions.?agreements.orValue([]))) }}
         session: ${{ transition.payload.?session.orValue(inputs.sessions[?vars.author].orValue({})) }}
         used: >-
@@ -37,10 +38,18 @@ state:
           ${{ transition.payload.?fresh_instruction.orValue(false) ? 0 : transition.payload.?children.orValue(state_output('execute','children',0)) }}
         packages: >-
           ${{ transition.payload.?fresh_instruction.orValue(false) ? 0 : transition.payload.?packages.orValue(state_output('execute','packages',0)) }}
-      sequence: []
+      sequence:
+      - id: incoming_review
+        when: inputs.finding == null
+        include: ./review-reply.yaml
+        inputs:
+          reply: ${{ jq(inputs.feedback,'.human // {}') }}
       outputs:
         documents: ${{ inputs.documents }}
         feedback: ${{ inputs.feedback }}
+        review_reply: >-
+          ${{ inputs.finding == null ? sequence.incoming_review.outputs.reply : inputs.feedback }}
+        finding: ${{ inputs.finding }}
         retry: ${{ inputs.retry }}
         agreements: ${{ inputs.agreements }}
         session: ${{ inputs.session }}
@@ -80,6 +89,8 @@ state:
         require_verification: ${{ inputs.require_verification }}
         documents: ${{ jq([states.execute.outputs.documents,states.execute.outputs.agreements],'.[0] + ([.[1][].documents] | add // {})') }}
         feedback: ${{ states.execute.outputs.feedback }}
+        review_reply: ${{ states.execute.outputs.review_reply }}
+        finding: ${{ states.execute.outputs.finding }}
         session: ${{ states.execute.outputs.session }}
         verification: ${{ state_output('cycle','verification',inputs.verification) }}
         approval: ${{ inputs.feedback.?approval.orValue({}) }}
@@ -126,7 +137,8 @@ state:
         when: outputs.result.status == 'changes' && (!has(outputs.result.stage) || outputs.result.stage == inputs.purpose)
         payload:
           documents: ${{ outputs.documents }}
-          feedback: ${{ jq([states.execute.outputs.feedback,outputs.result],vars.repair_feedback) }}
+          review_reply: ${{ outputs.review_reply }}
+          finding: ${{ outputs.finding }}
           session: ${{ outputs.session }}
           fresh_instruction: ${{ outputs.retry.instructions != states.execute.outputs.retry.?instructions.orValue([]) }}
           used: >-
@@ -263,11 +275,6 @@ catch:
       feedback: ${{ inputs.?feedback.orValue({}) }}
       sessions: ${{ jq([inputs.sessions,{'retry':state_output('done','retry',state_output('execute','retry',inputs.sessions.?retry.orValue({}))),'agreements':state_output('execute','agreements',inputs.sessions.?agreements.orValue([]))}],'add') }}
 vars:
-  repair_feedback: |-
-    .[0] as $prior | .[1] + {local_repair:true} |
-    if has("human") or ($prior.human // null) == null then . else
-      . + {human:$prior.human, documents:(($prior.documents // {} | with_entries(select(.key | startswith("feedback/")))) + (.documents // {}))}
-    end
   author: '${{ inputs.purpose in [''direction'',''preparation''] ? ''planning'' : ''implementation'' }}'
   limits: >-
     ${{ jq([inputs.max_iterations,inputs.feedback.?visit_allowance.orValue({})],
