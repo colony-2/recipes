@@ -172,7 +172,7 @@ state:
       inputs:
         turns: >-
           ${{ states.call.outputs.turns + [{'cell':states.call.outputs.sender,'text':states.call.outputs.request},
-            {'cell':states.call.outputs.cell,'text':states.advice.outputs.work.summary + (nonempty(states.advice.outputs.work.?assignment.orValue('')) ? '\nProposed assignment: ' + states.advice.outputs.work.assignment : '')}] }}
+            {'cell':states.call.outputs.cell,'text':states.advice.outputs.work.summary + (nonempty(states.advice.outputs.work.?assignment.orValue('')) ? '\n\nProposed assignment: ' + states.advice.outputs.work.assignment : '')}] }}
       outputs:
         turns: ${{ inputs.turns }}
       transitions:
@@ -227,7 +227,7 @@ state:
         when: 'true'
         payload:
           turns: ${{ states.owner_reply.outputs.turns + [{'cell':states.call.outputs.sender,'text':outputs.response.summary}] }}
-          resolution: ${{ states.advice.outputs.work.summary + '\n' + outputs.response.summary }}
+          resolution: ${{ states.advice.outputs.work.summary + '\n\n' + outputs.response.summary }}
           assignment: >-
             ${{ outputs.response.status == 'agree' ? states.advice.outputs.work.?assignment.orValue('') : '' }}
           unresolved: ${{ !(outputs.response.status in ['agree','close']) }}
@@ -364,17 +364,18 @@ state:
           python3 - <<'PY'
           import json, os
           from pathlib import Path
+          from urllib.parse import quote
           child = json.loads(os.environ['CHILD'])
           inbox = Path(os.environ['INBOX'])
           report, = inbox.glob('review/negotiations/*/report.md')
           output = Path(os.environ['OUTBOX'], report.relative_to(inbox))
           output.parent.mkdir(parents=True, exist_ok=True)
           summary = child.get('summary') or child.get('message') or ''
-          text = '\n'.join('    ' + s for s in summary.splitlines())
-          job = child['job_id']
-          # An adopted or replayed delivery can already carry this section.
-          original = report.read_text().partition('\n## Delivery\n')[0]
-          output.write_text(original + f"\n## Delivery\n\n[Job {job}](https://jobs.colony2.com/c2/jobs/{job}) · {child['status']}\n\n{text}\n")
+          job = quote(child['job_id'], safe='')
+          delivery = f"\n## Delivery\n\n[Job {job}](https://jobs.colony2.com/c2/jobs/{job}) · "
+          # A replay replaces this job's status, even if the request has its own Delivery heading.
+          original = report.read_text().partition(delivery)[0].rstrip('\n')
+          output.write_text(f"{original}\n{delivery}{child['status']}\n\n{summary}\n")
           PY
       transitions:
       - to: received

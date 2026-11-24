@@ -444,6 +444,10 @@ test.describe('Backstop recovery', () => {
   await page.goto(`/project/${tenant}/reviews/${jobID}`);
   await expect(page.getByRole('button',{name:'Give instructions',exact:true})).toBeVisible();
   await expect(page.getByRole('heading',{name:'What needs your decision',exact:true})).toBeVisible();
+  const report=page.getByRole('article',{name:'Rendered document'});
+  await expect(report.locator('blockquote, pre')).toHaveCount(0);
+  await expect(report.locator('ol > li')).toHaveCount(3);
+  await expect(report.locator('ol > li').first()).toContainText('Then rerun phone validation.');
   const initial=await (await request.get(`/api/projects/${tenant}/user-inputs/${jobID}`)).json();
   expect(initial.form.request.documents['review/backstop-report.md'].kind).toBe('stored');
   expect(initial.form.request.overview_document_id).toBe('review/backstop-report.md');

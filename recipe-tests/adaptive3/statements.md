@@ -186,6 +186,8 @@ critical, integration, pinned c2j.)
 | A short assignment goes directly to implementation and requires human Outcome acceptance. | adaptive3.yaml | High | Integration, c2j |
 | A receiving owner can request evidence or propose an alternative. Delivery starts only on mutually agreed terms. | recipes/adaptive3/consultation.yaml | High | Integration, c2j |
 | Parent and child reviews expose each relevant request, its origin, the agreement and its transcript even when delivery stalls. | recipes/adaptive3/consultation.yaml, recipes/adaptive3/backstop.yaml | High | Integration, c2j |
+| Negotiation reports, transcripts, direct assignments and delivery updates render ordinary Markdown and preserve intentional code blocks. | adaptive3.yaml, recipes/adaptive3/negotiation-report.yaml, recipes/adaptive3/consultation.yaml | High | Integration, c2j and cmark |
+| Backstop explanations render as paragraphs and options as a numbered list. | recipes/adaptive3/backstop-report.yaml | High | Integration, Cortex and browser |
 
 ## Backstop human instructions and current-job recovery
 

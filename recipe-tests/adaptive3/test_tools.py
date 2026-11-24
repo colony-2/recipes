@@ -87,9 +87,65 @@ class Validators(unittest.TestCase):
         Image.new('RGB',(3,3)).save(self.inbox/'review/screen.png')
         self.assertEqual(self.check('review_files')['status'], 'passed')
 
+    def test_negotiation_markdown_and_delivery_refresh(self):
+        request = '## Delivery\n\nKeep **two** saves.\n\n- Read [the spec](docs/saves.md).\n\n> Original wording.\n\n```sh\nshow saves\n```'
+        child = dict(job_id='child', status='running', summary='Previously queued.')
+        data = dict(turns=[dict(cell='notebook', text=request), dict(cell='storage', text='Agreed.')],
+                    objective='Keep older saves.', owner='storage', resolution='Agreed.',
+                    assignment='Keep two saves.', job=child)
+        writer = yaml.safe_load((SOURCE.parent/'negotiation-report.yaml').read_text())['sequence'][0]
+        thread = json.loads(subprocess.check_output(['bash','-c',writer['inputs']['run']], text=True,
+                            env={**os.environ,'CONTENT':json.dumps(data),'OUTBOX':str(self.inbox),'JOB':'parent'}))
+        folder = Path('review/negotiations',thread)
+        report = folder/'report.md'
+        transcript = folder/'transcript.md'
+
+        def html(path):
+            return subprocess.check_output(['cmark',str(path)],text=True)
+
+        report_html = html(self.inbox/report)
+        transcript_html = html(self.inbox/transcript)
+        for rendered in (report_html, transcript_html):
+            self.assertIn('<strong>two</strong>',rendered)
+            self.assertIn('<li>Read <a href="docs/saves.md">the spec</a>',rendered)
+            self.assertEqual(rendered.count('<pre>'),1)
+            self.assertEqual(rendered.count('<blockquote>'),1)
+        self.assertLess(transcript_html.index('<h2>notebook</h2>'), transcript_html.index('<h2>storage</h2>'))
+        self.assertIn('href="transcript.md"',report_html)
+        self.assertEqual(self.check('review_files',PRIMARY=str(report))['status'],'passed')
+        (self.inbox/transcript).unlink()
+        self.assertEqual(self.check('review_files',PRIMARY=str(report))['status'],'changes')
+
+        refresh = yaml.safe_load((SOURCE.parent/'consultation.yaml').read_text())['state']['states']['delivery_report']
+        child.update(status='succeeded', summary='Checked **both** versions.')
+        subprocess.run(['bash','-c',refresh['inputs']['run']], check=True,
+                       env={**os.environ,'INBOX':str(self.inbox),'OUTBOX':str(self.outbox),'CHILD':json.dumps(child)})
+        updated = html(self.outbox/report)
+        self.assertIn('<strong>two</strong>',updated)
+        self.assertIn('<strong>both</strong>',updated)
+        self.assertNotIn('Previously queued.',updated)
+        self.assertEqual(updated.count('href="https://jobs.colony2.com/c2/jobs/child"'),1)
+
     def test_missing_image_and_escaping_link(self):
         self.put('review/README.md', '# Review\n![UI](missing.png)\n[escape](../../private.md)')
         self.assertEqual(self.check('review_files')['count'], 2)
+
+    def test_direct_child_origin_renders_the_assignment(self):
+        origin = yaml.safe_load((SOURCE.parents[2]/'adaptive3.yaml').read_text())['state']['states']['configure']['sequence'][0]
+        cli = self.root/'c2j'
+        cli.write_text("""#!/bin/sh
+echo '{"execution":{"parent":{"job_id":"parent","cell_name":"notebook","op_step":"submit"}}}'
+""")
+        cli.chmod(0o755)
+        request = 'Retain **two** saves.\n\n- See [the design](docs/saves.md).'
+        subprocess.run(['bash','-c',origin['inputs']['run']], check=True, env={
+            **os.environ,'PATH':str(self.root)+os.pathsep+os.environ['PATH'],'REQUEST':request,
+            'INBOX':str(self.outbox),'OUTBOX':str(self.inbox)})
+        report = 'review/negotiations/origin/report.md'
+        html = subprocess.check_output(['cmark',str(self.inbox/report)],text=True)
+        self.assertIn('<p>Retain <strong>two</strong> saves.</p>',html)
+        self.assertIn('href="https://jobs.colony2.com/c2/jobs/parent"',html)
+        self.assertEqual(self.check('review_files',PRIMARY=report)['status'],'passed')
 
     def test_recovery_question_links(self):
         self.put('review/correction.md', '# Restore image checks')
