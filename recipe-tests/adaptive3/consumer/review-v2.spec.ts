@@ -361,7 +361,7 @@ test.describe.serial('unchanged adaptive3 discussion and correction routing',()=
   }
   await page.reload();await expect(discussion.getByText('Actual second answer.',{exact:true})).toBeVisible();
   await page.getByRole('button',{name:'Request changes',exact:true}).click();
-  await page.getByLabel('Question or requested change (required)',{exact:true}).fill('UNSENT PREVIOUS REVIEW');
+  await page.getByLabel('Comment (required)',{exact:true}).fill('UNSENT PREVIOUS REVIEW');
   await page.getByLabel('Attach notes',{exact:true}).setInputFiles([{name:'unsent.md',mimeType:'text/markdown',buffer:Buffer.from('unsent draft')}]);
   // Accept the routing contribution while the restarted worker is stopped.
   if(restart)await stopWorker();
@@ -400,14 +400,20 @@ test.describe.serial('unchanged adaptive3 discussion and correction routing',()=
   expect(afterQuestion.request.revision).toBe(2);
   expect(afterQuestion.request.conversation.slice(-2).map((turn:any)=>turn.revision)).toEqual([2,2]);
   expect(afterQuestion.request.documents).toEqual(revised.request.documents);
-  const accepted = page.waitForResponse(r=>r.url().endsWith(`/reviews/${jobID}/respond`)&&r.request().method()==='POST');
   await approve.click();
+  const approvalComment = restart ? 'The revised plan covers the restart case.' : '';
+  const comment = page.getByLabel('Comment (optional)',{exact:true});
+  await expect(comment).toHaveValue('');
+  if (approvalComment) await comment.fill(approvalComment);
+  const accepted = page.waitForResponse(r=>r.url().endsWith(`/reviews/${jobID}/respond`)&&r.request().method()==='POST');
+  await page.getByRole('button',{name:'Send · Show me the result',exact:true}).click();
   const final = await (await accepted).json();
   expect(final.receipt.request_id).toBe(afterQuestion.request_id);
   let outcome:any;
   await expect.poll(async()=>{const result=await request.get(`${api}/jobs/${jobID}/outcome`);if(result.status()!==200)return false;outcome=(await result.json()).output;return !!outcome?.revised;},{timeout:90000}).toBe(true);
   expect(outcome.original.human.receipt).toEqual(correction.receipt);expect(outcome.revised.receipt).toEqual(final.receipt);
   expect(outcome.revised.reviewed_documents).toEqual(revised.request.documents);
+  expect(outcome.revised.conversation.at(-1)).toMatchObject({direction:'accept',text:approvalComment,revision:2,receipt:final.receipt});
   expect(outcome.original.conversation.filter((t:any)=>t.direction==='question')).toHaveLength(2);
   expect(outcome.original.conversation.some((t:any)=>t.direction==='accept')).toBe(false);
   const normalized={points,correction:outcome.original.stage,approved:outcome.revised.status,uploads:outcome.original.conversation.flatMap((t:any)=>t.attachments.map((f:any)=>f.stored.key.sizeBytes))};
@@ -445,7 +451,7 @@ test.describe('Backstop recovery', () => {
   await page.screenshot({path:info.outputPath('backstop-report.png'),fullPage:true});
   await page.setViewportSize({width:1280,height:900});
   await page.getByRole('button',{name:'Give instructions',exact:true}).click();
-  await page.getByLabel('Question or requested change (required)',{exact:true}).fill('Remove only the phone acceptance criterion. Keep browser validation.');
+  await page.getByLabel('Comment (required)',{exact:true}).fill('Remove only the phone acceptance criterion. Keep browser validation.');
   await page.getByRole('button',{name:'Review settings',exact:true}).click();
   const dialog=page.getByRole('dialog');
   await expect(dialog.getByLabel('Return to',{exact:true})).toBeVisible();

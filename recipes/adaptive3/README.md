@@ -234,7 +234,8 @@ Human checkpoints use Cortex `review/v2`. Ask a question keeps the original
 documents and logical review identity, saves the exact contribution and native
 receipt, appends the actual answer, and waits for another contribution. The
 answering session receives the complete discussion and all retained files.
-Approval requires exactly empty feedback and no new uploads.
+Reviewers can approve with an optional text comment. The comment is saved with
+the approval, and the job proceeds with the reviewed work.
 
 Review doc comments appears when originals are attached. It sends the comments
 through the documents' complete producer and validation cycle and requests fresh

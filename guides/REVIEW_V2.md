@@ -19,8 +19,9 @@ request/response JSON schemas. Do not add native `kind`, ordinary `fields`, lega
 `feedback_required`, or a global upload permission.
 
 Each direction declares `id`, `label`, `feedback_mode` (`forbidden`, `optional`,
-`required`), `allow_attachments` and `continues_review`. Approval forbids any text
-or upload. Required contributions need meaningful text or a permitted resolved new
+`required`), `allow_attachments` and `continues_review`. Adaptive3 approvals allow
+an optional text comment. It stays with the approval and its revision. Required
+contributions need meaningful text or a permitted resolved new
 upload; earlier files and settings do not satisfy that requirement. Native responses
 always contain `direction`, `feedback`, `attachments` and sparse `settings`.
 Preserve the complete native response and receipt, including exact human text.
