@@ -217,9 +217,6 @@ state:
           && states.prepare_review.outputs.result.status == ''passed'' ? [{''id'':''continue'',''label'':inputs.problem.?loop.orValue('''') == ''merge'' ? states.setup.outputs.text.retry + '' '' + string(states.assess.outputs.response.?additional_attempts.orValue(null)
           != null ? states.assess.outputs.response.additional_attempts : 1) + '' '' + (states.assess.outputs.response.?additional_attempts.orValue(null) == null || states.assess.outputs.response.additional_attempts == 1 ? states.setup.outputs.text.attempt : states.setup.outputs.text.attempts)
           : states.setup.outputs.text.continue,''feedback_mode'':''optional'',''allow_attachments'':false,''continues_review'':false}]
-          : [])
-          + (states.prepare_review.outputs.result.status == ''passed'' && size(states.prepare_review.outputs.documents)>0
-          ? [{''id'':''annotate'',''label'':''Review doc comments'',''feedback_mode'':''required'',''allow_attachments'':true,''continues_review'':false}]
           : []),''feedback'':{''label'':states.setup.outputs.text.message},''settings'':[states.setup.outputs.setting],''conversation'':[]},states.prepare_review.outputs.primary],
           ''.[1] as $primary | .[0] + (if $primary != "" and (.[0].documents|has($primary)) then {overview_document_id:$primary} else {} end)'')
           }}'
@@ -243,11 +240,11 @@ state:
           feedback: ${{ jq([outputs.native,{'validation':states.prepare_review.outputs.result,'documents':outputs.documents,'conversation':outputs.conversation,'review_id':outputs.review_id,'reassessment':outputs.interpretation}],
             'add') }}
           human: >-
-            ${{ outputs.native.response.direction != 'reply' || outputs.interpretation.?instruction.orValue(null) != null ? outputs.native : {} }}
+            ${{ outputs.interpretation.?instruction.orValue(null) != null ? outputs.native : {} }}
           session: ${{ outputs.session }}
           interpreted: >-
             ${{ outputs.interpretation.?instruction.orValue(null) != null || outputs.interpretation.?status.orValue('') == 'ask' ? {'response':outputs.interpretation,'session':outputs.session,'artifacts':outputs.reply_artifacts} : {} }}
-          allow_resume: ${{ outputs.native.response.direction == 'reply' && states.turn.outputs.retry.automatic_used < 2 }}
+          allow_resume: ${{ states.turn.outputs.retry.automatic_used < 2 }}
 outputs:
   review_reply: ${{ state_output('discuss','review_reply',inputs.review_reply) }}
   retry: ${{ states.turn.outputs.retry }}
@@ -258,5 +255,5 @@ outputs:
 vars:
   review_instruction: >-
     ${{ inputs.problem.?status.orValue('') == 'changes' && nonempty(inputs.problem.?human.orValue({}).?receipt.orValue({}).?submission_id.orValue(''))
-      && inputs.problem.human.?response.orValue({}).?direction.orValue('') in ['reply','annotate','decline']
+      && inputs.problem.human.?response.orValue({}).?direction.orValue('') in ['reply','decline']
       ? inputs.problem.human : {} }}

@@ -67,14 +67,16 @@ When calling `adaptive3/review.yaml` again, pass its previous `threads` output
 to the next call's `threads` input. The `decision` key selects the thread. A new
 package request or a separate escalation starts with an empty thread.
 
-Use **Reply** for questions and edit requests. The receiving agent answers a
-question in the thread, routes a requested edit, or asks what you meant. An
-optional **Return to** setting applies to an edit. Scope changes go to Direction.
-The agent asks about conflicting destinations before starting work. Review doc
-comments appears only with originals and reruns their producer and validation,
-keeping the discussion with the revised documents. Package comments regenerate the
-proposal before probing. Backstop comments repeat read-only
-investigation before any correction decision.
+Choose **Revise** to ask a question or request an edit. You can write a message,
+attach a commented document, or do both. The receiving agent reads the comments,
+answers questions in the thread and routes requested edits to the author.
+The optional **Return to** setting applies once to a requested edit. The agent
+asks about conflicting destinations and sends scope changes to Direction. An
+edit to a package proposal returns it for approval before tools run.
+
+At plan review, **Review before Complete** starts work and brings the result
+back for your approval. **Take to Completion** lets the job finish or merge once
+independent review confirms that the result meets the approved plan.
 
 New jobs require compatible published Cortex reader support. Existing frozen legacy
 forms retain their reader behavior. Backstop no longer offers model, reasoning or

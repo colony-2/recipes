@@ -86,12 +86,11 @@ state:
       include: ./discussion.yaml
       inputs:
         previous: ${{ inputs.threads[?inputs.decision].orValue({}) }}
-        request: '${{ jq([{''title'':states.setup.outputs.text.title,''question'':states.setup.outputs.text.decision,''documents'':inputs.documents,''document_metadata'':inputs.document_metadata,''directions'':states.setup.outputs.text.directions
-          + (size(inputs.documents)>0 ? [{''id'':''annotate'',''label'':''Review doc comments'',''feedback_mode'':''required'',''allow_attachments'':true,''continues_review'':false}]
-          : []),''feedback'':{''label'':states.setup.outputs.text.message},''settings'':[states.setup.outputs.setting],''conversation'':[]},inputs.primary],
+        request: '${{ jq([{''title'':states.setup.outputs.text.title,''question'':states.setup.outputs.text.decision,''documents'':inputs.documents,''document_metadata'':inputs.document_metadata,''directions'':states.setup.outputs.text.directions,''feedback'':{''label'':states.setup.outputs.text.message},''settings'':[states.setup.outputs.setting],''conversation'':[]},inputs.primary],
           ''.[0] + (if .[1] != "" then {overview_document_id:.[1]} else {} end)'') }}'
         prompt: ${{ states.setup.outputs.text.task }}
-        schema: ${{ states.setup.outputs.schema }}
+        schema: >-
+          ${{ inputs.decision == 'packages' ? jq(states.setup.outputs.schema, '.properties.stage.enum += ["packages"]') : states.setup.outputs.schema }}
         documents: ${{ inputs.documents }}
         session: ${{ inputs.session }}
         agent_settings: ${{ inputs.agent_settings }}
@@ -116,19 +115,6 @@ state:
             summary: The human declined these tools. Find another approach.
             human: ${{ outputs.native }}
             documents: ${{ outputs.documents }}
-            conversation: ${{ outputs.conversation }}
-      - to: done
-        when: outputs.native.response.direction == 'annotate'
-        payload:
-          result:
-            status: changes
-            stage: ${{ inputs.purpose }}
-            document_comments: true
-            summary: Revise the reviewed documents using the original comments, validate the complete revised collection
-              and request fresh approval.
-            human: ${{ outputs.native }}
-            documents: ${{ outputs.documents }}
-            review_id: ${{ outputs.review_id }}
             conversation: ${{ outputs.conversation }}
       - to: done
         when: outputs.interpretation.?status.orValue('') == 'changes'
