@@ -20,7 +20,9 @@ sequence:
   - id: prepare
     include: ../../recipes/adaptive3/merge-queue-prepare.yaml
     inputs:
-      message: Add the already landed fixture
+      commit:
+        title: Add the already landed fixture
+        body: Keep an earlier contribution in the branch history.
   - id: merge
     op: merge
   outputs:
@@ -38,7 +40,9 @@ sequence:
 - id: prepare
   include: ../../recipes/adaptive3/merge-queue-prepare.yaml
   inputs:
-    message: Add the already verified contribution
+    commit:
+      title: Add the already verified contribution
+      body: Record the change covered by the caller verification.
 - id: original
   include: ../../recipes/adaptive3/verify-candidate.yaml
   inputs:
@@ -196,10 +200,24 @@ sequence:
       landed: ${{ sequence.batch.outputs.results.filter(r,r.changeid==sequence.prepare.outputs.candidate.changeid)[0].?hash.orValue(sequence.prepare.outputs.candidate.head_hash) }}
       branch: refs/heads/main
       change_id: ${{ sequence.prepare.outputs.candidate.changeid }}
+- id: compare_messages
+  when: inputs.scenario=='rebase'
+  op: command_execution
+  const: true
+  inputs:
+    env:
+      SOURCE: ${{ sequence.prepare.outputs.candidate.head_hash }}
+      LANDED: ${{ sequence.batch.outputs.results[0].hash }}
+    run: |
+      set -eu
+      git fetch --quiet origin refs/heads/main
+      test "$(git log -1 --format=%B "$SOURCE")" = "$(git log -1 --format=%B "$LANDED")"
+      test "$(git log -1 --format='%(trailers:key=Job,valueonly)' "$LANDED" | tr -d '\n')" = "https://jobs.colony2.com/$C2J_CURRENT_TENANT_ID/jobs/$C2J_CURRENT_JOB_ID"
 outputs:
   candidate: ${{ sequence.prepare.outputs.candidate }}
   results: ${{ sequence.batch.outputs.results }}
   confirmed: ${{ sequence[?'confirm'].orValue({}).?outputs.orValue({}).?result.orValue({}).?confirmed.orValue(false) }}
+  message_preserved: ${{ sequence[?'compare_messages'].orValue({}).?outputs.orValue({}).?success.orValue(false) }}
   race_rejected: ${{ sequence[?'guard'].orValue({}).?outputs.orValue({}).?rejected.orValue(false) }}
   probe: ${{ sequence[?'probe'].orValue({}).?outputs.orValue({}) }}
 

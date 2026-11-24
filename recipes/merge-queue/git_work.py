@@ -57,7 +57,7 @@ class Git:
             raise GitError("Git workspace differs from the expected clean, inactive checkout")
 
 
-def prepare_candidate(repo, base, message, previous):
+def prepare_candidate(repo, base, previous):
     head = repo.head()
     changed = repo.read("rev-parse", base + "^{tree}") != repo.read("rev-parse", head + "^{tree}")
     existing = previous.get("head_hash") == head and previous.get("base_hash") == base
@@ -70,10 +70,7 @@ def prepare_candidate(repo, base, message, previous):
         while value:
             value, remainder = divmod(value, 62)
             encoded = alphabet[remainder] + encoded
-        change_id = encoded.rjust(27, "0")
-        message = "\n".join(line for line in message.splitlines()
-                            if not re.match(r"^Change-Id:", line, flags=re.I)).strip()
-        result.update(changeid=change_id, message=f"{message}\n\nChange-Id: {change_id}")
+        result["changeid"] = encoded.rjust(27, "0")
     return result
 
 

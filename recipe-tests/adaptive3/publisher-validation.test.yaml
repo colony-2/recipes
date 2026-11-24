@@ -64,7 +64,8 @@ cases:
     ops:
     - *command
     - *rebase
-    - match: {selector: ./recipes/merge-queue}
+    - &queue_op
+      match: {selector: ./recipes/merge-queue}
       behavior: {mode: passthrough}
     - match: {op: squash}
       behavior: {mode: passthrough}
@@ -86,3 +87,23 @@ cases:
   mocks:
     ops: [*command, *rebase, *assess]
   assertions: *verified
+- id: missing-commit-prose-returns-before-queue-or-verification
+  type: integration_case
+  inputs: {change: product, commit: {}}
+  runtime: *cell
+  mocks:
+    ops: [*command, *rebase, *queue_op]
+  assertions: &needs_message
+  - type: cel_true
+    expr: outputs.result.status=='changes' && outputs.result.summary.contains('one-line commit title')
+  - type: cel_true
+    expr: "!calls.exists(c,c.op=='squash' || c.node_path.contains('/verify/') || c.node_path.contains('/assess/'))"
+- id: multiline-subject-returns-to-the-direct-build-author
+  type: integration_case
+  inputs:
+    change: product
+    merge_queue: false
+    commit: {title: "First line\nsecond line", body: Preserve the marker.}
+  runtime: *cell
+  mocks: *prepare
+  assertions: *needs_message

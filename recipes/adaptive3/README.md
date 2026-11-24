@@ -18,6 +18,10 @@ human approval when the prepared change matches the approved patch and fresh
 verification passes. Successful integration completes from merge and any
 configured publication work.
 
+Implementation writes the Git title and body from the finished change. The recipe
+adds the originating job URL as the final `Job` trailer. Queued candidates also
+carry a `Change-Id` immediately above it. The queue receives the complete commit.
+
 Use root `build.yaml` for the default entrypoint, or `adaptive3.yaml` explicitly.
 See the [rollout notes](../../guides/adaptive3/ROLLOUT.md) for the public contract.
 

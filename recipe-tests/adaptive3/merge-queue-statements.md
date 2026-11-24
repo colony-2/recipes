@@ -50,6 +50,8 @@ Suite: `recipe-tests/adaptive3/merge-queue-caller.test.yaml`.
 | MQ-01 | Implementation starts with retained work refreshed against the latest published branch. | `execute.yaml`, `integration.yaml` | Critical | Integration / c2j, Git |
 | MQ-02 | Preparation-hook edits are included in the refreshed single-commit candidate before verification. | `execute.yaml`, `validate.yaml` | Critical | Integration / c2j, writing hook |
 | MQ-03 | Each verified candidate carries one durable random KSUID change ID without losing its approved commit message. | `integration.yaml` | Critical | Integration / c2j, Git |
+| MQ-03a | Queued and direct commits retain the implementation author’s title and body, separated by a blank line, and end with the originating job URL. | `commit-message.yaml`, `merge-queue-prepare.yaml`, `execute.yaml` | High | Integration / c2j, Git |
+| MQ-03b | A changed candidate missing a usable commit title or body returns to implementation before verification or queue submission. | `commit-message.yaml`, `validate.yaml` | High | Integration / c2j, Git |
 | MQ-04 | Refresh conflicts and failed verification return diagnostics to repair without queue admission. | `execute.yaml`, `validate.yaml` | Critical | Integration / c2j, conflict and verifier fixtures |
 | MQ-05 | Post-verification writes invalidate checks; changed approved content requires renewed outcome review before admission. | `validate.yaml`, `cycle.yaml` | Critical | Integration / c2j, scripted review |
 | MQ-06 | Unchanged rebased changes retain approval only after renewed verification, including binary contents and file modes. | `tools.yaml`, `cycle.yaml` | Critical | Integration / c2j, Git |

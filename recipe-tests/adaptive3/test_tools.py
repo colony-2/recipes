@@ -55,6 +55,15 @@ class Validators(unittest.TestCase):
         self.assertEqual(p.returncode, 0, p.stderr)
         return json.loads(p.stdout)
 
+    def test_commit_footer_uses_encoded_runtime_identity(self):
+        render = yaml.safe_load((SOURCE.parent / 'commit-message.yaml').read_text())['sequence'][0]
+        body = "Handle a missing file.\n\nKeep the user's existing edits."
+        env = {**os.environ, 'COMMIT':json.dumps({'title':'Preserve draft edits', 'body':body}),
+               'BASE':self.base, 'CHANGE_ID':'', 'C2J_CURRENT_TENANT_ID':'team/a', 'C2J_CURRENT_JOB_ID':'job #1'}
+        output = subprocess.check_output(['bash', '-c', render['inputs']['run']], cwd=self.repo, env=env, text=True)
+        self.assertEqual(json.loads(output)['message'],
+                         'Preserve draft edits\n\n' + body + '\n\nJob: https://jobs.colony2.com/team%2Fa/jobs/job%20%231')
+
     def test_preparation_links_origin_design_and_criteria(self):
         brief = 'review/one-pager.md'
         report = 'review/negotiations/storage/report.md'

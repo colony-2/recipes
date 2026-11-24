@@ -1,6 +1,6 @@
 id: adaptive3-merge-queue-prepare
 inputs:
-  message: ${{ inputs.message }}
+  commit: ${{ inputs.?commit.orValue(null) }}
   previous: ${{ inputs.?previous.orValue({}) }}
 sequence:
 - id: identify
@@ -10,16 +10,22 @@ sequence:
     action: prepare
     request:
       base: ${{ context.git.execution.base_hash }}
-      message: ${{ inputs.message }}
       previous: ${{ inputs.previous }}
+- id: describe
+  when: sequence.identify.outputs.result.changed && !sequence.identify.outputs.result.existing
+  include: ./commit-message.yaml
+  inputs:
+    commit: ${{ inputs.commit }}
+    change_id: ${{ sequence.identify.outputs.result.changeid }}
 - id: squash
   op: squash
-  when: sequence.identify.outputs.result.changed && !sequence.identify.outputs.result.existing
+  when: has(sequence[?'describe'].orValue({}).?outputs.orValue({}).?result.orValue({}).message)
   inputs:
-    commit_message: ${{ sequence.identify.outputs.result.message }}
+    commit_message: ${{ sequence.describe.outputs.result.message }}
 outputs:
+  result: ${{ jq(sequence[?'describe'].orValue({}).?outputs.orValue({}).?result.orValue({'status':'passed'}),'del(.message)') }}
   candidate: >-
-    ${{ sequence.identify.outputs.result.changed && !sequence.identify.outputs.result.existing ? {
+    ${{ has(sequence[?'squash'].orValue({}).?outputs.orValue({}).squashed_hash) ? {
       'changeid':sequence.identify.outputs.result.changeid,
       'base_hash':sequence.squash.outputs.squashed_commits.base_hash,
       'head_hash':sequence.squash.outputs.squashed_hash,

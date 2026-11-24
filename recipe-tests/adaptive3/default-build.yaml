@@ -7,12 +7,20 @@ input_schema:
 inputs:
   build_inputs: ${{ inputs.build_inputs }}
 sequence:
-- id: build
-  op: recipe.run_and_get_result
+- id: start
+  op: recipes.run
   inputs:
     # Resolve the build and its queue children from the same fixture repository.
-    name: ${{ 'git+' + context.git.repo + '//build.yaml@main' }}
-    inputs: ${{ inputs.build_inputs }}
+    git_ref: ${{ context.git.ref }}
+    recipes: >-
+      ${{ [{'name':'git+' + context.git.repo + '//build.yaml@main',
+            'cell_name':context.workflow.cell,'inputs':inputs.build_inputs,
+            'git':{'base_repo':context.git.repo,'base_ref':context.git.ref,'base_hash':context.git.resolved_hash} }] }}
+- id: build
+  op: recipe.await_result
+  inputs:
+    target:
+      job: ${{ sequence.start.outputs.job_ids[0] }}
 outputs:
   work_kind: ${{ sequence.build.outputs.outputs.work_kind }}
   merge: ${{ sequence.build.outputs.outputs.merge }}

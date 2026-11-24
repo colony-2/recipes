@@ -1,0 +1,44 @@
+id: adaptive3-commit-message
+inputs:
+  commit: ${{ inputs.?commit.orValue(null) }}
+  change_id: ${{ inputs.?change_id.orValue('') }}
+sequence:
+- id: render
+  op: command_execution
+  const: true
+  execution_needs:
+    packages:
+    - nix:github:NixOS/nixpkgs/e7439b6b14ad3cc35d05608ebca9bce01a25f5f8#python3
+  inputs:
+    env:
+      COMMIT: ${{ json_stringify(inputs.commit) }}
+      BASE: ${{ context.git.execution.base_hash }}
+      CHANGE_ID: ${{ inputs.change_id }}
+    run: |
+      python3 - <<'PY'
+      import json, os, subprocess
+      from urllib.parse import quote
+
+      def describe():
+          commit = json.loads(os.environ['COMMIT']) or {}
+          title = commit.get('title', '').strip()
+          body = commit.get('body', '').strip().replace('\r\n', '\n')
+          if not title or len(title.splitlines()) != 1 or not body or '\x00' in title + body:
+              diff = subprocess.run(['git', 'diff', '--quiet', os.environ['BASE'], 'HEAD'])
+              if diff.returncode == 0:
+                  return {'status': 'passed'}
+              if diff.returncode != 1:
+                  diff.check_returncode()
+              return {'status': 'changes', 'summary': 'Write a one-line commit title and a body explaining the finished change. The recipe adds the Git trailers.'}
+          tenant = quote(os.environ['C2J_CURRENT_TENANT_ID'], safe='')
+          job = quote(os.environ['C2J_CURRENT_JOB_ID'], safe='')
+          trailers = []
+          if os.environ['CHANGE_ID']:
+              trailers.append('Change-Id: ' + os.environ['CHANGE_ID'])
+          trailers.append(f'Job: https://jobs.colony2.com/{tenant}/jobs/{job}')
+          return {'status': 'passed', 'message': '\n\n'.join([title, body, '\n'.join(trailers)])}
+
+      print(json.dumps(describe()))
+      PY
+outputs:
+  result: ${{ json_parse(sequence.render.outputs.stdout) }}
