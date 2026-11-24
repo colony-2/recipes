@@ -199,7 +199,7 @@ All filenames below are relative to `recipe-tests/adaptive3/`.
 | Expectation | Files | Importance | Coverage and dependencies |
 | --- | --- | --- | --- |
 | Clear human instructions return once with original words and a native receipt, without a second Apply. | `backstop-instructions.test.yaml` | critical | integration; c2j |
-| Polite instructions through Ask a question can authorize the precise correction; informational questions remain discussion. | `backstop-instructions.test.yaml`, `backstop.test.yaml` | critical | integration; c2j |
+| One Reply accepts questions and edit requests. The receiving agent answers questions in the thread and routes only requested changes. | `review.test.yaml`, `review-routing.test.yaml`, `backstop-instructions.test.yaml` | critical | integration; c2j |
 | A validated scope amendment returns to Preparation for approval of the revised plan. | `backstop-amendment.test.yaml` | critical | integration; c2j |
 | Changed Direction, plans or candidates block later returns that depend on superseded results. | `backstop-policy.test.yaml` | critical | integration; c2j |
 | Short-path recovery uses the current Direction. An Outcome from a superseded plan cannot authorize integration of the same candidate. | `backstop-policy.test.yaml` | critical | integration; c2j |

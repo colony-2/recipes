@@ -7,7 +7,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { setupServer } from 'msw/node';
 import { http, HttpResponse } from 'msw';
-import { inputActivityService } from '@colony2/shared';
+import { InputActivityProvider, inputActivityService } from '@colony2/shared';
 import InputDetailPage from './InputDetailPage';
 
 vi.mock('./ReviewJobContext', () => ({ default: () => null }));
@@ -70,8 +70,18 @@ describe('Adaptive3 generated document reviews through the actual reader', () =>
         artifact_id: id, ref, availability: 'available', associations: [],
       })), response_manifest: [], snapshot_token: 'document-reader', snapshot_revision: 1,
     };
+    const cell = { cell_id: 'fixture', cell_name: 'Fixture', repo: 'github.com/acme/fixture' };
     let submissions = 0;
     server.use(
+      http.get('http://localhost:8080/api/projects/fixture/jobs/producer-job', () => HttpResponse.json({
+        job_id: 'producer-job', ...cell, status: 'ACTIVE',
+      })),
+      http.get('http://localhost:8080/api/projects/fixture/user-inputs/pending', () => HttpResponse.json([
+        { id: 'producer-job', ...cell, client_payload_revision: 1 },
+      ])),
+      http.get('http://localhost:8080/api/projects/fixture/jobs/producer-job/tree-node', () => HttpResponse.json({
+        node: { tenant_id: 'fixture', job_id: 'producer-job', status: 'ACTIVE', cell: 'fixture' },
+      })),
       http.get('http://localhost:8080/api/projects/fixture/user-inputs/producer-job', () => HttpResponse.json({
         jobId: 'producer-job', status: 'pending', startTime: '2026-11-13T08:00:00Z', form: frozenForm,
       })),
@@ -95,26 +105,29 @@ describe('Adaptive3 generated document reviews through the actual reader', () =>
     const user = userEvent.setup();
     render(<MemoryRouter initialEntries={['/reviews/producer-job']}><Routes>
       <Route path="/reviews/:jobId" element={<InputDetailPage projectId="fixture" />} />
-    </Routes></MemoryRouter>);
-    const question = config.directions.find(direction => direction.id === 'question');
-    await user.click(await screen.findByRole('radio', { name: new RegExp(question.label) }, { timeout: 15000 }));
-    const textbox = await screen.findByRole('textbox', { name: new RegExp(config.feedback.label) }, { timeout: 15000 });
+    </Routes></MemoryRouter>, { wrapper: InputActivityProvider });
+    const reply = config.directions.find(direction => direction.id === 'reply');
+    await user.click(await screen.findByRole('button', { name: reply.label, exact: true }, { timeout: 15000 }));
+    const textbox = await screen.findByLabelText(`${config.feedback.label} (required)`, { exact: true }, { timeout: 15000 });
     await user.click(textbox);
     await user.paste('Keep the draft while I read the evidence.');
     await user.click(screen.getByRole('button', { name: 'Show documents', exact: true }));
     const navigation = await screen.findByRole('navigation', { name: 'Review documents' });
     const expected = roleOrder(config);
-    for (const id of expected) {
+    const entries = navigation.querySelectorAll<HTMLElement>('.review-document-entry');
+    expect(entries).toHaveLength(expected.length);
+    for (const [index, id] of expected.entries()) {
       const detail = config.document_metadata[id];
-      expect(within(navigation).getByText(detail.title, { exact: true })).toBeVisible();
-      expect(within(navigation).getByText(detail.description, { exact: true })).toBeVisible();
-      expect(within(navigation).getAllByText(detail.role[0].toUpperCase() + detail.role.slice(1)).length).toBeGreaterThan(0);
+      const row = within(entries[index]);
+      expect(row.getByText(detail.title, { exact: true })).toBeVisible();
+      expect(row.getByText(detail.description, { exact: true })).toBeVisible();
+      expect(row.getByText(detail.role[0].toUpperCase() + detail.role.slice(1))).toBeVisible();
     }
     await waitFor(() => expect(fetched[0]).toBe(config.overview_document_id));
     const supporting = expected.find(id => id !== config.overview_document_id);
     if (supporting) {
-      const title = config.document_metadata[supporting].title;
-      await user.click(within(navigation).getByRole('button', { name: width < 768 ? `Read ${title}` : new RegExp(title) }));
+      const row = entries[expected.indexOf(supporting)];
+      await user.click(within(row).getByRole('button'));
       await screen.findByText(`Selected attachment: ${supporting}`);
     }
     expect(textbox).toHaveValue('Keep the draft while I read the evidence.');

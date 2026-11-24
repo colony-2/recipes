@@ -36,13 +36,13 @@ cases:
       && outputs.result.conversation[0].receipt==outputs.result.receipt
   - type: cel_true
     expr: reviews[0].form.title=="Keep saved drafts after a restart"
+  - &single_reply
+    type: cel_true
+    expr: >-
+      reviews[0].form.request.directions.exists_one(o,o.id=="reply" && o.label=="Reply" && o.continues_review) &&
+      !reviews[0].form.request.directions.exists(o,o.id in ["revise","question"])
   - type: cel_true
-    expr: reviews[0].form.request.directions.exists(o,o.id=="question" && o.label=="Ask
-      a question") && reviews[0].form.request.directions.exists(o,o.id=="revise" &&
-      o.label=="Request changes")
-  - type: cel_true
-    expr: '!reviews[0].form.request.directions.exists(d,d.id=="annotate") && reviews[0].form.request.question.contains("There
-      are no attached review documents")'
+    expr: '!reviews[0].form.request.directions.exists(d,d.id=="annotate")'
   mocks:
     ops:
     - match:
@@ -81,10 +81,7 @@ cases:
     expr: reviews[0].form.request.directions[0].label=="Accept answer"
   - type: cel_true
     expr: reviews[0].form.title=="Keep saved drafts after a restart"
-  - type: cel_true
-    expr: reviews[0].form.request.directions.exists(o,o.id=="question" && o.label=="Ask
-      a question") && reviews[0].form.request.directions.exists(o,o.id=="revise" &&
-      o.label=="Request changes")
+  - *single_reply
   mocks:
     ops:
     - match:
@@ -123,10 +120,7 @@ cases:
     expr: reviews[0].form.request.directions[0].label=="Accept and merge"
   - type: cel_true
     expr: reviews[0].form.title=="Keep saved drafts after a restart"
-  - type: cel_true
-    expr: reviews[0].form.request.directions.exists(o,o.id=="question" && o.label=="Ask
-      a question") && reviews[0].form.request.directions.exists(o,o.id=="revise" &&
-      o.label=="Request changes")
+  - *single_reply
   mocks:
     ops:
     - match:
@@ -165,10 +159,7 @@ cases:
     expr: reviews[0].form.request.directions[0].label=="Accept outcome"
   - type: cel_true
     expr: reviews[0].form.title=="Keep saved drafts after a restart"
-  - type: cel_true
-    expr: reviews[0].form.request.directions.exists(o,o.id=="question" && o.label=="Ask
-      a question") && reviews[0].form.request.directions.exists(o,o.id=="revise" &&
-      o.label=="Request changes")
+  - *single_reply
   mocks:
     ops:
     - match:
@@ -207,10 +198,7 @@ cases:
     expr: reviews[0].form.request.directions[0].label=="Add tools and run checks"
   - type: cel_true
     expr: reviews[0].form.title=="Keep saved drafts after a restart"
-  - type: cel_true
-    expr: reviews[0].form.request.directions.exists(o,o.id=="question" && o.label=="Ask
-      a question") && reviews[0].form.request.directions.exists(o,o.id=="revise" &&
-      o.label=="Request changes")
+  - *single_reply
   mocks:
     ops:
     - match:
@@ -231,13 +219,13 @@ cases:
     responses:
     - node_path: review-test/review/adaptive3-review/discuss/discuss/adaptive3-discussion/ask/ask
       response:
-        direction: question
+        direction: reply
         feedback: What happens after a restart?
         attachments: []
         settings: {}
     - node_path: review-test/review/adaptive3-review/discuss/discuss/adaptive3-discussion/ask/ask
       response:
-        direction: question
+        direction: reply
         feedback: '  Does that change the scope?
 
           '
@@ -284,9 +272,9 @@ cases:
           status: completed
           output_schema_valid: true
           response:
-            status: changes
+            status: answer
             summary: Saved drafts return when you reopen the app.
-            stage: direction
+            stage: null
         effects:
           objects:
             session:
@@ -301,9 +289,9 @@ cases:
           status: completed
           output_schema_valid: true
           response:
-            status: changes
+            status: answer
             summary: No scope change is authorized by this question.
-            stage: direction
+            stage: null
         effects:
           objects:
             session:
@@ -315,7 +303,37 @@ cases:
       repeat: true
       behavior:
         mode: passthrough
-- id: empty-question-fails-native-validation
+- id: invalid-interpretation-keeps-plan-open
+  type: integration_case
+  inputs: {purpose: preparation, decision: plan, title: Saved draft backup}
+  runtime:
+    cells:
+      root:
+        file_sources:
+          recipes/review-v2/op.yaml: ../../recipes/review-v2/op.yaml
+          recipes/review-v2.py: ../../recipes/review-v2.py
+    responses:
+    - node_path: &plan_reply review-test/review/adaptive3-review/discuss/discuss/adaptive3-discussion/ask/ask
+      response: {direction: reply, feedback: 'Why keep a backup?', attachments: [], settings: {}}
+    - node_path: *plan_reply
+      response: {direction: accept, feedback: '', attachments: [], settings: {}}
+  mocks:
+    ops:
+    - match: {selector: 'nix:github:colony-2/c2ops/published#codex'}
+      behavior:
+        mode: return
+        outputs: {status: completed, output_schema_valid: false, response: {status: changes}}
+    - match: {selector: ./recipes/review-v2}
+      repeat: true
+      behavior: {mode: passthrough}
+  assertions:
+  - *single_reply
+  - type: cel_true
+    expr: >-
+      size(reviews)==2 && reviews[1].form.request.review_id==reviews[0].form.request.review_id
+      && reviews[1].form.request.revision==1 && reviews[1].form.request.conversation[1].text.contains("rephrase")
+      && outputs.result.status=="accepted" && outputs.result.receipt.request_id==reviews[1].request_id
+- id: empty-reply-fails-native-validation
   type: integration_case
   runtime:
     cells:
@@ -328,7 +346,7 @@ cases:
     responses:
     - node_path: review-test/review/adaptive3-review/discuss/discuss/adaptive3-discussion/ask/ask
       response:
-        direction: question
+        direction: reply
         feedback: ''
         attachments: []
         settings: {}
@@ -360,20 +378,21 @@ cases:
     responses:
     - node_path: review-test/review/adaptive3-review/discuss/discuss/adaptive3-discussion/ask/ask
       response:
-        direction: revise
-        feedback: Keep only the latest saved draft.
+        direction: reply
+        feedback: Could you keep only the latest saved draft?
         attachments: []
         settings: {}
   inputs:
-    purpose: direction
-    decision: direction
+    purpose: preparation
+    decision: plan
     title: Keep saved drafts after a restart
   assertions:
+  - *single_reply
   - type: output_equals
     path: result.status
     value: changes
   - type: cel_true
-    expr: outputs.result.human.response.feedback=="Keep only the latest saved draft."
+    expr: outputs.result.human.response.feedback=="Could you keep only the latest saved draft?"
   mocks:
     ops:
     - match:
@@ -418,7 +437,7 @@ cases:
     review_reply: &human_correction
       submission:
         response:
-          direction: revise
+          direction: reply
           feedback: "  Keep this local — 日本語🙂.\nNo deployment.  "
   mocks: &independent_mocks
     ops:
@@ -443,7 +462,7 @@ cases:
   - type: cel_true
     expr: >-
       calls.filter(c,c.op=="extension_execution" && has(c.inputs.inputs.prompt)).all(c,
-      c.inputs.inputs.prompt.contains("Review choice: revise\nReview reply:   Keep this local — 日本語🙂.\nNo deployment.  \n")
+      c.inputs.inputs.prompt.contains("Review choice: reply\nReview reply:   Keep this local — 日本語🙂.\nNo deployment.  \n")
       && !c.inputs.inputs.prompt.contains("STALE-DIRECT-DIRECTION"))
 - id: implementation-exact-human-correction
   type: integration_case

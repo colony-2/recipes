@@ -322,6 +322,8 @@ test.describe.serial('unchanged adaptive3 discussion and correction routing',()=
   originalDocument.searchParams.delete('snapshot_token');
   const first=await details();const receipts:any[]=[];const points:any[]=[];
   expect(first.request.revision).toBe(1);
+  await expect(page.getByRole('button',{name:'Reply',exact:true})).toHaveCount(1);
+  await expect(page.getByRole('button',{name:/^(Ask a question|Request changes)$/})).toHaveCount(0);
   expect(Object.keys(first.request.document_metadata).sort()).toEqual(Object.keys(first.request.documents).sort());
   expect(first.request.overview_document_id).toBe('review/design.md');
   await page.getByRole('button',{name:'Show documents',exact:true}).click();
@@ -344,7 +346,7 @@ test.describe.serial('unchanged adaptive3 discussion and correction routing',()=
   let current=first;
   for(const [index,text] of ['First question?','Second question?'].entries()){
    if(restart)await stopWorker();
-   const saved=await submit(current,'question',text,{},index===0?'first note':'second note');
+   const saved=await submit(current,'reply',text,{},index===0?'first note':'second note');
    expect(saved.response.attachments).toHaveLength(1);
    if(restart){await expect(discussion.getByText(text,{exact:true})).toBeVisible();await page.reload();await expect(discussion.getByText(text,{exact:true})).toHaveCount(1);startWorker();}
    let successor:any;
@@ -360,14 +362,14 @@ test.describe.serial('unchanged adaptive3 discussion and correction routing',()=
    points.push({turns:current.request.conversation.map((t:any)=>({role:t.role,text:t.text,direction:t.direction,files:t.attachments.map((f:any)=>f.stored.key.sizeBytes)})),originals:Object.keys(current.request.documents).sort()});
   }
   await page.reload();await expect(discussion.getByText('Actual second answer.',{exact:true})).toBeVisible();
-  await page.getByRole('button',{name:'Request changes',exact:true}).click();
+  await page.getByRole('button',{name:'Reply',exact:true}).click();
   await page.getByLabel('Comment (required)',{exact:true}).fill('UNSENT PREVIOUS REVIEW');
   await page.getByLabel('Attach notes',{exact:true}).setInputFiles([{name:'unsent.md',mimeType:'text/markdown',buffer:Buffer.from('unsent draft')}]);
   // Accept the routing contribution while the restarted worker is stopped.
   if(restart)await stopWorker();
   // A native completion event refreshes this saved view while history is down.
   await page.route(`**${api}/jobs/${jobID}/conversation?*`,route=>route.fulfill({status:503,body:JSON.stringify({error:'History temporarily unavailable'})}));
-  const correction=await submit(current,'revise','Keep scope. Revise Direction.',{return_to:'direction'});
+  const correction=await submit(current,'reply','Keep scope. Revise Direction.',{return_to:'direction'});
   await expect(page.getByText('Review state unavailable',{exact:true})).toBeVisible();
   await expect(page.getByText('Actual second answer.',{exact:true})).toBeVisible();
   await expect(approve).toBeHidden();
@@ -393,7 +395,7 @@ test.describe.serial('unchanged adaptive3 discussion and correction routing',()=
   expect(revised.request.conversation[4]).toMatchObject({revision:1,receipt:correction.receipt});
   expect(revised.request.conversation.some((turn:any)=>turn.text==='UNSENT PREVIOUS REVIEW')).toBe(false);
   await expect(page.getByText('unsent.md (12 bytes)',{exact:true})).toHaveCount(0);
-  await submit(revised,'question','Do the original notes still apply?');
+  await submit(revised,'reply','Do the original notes still apply?');
   await expect(discussion.getByText('Both original notes are available with the revised plan.',{exact:true})).toBeVisible({timeout:90000});
   const afterQuestion=await details();
   expect(afterQuestion.request.review_id).toBe(first.request.review_id);
@@ -414,7 +416,7 @@ test.describe.serial('unchanged adaptive3 discussion and correction routing',()=
   expect(outcome.original.human.receipt).toEqual(correction.receipt);expect(outcome.revised.receipt).toEqual(final.receipt);
   expect(outcome.revised.reviewed_documents).toEqual(revised.request.documents);
   expect(outcome.revised.conversation.at(-1)).toMatchObject({direction:'accept',text:approvalComment,revision:2,receipt:final.receipt});
-  expect(outcome.original.conversation.filter((t:any)=>t.direction==='question')).toHaveLength(2);
+  expect(outcome.original.conversation.filter((t:any)=>t.direction==='reply')).toHaveLength(3);
   expect(outcome.original.conversation.some((t:any)=>t.direction==='accept')).toBe(false);
   const normalized={points,correction:outcome.original.stage,approved:outcome.revised.status,uploads:outcome.original.conversation.flatMap((t:any)=>t.attachments.map((f:any)=>f.stored.key.sizeBytes))};
   if(restart)expect(normalized).toEqual(controls[0]);else controls.push(normalized);
@@ -442,7 +444,7 @@ test.describe('Backstop recovery', () => {
  test('native report and instructions keep the correction in this job', async ({page,request,recipeRun},info) => {
   const {tenant,jobID}=recipeRun;
   await page.goto(`/project/${tenant}/reviews/${jobID}`);
-  await expect(page.getByRole('button',{name:'Give instructions',exact:true})).toBeVisible();
+  await expect(page.getByRole('button',{name:'Reply',exact:true})).toBeVisible();
   await expect(page.getByRole('heading',{name:'What needs your decision',exact:true})).toBeVisible();
   const report=page.getByRole('article',{name:'Rendered document'});
   await expect(report.locator('blockquote, pre')).toHaveCount(0);
@@ -454,7 +456,7 @@ test.describe('Backstop recovery', () => {
   await page.setViewportSize({width:1280,height:2000});
   await page.screenshot({path:info.outputPath('backstop-report.png'),fullPage:true});
   await page.setViewportSize({width:1280,height:900});
-  await page.getByRole('button',{name:'Give instructions',exact:true}).click();
+  await page.getByRole('button',{name:'Reply',exact:true}).click();
   await page.getByLabel('Comment (required)',{exact:true}).fill('Remove only the phone acceptance criterion. Keep browser validation.');
   await page.getByRole('button',{name:'Review settings',exact:true}).click();
   const dialog=page.getByRole('dialog');
@@ -463,7 +465,7 @@ test.describe('Backstop recovery', () => {
   await dialog.getByLabel('Return to',{exact:true}).selectOption({label:'direction'});
   await page.screenshot({path:info.outputPath('backstop-return-settings.png')});
   await dialog.getByRole('button',{name:'Done',exact:true}).click();
-  await page.getByRole('button',{name:'Send · Give instructions',exact:true}).click();
+  await page.getByRole('button',{name:'Send · Reply',exact:true}).click();
   await expect.poll(async()=>{
    const r=await request.get(`/api/projects/${tenant}/jobs/${jobID}/outcome`);
    return r.status()===200?(await r.json()).output?.result?.stage:null;

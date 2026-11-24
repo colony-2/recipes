@@ -67,8 +67,10 @@ When calling `adaptive3/review.yaml` again, pass its previous `threads` output
 to the next call's `threads` input. The `decision` key selects the thread. A new
 package request or a separate escalation starts with an empty thread.
 
-Request changes routes through the selected complete stage cycle. Scope changes
-require Direction. Conflicting instructions require clarification. Review doc
+Use **Reply** for questions and edit requests. The receiving agent answers a
+question in the thread, routes a requested edit, or asks what you meant. An
+optional **Return to** setting applies to an edit. Scope changes go to Direction.
+The agent asks about conflicting destinations before starting work. Review doc
 comments appears only with originals and reruns their producer and validation,
 keeping the discussion with the revised documents. Package comments regenerate the
 proposal before probing. Backstop comments repeat read-only

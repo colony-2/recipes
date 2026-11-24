@@ -219,10 +219,11 @@ remains readable after diagnosis or supporting-file validation failure; invalid
 supporting files still disable Apply. `review/backstop-report.md` is reserved for
 this report. Selected agent files remain supporting evidence.
 
-**Give instructions** supplies native human authority for the precise request.
-A clear instruction can also arrive through Ask a question; informational and
-hypothetical questions remain discussion. Preserve original words, notes and
-receipts. Requirement changes return to Direction and update the affected plan.
+**Reply** sends your words and attachments to the delegate. The delegate answers
+questions, asks about unclear intent and acts on a clear instruction within its
+stated scope. A question leaves the retry allowance in place. The original words,
+notes and receipt travel with a requested change. Requirement changes return to
+Direction and update the affected plan.
 After validation confirms exactly that amendment, reuse its native receipt
 and present the revised design and acceptance criteria at Preparation. Outcome and merge reviews
 remain separate. Ambiguity, conflicting destinations or additional consequential
@@ -234,17 +235,17 @@ this job; an
 exceptional explicit separate-job request can be routed to execution using the
 existing create-job operation. Creating a job does not cancel this source.
 
-Human checkpoints use Cortex `review/v2`. Ask a question keeps the original
-documents and logical review identity, saves the exact contribution and native
-receipt, appends the actual answer, and waits for another contribution. The
-answering session receives the complete discussion and all retained files.
+Human checkpoints use Cortex `review/v2`. Choose **Reply** to ask a question or
+request an edit. The receiving agent reads the discussion and attached files.
+An answer appears on the same revision. A requested edit goes to its author.
+Revised documents appear in the same review thread with the next revision number.
 Reviewers can approve with an optional text comment. The comment is saved with
 the approval, and the job proceeds with the reviewed work.
 
 Review doc comments appears when originals are attached. It sends the comments
 through the documents' complete producer and validation cycle and requests fresh
-approval. Request changes can select Auto or an applicable correction destination
-under Review settings. The selection applies once; later reviews return to Auto.
+approval. You can suggest where to make an edit with **Return to** in Review
+settings. The selection applies to that change. Later reviews start on Auto.
 Scope changes require Direction, and conflicting instructions stay in discussion.
 Package-review destinations pass through the containing lifecycle.
 

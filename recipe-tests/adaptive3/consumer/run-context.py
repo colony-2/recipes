@@ -63,7 +63,7 @@ class Provider(BaseHTTPRequestHandler):
                 answer = 'Actual first answer.' if index == 1 else 'Actual second answer.'
                 item = dict(id=f'msg_{index}', type='message', role='assistant', status='completed',
                             content=[dict(type='output_text', annotations=[], text=json.dumps(
-                                dict(status='changes', summary=answer, stage='direction')))])
+                                dict(status='answer', summary=answer, stage=None)))])
             self.send_response(200)
             self.send_header('Content-Type', 'text/event-stream')
             self.end_headers()
