@@ -7,10 +7,9 @@ Start with [PURPOSE.md](../PURPOSE.md), the actual recipe, and
 
 ## Working in C2
 
-Every Adaptive3 agent receives a local `C2-guide.md` in its task inbox, including
-in cells without a Recipes checkout. It covers workspace permissions, choosing a
-worker base and capabilities, requesting packages, finding an original decision,
-consulting another cell, and checking a deployment. [Offline guide source](../recipes/adaptive3/prompts/context.yaml)
+The [Working in C2 guide](WORKING_IN_C2.md) covers workspace permissions, worker
+bases and capabilities, package requests, job inspection, cross-cell consultation
+and deployment checks. Adaptive3 links to it when an agent session starts.
 
 ## Authoring and runtime contracts
 

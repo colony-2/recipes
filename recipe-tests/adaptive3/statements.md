@@ -130,10 +130,10 @@ Defined in the approved preparation before implementation. Scripted assessments 
 | A3-81 | Successful merge and skipped publication complete from native results without further assessment. | Critical | Integration / c2j, Git | default-build.test.yaml |
 | A3-82 | Candidate verify-hook edits run before merge, with failures and diagnostics returned to the implementer for repair. | Critical | Integration / c2j, Git, Nix | `recipes/adaptive3/verify-candidate.yaml`, `recipe-tests/adaptive3/lifecycle.test.yaml` |
 | A3-83 | Recipes verification runs the repository-wide CI checks for a change in any target directory and reports failed checks to the agent. | Critical | Integration / c2j, Git, Nix, Python | `.c2/recipes/hooks/build/verify.yaml`, `.github/workflows/recipes.yml`, `scripts/test-recipes.sh` |
-| A3-84 | A Git consumer proceeds after upstream delivery succeeds. A consumer awaiting a manual package release requests human confirmation after delivery succeeds. | High | Integration / sampled Adaptive3 jobs | `recipes/adaptive3/prompts/context.yaml` |
+| A3-84 | A Git consumer proceeds after upstream delivery succeeds. A consumer awaiting a manual package release requests human confirmation after delivery succeeds. | High | Integration / sampled Adaptive3 jobs | `guides/WORKING_IN_C2.md` |
 | A3-85 | Plans and assessments use candidate evidence before merge and evaluate requested releases after publication. | High | Integration / sampled Adaptive3 jobs | `recipes/adaptive3/prompts/execute.yaml`, `recipes/adaptive3/prompts/validate.yaml` |
-| A3-86 | A local dependency update proceeds from passing focused compatibility checks without routine owner confirmation. | High | Integration / sampled Adaptive3 jobs | `recipes/adaptive3/prompts/context.yaml`, `recipes/adaptive3/prompts/execute.yaml` |
-| A3-87 | Owner consultations identify a concrete issue, a question that could change the plan, or required external work, and carry relevant evidence. | High | Integration / sampled Adaptive3 jobs | `recipes/adaptive3/prompts/context.yaml`, `recipes/adaptive3/prompts/execute.yaml` |
+| A3-86 | A local dependency update proceeds from passing focused compatibility checks without routine owner confirmation. | High | Integration / sampled Adaptive3 jobs | `guides/WORKING_IN_C2.md`, `recipes/adaptive3/prompts/execute.yaml` |
+| A3-87 | Owner consultations identify a concrete issue, a question that could change the plan, or required external work, and carry relevant evidence. | High | Integration / sampled Adaptive3 jobs | `guides/WORKING_IN_C2.md`, `recipes/adaptive3/prompts/execute.yaml` |
 
 The accepted pnpm correction replaces the former late-adoption checks in A3-57–61
 with comparison before writing. Duplicate references have a specific finding;
@@ -230,6 +230,7 @@ All filenames below are relative to `recipe-tests/adaptive3/`.
 | A fresh author and each repair receive the current finding and the reviewer’s recorded words and uploads. A newer reply replaces them. | `lifecycle.test.yaml`, `review-reply.test.yaml`, `pilot-routing.test.yaml` | High | Integration, c2j |
 | A second unchanged named failure uses the delegate. A newly passing check renews repair. | `repair-progress.test.yaml` | High | Unit, c2j |
 | An explanation ends at the receiver’s answer. Only the requester can open negotiation for a change. | `consultation.test.yaml` | Critical | Integration, c2j |
-| An agent in a consuming cell can read its offline guide and inherit worker defaults or use explicit overrides. | `agent-settings.test.yaml` | High | Integration, c2j and c2ops |
+| Fresh sessions get an on-demand guide URL. Resuming a session carries the conversation forward without resending the guide or its link. | `agent-settings.test.yaml`, `ask.test.yaml`, `cycle.test.yaml` | High | Integration, c2j and c2ops |
+| Agents in a consuming cell inherit worker defaults or use the requested overrides. | `agent-settings.test.yaml` | High | Integration, c2j and c2ops |
 | Fresh agents learn to request missing worker tools because manual installs may disappear between tasks. | `agent-settings.test.yaml` | High | Integration, c2j and c2ops |
 | A person sees the blocker and suggested action before the job history. The original request and evidence remain readable. | `backstop.test.yaml`, `backstop-report.yaml` | High | Integration, c2j |
