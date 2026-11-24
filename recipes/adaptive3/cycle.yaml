@@ -18,6 +18,8 @@ inputs:
   finding: ${{ inputs.?finding.orValue({}) }}
   review_reply: ${{ inputs.?review_reply.orValue({}) }}
   threads: ${{ inputs.?threads.orValue({}) }}
+  delegate: ${{ inputs.?delegate.orValue({}) }}
+  presentation: ${{ inputs.?presentation.orValue({}) }}
   settings: ${{ inputs.?settings.orValue({}) }}
   require_verification: ${{ inputs.?require_verification.orValue(false) }}
   session: ${{ inputs.?session.orValue({}) }}
@@ -77,7 +79,7 @@ state:
           documents: ${{ outputs.documents }}
           session: ${{ inputs.session }}
       - to: validate
-        when: outputs.response.status == 'ready'
+        when: outputs.response.status == 'ready' || (inputs.purpose == 'preparation' && outputs.response.status == 'revise_plan')
       - to: done
         when: 'true'
         payload:
@@ -87,6 +89,7 @@ state:
     validate:
       include: ./validate.yaml
       inputs:
+        presentation: ${{ inputs.presentation }}
         merge_queue: ${{ inputs.merge_queue }}
         plan: ${{ inputs.plan }}
         purpose: ${{ inputs.purpose }}
@@ -146,6 +149,8 @@ state:
       include: ./review.yaml
       inputs:
         threads: ${{ inputs.threads }}
+        delegate: ${{ inputs.delegate }}
+        question: ${{ states.execute.outputs.response.summary }}
         purpose: ${{ inputs.purpose }}
         request: ${{ inputs.request }}
         documents: ${{ states.execute.outputs.documents }}
@@ -227,6 +232,10 @@ state:
           documents: ${{ state_output('execute','documents',inputs.documents) }}
           session: ${{ state_output('execute','session',inputs.session) }}
 outputs:
+  presentation: >-
+    ${{ size(state_output('validate','document_metadata',{})) > 0 ?
+      {'documents':states.execute.outputs.documents,'document_metadata':states.validate.outputs.document_metadata} : inputs.presentation }}
+  delegate: ${{ state_output('review','delegate',inputs.delegate) }}
   threads: ${{ state_output('review','threads',inputs.threads) }}
   review_reply: ${{ state_output('review','review_reply',inputs.review_reply) }}
   finding: ${{ state_output('review','finding',states.done.outputs.result) }}

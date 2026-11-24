@@ -6,6 +6,7 @@ input_schema:
   documents: {type: artifact_map, default_value: {}}
   title: {type: string, default_value: ''}
   primary: {type: string, default_value: ''}
+  presentation: {type: object, default_value: {}}
   document_details: {type: array, items: {type: object}, default_value: []}
   require_document_details: {type: boolean, default_value: true}
   requests: {type: array, items: {type: object}, default_value: []}
@@ -18,6 +19,7 @@ inputs:
   documents: ${{ inputs.?documents.orValue({}) }}
   title: ${{ inputs.?title.orValue('') }}
   primary: ${{ inputs.?primary.orValue('') }}
+  presentation: ${{ inputs.?presentation.orValue({}) }}
   document_details: ${{ inputs.?document_details.orValue([]) }}
   require_document_details: ${{ inputs.?require_document_details.orValue(true) }}
   requests: ${{ inputs.?requests.orValue([]) }}
@@ -55,6 +57,9 @@ state:
           PRIMARY: ${{ inputs.primary }}
           DOCUMENT_IDS: ${{ json_stringify(inputs.documents.map(k,k)) }}
           DOCUMENT_DETAILS: ${{ json_stringify(inputs.document_details) }}
+          REUSED_DETAILS: >-
+            ${{ json_stringify(jq([inputs.documents,inputs.presentation], '.[0] as $files | .[1] | .documents as $old | (.document_metadata // {}) | to_entries | map(select($files[.key] != null and $files[.key] == $old[.key]) | .value + {document_id:.key})')) }}
+          PRODUCERS: ${{ json_stringify(jq(inputs.documents,'map_values(.stored.key.jobId // "")')) }}
           REQUIRE_DOCUMENT_DETAILS: ${{ string(inputs.require_document_details) }}
           REVIEW_JOB: ${{ context.workflow.job_id }}
           PREPARATION_PACKET: ${{ string(inputs.preparation_packet) }}
@@ -92,6 +97,11 @@ state:
           details=json.loads(os.environ['DOCUMENT_DETAILS'])
           # The recipe attaches immutable negotiation evidence to the producer's current packet.
           # Give it review metadata even when a later author replaces all its own documents.
+          if isinstance(details, list):
+           details = [d for d in details if not isinstance(d,dict) or d.get('document_id') in selected]
+           supplied = {d.get('document_id') for d in details if isinstance(d,dict)}
+           details.extend(d for d in json.loads(os.environ.get('REUSED_DETAILS','[]')) if d['document_id'] not in supplied)
+          producers = json.loads(os.environ.get('PRODUCERS','{}'))
           reports = [key for key in selected if key.startswith('review/negotiations/')]
           if reports and isinstance(details, list):
            details = [item for item in details if not isinstance(item,dict) or item.get('document_id') not in reports]
@@ -102,8 +112,9 @@ state:
             if report:
              try:
               contents = local(key).read_text()
-              parent = '[Parent job ' + os.environ.get('REVIEW_JOB','') + ']('
-              incoming = incoming or parent not in contents
+              job = os.environ.get('REVIEW_JOB','')
+              producer = producers.get(key)
+              incoming = incoming or '<!-- Incoming assignment -->' in contents or bool(producer and producer != job)
               first = contents.split('## Original request\n\n',1)[-1].split('\n\n',1)[0].strip()
               if first and '## Original request' in contents:
                heading = (('Why this job exists · ' if incoming else 'Request · ') + ' '.join(first.split()))[:120]
@@ -144,6 +155,18 @@ state:
             if primary not in selected: issue('Primary must be an attached document ID.')
             if len(primaries)!=1 or primaries[0]!=primary: issue('Exactly one primary role must match the primary overview document.')
            elif primary: issue('An empty collection cannot have a primary overview document.')
+           if os.environ.get('PREPARATION_PACKET')=='true' and primary=='review/one-pager.md' and primary in metadata:
+            item = metadata[primary]
+            label = item.get('title')
+            try:
+             with local(primary).open() as brief:
+              heading = next((line.strip() for line in brief if line.strip()), '')
+            except (OSError, UnicodeError, ValueError):
+             heading = ''
+            if heading.startswith('# 1P: ') and heading.isprintable():
+             item['title'] = heading.removeprefix('# ')[:120]
+            elif isinstance(label,str) and label.strip() and not label.startswith('1P:'):
+             item['title'] = ('1P: ' + label)[:120]
            # Match Go encoding/json's typed omitempty representation and HTML/line escaping.
            presentation={}
            if metadata: presentation['document_metadata']=metadata

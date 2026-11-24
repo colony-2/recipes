@@ -71,7 +71,7 @@ class Validators(unittest.TestCase):
         self.put(brief, links)
         self.put('review/design.md', 'Expose the existing retained version.')
         self.put('review/acceptance.md', 'The consumer can restore the preceding version.')
-        self.put(report, '[Exchange](transcript.md)')
+        self.put(report, '[Exchange](transcript.md)\n<!-- Incoming assignment -->')
         self.put('review/negotiations/storage/transcript.md', 'Requester and owner agreed.')
         details = [
             dict(document_id=path, title=title, description=title, role=role, order=order)
@@ -87,6 +87,9 @@ class Validators(unittest.TestCase):
         result = check()
         self.assertEqual(result['status'], 'passed')
         self.assertEqual(result['document_metadata'][report]['order'], 2)
+        self.assertEqual(result['document_metadata'][brief]['title'], '1P: Restore a version')
+        self.put(brief, '# 1P: Restore the prior save\n\n' + links + ' [Request](negotiations/storage/report.md)')
+        self.assertEqual(check()['document_metadata'][brief]['title'], '1P: Restore the prior save')
         self.put('review/acceptance.md', '  ')
         self.assertEqual(check()['status'], 'changes')
 
@@ -104,7 +107,7 @@ class Validators(unittest.TestCase):
                     assignment='Keep two saves.', job=child)
         writer = yaml.safe_load((SOURCE.parent/'negotiation-report.yaml').read_text())['sequence'][0]
         thread = json.loads(subprocess.check_output(['bash','-c',writer['inputs']['run']], text=True,
-                            env={**os.environ,'CONTENT':json.dumps(data),'OUTBOX':str(self.inbox),'JOB':'parent'}))
+                            env={**os.environ,'CONTENT':json.dumps(data),'OUTBOX':str(self.inbox),'JOB':'parent','C2J_CURRENT_TENANT_ID':'team/a'}))
         folder = Path('review/negotiations',thread)
         report = folder/'report.md'
         transcript = folder/'transcript.md'
@@ -128,12 +131,12 @@ class Validators(unittest.TestCase):
         refresh = yaml.safe_load((SOURCE.parent/'consultation.yaml').read_text())['state']['states']['delivery_report']
         child.update(status='succeeded', summary='Checked **both** versions.')
         subprocess.run(['bash','-c',refresh['inputs']['run']], check=True,
-                       env={**os.environ,'INBOX':str(self.inbox),'OUTBOX':str(self.outbox),'CHILD':json.dumps(child)})
+                       env={**os.environ,'INBOX':str(self.inbox),'OUTBOX':str(self.outbox),'CHILD':json.dumps(child),'C2J_CURRENT_TENANT_ID':'team/a'})
         updated = html(self.outbox/report)
         self.assertIn('<strong>two</strong>',updated)
         self.assertIn('<strong>both</strong>',updated)
         self.assertNotIn('Previously queued.',updated)
-        self.assertEqual(updated.count('href="https://jobs.colony2.com/c2/jobs/child"'),1)
+        self.assertEqual(updated.count('href="https://jobs.colony2.com/team%2Fa/jobs/child"'),1)
 
     def test_missing_image_and_escaping_link(self):
         self.put('review/README.md', '# Review\n![UI](missing.png)\n[escape](../../private.md)')
@@ -148,12 +151,12 @@ echo '{"execution":{"parent":{"job_id":"parent","cell_name":"notebook","op_step"
         cli.chmod(0o755)
         request = 'Retain **two** saves.\n\n- See [the design](docs/saves.md).'
         subprocess.run(['bash','-c',origin['inputs']['run']], check=True, env={
-            **os.environ,'PATH':str(self.root)+os.pathsep+os.environ['PATH'],'REQUEST':request,
+            **os.environ,'PATH':str(self.root)+os.pathsep+os.environ['PATH'],'REQUEST':request,'C2J_CURRENT_TENANT_ID':'team/a',
             'INBOX':str(self.outbox),'OUTBOX':str(self.inbox)})
         report = 'review/negotiations/origin/report.md'
         html = subprocess.check_output(['cmark',str(self.inbox/report)],text=True)
         self.assertIn('<p>Retain <strong>two</strong> saves.</p>',html)
-        self.assertIn('href="https://jobs.colony2.com/c2/jobs/parent"',html)
+        self.assertIn('href="https://jobs.colony2.com/team%2Fa/jobs/parent"',html)
         self.assertEqual(self.check('review_files',PRIMARY=report)['status'],'passed')
 
     def test_recovery_question_links(self):
@@ -205,7 +208,7 @@ echo '{"execution":{"parent":{"job_id":"parent","cell_name":"notebook","op_step"
         for order in (0,1000000):
             self.assertEqual(run([{**good,'order':order}])['status'],'passed')
         self.assertEqual(run([good], PRIMARY='review/absent.md')['status'],'changes')
-        self.assertEqual(run([good], DOCUMENT_IDS='[]', PRIMARY='')['status'],'changes')
+        self.assertEqual(run([good], DOCUMENT_IDS='[]', PRIMARY='')['document_metadata'],{})
         self.assertEqual(run([], DOCUMENT_IDS='[]', PRIMARY='')['status'],'passed')
         self.assertEqual(run([], DOCUMENT_IDS='[]')['status'],'changes')
 

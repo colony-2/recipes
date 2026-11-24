@@ -80,22 +80,28 @@ state:
           run: |
             python3 - <<'PY'
             import json, os, shutil, subprocess
+            from urllib.parse import quote
             from pathlib import Path
             inbox = Path(os.environ['INBOX'])
             inline = inbox / 'review/negotiations'
             if inline.is_dir():
                 # Native review expects stored references. Materialize caller-provided
                 # inline evidence once and pass existing stored references through.
-                shutil.copytree(inline, Path(os.environ['OUTBOX'], 'review/negotiations'))
+                target = Path(os.environ['OUTBOX'], 'review/negotiations')
+                shutil.copytree(inline, target)
+                for report in target.glob('*/report.md'):
+                    with report.open('a') as stream:
+                        stream.write('\n<!-- Incoming assignment -->\n')
                 raise SystemExit(0)
             info = json.loads(subprocess.check_output(['c2j', 'self', '--json']))
             parent = info['execution'].get('parent') or {}
             if parent.get('job_id'):
                 job = parent['job_id']
+                tenant = quote(os.environ['C2J_CURRENT_TENANT_ID'], safe='')
                 out = Path(os.environ['OUTBOX'], 'review/negotiations/origin/report.md')
                 out.parent.mkdir(parents=True, exist_ok=True)
                 out.write_text(f"# Why this job was requested\n\nDirect assignment from {parent.get('cell_name') or 'parent agent'} "
-                               f"in [job {job}](https://jobs.colony2.com/c2/jobs/{job}).\n\n"
+                               f"in [job {job}](https://jobs.colony2.com/{tenant}/jobs/{quote(job, safe='')}).\n\n"
                                f"Initiating task: {parent.get('invocation_path') or parent.get('op_step') or job}\n\n"
                                f"<!-- Recorded exchange -->\n\n## Original request\n\n{os.environ['REQUEST']}\n")
             PY
@@ -209,7 +215,7 @@ state:
       include: ./recipes/adaptive3/lifecycle.yaml
       inputs:
         sessions: ${{ jq(transition.payload.?sessions.orValue({}),'del(.plan,.short_path)') }}
-        basis: ${{ {'result':state_output('direction','result',{}),'documents':state_output('direction','documents',inputs.documents)} }}
+        basis: ${{ {'decision':state_output('direction','result',{}).?receipt.orValue(state_output('direction','sessions',{}).?planning.orValue(null))} }}
         purpose: preparation
         request: |-
           {{ inputs.title }}
@@ -257,11 +263,11 @@ state:
       include: ./recipes/adaptive3/lifecycle.yaml
       inputs:
         sessions: ${{ transition.payload.?sessions.orValue({}) }}
-        basis: ${{ {'result':state_output('preparation','result',state_output('direction','result',{})),'documents':state_output('preparation','documents',state_output('direction','documents',inputs.documents))} }}
+        basis: ${{ {'decision':state_output('preparation','result',{}).?receipt.orValue(state_output('direction','result',{}).?receipt.orValue(state_output('direction','sessions',{}).?planning.orValue(null)))} }}
         purpose: implementation
         merge_queue: ${{ inputs.merge_queue }}
         verification: >-
-          ${{ state_output('implementation','basis',{}) == {'result':state_output('preparation','result',state_output('direction','result',{})),'documents':state_output('preparation','documents',state_output('direction','documents',inputs.documents))} ? state_output('implementation','verification',{}) : {} }}
+          ${{ state_output('implementation','basis',{}) == {'decision':state_output('preparation','result',{}).?receipt.orValue(state_output('direction','result',{}).?receipt.orValue(state_output('direction','sessions',{}).?planning.orValue(null)))} ? state_output('implementation','verification',{}) : {} }}
         request: |-
           {{ inputs.title }}
           {{ inputs.prompt }}
@@ -478,11 +484,10 @@ state:
         retry: ${{ transition.payload.?sessions.orValue({}).?retry.orValue({}) }}
         direction:
           short_path: ${{ transition.payload.?sessions.orValue({}).?short_path.orValue(false) }}
+          source: ${{ state_output('direction','sessions',{}).?planning.orValue(null) }}
           result: ${{ state_output('direction','result',{}) }}
-          documents: ${{ state_output('direction','documents',inputs.documents) }}
         preparation:
           result: ${{ state_output('preparation','result',{}) }}
-          documents: ${{ state_output('preparation','documents',inputs.documents) }}
           basis: ${{ state_output('preparation','basis',{}) }}
         implementation:
           result: ${{ state_output('implementation','result',{}) }}
@@ -517,6 +522,7 @@ state:
           review_reply: ${{ inputs.sessions.?review_reply.orValue({}) }}
           session: ${{ inputs.sessions.?backstop.orValue({}) }}
           retry: ${{ inputs.retry }}
+          presentation: ${{ inputs.sessions.?presentation.orValue({}) }}
           automatic: ${{ inputs.retry.?automatic_used.orValue(0) < 2 }}
           prerequisites: ${{ sequence.policy.outputs.prerequisites }}
       - id: dispatch
@@ -673,5 +679,5 @@ outputs:
 vars:
   approve_plan: |
     .[1] as $approval | .[0] + {plan:{
-      assignments:[.[0].agreements[]? | {cell,assignment}], documents:$approval.reviewed_documents,
+      documents:$approval.reviewed_documents,
       receipt:$approval.receipt, human:$approval.human, review_id:$approval.review_id, revision:$approval.revision}}

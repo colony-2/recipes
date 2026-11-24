@@ -30,12 +30,16 @@ sequence:
       cp "$REPORT_INBOX/report.md" "$REPORT_OUTBOX/review/backstop-report.md"
 
 outputs:
+  question: >-
+    ${{ inputs.valid ? inputs.response.summary : jq(inputs.response.summary, vars.link_text) }}
   primary: review/backstop-report.md
   documents: >-
     ${{ jq([inputs.valid ? inputs.documents : inputs.negotiations, {'review/backstop-report.md':sequence.persist.artifacts['review/backstop-report.md']}], 'add') }}
   document_metadata: >-
     ${{ jq([inputs.negotiations, inputs.valid ? inputs.document_metadata : {}], vars.metadata) }}
 vars:
+  link_text: |-
+    gsub("\\[(?<label>[^\\]]+)\\]\\([^)]*\\)"; .label)
   metadata: |
     (.[0] | with_entries(.value = (if (.key | endswith("/report.md"))
        then {title:"Negotiation report",description:"Read the original request and decision.",role:"supporting",order:2}
@@ -50,7 +54,7 @@ vars:
     ($r.report.blocker // $p.summary // $r.summary // "The worker stopped before identifying the cause.") as $blocker |
     "# What needs your decision\n\n" +
     ($blocker | prose) +
-    section("Suggested next step"; $r.report.recommendation // $r.action) +
+    section("Suggested next step"; $r.action // $r.report.recommendation) +
     "\n\n## Your options\n\n" +
     (($r.report.options // ["Reply with instructions or the missing evidence.", "Use the job’s cancellation control to stop."]) |
      map("1. " + (prose | gsub("\n"; "\n   "))) | join("\n")) +

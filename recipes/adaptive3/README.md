@@ -235,16 +235,11 @@ this job; an
 exceptional explicit separate-job request can be routed to execution using the
 existing create-job operation. Creating a job does not cancel this source.
 
-Human checkpoints use Cortex `review/v2`. Choose **Revise** to ask a question or
-request an edit. The receiving agent reads the discussion and any comments in
-attached files. You can send an annotated document on its own.
-An answer appears on the same revision. A requested edit goes to its author.
-Revised documents appear in the same review thread with the next revision number.
-Reviewers can approve with an optional text comment. The comment is saved with
-the approval, and the job proceeds with the reviewed work.
+Each human review is one message with a primary document and relevant attachments. The job thread records the agent’s prompt and the person’s submission. **Revise** keeps the decision open. The author answers a question on the same document revision or presents the edits and explains what changed. Annotated documents can carry the whole reply.
 
-You can suggest where to make an edit with **Return to** in Review settings. The selection applies to that change. Later reviews start on Auto.
-Scope changes require Direction, and conflicting instructions stay in discussion.
+**Review before Complete** approves work and requests a final review. **Take to Completion** approves completion after independent verification. Either choice can include guidance for the author and reviewer. The receipt identifies the version the person saw. Before asking again about an approved plan, the delegate compares it with the current proposal and can continue, request a local repair or ask about a material change.
+
+**Return to** can suggest where to make an edit. The selection applies once.
 Package-review destinations pass through the containing lifecycle.
 
 Backstop no longer offers model/reasoning edits or settings reconsideration.
@@ -308,7 +303,7 @@ This guarantee covers service-managed staging/adoption; out-of-service edits rem
 - `lifecycle.yaml` handles corrections, consultations and package interruptions.
 - `cycle.yaml` defines a single Execute/Validate/Review pass, shared with consultation.
 - `execute.yaml`, `validate.yaml`, `review.yaml` define those activities once.
-- `discussion.yaml` retains human turns, actual answers, receipts and distinct uploads.
+- `discussion.yaml` presents one message per request and records the reply, receipt and uploaded notes.
 - `review-policy.yaml` declares correction destinations; [the shared builder](../review-v2.yaml)
   validates declarations and generates closed native schemas through its local source operation.
 - `backstop.yaml`, `consultation.yaml`, `packages.yaml` provide their services.

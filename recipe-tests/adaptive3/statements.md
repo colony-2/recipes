@@ -182,6 +182,7 @@ critical, integration, pinned c2j.)
 | Expectation | Files | Priority | Level and dependencies |
 | --- | --- | --- | --- |
 | A standard delivery presents the one-pager, design and acceptance criteria together before implementation. Incomplete packets return to planning. | adaptive3.yaml, recipes/adaptive3/validate.yaml | High | Integration, c2j |
+| In a consuming cell, planning authors receive the 1P, Design and Tests outlines in their prompts. The Outcome author receives the result outline without the planning templates. | recipes/adaptive3/prompts/execute.yaml, build.test.yaml | High | Integration, c2j |
 | A full approval completes verified work within the reviewed scope. A changed plan requires a fresh decision. | recipes/adaptive3/review.yaml, adaptive3.yaml | High | Integration, c2j |
 | A short assignment goes directly to implementation and requires human Outcome acceptance. | adaptive3.yaml | High | Integration, c2j |
 | A receiving owner can request evidence or propose an alternative. Delivery starts only on mutually agreed terms. | recipes/adaptive3/consultation.yaml | High | Integration, c2j |
@@ -234,3 +235,14 @@ All filenames below are relative to `recipe-tests/adaptive3/`.
 | Agents in a consuming cell inherit worker defaults or use the requested overrides. | `agent-settings.test.yaml` | High | Integration, c2j and c2ops |
 | Fresh agents learn to request missing worker tools because manual installs may disappear between tasks. | `agent-settings.test.yaml` | High | Integration, c2j and c2ops |
 | A person sees the blocker and suggested action before the job history. The original request and evidence remain readable. | `backstop.test.yaml`, `backstop-report.yaml` | High | Integration, c2j |
+
+## Repeat decisions and owner agreements
+
+| Behavior | Filename | Priority | Check |
+| --- | --- | --- | --- |
+| The delegate can reuse the approved plan, return a repair, or ask about a changed promise. | `repeat-decision.test.yaml` | Critical | Integration, c2j |
+| Approval guidance reaches the author and reviewer. A request for final review still stops before completion. | `build.test.yaml` | Critical | Integration, c2j |
+| A nested owner agreement can be delivered using its reference and retried using the existing child. Unaccepted or superseded terms cannot start a child. | `agreement-reference.test.yaml` | Critical | Integration, c2j |
+| Ten distinct threads can run during a phase. Four unresolved rounds in one thread return to the delegate. | `limits.test.yaml`, `agreement-reference.test.yaml` | High | Integration, c2j |
+| An unchanged attachment keeps its description. A replacement under the same filename needs a current description. | `tools.test.yaml` | High | Integration, c2j |
+| A compatible local update can proceed on a written handoff alone. A migration reaches Preparation first. | `build.test.yaml`, `pilot-routing.test.yaml` | High | Integration, c2j |

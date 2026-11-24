@@ -11,6 +11,8 @@ inputs:
   max_iterations: ${{ inputs.?max_iterations.orValue(4) }}
   agent_settings: ${{ inputs.?agent_settings.orValue({}) }}
   job: ${{ inputs.?job.orValue('') }}
+  thread: ${{ inputs.?thread.orValue('') }}
+  remaining: ${{ inputs.?remaining.orValue(10) }}
 state:
   initial:
   - to: wait
@@ -19,9 +21,21 @@ state:
     when: inputs.cell == context.workspace.cell
   - to: reuse
     when: inputs.mode == 'delivery' && size(vars.matches) == 1
+  - to: select_agreement
+    when: inputs.mode == 'delivery' || (nonempty(inputs.thread) && size(vars.matches) != 1)
   - to: call
     when: 'true'
   states:
+    select_agreement:
+      sequence: []
+      transitions:
+      - to: done
+        when: 'true'
+        payload:
+          result:
+            status: changes
+            summary: Select the receiving cell’s accepted agreement by its report folder ID. Open negotiation if the needed work has changed.
+          documents: {}
     reuse:
       inputs:
         agreement: ${{ vars.matches[0] }}
@@ -38,6 +52,10 @@ state:
     call:
       inputs:
         cell: ${{ transition.payload.?cell.orValue(inputs.cell) }}
+        thread: ${{ transition.payload.?thread.orValue(inputs.thread) }}
+        agreements: ${{ transition.payload.?agreements.orValue(state_output('call','agreements',inputs.agreements)) }}
+        started: >-
+          ${{ state_output('call','started',0) + (transition.payload.?new_thread.orValue(!state_exists('call') && !nonempty(inputs.thread)) ? 1 : 0) }}
         request: ${{ transition.payload.?request.orValue(inputs.request) }}
         documents: ${{ transition.payload.?documents.orValue(inputs.documents) }}
         feedback: ${{ transition.payload.?feedback.orValue(inputs.feedback) }}
@@ -65,13 +83,23 @@ state:
         parents: ${{ inputs.parents }}
         used: ${{ inputs.used }}
         prompt: ${{ sequence.prompts.outputs.task }}
+        thread: ${{ inputs.thread }}
+        agreements: ${{ inputs.agreements }}
+        started: ${{ inputs.started }}
         session: ${{ inputs.session }}
         turns: ${{ inputs.turns }}
         sender: ${{ inputs.sender }}
         requester_session: ${{ inputs.requester_session }}
       transitions:
-      - to: stuck
-        when: outputs.used >= vars.limit || size(outputs.parents) >= 4
+      - to: exhausted
+        when: outputs.used >= vars.limit || outputs.started > inputs.remaining || size(outputs.parents) >= 4
+        payload:
+          summary: >-
+            ${{ outputs.started > inputs.remaining ? 'The phase has used its consultation allowance. The author wants to ask ' + outputs.cell + ': ' + outputs.request :
+              size(outputs.parents) >= 4 ? 'The consultation with ' + outputs.cell + ' would exceed the nesting limit.' :
+              'The conversation with ' + outputs.cell + ' is still open after ' + string(vars.limit) + ' rounds: ' + outputs.request }}
+      - to: select_agreement
+        when: nonempty(outputs.thread) && !outputs.agreements.exists(a,a.thread == outputs.thread && a.cell == outputs.cell)
       - to: advice
         when: 'true'
     advice:
@@ -92,10 +120,11 @@ state:
       - to: existing_child
         when: outputs.result.status == 'consult' && nonempty(outputs.result.consultation.?job.orValue(''))
       - to: call
-        when: outputs.result.status == 'consult' && outputs.result.consultation.cell == states.call.outputs.cell
+        when: outputs.result.status == 'consult' && (outputs.result.consultation.cell == states.call.outputs.cell || outputs.result.consultation.mode == 'delivery')
         payload:
           cell: ${{ states.call.outputs.cell }}
           request: ${{ states.call.outputs.request }}
+          thread: ${{ states.call.outputs.thread }}
           mode: ${{ states.call.outputs.mode }}
           turns: ${{ states.call.outputs.turns }}
           sender: ${{ states.call.outputs.sender }}
@@ -104,7 +133,9 @@ state:
           documents: ${{ outputs.documents }}
           feedback:
             status: changes
-            summary: Resolve the request locally. This cell already owns the work.
+            summary: >-
+              ${{ outputs.result.consultation.cell == states.call.outputs.cell ? 'Resolve the request locally. This cell already owns the work.' :
+                'Return the accepted agreement to the requester for delivery. If you need new work from the owner, open a negotiation.' }}
           session: ${{ outputs.session }}
           used: ${{ states.call.outputs.used+1 }}
       - to: call
@@ -112,12 +143,14 @@ state:
         payload:
           cell: ${{ outputs.result.consultation.cell }}
           request: ${{ outputs.result.consultation.request }}
-          mode: advice
+          mode: ${{ outputs.result.consultation.mode }}
+          thread: ${{ outputs.result.consultation.?thread.orValue('') }}
+          new_thread: ${{ !nonempty(outputs.result.consultation.?thread.orValue('')) }}
           sender: ${{ states.call.outputs.cell }}
           requester_session: ${{ outputs.session }}
           documents: ${{ outputs.documents }}
           feedback: {}
-          parents: ${{ states.call.outputs.parents + [{'cell':states.call.outputs.cell,'request':states.call.outputs.request,'mode':states.call.outputs.mode,'documents':states.call.outputs.documents,'session':outputs.session,'used':states.call.outputs.used+1,'turns':states.call.outputs.turns,'sender':states.call.outputs.sender,'requester_session':states.call.outputs.requester_session}]
+          parents: ${{ states.call.outputs.parents + [{'thread':states.call.outputs.thread,'cell':states.call.outputs.cell,'request':states.call.outputs.request,'mode':states.call.outputs.mode,'documents':states.call.outputs.documents,'session':outputs.session,'used':states.call.outputs.used+1,'turns':states.call.outputs.turns,'sender':states.call.outputs.sender,'requester_session':states.call.outputs.requester_session}]
             }}
           used: 0
       - to: call
@@ -125,6 +158,7 @@ state:
         payload:
           cell: ${{ states.call.outputs.cell }}
           request: ${{ states.call.outputs.request }}
+          thread: ${{ states.call.outputs.thread }}
           mode: ${{ states.call.outputs.mode }}
           turns: ${{ states.call.outputs.turns }}
           sender: ${{ states.call.outputs.sender }}
@@ -177,9 +211,7 @@ state:
         turns: ${{ inputs.turns }}
       transitions:
       - to: respond
-        when: states.advice.outputs.work.?negotiation_reply.orValue('') in ['question','alternative'] ||
-          (nonempty(states.advice.outputs.work.?assignment.orValue('')) && states.advice.outputs.work.assignment != states.call.outputs.request
-          && (size(states.call.outputs.parents)==0 || states.advice.outputs.work.?work_kind.orValue('') != 'explanation'))
+        when: states.advice.outputs.work.?negotiation_reply.orValue('') in ['question','alternative'] || nonempty(states.advice.outputs.work.?assignment.orValue(''))
       - to: record
         when: 'true'
         payload:
@@ -215,6 +247,7 @@ state:
         payload:
           cell: ${{ states.call.outputs.cell }}
           request: ${{ outputs.response.summary }}
+          thread: ${{ states.call.outputs.thread }}
           turns: ${{ states.owner_reply.outputs.turns }}
           sender: ${{ states.call.outputs.sender }}
           requester_session: ${{ outputs.session }}
@@ -223,6 +256,10 @@ state:
           documents: ${{ states.advice.outputs.documents }}
           session: ${{ states.advice.outputs.session }}
           used: ${{ states.call.outputs.used+1 }}
+      - to: exhausted
+        when: outputs.response.status == 'reply'
+        payload:
+          summary: ${{ 'After ' + string(vars.limit) + ' rounds with ' + states.call.outputs.cell + ', the requester still needs an answer. ' + outputs.response.summary }}
       - to: record
         when: 'true'
         payload:
@@ -262,22 +299,21 @@ state:
         when: size(states.call.outputs.parents)>0
         payload:
           result: >-
-            ${{ jq([states.advice.outputs.work,{'assignment':outputs.agreement.assignment,'summary':states.record.outputs.resolution}],'add') }}
+            ${{ jq([states.advice.outputs.work,{'thread':outputs.agreement.thread,'assignment':outputs.agreement.assignment,'summary':states.record.outputs.resolution}],'add') }}
+          agreements: ${{ states.call.outputs.agreements.filter(a,a.thread != states.call.outputs.thread || a.cell != states.call.outputs.cell) + [outputs.agreement] }}
           documents: ${{ jq([states.advice.outputs.documents,outputs.agreement.documents],'add') }}
-      - to: submit
-        when: inputs.mode == 'delivery' && nonempty(outputs.agreement.assignment)
-        payload:
-          agreement: ${{ outputs.agreement }}
       - to: done
         when: 'true'
         payload:
+          agreement: ${{ outputs.agreement }}
           result: >-
-            ${{ jq([states.advice.outputs.work,{'assignment':outputs.agreement.assignment,'summary':states.record.outputs.resolution,'status':states.record.outputs.unresolved ? 'stuck' : 'ready'}],'add') }}
+            ${{ jq([states.advice.outputs.work,{'thread':outputs.agreement.thread,'assignment':outputs.agreement.assignment,'summary':states.record.outputs.resolution,'status':states.record.outputs.unresolved ? 'stuck' : 'ready'}],'add') }}
           documents: ${{ states.advice.outputs.documents }}
     return_to_owner:
       sequence: []
       outputs:
         parent: ${{ inputs.parent }}
+        agreements: ${{ inputs.agreements }}
         reply: ${{ inputs.reply }}
         documents: ${{ inputs.documents }}
       transitions:
@@ -285,9 +321,11 @@ state:
         when: 'true'
         payload:
           cell: ${{ outputs.parent.cell }}
+          agreements: ${{ outputs.agreements }}
+          thread: ${{ outputs.parent.thread }}
           request: ${{ outputs.parent.request }}
           mode: ${{ outputs.parent.mode }}
-          documents: ${{ outputs.parent.documents }}
+          documents: ${{ jq([outputs.parent.documents,outputs.agreements], '.[0] + ([.[1][].documents] | add // {})') }}
           feedback: ${{ {'consultation':outputs.reply,'documents':outputs.documents} }}
           parents: ${{ jq(states.call.outputs.parents, ' .[0:-1]') }}
           turns: ${{ outputs.parent.turns }}
@@ -296,6 +334,7 @@ state:
           used: ${{ outputs.parent.used }}
           session: ${{ outputs.parent.session }}
       inputs:
+        agreements: ${{ transition.payload.?agreements.orValue(states.call.outputs.agreements) }}
         parent: ${{ states.call.outputs.parents[size(states.call.outputs.parents)-1] }}
         reply: ${{ transition.payload.?result.orValue(states.advice.outputs.work) }}
         documents: ${{ transition.payload.?documents.orValue(states.advice.outputs.documents) }}
@@ -310,7 +349,7 @@ state:
         - cell_name: ${{ inputs.cell }}
           name: ${{ transition.payload.agreement.work.?delivery_recipe.orValue('git+https://github.com/colony-2/recipes.git//adaptive3.yaml@main')
             }}
-          title: ${{ transition.payload.agreement.work.title }}
+          title: ${{ transition.payload.agreement.work.?title.orValue('Deliver the agreement for ' + inputs.cell) }}
           inputs:
             prompt: ${{ transition.payload.agreement.assignment }}
             documents: ${{ jq([transition.payload.agreement.support,transition.payload.agreement.documents],'add') }}
@@ -322,14 +361,14 @@ state:
         to: done
         payload:
           result: ${{ {'status':'stuck','summary':failure.message,'failure':failure} }}
-          documents: ${{ state_output('negotiated','agreement',state_output('reuse','agreement',{})).documents }}
+          documents: ${{ states.reuse.outputs.agreement.documents }}
     wait:
       include: ./children.yaml
       inputs:
         jobs: '${{ inputs.job != '''' ? [inputs.job] : state_output(''reuse'',''agreement'',{}).?job.orValue('''') != '''' ? [states.reuse.outputs.agreement.job] : states.submit.outputs.job_ids }}'
       transitions:
       - to: delivery_report
-        when: state_exists('negotiated') || state_exists('reuse')
+        when: state_exists('reuse')
       - to: adopted_report
         when: 'true'
       catch:
@@ -337,7 +376,7 @@ state:
         to: done
         payload:
           result: ${{ {'status':'stuck','summary':failure.message,'failure':failure} }}
-          documents: ${{ state_output('negotiated','agreement',state_output('reuse','agreement',{})).?documents.orValue(inputs.documents) }}
+          documents: ${{ state_output('reuse','agreement',{}).?documents.orValue(inputs.documents) }}
     adopted_report:
       include: ./negotiation-report.yaml
       inputs:
@@ -354,7 +393,7 @@ state:
       op: command_execution
       const: true
       artifacts:
-        ./: ${{ state_output('reuse','agreement',state_output('negotiated','agreement',{})).documents }}
+        ./: ${{ states.reuse.outputs.agreement.documents }}
       inputs:
         env:
           INBOX: ${{ context.environment.op.inbox }}
@@ -372,7 +411,8 @@ state:
           output.parent.mkdir(parents=True, exist_ok=True)
           summary = child.get('summary') or child.get('message') or ''
           job = quote(child['job_id'], safe='')
-          delivery = f"\n## Delivery\n\n[Job {job}](https://jobs.colony2.com/c2/jobs/{job}) · "
+          tenant = quote(os.environ['C2J_CURRENT_TENANT_ID'], safe='')
+          delivery = f"\n## Delivery\n\n[Job {job}](https://jobs.colony2.com/{tenant}/jobs/{job}) · "
           # A replay replaces this job's status, even if the request has its own Delivery heading.
           original = report.read_text().partition(delivery)[0].rstrip('\n')
           output.write_text(f"{original}\n{delivery}{child['status']}\n\n{summary}\n")
@@ -380,6 +420,12 @@ state:
       transitions:
       - to: received
         when: 'true'
+      catch:
+      - when: failure.kind != 'cancellation'
+        to: done
+        payload:
+          result: ${{ {'status':'stuck','summary':failure.message,'child':states.wait.outputs.results[0]} }}
+          documents: ${{ states.reuse.outputs.agreement.documents }}
     received:
       sequence: []
       transitions:
@@ -388,6 +434,21 @@ state:
         payload:
           result: ${{ {'status':'ready','summary':'Review the child outcome and decide what to do next.','child':states.wait.outputs.results[0]} }}
           documents: ${{ states.wait.outputs.documents }}
+    exhausted:
+      inputs:
+        summary: ${{ transition.payload.summary }}
+        pending: ${{ states.call.outputs.parents + [{'thread':states.call.outputs.thread,'cell':states.call.outputs.cell,'mode':states.call.outputs.mode}] }}
+        agreements: ${{ states.call.outputs.agreements }}
+      sequence: []
+      outputs:
+        summary: ${{ inputs.summary }}
+        agreements: ${{ inputs.agreements.filter(a,!inputs.pending.exists(p,p.mode == 'negotiate' && p.thread == a.thread && p.cell == a.cell)) }}
+      transitions:
+      - to: done
+        when: 'true'
+        payload:
+          result: ${{ {'status':'stuck','loop':'consultation','summary':outputs.summary} }}
+          documents: ${{ states.call.outputs.documents }}
     stuck:
       sequence: []
       outputs:
@@ -425,8 +486,17 @@ state:
             summary: Resolve the request locally. This cell already owns the work.
           documents: {}
     done:
+      inputs:
+        agreement: >-
+          ${{ state_exists('adopted_report') ?
+            {'thread':states.adopted_report.outputs.thread,'documents':states.adopted_report.outputs.documents,'cell':inputs.cell,'assignment':'','job':inputs.job} :
+            state_exists('reuse') ?
+            jq([states.reuse.outputs.agreement,state_exists('delivery_report') ? states.delivery_report.artifacts : {},
+                state_output('wait','results',[]),state_output('submit','job_ids',[])],
+               '.[0] + {documents:(.[0].documents + (.[1]|with_entries(select(.key|startswith("review/negotiations/"))))),job:(.[2][0].job_id // .[3][0] // .[0].job // "")}') : transition.payload.?agreement.orValue({}) }}
       sequence: []
       outputs:
+        agreement: ${{ inputs.agreement }}
         result: ${{ transition.payload.result }}
         documents: ${{ transition.payload.documents }}
     existing_child:
@@ -439,6 +509,7 @@ state:
         payload:
           cell: ${{ states.call.outputs.cell }}
           request: ${{ states.call.outputs.request }}
+          thread: ${{ states.call.outputs.thread }}
           mode: ${{ states.call.outputs.mode }}
           turns: ${{ states.call.outputs.turns }}
           sender: ${{ states.call.outputs.sender }}
@@ -450,15 +521,18 @@ state:
           used: ${{ states.call.outputs.used+1 }}
           session: ${{ states.advice.outputs.session }}
 outputs:
-  agreement: >-
-    ${{ state_exists('adopted_report') ?
-      {'thread':states.adopted_report.outputs.thread,'documents':states.adopted_report.outputs.documents,'cell':inputs.cell,'assignment':'','job':inputs.job} :
-      state_exists('negotiated') || state_exists('reuse') ?
-      jq([state_output('reuse','agreement',state_output('negotiated','agreement',{})),state_exists('delivery_report') ? states.delivery_report.artifacts : {},
-          state_output('wait','results',[]),state_output('submit','job_ids',[])],
-         '.[0] + {documents:(.[0].documents + (.[1]|with_entries(select(.key|startswith("review/negotiations/"))))),job:(.[2][0].job_id // .[3][0] // .[0].job // "")}') : {} }}
-  result: '${{ state_exists(''done'') ? states.done.outputs.result : states.stuck.outputs.result }}'
-  documents: '${{ state_exists(''done'') ? states.done.outputs.documents : states.stuck.outputs.documents }}'
+  agreement: ${{ states.done.outputs.agreement }}
+  agreements: >-
+    ${{ jq([state_output('exhausted','agreements',state_output('call','agreements',inputs.agreements)),states.done.outputs.agreement,inputs.cell,inputs.thread,inputs.mode],
+      vars.update_agreements) }}
+  started: ${{ jq([state_output('call','started',0),inputs.remaining], 'min') }}
+  result: ${{ states.done.outputs.result }}
+  documents: ${{ states.done.outputs.documents }}
 vars:
-  matches: ${{ inputs.agreements.filter(a,a.cell == inputs.cell && nonempty(a.assignment) && a.assignment == inputs.request) }}
+  update_agreements: |
+    .[1] as $record | .[2] as $owner | .[3] as $thread | .[4] as $mode |
+    (.[0] | map(select(.thread != $record.thread and
+      ($mode != "negotiate" or .cell != $owner or .thread != $thread)))) +
+    (if $record.thread then [$record] else [] end)
+  matches: ${{ inputs.agreements.filter(a,a.cell == inputs.cell && nonempty(a.assignment) && a.thread == inputs.thread) }}
   limit: '${{ inputs.max_iterations >= 1 ? int(inputs.max_iterations) : 4 }}'

@@ -2981,7 +2981,7 @@ cases:
         mode: passthrough
   assertions:
   - type: cel_true
-    expr: outputs.result.status=="changes" && size(outputs.document_metadata)==0
+    expr: outputs.result.status=="passed" && size(outputs.document_metadata)==2 && !("review/removed.md" in outputs.document_metadata)
 - id: details-basename
   type: integration_case
   runtime:
@@ -3074,3 +3074,30 @@ cases:
   assertions:
   - type: cel_true
     expr: outputs.result.status=="changes" && size(outputs.document_metadata)==0
+- id: retained-file-reuses-its-description
+  type: integration_case
+  runtime: {}
+  inputs: &retained
+    title: Drafts
+    primary: review/drafts.md
+    check: review_files
+    documents: &prior_files
+      review/drafts.md: {kind: value, name: review/drafts.md, format: text, value: Drafts survive restarts.}
+    presentation:
+      documents: *prior_files
+      document_metadata:
+        review/drafts.md: {role: primary, order: 0, title: Saved drafts, description: What survives a restart.}
+  mocks: &run_files
+    ops: [{match: {op: command_execution}, repeat: true, behavior: {mode: passthrough}}]
+  assertions:
+  - {type: cel_true, expr: 'outputs.result.status=="passed" && outputs.document_metadata["review/drafts.md"].title=="Saved drafts"'}
+- id: replaced-file-needs-its-own-description
+  type: integration_case
+  runtime: {}
+  inputs:
+    <<: *retained
+    documents:
+      review/drafts.md: {kind: value, name: review/drafts.md, format: text, value: Drafts now sync across devices.}
+  mocks: *run_files
+  assertions:
+  - {type: cel_true, expr: 'outputs.result.status=="changes" && outputs.result.summary.contains("Missing document_details")'}

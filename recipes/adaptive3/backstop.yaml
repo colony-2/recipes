@@ -13,6 +13,7 @@ inputs:
   retry: >-
     ${{ inputs.?retry.orValue({'automatic_used':(inputs.?automatic.orValue(true) ? 0 : 2)}) }}
   prerequisites: ${{ inputs.?prerequisites.orValue({}) }}
+  presentation: ${{ inputs.?presentation.orValue({}) }}
 state:
   initial: turn
   states:
@@ -20,7 +21,7 @@ state:
       inputs:
         feedback: >-
           ${{ transition.payload.?feedback.orValue(jq([inputs.feedback,inputs.problem,vars.review_instruction],
-            'if (.[2]|length)>0 then .[0] + .[2] + (.[1] | {documents,conversation,review_id} | with_entries(select(.value!=null))) else .[0] end')) }}
+            'if (.[2]|length)>0 then .[0] + .[2] + (.[1] | {documents,review_id} | with_entries(select(.value!=null))) else .[0] end')) }}
         session: ${{ transition.payload.?session.orValue(inputs.session) }}
         allow_resume: ${{ transition.payload.?allow_resume.orValue(inputs.automatic) }}
         human: ${{ transition.payload.?human.orValue(vars.review_instruction) }}
@@ -85,7 +86,9 @@ state:
     investigate:
       include: ./agent.yaml
       inputs:
-        prompt: ${{ states.setup.outputs.text.task }}
+        prompt: |-
+          {{ states.setup.outputs.text.task }}
+          ${{ states.turn.outputs.allow_resume ? '' : 'Previous attempts did not resolve this. Diagnose what went wrong. If a different local repair is available, return it to the author. Ask the human only for a choice they need to make.' }}
         schema: ${{ jq([states.setup.outputs.schema,states.setup.outputs.destinations,states.turn.outputs.human.?response.orValue({}).?settings.orValue({}).?return_to.orValue('auto')],
           '.[1] as $allowed | .[2] as $choice | .[0] | .properties.stage.enum = ((if $choice == "auto" then $allowed
           else [$choice] end) + [null])') }}
@@ -130,7 +133,11 @@ state:
         artifacts: ${{ inputs.proposal.artifacts }}
       transitions:
       - to: done
-        when: outputs.eligible && outputs.response.status == 'resume' && (states.turn.outputs.allow_resume || (size(states.turn.outputs.human)>0 && outputs.response.?instruction.orValue(null) != null))
+        when: >-
+          outputs.eligible && outputs.response.status == 'resume' && (states.turn.outputs.allow_resume
+          || (states.turn.outputs.retry.automatic_used == 2 && outputs.response.stage == inputs.stage && inputs.stage in ['direction','preparation','implementation','outcome']
+              && inputs.problem.?loop.orValue('') != 'merge' && (outputs.response.?additional_attempts.orValue(null) == null || outputs.response.additional_attempts == 1))
+          || (size(states.turn.outputs.human)>0 && outputs.response.?instruction.orValue(null) != null))
         payload:
           result: '${{ size(states.turn.outputs.human)>0 ? jq([outputs.response,{''human'':states.turn.outputs.human,''documents'':states.turn.outputs.feedback.?documents.orValue({})}],
             ''add'') : outputs.response }}'
@@ -159,6 +166,7 @@ state:
         when: size(inputs.documents)>0 || size(inputs.document_details)>0 || inputs.primary != '' || inputs.summary.contains('[') || inputs.summary.contains('<')
         inputs:
           check: review_files
+          presentation: ${{ inputs.presentation }}
           require_document_details: ${{ inputs.primary != '' || size(inputs.document_details)>0 || inputs.documents.exists(k,!(k in inputs.negotiations)) }}
           documents: ${{ inputs.documents }}
           title: ${{ inputs.title }}
@@ -187,9 +195,11 @@ state:
         request: ${{ inputs.request }}
         problem: ${{ inputs.problem }}
         response: ${{ states.assess.outputs.response }}
+        attempts: ${{ jq(states.assess.outputs.response,'.additional_attempts // 1') }}
+        presentation: ${{ inputs.presentation }}
         negotiations: ${{ jq(inputs.documents,'with_entries(select(.key|startswith("review/negotiations/")))') }}
-        documents: ${{ jq([states.assess.outputs.artifacts,inputs.documents],'(.[0] | with_entries(select(.key|startswith("review/")))) + (.[1] | with_entries(select(.key|startswith("review/negotiations/"))))')
-          }}
+        documents: >-
+          ${{ jq([inputs.documents,states.assess.outputs.artifacts,states.assess.outputs.response],vars.selected_files) }}
         title: ${{ states.assess.outputs.response.?title.orValue('Agent needs help') }}
         primary: '${{ states.assess.outputs.response.?primary.orValue(null) != null ? states.assess.outputs.response.primary
           : jq(inputs.documents,''[keys[] | select(startswith("review/negotiations/") and endswith("/report.md"))][0] // ""'') }}'
@@ -200,9 +210,21 @@ state:
         result: ${{ sequence.?files.orValue({}).?outputs.orValue({}).?result.orValue({'status':'passed'}) }}
         documents: ${{ sequence.report.outputs.documents }}
         primary: ${{ sequence.report.outputs.primary }}
-        message: ${{ inputs.summary }}
+        message: ${{ sequence.report.outputs.question }}
+        action_label: >-
+          ${{ inputs.problem.?loop.orValue('') == 'merge' ? 'Try another ' + string(inputs.attempts) + (inputs.attempts == 1 ? ' attempt' : ' attempts') : 'Apply this correction' }}
         document_metadata: ${{ sequence.report.outputs.document_metadata }}
       transitions:
+      - to: turn
+        when: >-
+          nonempty(states.assess.outputs.response.?primary.orValue('')) &&
+          !(states.assess.outputs.response.primary in states.assess.outputs.artifacts) && !(states.assess.outputs.response.primary in inputs.documents) &&
+          !states.turn.outputs.feedback.?missing_primary.hasValue()
+        payload:
+          feedback: ${{ jq([states.turn.outputs.feedback,{'missing_primary':states.assess.outputs.response.primary,'validation':outputs.result}],'add') }}
+          session: ${{ states.assess.outputs.session }}
+          human: ${{ states.turn.outputs.human }}
+          allow_resume: ${{ states.turn.outputs.allow_resume }}
       - to: discuss
         when: 'true'
     discuss:
@@ -210,17 +232,20 @@ state:
       inputs:
         previous: ${{ state_output('discuss','thread',{}) }}
         instructions: true
-        proposed_action: ${{ states.assess.outputs.response.?action.orValue('') }}
-        proposed_stage: ${{ states.assess.outputs.response.?stage.orValue('') }}
-        request: '${{ jq([{''title'':states.assess.outputs.response.?title.orValue(''Your decision is needed''),''question'':(states.prepare_review.outputs.result.status == ''passed'' ? states.prepare_review.outputs.message
-          : states.setup.outputs.text.unreadable + ''\n'' + states.prepare_review.outputs.result.summary),''documents'':states.prepare_review.outputs.documents,''document_metadata'':states.prepare_review.outputs.document_metadata,''directions'':(states.assess.outputs.eligible
-          && states.prepare_review.outputs.result.status == ''passed'' ? [{''id'':''continue'',''label'':inputs.problem.?loop.orValue('''') == ''merge'' ? states.setup.outputs.text.retry + '' '' + string(states.assess.outputs.response.?additional_attempts.orValue(null)
-          != null ? states.assess.outputs.response.additional_attempts : 1) + '' '' + (states.assess.outputs.response.?additional_attempts.orValue(null) == null || states.assess.outputs.response.additional_attempts == 1 ? states.setup.outputs.text.attempt : states.setup.outputs.text.attempts)
-          : states.setup.outputs.text.continue,''feedback_mode'':''optional'',''allow_attachments'':false,''continues_review'':false}]
-          : []),''feedback'':{''label'':states.setup.outputs.text.message},''settings'':[states.setup.outputs.setting],''conversation'':[]},states.prepare_review.outputs.primary],
-          ''.[1] as $primary | .[0] + (if $primary != "" and (.[0].documents|has($primary)) then {overview_document_id:$primary} else {} end)'')
-          }}'
-        prompt: ${{ states.setup.outputs.text.task }}
+        request:
+          title: ${{ states.assess.outputs.response.?title.orValue('Your decision is needed') }}
+          question: ${{ states.prepare_review.outputs.message }}
+          overview_document_id: ${{ states.prepare_review.outputs.primary }}
+          documents: ${{ states.prepare_review.outputs.documents }}
+          document_metadata: ${{ states.prepare_review.outputs.document_metadata }}
+          directions: >-
+            ${{ states.assess.outputs.eligible && states.prepare_review.outputs.result.status == 'passed' ?
+              [{'id':'continue','label':states.prepare_review.outputs.action_label,'feedback_mode':'optional','allow_attachments':false,'continues_review':false}] : [] }}
+          feedback: {label: '${{ states.setup.outputs.text.message }}'}
+          settings: ${{ [states.setup.outputs.setting] }}
+        prompt: |-
+          {{ states.setup.outputs.text.task }}
+          ${{ states.turn.outputs.allow_resume ? '' : 'Previous attempts did not resolve this. Diagnose what went wrong. If a different local repair is available, return it to the author. Ask the human only for a choice they need to make.' }}
         schema: >-
           ${{ jq([states.setup.outputs.schema,states.setup.outputs.destinations], '.[1] as $destinations | .[0] | .properties.stage.enum = ($destinations + [null])') }}
         documents: ${{ jq([inputs.documents,states.prepare_review.outputs.documents], "add") }}
@@ -231,19 +256,19 @@ state:
         when: outputs.native.response.direction == 'continue' && states.assess.outputs.eligible && states.prepare_review.outputs.result.status
           == 'passed'
         payload:
-          result: ${{ jq([states.assess.outputs.response,{'status':'resume','human':outputs.native,'documents':outputs.documents,'conversation':outputs.conversation,'review_id':outputs.review_id,'revision':outputs.thread.revision,'reviewed_documents':states.prepare_review.outputs.documents}],
+          result: ${{ jq([states.assess.outputs.response,{'status':'resume','human':outputs.native,'documents':outputs.documents,'review_id':outputs.review_id,'revision':outputs.thread.revision,'reviewed_documents':states.prepare_review.outputs.documents}],
             'add') }}
           session: ${{ outputs.session }}
       - to: turn
         when: 'true'
         payload:
-          feedback: ${{ jq([outputs.native,{'validation':states.prepare_review.outputs.result,'documents':outputs.documents,'conversation':outputs.conversation,'review_id':outputs.review_id,'reassessment':outputs.interpretation}],
+          feedback: ${{ jq([outputs.native,{'validation':states.prepare_review.outputs.result,'documents':outputs.documents,'review_id':outputs.review_id,'reassessment':outputs.interpretation}],
             'add') }}
           human: >-
             ${{ outputs.interpretation.?instruction.orValue(null) != null ? outputs.native : {} }}
           session: ${{ outputs.session }}
           interpreted: >-
-            ${{ outputs.interpretation.?instruction.orValue(null) != null || outputs.interpretation.?status.orValue('') == 'ask' ? {'response':outputs.interpretation,'session':outputs.session,'artifacts':outputs.reply_artifacts} : {} }}
+            ${{ outputs.interpretation.?status.orValue('') in ['ask','resume'] ? {'response':outputs.interpretation,'session':outputs.session,'artifacts':outputs.reply_artifacts} : {} }}
           allow_resume: ${{ states.turn.outputs.retry.automatic_used < 2 }}
 outputs:
   review_reply: ${{ state_output('discuss','review_reply',inputs.review_reply) }}
@@ -253,6 +278,10 @@ outputs:
     then .approval.patch = $files[.approval.patch] else . end') }}
   documents: '${{ size(states.done.outputs.documents)>0 ? states.done.outputs.documents : inputs.documents }}'
 vars:
+  selected_files: |-
+    .[2] as $reply | ([$reply.primary] + [$reply.document_details[]?.document_id]) as $ids |
+    (.[0] | with_entries(select((.key | startswith("review/negotiations/")) or (.key as $id | $ids | index($id))))) +
+    (.[1] | with_entries(select(.key | startswith("review/"))))
   review_instruction: >-
     ${{ inputs.problem.?status.orValue('') == 'changes' && nonempty(inputs.problem.?human.orValue({}).?receipt.orValue({}).?submission_id.orValue(''))
       && inputs.problem.human.?response.orValue({}).?direction.orValue('') in ['reply','decline']

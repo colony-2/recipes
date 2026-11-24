@@ -351,18 +351,19 @@ test.describe.serial('unchanged adaptive3 discussion and correction routing',()=
    expect(saved.response.attachments).toHaveLength(1);
    if(restart){await expect(discussion.getByText(text,{exact:true})).toBeVisible();await page.reload();await expect(discussion.getByText(text,{exact:true})).toHaveCount(1);startWorker();}
    let successor:any;
-   await expect.poll(async()=>{successor=await details();return successor?.request_id!==current.request_id&&successor?.request?.conversation?.length===(index+1)*2;},{timeout:90000}).toBe(true);
+   await expect.poll(async()=>{successor=await details();return !!successor?.request_id && successor.request_id!==current.request_id;},{timeout:90000}).toBe(true);
    current=successor;
    expect(current.request.review_id).toBe(first.request.review_id);expect(current.request.documents).toEqual(first.request.documents);
    expect(current.request.revision).toBe(1);
    expect(current.request.document_metadata).toEqual(first.request.document_metadata);
    expect(current.request.overview_document_id).toBe(first.request.overview_document_id);
-   expect(current.request.conversation[index*2].receipt).toEqual(saved.receipt);
-   expect(current.request.conversation[index*2+1].text).toBe(index===0?'Actual first answer.':'Actual second answer.');
-   if(restart){await stopWorker();await page.reload();await expect(page.getByText(current.request.conversation[index*2+1].text,{exact:true})).toBeVisible();startWorker();}
-   points.push({turns:current.request.conversation.map((t:any)=>({role:t.role,text:t.text,direction:t.direction,files:t.attachments.map((f:any)=>f.stored.key.sizeBytes)})),originals:Object.keys(current.request.documents).sort()});
+   expect(saved.receipt.request_id).not.toBe(current.request_id);
+   expect(current.request.conversation).toEqual([]);
+   expect(current.request.question).toBe(index===0?'Actual first answer.':'Actual second answer.');
+   if(restart){await stopWorker();await page.reload();await expect(page.getByText(current.request.question,{exact:true})).toBeVisible();startWorker();}
+   points.push({message:current.request.question,reply:saved.response.feedback,originals:Object.keys(current.request.documents).sort()});
   }
-  await page.reload();await expect(discussion.getByText('Actual second answer.',{exact:true})).toBeVisible();
+  await page.reload();await expect(page.getByText('Actual second answer.',{exact:true})).toBeVisible();
   await page.getByRole('button',{name:'Revise',exact:true}).click();
   const editRequest='Please clarify restoration in the direction document.';
   let correction:any;
@@ -398,22 +399,19 @@ test.describe.serial('unchanged adaptive3 discussion and correction routing',()=
   await page.goto(`/project/${tenant}/reviews/${jobID}`);
   await expect(approve).toBeVisible();
   await expect(page.getByRole('heading',{name:'Revised saved drafts · v2',exact:true})).toBeVisible();
-  for(const turn of revised.request.conversation.filter((t:any)=>t.text)) await expect(discussion.getByText(turn.text,{exact:true})).toHaveCount(1);
+  expect(revised.request.conversation).toEqual([]);
   await expect(page.getByText('Revised original after explicit correction.',{exact:true})).toBeVisible();
   expect(await (await page.request.get(originalDocument.href)).text()).toContain('Original bytes 日本語.');
   expect(await (await page.request.get((await download.getAttribute('href'))!)).text()).toContain('Revised original after explicit correction.');
   expect(revised.request.settings[0].value).toBe('auto');
-  expect(revised.request.conversation.slice(0,4)).toEqual(current.request.conversation);
-  expect(revised.request.conversation[4]).toMatchObject({revision:1,text:'',receipt:correction.receipt});
-  expect(revised.request.conversation[4].attachments).toHaveLength(1);
-  expect(revised.request.conversation.some((turn:any)=>turn.text==='UNSENT PREVIOUS REVIEW')).toBe(false);
+  expect(correction.response.attachments).toHaveLength(1);
   await expect(page.getByText('unsent.md (12 bytes)',{exact:true})).toHaveCount(0);
   await submit(revised,'reply','Do the original notes still apply?');
-  await expect(discussion.getByText('Both original notes are available with the revised plan.',{exact:true})).toBeVisible({timeout:90000});
+  await expect(page.getByText('Both original notes are available with the revised plan.',{exact:true})).toBeVisible({timeout:90000});
   const afterQuestion=await details();
   expect(afterQuestion.request.review_id).toBe(first.request.review_id);
   expect(afterQuestion.request.revision).toBe(2);
-  expect(afterQuestion.request.conversation.slice(-2).map((turn:any)=>turn.revision)).toEqual([2,2]);
+  expect(afterQuestion.request.question).toBe('Both original notes are available with the revised plan.');
   expect(afterQuestion.request.documents).toEqual(revised.request.documents);
   await approve.click();
   const approvalComment = restart ? 'The revised plan covers the restart case.' : '';
@@ -428,10 +426,9 @@ test.describe.serial('unchanged adaptive3 discussion and correction routing',()=
   await expect.poll(async()=>{const result=await request.get(`${api}/jobs/${jobID}/outcome`);if(result.status()!==200)return false;outcome=(await result.json()).output;return !!outcome?.revised;},{timeout:90000}).toBe(true);
   expect(outcome.original.human.receipt).toEqual(correction.receipt);expect(outcome.revised.receipt).toEqual(final.receipt);
   expect(outcome.revised.reviewed_documents).toEqual(revised.request.documents);
-  expect(outcome.revised.conversation.at(-1)).toMatchObject({direction:'accept',text:approvalComment,revision:2,receipt:final.receipt});
-  expect(outcome.original.conversation.filter((t:any)=>t.direction==='reply')).toHaveLength(3);
-  expect(outcome.original.conversation.some((t:any)=>t.direction==='accept')).toBe(false);
-  const normalized={points,correction:outcome.original.stage,approved:outcome.revised.status,uploads:outcome.original.conversation.flatMap((t:any)=>t.attachments.map((f:any)=>f.stored.key.sizeBytes))};
+  expect(outcome.revised.human.response).toMatchObject({direction:'accept',feedback:approvalComment});
+  const notes = Object.entries(outcome.original.documents).filter(([name])=>name.startsWith('feedback/'));
+  const normalized={points,correction:outcome.original.stage,approved:outcome.revised.status,uploads:notes.map(([,file]:[string,any])=>file.stored.key.sizeBytes).sort()};
   if(restart)expect(normalized).toEqual(controls[0]);else controls.push(normalized);
   writeFileSync(info.outputPath('restart-comparison.json'),JSON.stringify({restart,normalized,receipts,outcome},null,2));
   await info.attach('restart-comparison.json',{body:JSON.stringify({restart,normalized,receipts,outcome},null,2),contentType:'application/json'});

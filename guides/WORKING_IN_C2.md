@@ -9,7 +9,7 @@
 | Use Docker or KVM | Run `c2j execution bases` to see declared worker configurations. For a Docker check use `execution_needs: {base: 'ubuntu*', capabilities: [docker]}`. An authorized diagnostic submission can use `--require-base 'ubuntu*' --require-capability docker`. |
 | Obtain a missing package | Return `packages` with its reference and check. Use the configured package review. A different base alone does not grant a capability. |
 | Find a decision | Read the producer’s exact task and receipt. Follow subsequent pages even when a preview ends. If a read fails, retain the diagnostic. |
-| Coordinate across cells | Ask how the existing route works. Only the requester opens negotiation for a change. Both cells agree before delivery. Wait on the exact prerequisite. Publish a producer before its adopter needs it. |
+| Coordinate across cells | Read accessible code or try the interface. Only the requester opens negotiation for a change. Both cells agree before delivery. Wait on the exact prerequisite. Publish a producer before its adopter needs it. |
 | Merge, deploy or get help | The recipe owns Git integration. Check the actual release environment when deployment is required. Either author can take a genuine impasse to the delegate. |
 
 [C2 guide index](https://github.com/colony-2/recipes/blob/main/guides/README.md) · [Task workspace](https://github.com/colony-2/recipes/blob/main/guides/TASK_EXECUTION_CONTEXT_REFERENCE.md) · [Job inspection](https://github.com/colony-2/recipes/blob/main/guides/JOB_INSPECTION_PLAYBOOK.md) · [Worker and hook setup](https://github.com/colony-2/recipes/blob/main/guides/BUILD_HOOKS_USER_GUIDE.md)
@@ -83,7 +83,7 @@ adoption before your own review and publication reverses the dependency order.
 A useful arrangement is to coordinate here, give a same-cell job
 the prerequisite implementation and publication, then request downstream delivery
 against the available dependency. Keep that implementation assignment local; retain
-downstream coordination here. Follow compatibility order, such as reader support
+downstream coordination here. Each owner explains its caller-visible requirements. A coordinator such as Root arranges work across cells when an upgrade needs two steps. Follow compatibility order, such as reader support
 before new-format output. A reader may be able to implement from the agreed format
 contract without new producer code; then reader availability is the prerequisite,
 and the producer can keep preparation local and continue afterward. If useful code
@@ -112,14 +112,13 @@ the original human wording and source. Questions are not approval or scope chang
 
 ## Consult another cell
 
-Inspect dependency contracts and run focused local checks when practical. Proceed
-locally when that evidence resolves compatibility. Request consultation only for a
-concrete incompatibility affecting the assignment, an unresolved question whose
-answer could change the plan, or required work another cell owns. State what you
-checked and what answer or work you need. Apply the same threshold before
-consulting a further dependency. Only the requester opens negotiation for a change. The receiver can decline or offer terms. Both sides must
-confirm revised terms before delivery. A small owner enhancement can remove a costly
-consumer workaround. Seek evidence for speculative additions.
+For an ordinary question, read available source or docs, or try the interface. Choose the quickest way to learn what the caller needs.
+
+- “We need to show when each lease was last updated. Can your list API give us that value?”
+- “Saving the note returned success, but reopening the review lost it. Can you investigate?”
+- “Your implementation is private. If I retry with the same request ID, will I get the original result?”
+
+An answer can finish the consultation. Only the requester opens negotiation when they want a change. The receiver chooses what it can deliver. Both sides agree before delivery. Use the thread ID in the accepted report’s folder to request the recorded work. If the terms change, reopen that thread. Take a genuine impasse to the delegate.
 
 ## Run a diagnostic job
 

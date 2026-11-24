@@ -14,11 +14,15 @@ outputs:
 vars:
   program: |
     .[0] as $d | .[1] as $p | .[2] as $i | .[3] as $o | .[4] as $publication |
+    def decision:
+      (.decision // .result.receipt // .source) |
+      if type == "object" and (has("request_id") or has("submission_id")) then {request_id,submission_id} else . end;
     ($d.result.status == "accepted") as $direction |
-    ($direction and $p.result.status == "accepted" and $p.basis == {result:$d.result,documents:$d.documents}) as $preparation |
+    ($direction and ($d|decision) != null and $p.result.status == "accepted" and ($p.basis | decision) == ($d | decision)) as $preparation |
     ($direction and $d.short_path == true) as $short |
-    (if $short then $d else $p end | {result,documents}) as $implementation_basis |
-    (($preparation or $short) and $i.result.status == "accepted" and $i.basis == $implementation_basis) as $implementation |
+    (if $short then $d else $p end | decision) as $assignment |
+    (($preparation or $short) and $assignment != null and $i.result.status == "accepted" and ($i.basis | decision) == $assignment) as $implemented |
     {configure:true, direction:true, preparation:$direction, implementation:($preparation or $short),
-     outcome:$implementation,
-     integration:($implementation and $o.result.receipt != null and $o.basis == {basis:$i.basis,candidate:$i.candidate,verification:$i.verification}) or $publication}
+     outcome:$implemented,
+     integration:($implemented and $o.result.receipt != null and ($o.basis.basis | decision) == $assignment
+       and $o.basis.candidate == $i.candidate and $o.basis.verification == $i.verification) or $publication}

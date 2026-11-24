@@ -96,7 +96,7 @@ cases:
     - node_path: adaptive3/preparation/preparation/adaptive3-lifecycle/cycle/cycle/adaptive3-cycle/review/review/adaptive3-review/discuss/discuss/adaptive3-discussion/ask/ask
       response:
         direction: accept
-        feedback: ''
+        feedback: Show the marker in the final review.
         attachments: []
         settings: {}
     - node_path: adaptive3/outcome/outcome/adaptive3-lifecycle/cycle/cycle/adaptive3-cycle/review/review/adaptive3-review/discuss/discuss/adaptive3-discussion/ask/ask
@@ -164,10 +164,10 @@ cases:
         selector: nix:github:colony-2/c2ops/published#codex
       behavior: &plan_behavior
         mode: return
-        outputs:
+        outputs: &plan_outputs
           status: completed
           output_schema_valid: true
-          response:
+          response: &plan_response
             status: ready
             summary: Current work is ready.
             title: Review the requested outcome
@@ -353,6 +353,10 @@ cases:
         c.inputs.commit_message.matches('/[^/\n]+/jobs/' + c.job_id + '$'))
   - type: cel_true
     expr: calls.exists(c,c.node_path.contains("/direction/") && c.op=="extension_execution" && has(c.inputs.inputs.prompt) && c.inputs.inputs.prompt.contains("what the installation may run before") && c.inputs.inputs.prompt.contains("Private pnpm installation permits direct, transitive and selected") && c.inputs.inputs.prompt.contains("optional dependency builds, mutable transitives"))
+  - type: cel_true
+    expr: >-
+      ["/implementation/","/outcome/"].all(stage,calls.exists(c,c.op=="extension_execution" && c.node_path.contains(stage) &&
+      has(c.inputs.inputs.prompt) && c.inputs.inputs.prompt.contains("Show the marker in the final review.")))
 
 - id: failure-resolves-in-the-same-job
   type: integration_case
@@ -2027,11 +2031,30 @@ cases:
     - <<: *preparation_work
       behavior:
         <<: *plan_behavior
+        outputs:
+          <<: *plan_outputs
+          response:
+            <<: *plan_response
+            status: revise_plan
         artifacts:
           <<: *plan_artifacts
           review/one-pager.md: |
-            Add the marker. [Design](design.md) and [Acceptance criteria](acceptance.md).
-            [Why the consumer needs this change](negotiations/parent/report.md).
+            # 1P: Add a completion marker
+            [Design](design.md) · [Tests](acceptance.md)
+            ## Problem Description
+            Callers need to tell whether delivery succeeded.
+            **Why this job exists** — The consumer requested a completion marker in the
+            [parent job](https://jobs.colony2.com/c2/jobs/upstream). [Negotiation](negotiations/parent/report.md).
+            ## Non Goals
+            Retrying delivery is out of scope.
+            ## What we are planning to do
+            Write one marker after successful delivery.
+            ## Compat/Upgrade
+            Existing callers can keep their current checks.
+            ## Key challenges/design questions & answers
+            | Question | Answer |
+            | --- | --- |
+            | When is it safe to write the marker? | After delivery succeeds. |
     - *preparation_check
     - *candidate_work
     - *candidate_check
@@ -2050,7 +2073,8 @@ cases:
     - *form
   assertions:
   - type: cel_true
-    expr: size(reviews)==1 && outputs.merge.merged_hash!="" && outputs.reviews[1].authorization=="preparation"
+    expr: size(reviews)==1 && outputs.merge.merged_hash!="" && outputs.reviews[1].authorization=="preparation" &&
+      reviews[0].form.request.overview_document_id=="review/one-pager.md" && reviews[0].form.request.document_metadata["review/one-pager.md"].title.startsWith("1P:")
   - type: cel_true
     expr: outputs.reviews.all(r,r.review_id==reviews[0].form.request.review_id && r.revision==1 && r.receipt.request_id==reviews[0].request_id)
   - type: cel_true
@@ -2064,6 +2088,15 @@ cases:
       reviews[0].form.request.document_metadata["review/negotiations/parent/report.md"].order==2
   - type: cel_true
     expr: calls.exists(c,c.node_path.contains("/outcome/") && c.node_path.contains("/validate/") && "work/approved/review/acceptance.md" in c.artifacts)
+  - type: cel_true
+    expr: >-
+      calls.filter(c,c.node_path.contains("/preparation/") && c.node_path.endsWith("/resume_read_only/resume_read_only"))
+        .exists(c,["# 1P:", "## Compat/Upgrade", "Why this job exists", "# Design\n", "# Tests\n"]
+          .all(heading,c.inputs.inputs.prompt.contains(heading)))
+  - type: cel_true
+    expr: >-
+      calls.filter(c,c.node_path.contains("/outcome/") && c.node_path.endsWith("/resume_read_only/resume_read_only"))
+        .exists(c,c.inputs.inputs.prompt.contains("## How we checked it") && !c.inputs.inputs.prompt.contains("## Compat/Upgrade"))
 - id: bounded-feature-first-reviewed-at-outcome
   type: integration_case
   runtime:
@@ -2071,15 +2104,20 @@ cases:
     responses:
     - node_path: adaptive3/outcome/outcome/adaptive3-lifecycle/cycle/cycle/adaptive3-cycle/review/review/adaptive3-review/discuss/discuss/adaptive3-discussion/ask/ask
       response: {direction: accept, feedback: '', attachments: [], settings: {}}
-  inputs: *delivery_inputs
+  inputs:
+    <<: *delivery_inputs
+    prompt: Apply a compatible dependency update and run its existing check.
+    documents:
+      review/release-notes.txt: {kind: value, name: review/release-notes.txt, format: text, value: The compatible patch preserves the existing interface.}
   mocks:
     ops:
     - <<: *direction_work
       behavior:
         <<: *direction_behavior
+        artifacts: {}
         outputs:
           <<: *direction_outputs
-          response: {<<: *direction_response, delivery_route: short}
+          response: {<<: *direction_response, delivery_route: short, summary: Apply the compatible patch and run the smoke check., title: null, primary: null, document_details: []}
     - *direction_check
     - *candidate_work
     - *candidate_check
@@ -2093,4 +2131,4 @@ cases:
   - type: cel_true
     expr: size(reviews)==1 && outputs.merge.merged_hash!="" && !calls.exists(c,c.node_path.contains("/preparation/"))
   - type: cel_true
-    expr: calls.exists(c,c.node_path.contains("/implementation/") && c.node_path.contains("/work/") && "work/review/README.md" in c.artifacts)
+    expr: calls.exists(c,c.node_path.contains("/implementation/") && c.node_path.contains("/work/") && c.inputs.inputs.prompt.contains("compatible patch") && "work/review/release-notes.txt" in c.artifacts && !("work/review/one-pager.md" in c.artifacts) && !("work/review/design.md" in c.artifacts))

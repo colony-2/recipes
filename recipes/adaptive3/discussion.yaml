@@ -1,7 +1,5 @@
 id: adaptive3-discussion
 inputs:
-  proposed_action: ${{ inputs.?proposed_action.orValue('') }}
-  proposed_stage: ${{ inputs.?proposed_stage.orValue('') }}
   instructions: ${{ inputs.?instructions.orValue(false) }}
   request: ${{ inputs.request }}
   previous: ${{ inputs.?previous.orValue({}) }}
@@ -18,53 +16,28 @@ state:
       inputs:
         request: ${{ jq([inputs.request,inputs.previous], vars.open_revision) }}
       transitions:
-      - to: build
-        when: 'true'
-    build:
-      inputs:
-        conversation: ${{ transition.payload.?conversation.orValue(states.snapshot.outputs.form.request.conversation) }}
-        documents: >-
-          ${{ transition.payload.?documents.orValue(jq([states.snapshot.outputs.form.request.conversation,inputs.documents],
-            '(.[0] | map(.attachments[]) | INDEX(.name)) + .[1]')) }}
-        session: ${{ transition.payload.?session.orValue(inputs.session) }}
-        snapshot: ${{ transition.payload.?snapshot.orValue(states.snapshot.outputs.form.request) }}
-      sequence:
-      - id: form
-        include: ../review-v2.yaml
-        inputs:
-          request: ${{ jq([inputs.snapshot,inputs.conversation], '.[0] + {conversation:.[1]}') }}
-      outputs:
-        form: ${{ sequence.form.outputs.form }}
-        conversation: ${{ inputs.conversation }}
-        documents: ${{ inputs.documents }}
-        session: ${{ inputs.session }}
-      transitions:
       - to: ask
         when: 'true'
     ask:
       id: ask
       op: input
       inputs:
-        form: ${{ states.build.outputs.form }}
+        form: ${{ transition.payload.?form.orValue(states.snapshot.outputs.form) }}
       transitions:
       - to: record
         when: 'true'
     record:
       inputs:
         native: ${{ states.ask.outputs }}
-        revision: ${{ states.snapshot.outputs.form.request.revision }}
-        conversation: ${{ states.build.outputs.conversation }}
-        documents: ${{ states.build.outputs.documents }}
+        documents: ${{ state_output('record','documents',jq([inputs.documents,inputs.previous.?feedback_files.orValue({})],'add')) }}
       sequence:
       - id: review_notes
         include: ./review-reply.yaml
         inputs:
-          # Native uploads can contain runtime artifact handles. The reply schema takes JSON.
           reply: ${{ json_parse(json_stringify(inputs.native)) }}
       outputs:
         native: ${{ inputs.native }}
         review_reply: ${{ sequence.review_notes.outputs.reply }}
-        conversation: ${{ jq([inputs.conversation,inputs.native,sequence.review_notes.outputs.ordered,inputs.revision], vars.record) }}
         documents: ${{ jq([inputs.documents,sequence.review_notes.outputs.reply.documents],'add') }}
       transitions:
       - to: answer
@@ -76,101 +49,75 @@ state:
       inputs:
         prompt: |-
           {{ inputs.prompt }}
-          Read the latest message in context. An attached file can contain the entire question or edit request.
-          ${{ inputs.instructions ? 'Answer as the delegate. For a clear instruction, set instruction to the specific request and identify any scope change. Answer questions in summary and leave instruction null. If intent is unclear, ask what the person meant. Reassess whether an action within the current assignment is available.' : 'For a question, return answer and explain. If intent is unclear, return answer and ask what the person meant. For a requested edit, return changes and the stage that owns it. Explain any conflict with the selected destination.' }}
-          ${{ json_stringify(states.record.outputs.conversation) }}
+          Your last message: ${{ state_output('next_message','question',states.snapshot.outputs.form.request.question) }}
+          The person replied: ${{ states.record.outputs.native.response.feedback }}
+          Selected destination: ${{ states.record.outputs.native.response.settings.?return_to.orValue('auto') }}
+          Read any attached comments in inbox/work/feedback/. An attachment may contain the whole request.
+          ${{ inputs.instructions ? 'Answer a question in summary. Keep the displayed proposal while explaining it. Use replace to change the displayed proposal. Use repair only when the reply reveals a concrete local action the author can already take. For an instruction, identify the specific request and any scope change.' : 'For a question, use answer. Write the complete next prompt in summary, answering the question and asking for the decision still open. For a requested edit, use changes and the stage that owns it. If the selected destination conflicts with an edit, explain and ask what to change in summary. Answer any accompanying question when presenting the revision.' }}
         schema: >-
-          ${{ inputs.instructions ? inputs.schema : jq(inputs.schema, '.properties.status.enum = ["answer","changes"]') }}
+          ${{ inputs.instructions ? jq(inputs.schema,'.properties.status.enum += ["replace","repair"]') : jq(inputs.schema,'.properties.status.enum = ["answer","changes"]') }}
         documents: ${{ states.record.outputs.documents }}
-        session: ${{ states.build.outputs.session }}
+        session: ${{ state_output('next_message','session',inputs.session) }}
         read_only: true
         agent_settings: ${{ inputs.agent_settings }}
       transitions:
       - to: done
         when: >-
           outputs.valid_response && (inputs.instructions
-          ? outputs.response.status in ['ask','resume'] && outputs.response.?instruction.orValue(null) != null
+          ? (outputs.response.status in ['replace','repair'] || (outputs.response.status in ['ask','resume'] && outputs.response.?instruction.orValue(null) != null))
           : outputs.response.status == 'changes' && (states.record.outputs.native.response.settings.?return_to.orValue('auto') == 'auto'
           || outputs.response.?stage.orValue(null) == null || outputs.response.stage == states.record.outputs.native.response.settings.return_to))
         payload:
-          session: ${{ outputs.session }}
-          interpretation: ${{ outputs.response }}
-      - to: append_answer
+          interpretation: >-
+            ${{ outputs.response.status == 'replace' ? jq(outputs.response,'.status = "ask"') : outputs.response.status == 'repair' ? jq(outputs.response,'.status = "resume"') : outputs.response }}
+      - to: next_message
         when: 'true'
-    append_answer:
-      sequence: []
-      outputs:
-        conversation: ${{ inputs.record.conversation + [{'role':'agent','revision':inputs.revision,'text':inputs.message,'attachments':jq([inputs.answer.artifacts,size(inputs.record.conversation)],
-          '.[1] as $n | .[0] | to_entries | map(select(.key | startswith("review/")) | .value.name = ("answers/"
-          + ($n|tostring) + "/" + .key) | .value)')}] }}
-        documents: ${{ jq([inputs.record.documents,inputs.answer.artifacts,size(inputs.record.conversation)], '.[2]
-          as $n | .[0] + (.[1] | with_entries(select(.key | startswith("review/")) | .key = "answers/" + ($n|tostring)
-          + "/" + .key | .value.name = .key))') }}
-        session: ${{ inputs.answer.session }}
-      transitions:
-      - to: done
-        when: inputs.instructions && states.answer.outputs.valid_response && states.answer.outputs.response.status in ['ask','resume'] && nonempty(states.answer.outputs.response.?action.orValue('')) && states.answer.outputs.response.?stage.orValue(null) != null && (states.answer.outputs.response.action != inputs.proposed_action || states.answer.outputs.response.stage != inputs.proposed_stage)
-        payload:
-          record: ${{ {'native':states.record.outputs.native,'documents':outputs.documents,'conversation':outputs.conversation} }}
-          interpretation: ${{ states.answer.outputs.response }}
-          session: ${{ outputs.session }}
-      - to: build
-        when: 'true'
-        payload:
-          snapshot: >-
-            ${{ inputs.instructions && states.answer.outputs.valid_response && states.answer.outputs.response.status == 'ask' && size(states.answer.outputs.response.summary)>0
-              ? jq([states.build.outputs.form.request,states.answer.outputs.response.summary,states.answer.outputs.response.?action.orValue(null) == inputs.proposed_action && states.answer.outputs.response.?stage.orValue(null) == inputs.proposed_stage],
-                '.[2] as $same | .[0] + {question:.[1]} | if $same then . else .directions |= map(select(.id != "continue")) end')
-              : !inputs.instructions && states.answer.outputs.valid_response && states.answer.outputs.response.status == 'changes'
-              ? jq(states.build.outputs.form.request, '.question = "Which change and destination should we use?" | .directions |= map(select(.id == "reply"))')
-              : states.build.outputs.form.request }}
-          conversation: ${{ outputs.conversation }}
-          documents: ${{ outputs.documents }}
-          session: ${{ outputs.session }}
+    next_message:
       inputs:
-        record: ${{ states.record.outputs }}
-        revision: ${{ states.snapshot.outputs.form.request.revision }}
-        answer: ${{ states.answer.outputs }}
-        message: >-
-          ${{ states.answer.outputs.valid_response ? states.answer.outputs.response.summary : 'I couldn’t interpret that reply. Could you rephrase it?' }}
+        snapshot: ${{ states.snapshot.outputs.form.request }}
+        session: ${{ states.answer.outputs.session }}
+        question: >-
+          ${{ !states.answer.outputs.valid_response ? 'Could you rephrase that so I can act on it?' :
+            states.answer.outputs.response.summary }}
+        conflict: ${{ !inputs.instructions && states.answer.outputs.valid_response && states.answer.outputs.response.status == 'changes' }}
+      sequence:
+      - id: form
+        include: ../review-v2.yaml
+        inputs:
+          request: ${{ jq([inputs.snapshot,inputs.question,inputs.conflict], '.[2] as $conflict | .[0] + {question:.[1]} | if $conflict then .directions |= map(select(.id == "reply")) else . end') }}
+      outputs:
+        form: ${{ sequence.form.outputs.form }}
+        question: ${{ inputs.question }}
+        session: ${{ inputs.session }}
+      transitions:
+      - to: ask
+        when: 'true'
+        payload:
+          form: ${{ outputs.form }}
     done:
       sequence: []
       outputs:
-        native: ${{ inputs.record.native }}
-        session: ${{ inputs.session }}
-        conversation: ${{ inputs.record.conversation }}
-        documents: ${{ inputs.record.documents }}
-        interpretation: ${{ inputs.interpretation }}
-      inputs:
-        record: ${{ transition.payload.?record.orValue(states.record.outputs) }}
         interpretation: ${{ transition.payload.?interpretation.orValue({}) }}
-        session: ${{ transition.payload.?session.orValue(states.build.outputs.session) }}
 outputs:
   review_reply: ${{ states.record.outputs.review_reply }}
   interpretation: ${{ states.done.outputs.interpretation }}
   reply_artifacts: ${{ state_output('answer','artifacts',{}) }}
-  session: ${{ states.done.outputs.session }}
-  native: ${{ states.done.outputs.native }}
-  conversation: ${{ states.done.outputs.conversation }}
-  documents: ${{ states.done.outputs.documents }}
+  session: ${{ state_output('answer','session',inputs.session) }}
+  native: ${{ states.record.outputs.native }}
+  documents: ${{ states.record.outputs.documents }}
   review_id: ${{ states.snapshot.outputs.form.request.review_id }}
   thread:
     review_id: ${{ states.snapshot.outputs.form.request.review_id }}
     revision: ${{ states.snapshot.outputs.form.request.revision }}
-    conversation: ${{ states.done.outputs.conversation }}
+    documents: ${{ inputs.request.documents }}
+    document_metadata: ${{ inputs.request.?document_metadata.orValue({}) }}
+    feedback_files: ${{ jq(states.record.outputs.documents,'with_entries(select(.key|startswith("feedback/")))') }}
 vars:
   open_revision: |-
-    .[1] as $previous | .[0] |
+    .[1] as $previous | .[0] | .conversation = [] |
+    if (.overview_document_id // "") == "" then del(.overview_document_id) else . end |
     .directions = ([{id:"reply",label:"Revise",feedback_mode:"required",allow_attachments:true,continues_review:true}] + .directions) |
     if $previous.review_id then
-      . + {review_id:$previous.review_id, revision:($previous.revision + 1), conversation:$previous.conversation}
-    else .revision //= 1 end |
+      .review_id = $previous.review_id | .revision = ($previous.revision + (if .documents == $previous.documents then 0 else 1 end))
+    else .revision = 1 end |
     if .revision > 1 then .title += (" · v" + (.revision | tostring)) else . end
-  record: |-
-    .[0] as $turns | .[1] as $native |
-    ($turns | map(select(.role == "human" and .receipt.request_id == $native.receipt.request_id))) as $recorded |
-    {role:"human",revision:.[3],direction:$native.response.direction,text:$native.response.feedback,
-     attachments:.[2],settings:$native.response.settings,receipt:$native.receipt} as $turn |
-    if ($recorded|length) == 0 then $turns + [$turn]
-    elif $recorded == [$turn] then $turns
-    else error("Conflicting contributions for one native receipt") end

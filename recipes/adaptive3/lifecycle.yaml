@@ -67,6 +67,8 @@ state:
     cycle:
       include: ./cycle.yaml
       inputs:
+        presentation: ${{ state_output('cycle','presentation',inputs.sessions.?presentation.orValue({})) }}
+        delegate: ${{ state_output('cycle','delegate',inputs.sessions.?backstop.orValue({})) }}
         threads: ${{ state_output('cycle','threads',inputs.sessions.?review_threads.orValue({})) }}
         retry: ${{ states.execute.outputs.retry }}
         merge_state: ${{ state_output('cycle','merge_state',inputs.merge_state) }}
@@ -104,13 +106,9 @@ state:
           session: ${{ outputs.session }}
           used: ${{ states.execute.outputs.used }}
           children: ${{ states.execute.outputs.children+1 }}
-      - to: limit
-        when: outputs.result.status == 'consult' && states.execute.outputs.consulted >= vars.limits.consultation
-        payload:
-          loop: consultation
       - to: done
         when: outputs.result.status == 'consult' && inputs.purpose == 'implementation' && outputs.result.consultation.mode == 'delivery'
-          && (inputs.sessions.?short_path.orValue(false) || (inputs.sessions.?plan.hasValue() && !inputs.sessions.plan.?assignments.orValue([]).exists(a,a.cell == outputs.result.consultation.cell && a.assignment == outputs.result.consultation.request)))
+          && inputs.sessions.?short_path.orValue(false) && !nonempty(outputs.result.consultation.?job.orValue(''))
         payload:
           retry: ${{ outputs.retry }}
           result: ${{ {'status':'changes','stage':'preparation','summary':'Review the newly required external assignment during Preparation.','consultation':outputs.result.consultation} }}
@@ -153,6 +151,8 @@ state:
       include: ./consultation.yaml
       inputs:
         requester: ${{ states.cycle.outputs.session }}
+        thread: ${{ states.cycle.outputs.result.consultation.?thread.orValue('') }}
+        remaining: ${{ vars.limits.consultation - states.execute.outputs.consulted }}
         agreements: ${{ states.execute.outputs.agreements }}
         objective: ${{ inputs.request }}
         cell: ${{ states.cycle.outputs.result.consultation.cell }}
@@ -163,17 +163,24 @@ state:
         agent_settings: ${{ inputs.agent_settings }}
         job: ${{ states.cycle.outputs.result.consultation.?job.orValue('') }}
       transitions:
+      - to: limit
+        when: outputs.result.?loop.orValue('') == 'consultation'
+        payload:
+          loop: consultation
+          consulted: ${{ states.execute.outputs.consulted + outputs.started }}
+          problem: ${{ outputs.result }}
+          agreements: ${{ outputs.agreements }}
       - to: execute
         when: 'true'
         payload:
           documents: ${{ states.cycle.outputs.documents }}
-          agreements: >-
-            ${{ size(outputs.agreement)>0 ? states.execute.outputs.agreements.filter(a,a.thread != outputs.agreement.thread) + [outputs.agreement] : states.execute.outputs.agreements }}
+          agreements: ${{ outputs.agreements }}
           review_reply: ${{ states.cycle.outputs.review_reply }}
           finding: ${{ {'consultation':outputs.result,'documents':outputs.documents} }}
           session: ${{ states.cycle.outputs.session }}
-          used: ${{ states.execute.outputs.used }}
-          consulted: ${{ states.execute.outputs.consulted+1 }}
+          used: >-
+            ${{ states.execute.outputs.used + (outputs.result.status == 'changes' ? 1 : 0) }}
+          consulted: ${{ states.execute.outputs.consulted + outputs.started }}
     packages:
       include: ./packages.yaml
       inputs:
@@ -206,10 +213,12 @@ state:
     limit:
       sequence: []
       outputs:
+        agreements: ${{ inputs.agreements }}
         result:
           status: stuck
-          summary: ${{ 'The '+inputs.loop+' allowance is used. Explain the next correction or progress before granting
-            more attempts.' }}
+          summary: >-
+            ${{ inputs.loop == 'consultation' ? inputs.last_result.summary :
+              'The '+inputs.loop+' allowance is used. Identify the next correction or decision.' }}
           loop: ${{ inputs.loop }}
           budget: ${{ inputs.budget }}
           last_result: ${{ inputs.last_result }}
@@ -217,11 +226,12 @@ state:
       inputs:
         documents: ${{ states.execute.outputs.documents }}
         loop: ${{ transition.payload.?loop.orValue('work') }}
+        agreements: ${{ transition.payload.?agreements.orValue(states.execute.outputs.agreements) }}
         budget:
           stage: ${{ inputs.purpose }}
           counts:
             work: ${{ states.execute.outputs.used }}
-            consultation: ${{ states.execute.outputs.consulted }}
+            consultation: ${{ transition.payload.?consulted.orValue(states.execute.outputs.consulted) }}
             children: ${{ states.execute.outputs.children }}
             packages: ${{ states.execute.outputs.packages }}
           limits:
@@ -229,7 +239,7 @@ state:
             consultation: ${{ vars.limits.consultation }}
             children: ${{ vars.limits.children }}
             packages: ${{ vars.limits.packages }}
-        last_result: ${{ state_output('cycle','result',{}) }}
+        last_result: ${{ transition.payload.?problem.orValue(state_output('cycle','result',{})) }}
     done:
       inputs:
         finding: ${{ transition.payload.?finding.orValue(transition.payload.result) }}
@@ -247,7 +257,7 @@ outputs:
     stage: ${{ inputs.purpose }}
     counts:
       work: ${{ state_output('execute','used',0) }}
-      consultation: ${{ state_output('execute','consulted',0) }}
+      consultation: ${{ state_output('limit','result',{}).?budget.orValue({}).?counts.orValue({}).?consultation.orValue(state_output('execute','consulted',0)) }}
       children: ${{ state_output('execute','children',0) }}
       packages: ${{ state_output('execute','packages',0) }}
     limits:
@@ -268,10 +278,12 @@ outputs:
     ${{ state_exists('done') ? states.done.outputs.finding : states.limit.outputs.result }}
   sessions: >-
     ${{ jq([inputs.sessions,{
+      'presentation': state_output('cycle','presentation',inputs.sessions.?presentation.orValue({})),
+      'backstop': state_output('cycle','delegate',inputs.sessions.?backstop.orValue({})),
       'review_threads': state_output('cycle','threads',inputs.sessions.?review_threads.orValue({})),
       'review_reply': state_output('done','review_reply',state_output('execute','review_reply',inputs.review_reply)),
       'retry': state_output('done','retry',state_output('execute','retry',inputs.sessions.?retry.orValue({}))),
-      'agreements': state_output('execute','agreements',inputs.sessions.?agreements.orValue([])),
+      'agreements': state_output('limit','agreements',state_output('execute','agreements',inputs.sessions.?agreements.orValue([]))),
       vars.author: state_output('cycle','session',inputs.sessions[?vars.author].orValue({})),
       'assessor': state_output('cycle','assessor',inputs.sessions.?assessor.orValue({})),
       'packages': state_output('packages','session',inputs.sessions.?packages.orValue({})),
@@ -298,13 +310,15 @@ catch:
       finding: ${{ inputs.finding }}
       sessions: >-
         ${{ jq([inputs.sessions,{
+          'presentation': state_output('cycle','presentation',inputs.sessions.?presentation.orValue({})),
+          'backstop': state_output('cycle','delegate',inputs.sessions.?backstop.orValue({})),
           'review_threads': state_output('cycle','threads',inputs.sessions.?review_threads.orValue({})),
           'review_reply': state_output('execute','review_reply',inputs.review_reply),
           'retry': state_output('done','retry',state_output('execute','retry',inputs.sessions.?retry.orValue({}))),
-          'agreements': state_output('execute','agreements',inputs.sessions.?agreements.orValue([]))
+          'agreements': state_output('limit','agreements',state_output('execute','agreements',inputs.sessions.?agreements.orValue([])))
         }],'add') }}
 vars:
   author: '${{ inputs.purpose in [''direction'',''preparation''] ? ''planning'' : ''implementation'' }}'
   limits: >-
     ${{ jq([inputs.max_iterations,inputs.finding.?visit_allowance.orValue({})],
-      '.[1] as $grant | {work:(if .[0]>=1 then (.[0]|floor) else 4 end), consultation:3, children:3, packages:3} | with_entries(.value = ([.value, ($grant[.key] // 0)] | max))') }}
+      '.[1] as $grant | {work:(if .[0]>=1 then (.[0]|floor) else 4 end), consultation:10, children:3, packages:3} | with_entries(.value = ([.value, ($grant[.key] // 0)] | max))') }}

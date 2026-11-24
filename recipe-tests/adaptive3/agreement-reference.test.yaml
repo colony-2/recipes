@@ -1,0 +1,132 @@
+recipe: agreement-reference.yaml
+cases:
+- id: paraphrased-delivery-selects-the-recorded-terms
+  type: integration_case
+  runtime: &cells
+    cells: {root: {files: {README.md: Requester}}, storage: {files: {README.md: Owner}}}
+  inputs: &delivery
+    cell: storage
+    mode: delivery
+    request: Include the previous update.
+    thread: lease-time
+    agreements: &agreements
+    - {thread: other, cell: storage, assignment: Return the owner name., documents: {}, support: {}, work: {title: Owner name}}
+    - {thread: lease-time, cell: storage, assignment: Include the preceding update., documents: {}, support: {}, work: {title: Lease time}}
+  mocks:
+    ops:
+    - match: {op: recipes.run}
+      behavior:
+        mode: return
+        effects:
+          children:
+          - {recipe: child.yaml, cell: storage, inputs: {fail: false}, await: terminal, bind: delivery}
+        outputs_expr: '{"job_ids":[children.delivery]}'
+    - match: {op: command_execution}
+      repeat: true
+      behavior: {mode: return, outputs: {stdout: ''}}
+    - match: {op: recipe.await_result_soft}
+      behavior: {mode: passthrough}
+  assertions:
+  - type: cel_true
+    expr: >-
+      size(calls.filter(c,c.op=='recipes.run'))==1 && calls.exists(c,c.op=='recipes.run' && c.inputs.recipes[0].inputs.prompt=='Include the preceding update.') &&
+      outputs.agreements.size()==2 && outputs.agreement.thread=='lease-time' && outputs.agreement.job==outputs.result.child.job_id && outputs.started==0
+- id: retry-consumes-the-recorded-child
+  type: integration_case
+  runtime: *cells
+  inputs:
+    <<: *delivery
+    agreements: [{cell: storage, thread: lease-time, assignment: Include the preceding update., job: existing-job, documents: {}}]
+  mocks:
+    ops:
+    - match: {op: recipe.await_result_soft}
+      behavior: {mode: return, outputs: {job_id: existing-job, status: completed, outputs: {}, artifacts: {}}}
+    - match: {op: command_execution}
+      behavior: {mode: return, outputs: {stdout: ''}}
+  assertions:
+  - {type: cel_true, expr: "outputs.result.child.job_id=='existing-job' && outputs.started==0 && !calls.exists(c,c.op=='recipes.run')"}
+- id: superseded-reference-cannot-start-work
+  type: integration_case
+  runtime: *cells
+  inputs: {<<: *delivery, thread: superseded}
+  assertions: &no_delivery
+  - {type: cel_true, expr: "outputs.result.status=='changes' && outputs.started==0 && !calls.exists(c,c.op=='recipes.run')"}
+- id: advice-cannot-start-work
+  type: integration_case
+  runtime: *cells
+  inputs:
+    <<: *delivery
+    agreements: [{cell: storage, thread: lease-time, assignment: '', documents: {}}]
+  assertions: *no_delivery
+- id: receiver-must-agree-to-an-amendment
+  type: integration_case
+  runtime: *cells
+  inputs: {<<: *delivery, mode: negotiate, request: Retain ten years of updates.}
+  mocks:
+    ops:
+    - &asked
+      match: &agent {selector: 'nix:github:colony-2/c2ops/published#codex'}
+      behavior: {mode: return, outputs: {status: completed, output_schema_valid: true, response: {status: ready, summary: 'What retention is needed?', negotiation_reply: question, document_details: []}}}
+    - &passed
+      match: *agent
+      behavior: {mode: return, outputs: {status: completed, output_schema_valid: true, response: {status: passed, summary: Checked.}}}
+    - &reply
+      match: *agent
+      behavior: {mode: return, outputs: {status: completed, output_schema_valid: true, response: {status: reply, summary: Ten years.}}}
+    - *asked
+    - *passed
+    - match: *agent
+      behavior: {mode: return, outputs: {status: completed, output_schema_valid: true, response: {status: close, summary: We will keep retention local.}}}
+    - &command {match: {op: command_execution}, repeat: true, behavior: {mode: passthrough}}
+  assertions:
+  - {type: cel_true, expr: "outputs.agreements.exists(a,a.thread=='other') && !outputs.agreements.exists(a,a.thread=='lease-time' || (a.thread!='other' && size(a.assignment)>0)) && !calls.exists(c,c.op=='recipes.run')"}
+- id: nested-owner-agreement-returns-to-the-outer-requester
+  type: integration_case
+  runtime:
+    cells:
+      root: {files: {README.md: Requester}}
+      storage: {files: {README.md: Owner}}
+      indexer: {files: {README.md: Nested owner}}
+  inputs: {cell: storage, request: "Can the list give us the latest timestamp?", mode: advice}
+  mocks:
+    ops:
+    - match: *agent
+      behavior: {mode: return, outputs: {status: completed, output_schema_valid: true, response: {status: consult, summary: Ask the indexer., consultation: {cell: indexer, mode: negotiate, request: Please expose the last update.}}}}
+    - match: *agent
+      behavior: {mode: return, outputs: {status: completed, output_schema_valid: true, response: {status: ready, summary: Yes., assignment: Expose the last update., title: Lease time, document_details: []}}}
+    - *passed
+    - match: *agent
+      behavior: {mode: return, outputs: {status: completed, output_schema_valid: true, response: {status: agree, summary: That covers our caller.}}}
+    - match: *agent
+      behavior: {mode: return, outputs: {status: completed, output_schema_valid: true, response: {status: ready, summary: The indexer agreement covers it., document_details: []}}}
+    - *passed
+    - *command
+  assertions:
+  - type: cel_true
+    expr: >-
+      outputs.started==2 && outputs.result.summary=='The indexer agreement covers it.' && outputs.agreement=={} &&
+      outputs.agreements.size()==1 && size(outputs.agreements[0].thread)>0 && outputs.agreements[0].cell=='indexer' &&
+      calls.exists(c,c.cell=='storage' && c.op=='extension_execution' && has(c.inputs.inputs.prompt) && c.inputs.inputs.prompt.contains(outputs.agreements[0].thread))
+- id: four-unresolved-rounds-reach-the-delegate
+  type: integration_case
+  runtime: *cells
+  inputs: {cell: storage, request: Please add retention., mode: negotiate}
+  mocks:
+    ops: [*asked, *passed, *reply, *asked, *passed, *reply, *asked, *passed, *reply, *asked, *passed, *reply, *command]
+  assertions:
+  - {type: cel_true, expr: "outputs.result.loop=='consultation' && outputs.started==1 && calls.filter(c,c.cell=='storage' && c.op=='extension_execution' && has(c.inputs.inputs.prompt)).size()==8 && !calls.exists(c,c.op=='recipes.run')"}
+- id: nested-delivery-cannot-open-negotiation
+  type: integration_case
+  runtime: *cells
+  inputs: {cell: storage, request: "How does the list get its timestamp?", mode: advice}
+  mocks:
+    ops:
+    - match: *agent
+      behavior: {mode: return, outputs: {status: completed, output_schema_valid: true, response: {status: consult, summary: We need a change., consultation: {cell: root, mode: delivery, request: Add a timestamp.}}}}
+    - match: *agent
+      behavior: {mode: return, outputs: {status: completed, output_schema_valid: true, response: {status: ready, summary: The existing list has no timestamp., document_details: []}}}
+    - *passed
+    - *command
+  assertions:
+  - type: cel_true
+    expr: outputs.started==1 && outputs.agreements.size()==0 && outputs.result.summary=="The existing list has no timestamp." && !calls.exists(c,c.op=="recipes.run")

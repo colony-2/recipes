@@ -2,6 +2,7 @@ id: adaptive3-validate
 inputs:
   merge_queue: ${{ inputs.?merge_queue.orValue(false) }}
   plan: ${{ inputs.?plan.orValue({}) }}
+  presentation: ${{ inputs.?presentation.orValue({}) }}
   purpose: ${{ inputs.purpose }}
   request: ${{ inputs.request }}
   target_directory: ${{ inputs.?target_directory.orValue('.') }}
@@ -26,7 +27,11 @@ state:
         title: ${{ inputs.work.?title.orValue('') }}
         primary: ${{ inputs.work.?primary.orValue('') }}
         document_details: ${{ inputs.work.?document_details.orValue([]) }}
-        require_document_details: ${{ inputs.purpose != 'integration' && !vars.negotiation_context_only }}
+        require_document_details: >-
+          ${{ inputs.purpose != 'integration' && (nonempty(inputs.work.?primary.orValue('')) ||
+            !(vars.short_direction || inputs.purpose == 'implementation' ||
+              (inputs.purpose == 'advice' && inputs.documents.all(k,k.startsWith('review/negotiations/'))))) }}
+        presentation: ${{ inputs.presentation }}
         preparation_packet: ${{ inputs.purpose == 'preparation' }}
         check: review_files
       transitions:
@@ -35,7 +40,7 @@ state:
         payload:
           result: ${{ outputs.result }}
       - to: done
-        when: size(vars.packet_findings)>0
+        when: '!vars.short_direction && size(vars.packet_findings)>0'
         payload:
           result: ${{ {'status':'changes','summary':jq(vars.packet_findings,'join("\n")')} }}
       - to: prepare
@@ -119,12 +124,13 @@ state:
         request: ${{ inputs.request }}
         documents: ${{ jq([inputs.finding.?amendment.orValue({}).?documents.orValue({}),inputs.documents,jq(inputs.plan.?documents.orValue({}),'with_entries(.key = "approved/" + .key | .value.name = .key)'),states.files.outputs.artifacts,state_output('verify','artifacts',{}),state_output('candidate','artifacts',{}),states.specialists.outputs.artifacts,inputs.review_reply.?documents.orValue({})],
           'add') }}
-        document_details: ${{ inputs.work.?document_details.orValue([]) }}
+        document_details: ${{ jq(states.files.outputs.document_metadata,'to_entries | map(.value + {document_id:.key})') }}
         checks: ${{ {'files':states.files.outputs.result,'verify':state_output('verify','result',{}),'specialists':states.specialists.outputs.result}
           }}
         guidance: ${{ inputs.settings.?prompt_additions.orValue({})[?vars.policies[inputs.purpose].guidance].orValue('')
           }}
         finding: ${{ inputs.finding }}
+        approval_guidance: ${{ inputs.plan.?human.orValue({}).?response.orValue({}).?feedback.orValue('') }}
         review_reply: ${{ inputs.review_reply }}
         session: ${{ inputs.session }}
         agent_settings: ${{ inputs.agent_settings }}
@@ -140,6 +146,7 @@ state:
           document_details: ${{ inputs.document_details }}
           guidance: ${{ inputs.guidance }}
           finding: ${{ inputs.finding }}
+          approval_guidance: ${{ inputs.approval_guidance }}
           review_reply: ${{ inputs.review_reply }}
       - id: agent
         include: ./agent.yaml
@@ -213,9 +220,8 @@ outputs:
 vars:
   # Advice and implementation may finish without authoring a review document.
   # Attached negotiation history still goes through the file and link checks.
-  negotiation_context_only: >-
-    ${{ inputs.purpose in ['advice','implementation'] && !nonempty(inputs.work.?primary.orValue(''))
-      && size(inputs.documents)>0 && inputs.documents.all(k,k.startsWith('review/negotiations/')) }}
+  short_direction: >-
+    ${{ inputs.purpose == 'direction' && inputs.work.?delivery_route.orValue('') == 'short' && inputs.work.?work_kind.orValue('') != 'explanation' }}
   packet_findings: >-
     ${{ inputs.purpose in ['direction','outcome'] && (!nonempty(inputs.work.?primary.orValue('')) || !nonempty(inputs.work.?title.orValue('')))
       ? ['Provide the primary review document and a descriptive review title.']

@@ -58,10 +58,7 @@ references from that version's form. A file can keep its name and change its
 contents. Approval records the submitted request's receipt, revision and reviewed
 document references.
 
-The next form includes the ordered discussion and uploaded notes. Each turn
-records the revision it belongs to. Answering a question or clarifying where a
-correction belongs keeps the revision open. Presenting the author's revised work
-increments the revision and asks for a fresh decision.
+Each presentation is one native request, and each human submission has its own receipt. Read them in job order. Adaptive3 leaves the review/v2 `conversation` array empty. A clarification becomes the next form’s question with the same document revision. Carry relevant uploaded notes by their stored references.
 
 When calling `adaptive3/review.yaml` again, pass its previous `threads` output
 to the next call's `threads` input. The `decision` key selects the thread. A new
@@ -76,7 +73,9 @@ edit to a package proposal returns it for approval before tools run.
 
 At plan review, **Review before Complete** starts work and brings the result
 back for your approval. **Take to Completion** lets the job finish or merge once
-independent review confirms that the result meets the approved plan.
+independent review confirms that the result meets the approved plan. Either choice accepts
+an optional comment. The author and reviewer receive your words with the approval.
+For example, choose **Review before Complete** and add “Show me the empty state.”
 
 New jobs require compatible published Cortex reader support. Existing frozen legacy
 forms retain their reader behavior. Backstop no longer offers model, reasoning or
