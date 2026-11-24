@@ -4,7 +4,7 @@ A person can approve a plan once and still ask to see the result. If the same pl
 
 | What the person or agent does | What happens now |
 | --- | --- |
-| Replies to a review | The next question or answer is the review message. Questions keep the document version. Edited attachments advance the version under the same review ID. Both approval choices accept optional guidance. |
+| Replies to a review | Questions and edits stay in the same thread. The title names the proposal. The next message answers the question or explains the edit. Both approval choices accept optional guidance. |
 | Requests work an owner has agreed to | The author selects the recorded negotiation by its report folder ID. Delivery uses the accepted assignment and remembers the child job. Nested owners return their agreement to the requester. |
 | Needs information from another cell | The guide gives examples for reading available source, asking about a private interface, requesting a change and reporting a suspected bug. A conversation can end with the answer. |
 | Hits a consultation or repair limit | A conversation has four rounds by default. A phase can start ten distinct conversations, including nested ones. At a limit the delegate sees which request stalled. It can return one specific local repair after ordinary returns are spent. |

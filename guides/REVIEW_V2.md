@@ -52,11 +52,10 @@ decision each have their own thread.
 | Revised plan presented | A | 2 | Third request |
 | Outcome presented | B | 1 | Fourth request |
 
-Group the job's native requests by `review_id` to find a decision. Group those
-requests by `revision` to find each version's documents. Read the producer
-references from that version's form. A file can keep its name and change its
-contents. Approval records the submitted request's receipt, revision and reviewed
-document references.
+The review heading shows the title supplied by the author. When the plan changes,
+the next message tells the person what changed and what they need to decide.
+The numeric `revision` is internal to the thread. Each request carries the exact
+document references shown, and the approval receipt identifies that request.
 
 Each presentation is one native request, and each human submission has its own receipt. Read them in job order. Adaptive3 leaves the review/v2 `conversation` array empty. A clarification becomes the next form’s question with the same document revision. Carry relevant uploaded notes by their stored references.
 

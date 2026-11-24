@@ -398,7 +398,9 @@ test.describe.serial('unchanged adaptive3 discussion and correction routing',()=
   expect(stale.status()).toBe(409);
   await page.goto(`/project/${tenant}/reviews/${jobID}`);
   await expect(approve).toBeVisible();
-  await expect(page.getByRole('heading',{name:'Revised saved drafts · v2',exact:true})).toBeVisible();
+  expect(revised.request.title).toBe(first.request.title);
+  await expect(page.getByRole('heading',{name:'Saved drafts',exact:true})).toBeVisible();
+  await expect(page.getByText('I clarified how drafts are restored when you reopen the app. Shall we proceed?',{exact:true})).toBeVisible();
   expect(revised.request.conversation).toEqual([]);
   await expect(page.getByText('Revised original after explicit correction.',{exact:true})).toBeVisible();
   expect(await (await page.request.get(originalDocument.href)).text()).toContain('Original bytes 日本語.');

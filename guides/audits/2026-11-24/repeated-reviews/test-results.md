@@ -16,6 +16,8 @@ The checkout started at `2aa5580`. The tests use the repository’s c2j pin, `so
 
 Two Chromium checks passed against Cortex checkout `c379635`. Both opened the original and revised attachments, followed two questions and a requested edit, and recorded an approval comment. One restarted the worker and reloaded the page between replies. The native receipt, selected revision and uploaded notes survived.
 
+After removing the title suffix, both browser checks displayed “Saved drafts” on the revised plan and the explanation in the next message. The three repeat-decision cases and the clarification case passed with the original thread and receipt behavior.
+
 The real Codex runner completed two read-only answering turns against a local scripted provider. It resumed the same session and read the original document and the earlier upload on both turns.
 
 All 40 Python validator tests passed. The purpose-document checks and the recipe timeout check passed. The timeout check covered 141 workflow and example files.

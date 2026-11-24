@@ -241,6 +241,7 @@ All filenames below are relative to `recipe-tests/adaptive3/`.
 | Behavior | Filename | Priority | Check |
 | --- | --- | --- | --- |
 | The delegate can reuse the approved plan, return a repair, or ask about a changed promise. | `repeat-decision.test.yaml` | Critical | Integration, c2j |
+| A revised plan shows the author’s title and explains the change in its message. Approval identifies the message and attachments the person reviewed. | `repeat-decision.test.yaml`, `consumer/review-v2.spec.ts` | High | Integration, c2j and Chromium |
 | Approval guidance reaches the author and reviewer. A request for final review still stops before completion. | `build.test.yaml` | Critical | Integration, c2j |
 | A nested owner agreement can be delivered using its reference and retried using the existing child. Unaccepted or superseded terms cannot start a child. | `agreement-reference.test.yaml` | Critical | Integration, c2j |
 | Ten distinct threads can run during a phase. Four unresolved rounds in one thread return to the delegate. | `limits.test.yaml`, `agreement-reference.test.yaml` | High | Integration, c2j |
