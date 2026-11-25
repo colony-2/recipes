@@ -16,6 +16,10 @@ inputs:
   target_directory: ${{ inputs.?target_directory.orValue('.') }}
   documents: ${{ inputs.?documents.orValue({}) }}
   finding: ${{ inputs.?finding.orValue({}) }}
+  withdrawal_sources: ${{ inputs.?withdrawal_sources.orValue([]) }}
+  changed: ${{ inputs.?changed.orValue(false) }}
+  measurements: ${{ inputs.?measurements.orValue({}) }}
+  history: ${{ inputs.?history.orValue({}) }}
   local_repair: ${{ inputs.?local_repair.orValue(false) }}
   review_reply: ${{ inputs.?review_reply.orValue({}) }}
   settings: ${{ inputs.?settings.orValue({}) }}
@@ -26,11 +30,15 @@ state:
   states:
     context:
       inputs:
-        resumed_repair: ${{ inputs.purpose == 'implementation' && size(inputs.session)>0 && inputs.local_repair }}
+        withdrawal_sources: ${{ inputs.withdrawal_sources }}
+        resumed_repair: ${{ inputs.purpose in ['implementation','direction','preparation'] && size(inputs.session)>0 && inputs.local_repair }}
         purpose: ${{ inputs.purpose }}
         request: ${{ inputs.request }}
         target_directory: ${{ inputs.target_directory }}
         finding: ${{ inputs.finding }}
+        history: ${{ jq(inputs.history,'if length>0 then {question,reply:(.reply | {direction,feedback}),actor:.receipt.actor.kind,submission:.receipt.submission_id} else {} end') }}
+        changed: ${{ inputs.changed }}
+        choice: ${{ inputs.plan.?human.orValue({}).?response.orValue({}).?direction.orValue('') }}
         approval_guidance: ${{ inputs.plan.?human.orValue({}).?response.orValue({}).?feedback.orValue('') }}
         review_reply: ${{ inputs.review_reply }}
         settings: ${{ inputs.settings }}
@@ -44,16 +52,22 @@ state:
           request: ${{ inputs.request }}
           target_directory: ${{ inputs.target_directory }}
           finding: ${{ inputs.finding }}
+          history: ${{ inputs.history }}
+          changed: ${{ inputs.changed }}
+          choice: ${{ inputs.choice }}
           approval_guidance: ${{ inputs.approval_guidance }}
           review_reply: ${{ inputs.review_reply }}
           guidance: ${{ inputs.settings.?prompt_additions.orValue({})[?{'direction':'design','preparation':'test_plan','implementation':'implementation','outcome':'','integration':'','advice':'design'}[inputs.purpose]].orValue('')
             }}
       outputs:
         schema: >-
-          ${{ inputs.purpose == 'implementation' ? jq(sequence.schemas.outputs,
-            '.commit as $commit | .execute | .properties.status.enum += ["repair"] | .properties.commit = $commit | .required += ["commit"]') : jq(sequence.schemas.outputs.execute, '.properties.status.enum -= ["revise_plan"]') }}
+          ${{ jq(inputs.purpose == 'implementation' ? jq(sequence.schemas.outputs,
+            '.commit as $commit | .execute | .properties.status.enum += ["repair"] | .properties.commit = $commit | .required += ["commit"]') : jq(sequence.schemas.outputs.execute, '.properties.status.enum -= ["revise_plan"]'),
+            size(inputs.withdrawal_sources)>0 ? '.properties.status.enum += ["withdrawn"]' : '.') }}
         task: >-
-          ${{ inputs.resumed_repair ? sequence.prompts.outputs.repair : sequence.prompts.outputs.task }}
+          ${{ (inputs.resumed_repair ? (inputs.purpose == 'implementation' ? sequence.prompts.outputs.repair : sequence.prompts.outputs.planning_repair) : sequence.prompts.outputs.task)
+            + (inputs.purpose in ['direction','preparation','outcome'] ? '\n\n' + sequence.prompts.outputs.reader : '')
+            + (size(inputs.withdrawal_sources)>0 ? '\nIf the person explicitly withdrew this entire assignment, return withdrawn and cite their words. A cancelled child alone leaves the assignment open. Cite the review or child result in this turn.' : '') }}
       transitions:
       - to: queue
         when: inputs.purpose == 'integration' && (has(inputs.finding.queue_recovery) || (inputs.queue_history.?status.orValue('')=='stuck' && inputs.queue_history.?receiver.orValue(null)!=null))
@@ -133,6 +147,8 @@ state:
         schema: ${{ states.context.outputs.schema }}
         documents: >-
           ${{ jq([inputs.documents,
+            inputs.measurements,
+            jq(inputs.history,'((.documents // {}) + (.notes // {})) | with_entries(.key = "presented/" + .key | .value.name = .key)'),
             jq(inputs.plan.?documents.orValue({}),'with_entries(.key = "approved/" + .key | .value.name = .key)'),
             inputs.finding.?documents.orValue({}), inputs.review_reply.?documents.orValue({}),
             inputs.finding.?errors.orValue({}), state_output('before_design','artifacts',{}), state_output('refresh','artifacts',{})], 'add') }}

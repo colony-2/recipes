@@ -1,0 +1,102 @@
+recipe: cycle.yaml
+cases:
+- id: compare-the-revised-plan-with-the-packet-the-person-saw
+  type: integration_case
+  inputs:
+    purpose: preparation
+    request: Fix the wrapper.
+    finding: {summary: A reviewer says the wrapper is missing.}
+    threads:
+      plan:
+        presented:
+          question: Approve the wrapper change?
+          reply: {direction: reply, feedback: Keep the existing command.}
+          documents:
+            review/acceptance.md: {kind: value, name: review/acceptance.md, format: text, value: Original human-visible commands.}
+          notes:
+            feedback/prior/0/note.md: {kind: value, name: feedback/prior/0/note.md, format: text, value: Keep this exact command.}
+  runtime: {}
+  mocks:
+    ops:
+    - &stop
+      match: &agent {selector: 'nix:github:colony-2/c2ops/published#codex'}
+      behavior: {mode: return, outputs: {status: completed, output_schema_valid: true, response: {status: stuck, summary: End of fixture.}}}
+  assertions:
+  - type: cel_true
+    expr: >-
+      calls.exists(c,has(c.inputs.inputs.prompt) && c.inputs.inputs.prompt.contains('Approve the wrapper change?')
+      && c.inputs.inputs.prompt.contains('Keep the existing command.') && c.artifacts['work/presented/review/acceptance.md']=='Original human-visible commands.'
+      && c.artifacts['work/presented/feedback/prior/0/note.md']=='Keep this exact command.')
+- id: a-withdrawal-in-the-child-review-can-close-the-assignment
+  type: integration_case
+  inputs:
+    purpose: preparation
+    request: Add native checks to this cell.
+    finding: {children: [{status: cancelled, job_id: scope-review, message: 'Cortex cancellation by requester. We are deprecating this cell, no need to implement.'}]}
+  runtime: {}
+  mocks:
+    ops:
+    - match: *agent
+      behavior: {mode: return, outputs: {status: completed, output_schema_valid: true, response: {status: withdrawn, summary: The requester withdrew this assignment.}}}
+    - match: *agent
+      behavior: {mode: return, outputs: {status: completed, output_schema_valid: true, response: {status: withdrawn, source: 0, summary: Withdrawn. The native checks remain unrun.}}}
+  assertions:
+  - {type: cel_true, expr: "outputs.result.status=='withdrawn' && outputs.result.source.job_id=='scope-review' && size(reviews)==0"}
+- id: a-cancelled-child-alone-leaves-the-assignment-open
+  type: integration_case
+  runtime: {}
+  inputs:
+    purpose: implementation
+    request: Add native checks.
+    finding: {children: [{status: cancelled, job_id: probe, message: ''}]}
+  mocks: {ops: [*stop]}
+  assertions:
+  - {type: cel_true, expr: "outputs.result.status=='stuck' && !calls.exists(c,has(c.inputs.inputs.output) && 'withdrawn' in c.inputs.inputs.output.schema.properties.status.enum)"}
+- id: take-to-completion-with-missing-hosted-evidence
+  type: integration_case
+  runtime: {}
+  inputs:
+    purpose: outcome
+    request: Verify the candidate on both hosted platforms.
+    plan: {receipt: {submission_id: full}, human: {response: {direction: accept_fully}}}
+  mocks:
+    ops:
+    - match: *agent
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            status: ready
+            title: Platform checks
+            summary: Linux passed. Darwin has no result.
+            primary: review/result.md
+            document_details: [{document_id: review/result.md, role: primary, order: 0, title: Platform results, description: See the attempted checks.}]
+        artifacts: {review/result.md: 'Linux passed. Darwin has no result.'}
+    - match: *agent
+      behavior: {mode: return, outputs: {status: completed, output_schema_valid: true, response: {status: repair_implementation, summary: Run the required Darwin check on the candidate.}}}
+    - match: {op: command_execution}
+      repeat: true
+      behavior: {mode: passthrough}
+  assertions:
+  - type: cel_true
+    expr: >-
+      outputs.result.status=='changes' && outputs.result.stage=='implementation' && size(reviews)==0 &&
+      calls.exists(c,c.node_path.contains('/assess/') && has(c.inputs.inputs.output) && !('passed' in c.inputs.inputs.output.schema.properties.status.enum))
+- id: an-internal-packet-isnt-the-persons-first-plan
+  type: integration_case
+  runtime: {}
+  inputs:
+    purpose: preparation
+    request: Propose the change.
+    threads:
+      plan:
+        documents:
+          review/one-pager.md: {kind: value, name: review/one-pager.md, format: text, value: Internal draft.}
+  mocks: {ops: [*stop]}
+  assertions:
+  - type: cel_true
+    expr: >-
+      calls.exists(c,has(c.inputs.inputs.prompt) && c.inputs.inputs.prompt.contains('first presentation') &&
+      (!has(c.artifacts) || !c.artifacts.exists(k,k.startsWith('work/presented/'))))

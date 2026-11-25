@@ -21,7 +21,7 @@ A session carries an agent’s working context. Pilot two author sessions. One h
 - Carry the requester’s words and their source. Identify a parent agent’s proposal, a reviewer’s finding or an unknown origin. A child can question an assumption in its assignment.
 - Ask the person to approve the behavior and name any exact method they must decide on. Examples, suggested tests and design choices stay flexible unless explicitly adopted or required by a cell contract.
 - The author can change the design or proof method while preserving the promised behavior. Repetition in plans, tests and reviews adds no commitment.
-- A blocking finding names an agreed behavior at risk, an applicable contract or an observed defect. Withdraw it when its premise falls away.
+- A blocking finding names an agreed behavior at risk, an applicable contract or an observed defect. The author can point to existing evidence. Check the cited version and withdraw a mistaken finding without asking for an edit.
 - Ask for proof during planning when the result could change the decision or the check is explicitly due then. Otherwise verify it during implementation.
 - When the person corrects an assumption, update the handoff. Retire checks and waits that depended on it. Keep the history of each attempt and any commitments that still apply.
 
@@ -61,7 +61,8 @@ If a check exposes a real regression, repair it. If a proposed change would weak
 
 Validate each promise when the inputs it depends on are ready. Run cheap scope checks after preparation can change the candidate and before expensive verification. Keep Outcome reporting in Outcome. A wording fix needs a document check. Reuse verification when the candidate, base and check inputs match. Return the original diagnostic to the owner who can act. [Verification hooks](../BUILD_HOOKS_USER_GUIDE.md#start-with-verification)
 
-For standard delivery, present one plan at Preparation. Open with `1P: <what is proposed>`, then Design and Tests. Put relevant negotiation summaries, transcripts and other evidence after those three. Use the same document shapes across revisions so the person knows where to look. They can request final review or approve completion after independent verification against the plan. A bounded local change can skip the 1P and design, go straight to Implementation and get human approval at Outcome. Preserve the original decision, attachments and receipt. [Review contract](../REVIEW_V2.md)
+For standard delivery, present one plan at Preparation. Open with `1P: <what is proposed>`, then Design and Tests. Put relevant negotiation summaries, transcripts and other evidence after those three. Use the same document shapes across revisions so the person knows where to look. They can request final review or approve completion after independent verification against the plan. A bounded local change can skip the 1P and design, go straight to Implementation and get human approval at Outcome. Compare a revision with the last packet that person saw. Keep the original decision, attachments and receipt.
+Take to Completion covers merge once the candidate passes its required checks. Run any explicitly requested fresh-consumer check against the landed artifact and record the result. [Review contract](../REVIEW_V2.md)
 
 ## Consultation, negotiation and delivery
 
@@ -77,7 +78,7 @@ For “how does this work?”, read the source for the version your project uses
 
 **Delivery** starts once both sides agree. Record the accepted terms once. Pass the reference through handoffs, including nested consultations. The implementer checks that the work fits the agreement and the requester’s decision. A paraphrase keeps the same agreement. If the work changes materially, the requester reopens negotiation. Start the child from the recorded terms and reuse its job ID on retry. Wait only on dependencies needed to finish. [Child jobs and waits](../ops/RUN_RECIPE.md)
 
-Each cell owns the behavior it promises callers. When several cells must change in order, the provider states the constraint. “We can read both formats. We can remove the old reader once all writers switch.” A coordinator such as Root arranges the writer changes and confirms when the provider can remove the old reader in a separate change. [Deprecation](../../AGENTS.md#deprecation-workflow)
+Each cell owns the behavior it promises callers. When several cells must change in order, the provider states the constraint. “We can read both formats. We can remove the old reader once all writers switch.” A coordinator shares applicable human decisions and their receipts with the affected owners. A coordinator such as Root arranges the writer changes and confirms when the provider can remove the old reader in a separate change. [Deprecation](../../AGENTS.md#deprecation-workflow)
 
 ## Iteration and recovery
 

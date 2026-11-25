@@ -87,6 +87,10 @@ class Validators(unittest.TestCase):
         result = check()
         self.assertEqual(result['status'], 'passed')
         self.assertEqual(result['document_metadata'][report]['order'], 2)
+        self.put(report, '# Open negotiation\n\n## Original request\n\nRetain one more save.\n')
+        open_report = check()['document_metadata'][report]
+        self.assertTrue(open_report['title'].startswith('Open negotiation'))
+        self.assertIn('still need to resolve', open_report['description'])
         self.assertEqual(result['document_metadata'][brief]['title'], '1P: Restore a version')
         self.put(brief, '# 1P: Restore the prior save\n\n' + links + ' [Request](negotiations/storage/report.md)')
         self.assertEqual(check()['document_metadata'][brief]['title'], '1P: Restore the prior save')

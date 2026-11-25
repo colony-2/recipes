@@ -40,8 +40,7 @@ state:
           artifacts: ${{ jq(inputs.result,'((.artifacts // {}) + (.outputs.artifact_refs // {})) | with_entries(select(((.key|startswith("_c2j/")) and ((.key|endswith(".log")) or (.key|endswith(".txt"))))
             or (.key|startswith("error/")) or (.key|startswith("errors/"))))') }}
       outputs:
-        result: ${{ {'job_id':inputs.result.job_id,'status':inputs.result.status,'message':inputs.result.?failure_message.orValue(''),'summary':jq(inputs.result,'(.outputs.summary
-          // "") | if type == "string" then .[:2000] else "" end')} }}
+        result: ${{ jq(inputs.result,vars.child_result) }}
         documents: ${{ jq(inputs.result,'(.outputs.artifact_refs // .artifacts // {}) | with_entries(select((.key|startswith("_c2j/"))
           or (.key|startswith("error/")) or (.key|startswith("errors/")) | not))') }}
         errors: ${{ sequence.errors.outputs.documents }}
@@ -58,6 +57,13 @@ outputs:
   documents: '${{ jq(state_exists(''collect'') ? states.collect.runs.map(r,r.outputs) + [states.collect.outputs]
     : [],vars.documents) }}'
 vars:
+  child_result: |
+    {job_id, status, message:(.failure_message // ""),
+     summary:((.outputs.summary // "") | if type == "string" then .[:2000] else "" end)} +
+    (if .outputs.withdrawal then {withdrawal:.outputs.withdrawal} else {} end) +
+    (.outputs.native as $reply |
+     if $reply.receipt.submission_id and $reply.receipt.actor.kind == "human" and ($reply.response.feedback // "") != ""
+     then {review_reply:{receipt:$reply.receipt, message:$reply.response.feedback}} else {} end)
   documents: |-
     map(. as $child | (.documents | with_entries(
      select(.key != "__git_state_thin_pack__" and .key != "diff_from_base.diff" and .key != "diff_from_parent.diff")

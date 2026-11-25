@@ -29,8 +29,19 @@ inputs:
   approval: ${{ inputs.?approval.orValue({}) }}
   agent_settings: ${{ inputs.?agent_settings.orValue({}) }}
 state:
-  initial: execute
+  initial:
+  - to: candidate
+    when: inputs.purpose == 'outcome'
+  - to: execute
+    when: 'true'
   states:
+    candidate:
+      include: ./tools.yaml
+      inputs:
+        check: approved_change
+      transitions:
+      - to: execute
+        when: 'true'
     execute:
       include: ./execute.yaml
       inputs:
@@ -45,6 +56,11 @@ state:
         queue_history: ${{ inputs.queue_history }}
         require_verification: ${{ inputs.require_verification }}
         plan: ${{ inputs.plan }}
+        withdrawal_sources: ${{ vars.withdrawal_sources }}
+        history: >-
+          ${{ inputs.threads[?vars.decision[?inputs.purpose].orValue(state_output('candidate','result',{}).?changed.orValue(false) ? 'merge' : 'outcome')].orValue({}).?presented.orValue({}) }}
+        changed: ${{ state_output('candidate','result',{}).?changed.orValue(false) }}
+        measurements: ${{ jq(state_output('candidate','artifacts',{}),'with_entries(select(.key == "error/change-counts.tsv"))') }}
         purpose: ${{ inputs.purpose }}
         request: ${{ inputs.request }}
         target_directory: ${{ inputs.target_directory }}
@@ -58,12 +74,14 @@ state:
       transitions:
       - to: children
         when: size(outputs.jobs)>0
+      - to: confirm_withdrawal
+        when: outputs.response.status == 'withdrawn' && size(vars.withdrawal_sources)>0
       - to: done
         when: inputs.purpose == 'implementation' && outputs.response.status == 'repair'
         payload:
           result: >-
             ${{ {'status':inputs.finding.?author_retry.orValue(false) ? 'stuck' : 'changes',
-              'author_retry':true,'summary':outputs.response.summary,'errors':outputs.artifacts} }}
+              'author_retry':true,'source':'implementation author','summary':outputs.response.summary,'errors':jq(outputs.artifacts,'with_entries(select(.key | startswith("error/")))')} }}
           documents: ${{ outputs.documents }}
           session: ${{ outputs.session }}
       - to: done
@@ -86,9 +104,48 @@ state:
           result: ${{ outputs.response }}
           documents: ${{ outputs.documents }}
           session: ${{ outputs.session }}
+    confirm_withdrawal:
+      include: ./agent.yaml
+      inputs:
+        prompt: |-
+          Act as the requester’s delegate. The author thinks this assignment was withdrawn.
+          Assignment: {{ inputs.request }}
+          Author: {{ states.execute.outputs.response.summary }}
+          Recorded replies: ${{ json_stringify(vars.withdrawal_sources) }}
+          Close only if a person's actual words explicitly withdraw this assignment. Check the original job.
+          For a reply, verify its words and human submission in input history. For a cancellation, read its recorded reason.
+          Continue if the source or scope is uncertain.
+          Cancelling a child, declining an option or withdrawing only one sibling leaves other work open.
+          Select the source index. State what was withdrawn and what remains unverified.
+        session: ${{ inputs.delegate }}
+        read_only: true
+        agent_settings: ${{ inputs.agent_settings }}
+        schema:
+          type: object
+          additionalProperties: false
+          properties:
+            status: {type: string, enum: [withdrawn, continue]}
+            source: {type: integer, minimum: 0}
+            summary: {type: string, minLength: 1}
+          required: [status, source, summary]
+      transitions:
+      - to: done
+        when: outputs.valid_response && outputs.response.status == 'withdrawn' && outputs.response.source < size(vars.withdrawal_sources)
+        payload:
+          result: ${{ {'status':'withdrawn','summary':outputs.response.summary,'source':vars.withdrawal_sources[outputs.response.source]} }}
+          documents: ${{ states.execute.outputs.documents }}
+          session: ${{ states.execute.outputs.session }}
+      - to: done
+        when: 'true'
+        payload:
+          result: ${{ {'status':'changes','summary':outputs.response.summary} }}
+          documents: ${{ states.execute.outputs.documents }}
+          session: ${{ states.execute.outputs.session }}
     validate:
       include: ./validate.yaml
       inputs:
+        measured: >-
+          ${{ state_exists('candidate') ? states.candidate.outputs : {} }}
         presentation: ${{ inputs.presentation }}
         merge_queue: ${{ inputs.merge_queue }}
         plan: ${{ inputs.plan }}
@@ -120,7 +177,7 @@ state:
       - to: done
         when: 'true'
         payload:
-          result: '${{ jq([jq([outputs.result,{''errors'':outputs.artifacts}], ''add''),states.execute.outputs.response.?publication.hasValue()
+          result: '${{ jq([jq([outputs.result,{''source'':outputs.?source.orValue(''validation''),''errors'':outputs.artifacts}], ''add''),states.execute.outputs.response.?publication.hasValue()
             ? {''publication'':states.execute.outputs.response.publication} : {}], ''add'') }}'
           documents: ${{ states.execute.outputs.documents }}
           session: ${{ states.execute.outputs.session }}
@@ -142,7 +199,7 @@ state:
       - to: done
         when: 'true'
         payload:
-          result: ${{ jq([json_parse(outputs.stdout),{'status':'accepted','authorization':'preparation','summary':states.validate.outputs.result.summary}],'add | del(.documents,.patch)') }}
+          result: ${{ jq([json_parse(outputs.stdout),{'status':'accepted','authorization':'preparation','summary':states.validate.outputs.result.summary},jq(states.validate.outputs.result,'{post_merge_check} | with_entries(select(.value != null))')],'add | del(.documents,.patch)') }}
           documents: ${{ states.execute.outputs.documents }}
           session: ${{ states.execute.outputs.session }}
     review:
@@ -170,7 +227,7 @@ state:
       - to: done
         when: 'true'
         payload:
-          result: '${{ jq([outputs.result,states.execute.outputs.response.?publication.hasValue() ? {''publication'':states.execute.outputs.response.publication}
+          result: '${{ jq([outputs.result,jq(states.validate.outputs.result,''{post_merge_check} | with_entries(select(.value != null))''),states.execute.outputs.response.?publication.hasValue() ? {''publication'':states.execute.outputs.response.publication}
             : {}], ''add'') }}'
           documents: ${{ states.execute.outputs.documents }}
           session: ${{ outputs.session }}
@@ -235,14 +292,16 @@ outputs:
   presentation: >-
     ${{ size(state_output('validate','document_metadata',{})) > 0 ?
       {'documents':states.execute.outputs.documents,'document_metadata':states.validate.outputs.document_metadata} : inputs.presentation }}
-  delegate: ${{ state_output('review','delegate',inputs.delegate) }}
+  delegate: ${{ state_output('confirm_withdrawal','session',state_output('review','delegate',inputs.delegate)) }}
   threads: ${{ state_output('review','threads',inputs.threads) }}
   review_reply: ${{ state_output('review','review_reply',inputs.review_reply) }}
   finding: ${{ state_output('review','finding',states.done.outputs.result) }}
   repair: ${{ states.done.outputs.repair }}
   retry: ${{ states.done.outputs.retry }}
   merge_state: ${{ state_output('execute','merge_state',inputs.merge_state) }}
-  result: ${{ states.done.outputs.result }}
+  result: >-
+    ${{ states.done.outputs.result.status == 'stuck' && size(vars.withdrawal_sources)>0
+      ? jq([states.done.outputs.result,{'withdrawal_sources':vars.withdrawal_sources}],'add') : states.done.outputs.result }}
   documents: ${{ states.done.outputs.documents }}
   session: '${{ size(states.done.outputs.session)>0 ? states.done.outputs.session : inputs.session }}'
   specialists: ${{ state_output('validate','specialists',inputs.specialists) }}
@@ -251,6 +310,17 @@ outputs:
   work: ${{ state_output('execute','response',{}) }}
   patch: ${{ state_output('validate','patch',null) }}
   candidate: ${{ state_output('validate','candidate',{}) }}
+vars:
+  decision: {preparation: plan, direction: answer, advice: '', implementation: '', integration: ''}
+  withdrawal_sources: >-
+    ${{ jq([inputs.finding, inputs.review_reply.?submission.orValue({}), context.workflow.job_id],
+    '.[0] as $finding | .[1] as $reply | .[2] as $job |
+    [if $reply.receipt.actor.kind == "human" and ($reply.receipt.submission_id // "") != "" and ($reply.response.feedback // "") != ""
+    then {job_id:$job, receipt:$reply.receipt, message:$reply.response.feedback} else empty end] +
+    [(($finding.children // []) + [$finding.consultation.child // empty])[] |
+    if .status == "cancelled" and (.message // "") != "" then {job_id,message}
+    elif .review_reply then {job_id} + .review_reply
+    elif .withdrawal.status == "withdrawn" and .withdrawal.source.job_id then .withdrawal.source else empty end]') }}
 catch:
 - when: failure.kind != 'cancellation'
   to: failed

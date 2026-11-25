@@ -1,5 +1,6 @@
 id: adaptive3-validate
 inputs:
+  measured: ${{ inputs.?measured.orValue({}) }}
   merge_queue: ${{ inputs.?merge_queue.orValue(false) }}
   plan: ${{ inputs.?plan.orValue({}) }}
   presentation: ${{ inputs.?presentation.orValue({}) }}
@@ -46,7 +47,7 @@ state:
       - to: prepare
         when: inputs.purpose == 'implementation'
       - to: candidate
-        when: inputs.purpose == 'outcome'
+        when: inputs.purpose == 'outcome' && size(inputs.measured)==0
       - to: specialists
         when: 'true'
     prepare:
@@ -122,9 +123,11 @@ state:
       inputs:
         purpose: ${{ inputs.purpose }}
         request: ${{ inputs.request }}
-        documents: ${{ jq([inputs.finding.?amendment.orValue({}).?documents.orValue({}),inputs.documents,jq(inputs.plan.?documents.orValue({}),'with_entries(.key = "approved/" + .key | .value.name = .key)'),states.files.outputs.artifacts,state_output('verify','artifacts',{}),state_output('candidate','artifacts',{}),states.specialists.outputs.artifacts,inputs.review_reply.?documents.orValue({})],
+        documents: ${{ jq([inputs.finding.?amendment.orValue({}).?documents.orValue({}),inputs.documents,jq(inputs.plan.?documents.orValue({}),'with_entries(.key = "approved/" + .key | .value.name = .key)'),states.files.outputs.artifacts,state_output('verify','artifacts',{}),state_output('candidate','artifacts',inputs.measured.?artifacts.orValue({})),states.specialists.outputs.artifacts,inputs.review_reply.?documents.orValue({})],
           'add') }}
-        document_details: ${{ jq(states.files.outputs.document_metadata,'to_entries | map(.value + {document_id:.key})') }}
+        author_summary: ${{ inputs.work.?summary.orValue('') }}
+        choice: ${{ inputs.plan.?human.orValue({}).?response.orValue({}).?direction.orValue('') }}
+        document_details: ${{ jq(states.files.outputs.document_metadata,'to_entries | map(select(.key | startswith("review/negotiations/") | not) | .value + {document_id:.key})') }}
         checks: ${{ {'files':states.files.outputs.result,'verify':state_output('verify','result',{}),'specialists':states.specialists.outputs.result}
           }}
         guidance: ${{ inputs.settings.?prompt_additions.orValue({})[?vars.policies[inputs.purpose].guidance].orValue('')
@@ -142,6 +145,8 @@ state:
         inputs:
           purpose: ${{ inputs.purpose }}
           request: ${{ inputs.request }}
+          author_summary: ${{ inputs.author_summary }}
+          choice: ${{ inputs.choice }}
           checks: ${{ inputs.checks }}
           document_details: ${{ inputs.document_details }}
           guidance: ${{ inputs.guidance }}
@@ -153,8 +158,8 @@ state:
         inputs:
           prompt: ${{ sequence.prompts.outputs.task }}
           schema: >-
-            ${{ jq([sequence.schemas.outputs.validate,inputs.purpose],
-              '.[1] as $stage | .[0] | .properties.status.enum += (if $stage == "outcome" then ["repair_implementation"] elif $stage == "implementation" then ["report_edit"] else [] end)') }}
+            ${{ jq([sequence.schemas.outputs.validate,inputs.purpose,inputs.choice],
+              vars.assessment_schema) }}
           documents: ${{ inputs.documents }}
           read_only: true
           session: ${{ inputs.session }}
@@ -192,14 +197,21 @@ state:
         findings: ${{ inputs.findings }}
         result: ${{ inputs.result }}
 outputs:
+  source: >-
+    ${{ state_exists('assess') ? 'independent review' : state_exists('verify') ? 'candidate verification' :
+        state_exists('prepare') ? 'candidate preparation' : 'packet check' }}
   checkpoints: >-
     ${{ jq(state_output('verify','result',{}), '[(if .status == "passed" then "verify" else empty end), ((.checks // {}) | to_entries[] | select(.value == "passed") | "verify/" + .key)]') }}
   document_metadata: ${{ states.files.outputs.document_metadata }}
   result: >-
     ${{ size(states.done.outputs.findings)>0
-      ? {'status':'changes','summary':jq(states.done.outputs.findings,'join("\n\n")')}
+      ? {'status':inputs.purpose == 'outcome' && states.done.outputs.result.status == 'stuck' ? 'stuck' : 'changes',
+         'summary':jq(states.done.outputs.findings,'join("\n\n")')}
       : inputs.purpose == 'outcome' && states.done.outputs.result.status == 'repair_implementation'
       ? {'status':'changes','stage':'implementation','summary':states.done.outputs.result.summary}
+      : inputs.purpose == 'outcome' && states.done.outputs.result.status in ['covered','passed']
+        && nonempty(states.done.outputs.result.?post_merge_check.orValue('')) && !state_output('candidate','result',inputs.measured.?result.orValue({})).?changed.orValue(false)
+      ? {'status':'changes','stage':'implementation','summary':'There is no local change to land. Obtain the requested consumer evidence from the owning change: ' + states.done.outputs.result.post_merge_check}
       : inputs.purpose == 'implementation' && states.done.outputs.result.status == 'report_edit'
       ? {'status':'passed','summary':states.done.outputs.result.summary}
       : states.done.outputs.result.status == 'revise_plan'
@@ -215,9 +227,15 @@ outputs:
           {'commit_message':states.describe.outputs.result.?message.orValue('')}],'add') : inputs.verification) }}
   artifacts: ${{ jq([states.files.outputs.artifacts,state_output('prepare','artifacts',{}),state_output('verify','artifacts',{}),state_output('specialists','artifacts',{})],
     'add') }}
-  candidate: ${{ state_output('candidate','result',{}) }}
-  patch: '${{ state_exists(''candidate'') ? states.candidate.outputs.artifacts[''candidate.diff''] : null }}'
+  candidate: ${{ state_output('candidate','result',inputs.measured.?result.orValue({})) }}
+  patch: ${{ state_output('candidate','artifacts',inputs.measured.?artifacts.orValue({}))[?'candidate.diff'].orValue(null) }}
 vars:
+  assessment_schema: |
+    .[1] as $stage | .[2] as $choice | .[0] |
+    if $stage == "outcome" then .properties.status.enum += ["repair_implementation"] |
+      .properties.post_merge_check = {type:["string","null"],minLength:1,maxLength:1200} | .required += ["post_merge_check"] |
+      if $choice == "accept_fully" then .properties.status.enum -= ["passed"] else . end
+    elif $stage == "implementation" then .properties.status.enum += ["report_edit"] else . end
   # Advice and implementation may finish without authoring a review document.
   # Attached negotiation history still goes through the file and link checks.
   short_direction: >-

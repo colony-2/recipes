@@ -2014,6 +2014,7 @@ cases:
       response: {direction: accept_fully, feedback: The marker is enough for this release., attachments: [], settings: {}}
   inputs:
     <<: *delivery_inputs
+    prompt: Add a marker file and check it from a fresh consumer after merge.
     documents:
       review/negotiations/parent/report.md:
         kind: value
@@ -2060,6 +2061,15 @@ cases:
             | --- | --- |
             | When is it safe to write the marker? | After delivery succeeds. |
     - *preparation_check
+    - match: {selector: 'nix:github:colony-2/c2ops/published#codex'}
+      behavior:
+        mode: return
+        outputs: {status: completed, output_schema_valid: true, response: {status: repair, summary: The saved marker needs a final newline.}}
+        effects:
+          objects:
+            session: {type: c2ops.codex.session/v1, metadata: {label: Saved marker}}
+          worktree: {marker.txt: partial}
+        artifacts: {error/marker.log: Missing newline, scratch.txt: Internal working notes}
     - *candidate_work
     - *candidate_check
     - *outcome_work
@@ -2070,12 +2080,25 @@ cases:
         outputs:
           status: completed
           output_schema_valid: true
-          response: {status: covered, summary: Marker contents meet the approved criteria.}
+          response: {status: covered, summary: Marker contents meet the approved criteria., post_merge_check: Read marker.txt from a fresh consumer.}
+    - match: {selector: 'nix:github:colony-2/c2ops/published#codex'}
+      behavior:
+        mode: return
+        outputs: {status: completed, output_schema_valid: true, response: {status: passed, summary: Fresh checkout contained the completed marker.}}
+        artifacts: {consumer/check.log: The consumer read the marker.}
     - *commands
     - *squash
     - *merge
     - *form
   assertions:
+  - type: cel_true
+    expr: >-
+      calls.exists(c,c.node_path.endsWith('/resume_work/resume_work') && c.worktree['marker.txt']=='partial' &&
+      'work/error/marker.log' in c.artifacts && !('work/__git_state_thin_pack__' in c.artifacts) && !('work/scratch.txt' in c.artifacts))
+  - type: cel_true
+    expr: >-
+      outputs.consumer_check.status=='passed' && 'consumer/check.log' in outputs.artifact_refs &&
+      calls.exists(c,c.node_path.contains('/check_delivery/') && has(c.inputs.inputs.prompt) && c.inputs.inputs.prompt.contains(outputs.merge.merged_hash))
   - type: cel_true
     expr: size(reviews)==1 && outputs.merge.merged_hash!="" && outputs.reviews[1].authorization=="preparation" &&
       reviews[0].form.request.overview_document_id=="review/one-pager.md" && reviews[0].form.request.document_metadata["review/one-pager.md"].title.startsWith("1P:")

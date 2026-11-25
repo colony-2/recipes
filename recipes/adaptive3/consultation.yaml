@@ -1,6 +1,7 @@
 id: adaptive3-consultation
 inputs:
   objective: ${{ inputs.?objective.orValue(inputs.request) }}
+  shared_review: ${{ inputs.?shared_review.orValue({}) }}
   requester: ${{ inputs.?requester.orValue({}) }}
   agreements: ${{ inputs.?agreements.orValue([]) }}
   cell: ${{ inputs.cell }}
@@ -64,6 +65,7 @@ state:
         sender: ${{ transition.payload.?sender.orValue(context.workspace.cell) }}
         mode: ${{ transition.payload.?mode.orValue(inputs.mode) }}
         parents: ${{ transition.payload.?parents.orValue([]) }}
+        repairs: ${{ transition.payload.?repairs.orValue(0) }}
         used: ${{ transition.payload.?used.orValue(0) }}
         session: ${{ transition.payload.?session.orValue({}) }}
       sequence:
@@ -81,6 +83,7 @@ state:
         feedback: ${{ inputs.feedback }}
         mode: ${{ inputs.mode }}
         parents: ${{ inputs.parents }}
+        repairs: ${{ inputs.repairs }}
         used: ${{ inputs.used }}
         prompt: ${{ sequence.prompts.outputs.task }}
         thread: ${{ inputs.thread }}
@@ -109,6 +112,7 @@ state:
         request: |-
           {{ states.call.outputs.prompt }}
           Parent objective: {{ inputs.objective }}
+          ${{ size(inputs.shared_review)>0 && size(states.call.outputs.parents)==0 ? vars.review_context : '' }}
           Previous turns on this request: ${{ json_stringify(states.call.outputs.turns) }}
         documents: ${{ states.call.outputs.documents }}
         finding: ${{ states.call.outputs.feedback }}
@@ -154,7 +158,7 @@ state:
             }}
           used: 0
       - to: call
-        when: outputs.result.status in ['changes','children']
+        when: outputs.result.status in ['changes','children'] && states.call.outputs.repairs+1 < vars.limit
         payload:
           cell: ${{ states.call.outputs.cell }}
           request: ${{ states.call.outputs.request }}
@@ -166,7 +170,8 @@ state:
           parents: ${{ states.call.outputs.parents }}
           documents: ${{ outputs.documents }}
           feedback: ${{ outputs.result }}
-          used: ${{ states.call.outputs.used+1 }}
+          repairs: ${{ states.call.outputs.repairs+1 }}
+          used: ${{ states.call.outputs.used }}
           session: ${{ outputs.session }}
       - to: record
         when: outputs.result.status != 'accepted' && states.call.outputs.mode != 'advice' && size(states.call.outputs.parents)==0
@@ -351,7 +356,8 @@ state:
             }}
           title: ${{ transition.payload.agreement.work.?title.orValue('Deliver the agreement for ' + inputs.cell) }}
           inputs:
-            prompt: ${{ transition.payload.agreement.assignment }}
+            prompt: >-
+              ${{ transition.payload.agreement.assignment + (size(inputs.shared_review)>0 ? '\n\n' + vars.review_context : '') }}
             documents: ${{ jq([transition.payload.agreement.support,transition.payload.agreement.documents],'add') }}
       transitions:
       - to: wait
@@ -415,7 +421,8 @@ state:
           delivery = f"\n## Delivery\n\n[Job {job}](https://jobs.colony2.com/{tenant}/jobs/{job}) · "
           # A replay replaces this job's status, even if the request has its own Delivery heading.
           original = report.read_text().partition(delivery)[0].rstrip('\n')
-          output.write_text(f"{original}\n{delivery}{child['status']}\n\n{summary}\n")
+          status = 'withdrawn' if child.get('withdrawal') else child['status']
+          output.write_text(f"{original}\n{delivery}{status}\n\n{summary}\n")
           PY
       transitions:
       - to: received
@@ -529,6 +536,8 @@ outputs:
   result: ${{ states.done.outputs.result }}
   documents: ${{ states.done.outputs.documents }}
 vars:
+  review_context: >-
+    ${{ 'Coordinator review reply (apply within its stated scope): ' + json_stringify(inputs.shared_review) }}
   update_agreements: |
     .[1] as $record | .[2] as $owner | .[3] as $thread | .[4] as $mode |
     (.[0] | map(select(.thread != $record.thread and

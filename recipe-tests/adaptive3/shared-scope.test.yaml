@@ -1,0 +1,52 @@
+recipe: lifecycle.yaml
+cases:
+- id: three-affected-owners-receive-the-same-source-on-their-own-turn
+  type: integration_case
+  runtime:
+    cells:
+      root: {files: {README.md: Coordinator}}
+      cortex: {files: {README.md: UI}}
+      jobdb: {files: {README.md: Storage}}
+      c2j: {files: {README.md: Engine}}
+  inputs:
+    purpose: preparation
+    request: Coordinate the platform checks.
+    review_reply:
+      submission:
+        receipt: {submission_id: retire-intel, actor: {kind: human}}
+        response: {direction: reply, feedback: Remove the Intel Mac target.}
+  mocks:
+    ops:
+    - match: &agent {selector: 'nix:github:colony-2/c2ops/published#codex'}
+      behavior:
+        mode: return
+        outputs: &consult
+          status: completed
+          output_schema_valid: true
+          response: {status: consult, summary: Coordinate the target., consultation: {cell: cortex, mode: advice, request: 'Does the target apply?', share_review: true}}
+    - &owner
+      match: *agent
+      behavior: {mode: return, outputs: {status: completed, output_schema_valid: true, response: {status: ready, summary: We can apply the retirement.}}}
+    - &verified
+      match: *agent
+      behavior: {mode: return, outputs: {status: completed, output_schema_valid: true, response: {status: passed, summary: Checked the owner response.}}}
+    - match: *agent
+      behavior: {mode: return, outputs: {<<: *consult, response: {status: consult, summary: Check storage., consultation: {cell: jobdb, mode: advice, request: 'Does the target apply?', share_review: true}}}}
+    - *owner
+    - *verified
+    - match: *agent
+      behavior: {mode: return, outputs: {<<: *consult, response: {status: consult, summary: Check engine., consultation: {cell: c2j, mode: advice, request: 'Does the target apply?', share_review: true}}}}
+    - match: *agent
+      behavior: {mode: return, outputs: {status: completed, output_schema_valid: true, response: {status: ready, summary: Our supported caller still needs a transition.}}}
+    - *verified
+    - match: *agent
+      behavior: {mode: return, outputs: {status: completed, output_schema_valid: true, response: {status: stuck, summary: The engine has a caller-specific conflict.}}}
+    - match: {op: command_execution}
+      repeat: true
+      behavior: {mode: passthrough}
+  assertions:
+  - type: cel_true
+    expr: >-
+      ['cortex','jobdb','c2j'].all(cell,calls.exists(c,c.cell==cell && c.node_path.contains('/execute/') && has(c.inputs.inputs.prompt)
+      && c.inputs.inputs.prompt.contains('retire-intel') && c.inputs.inputs.prompt.contains('Remove the Intel Mac target.'))) &&
+      outputs.result.summary.contains('caller-specific conflict') && size(reviews)==0

@@ -218,6 +218,50 @@ cases:
             action: Restore the missing row separators.
             summary: The headings and agreed behavior stay the same.
             additional_attempts: 1
-            instruction: null
+            instruction: {text: Restore the missing row separators., scope_change: false}
   assertions:
   - {type: cel_true, expr: 'size(reviews)==0 && outputs.result.stage=="preparation" && outputs.result.action.contains("separators")'}
+- id: delegate-returns-one-local-capacity-retry
+  type: integration_case
+  runtime: {}
+  inputs:
+    stage: implementation
+    request: Build the macVZ candidate.
+    automatic: true
+    problem: {status: stuck, summary: Model capacity interrupted the attempt.}
+  mocks:
+    ops:
+    - match: *agent
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response:
+            <<: *resume
+            stage: implementation
+            additional_attempts: 1
+            instruction: {text: Resume the saved candidate once., scope_change: false}
+  assertions:
+  - {type: cel_true, expr: "size(reviews)==0 && outputs.result.instruction.text=='Resume the saved candidate once.' && !has(outputs.result.amendment) && !has(outputs.result.human)"}
+- id: the-delegate-can-close-an-explicitly-withdrawn-assignment
+  type: integration_case
+  runtime: {}
+  inputs:
+    stage: preparation
+    request: Add verification to this cell.
+    problem:
+      status: stuck
+      summary: The review child was cancelled.
+      withdrawal_sources: [{job_id: scope-question, message: 'Cortex cancellation by requester. This cell is retired, no implementation needed.'}]
+  mocks:
+    ops:
+    - match: *agent
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response: {status: withdrawn, source_index: 0, stage: null, summary: The requester withdrew this assignment.}
+  assertions:
+  - {type: cel_true, expr: "size(reviews)==0 && outputs.result.status=='withdrawn' && outputs.result.source.job_id=='scope-question'"}

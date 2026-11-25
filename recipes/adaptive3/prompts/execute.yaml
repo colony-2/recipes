@@ -1,5 +1,8 @@
 id: adaptive3-execute-prompts
 inputs:
+  history: ${{ inputs.?history.orValue({}) }}
+  changed: ${{ inputs.?changed.orValue(false) }}
+  choice: ${{ inputs.?choice.orValue('') }}
   approval_guidance: ${{ inputs.?approval_guidance.orValue('') }}
   purpose: ${{ inputs.purpose }}
   request: ${{ inputs.request }}
@@ -110,7 +113,8 @@ vars:
       Identify the candidate checked. For each promised behavior, give the check, observed result,
       passed/failed/skipped status and evidence link. Explain changes to a proposed method.
       ## What remains
-      Name gaps, missing required checks, their impact and any decision needed.
+      Name gaps, missing required checks, their impact and any decision needed. Distinguish required
+      candidate evidence from an explicitly requested check on the published artifact. Name that check.
 
       Measure the actual candidate. Report additions/removals for core code, tests and docs,
       separately by cell, with per-file support. Test frameworks, harnesses and fixtures count
@@ -139,6 +143,16 @@ vars:
       A delivery assignment without a descriptive title is incomplete. Correct it before submission.
 sequence: []
 outputs:
+  reader: |-
+    ${{ size(inputs.history)>0 ? 'The last packet shown for this decision is in presented/. Its message and reply: ' + json_stringify(inputs.history) : 'This is the first presentation for this decision. Describe the proposal or delivered result directly.' }}
+    Open the message and primary document with the decision and what matters. Compare revisions only with the packet the reader saw. Answer their question directly.
+    ${{ inputs.purpose == 'outcome' ? (inputs.choice == 'accept_fully' ? 'They chose Take to Completion. Explain delivery and verification against the approved plan. Identify any new decision.' : inputs.changed ? 'Ask whether to merge. State what was delivered and verified.' : 'Ask whether to accept the result. State what was delivered and verified.') : '' }}
+  planning_repair: |-
+    Continue the current {{ inputs.purpose }} assignment. Finding from ${{ inputs.finding.?source.orValue('the previous turn') }}: ${{ inputs.finding.?summary.orValue('') }}
+    Review reply and source: ${{ jq(inputs.review_reply.?submission.orValue({}), '{actor:.receipt.actor.kind,submission:.receipt.submission_id,choice:.response.direction,words:.response.feedback} | with_entries(select(.value != null)) | tojson') }}
+    Current evidence: ${{ json_stringify(inputs.finding.?errors.orValue({}).map(k,k)) }}
+    ${{ nonempty(inputs.approval_guidance) ? 'Approved guidance: ' + inputs.approval_guidance : '' }}
+    Read the current packet and attached findings in inbox/work/. Fix the issue or cite the existing file and lines that settle it. Keep the packet when it already meets the request.
   repair: |-
     Continue the current implementation. Here is the finding:
     ${{ inputs.finding.?summary.orValue('') }}
@@ -155,8 +169,7 @@ outputs:
     ${{ vars.assignments[inputs.purpose] }}
     ${{ inputs.purpose in ['direction','preparation'] ? vars.one_pager : '' }}
 
-    For a human review, write the whole message to the person in summary. Ask the decision in plain language.
-    On revision, answer any question and say what changed since the version they saw.
+    For a human review, write your message to the person in summary.
     Guidance can accompany any approval. Follow instructions and keep suggestions optional.
     For a child job or negotiated work, explain who asked and why in a short paragraph under “Why this job exists.”
     Use blockquotes only for direct quotations. For negotiated work, give the agreed
@@ -176,6 +189,12 @@ outputs:
     To amend it, open negotiation with that thread ID. A new agreement needs both sides to agree.
     Read available code or try the interface for ordinary questions. Consult an owner for a requirement,
     a suspected bug or a fact you cannot obtain, including behavior of a private interface.
+    Try a local fixture when it can answer the question. If a failure also occurs on the unchanged base,
+    record both runs and take that failure to its owner while repairing your own change.
+    Open a needed negotiation yourself. Bring the person a material tradeoff or a specific grant they can make.
+    When a review decision affects other owners, set share_review on each relevant consultation or delivery.
+    Include the source job and receipt when starting a child directly. For a running sibling, cite the source
+    in the next handoff. Before escalating a shared question, inspect the coordinator and relevant sibling reviews. Apply it or identify a concrete local conflict.
     Attribute proposals to their author. Quote a human decision from its receipt or original
     message. A parent’s interpretation stays a proposal unless the source supports it.
     Repository-relative target: {{ inputs.target_directory }}
@@ -192,6 +211,7 @@ outputs:
     Review receipt lists ${{ inputs.review_reply.?submission.orValue({}).?receipt.orValue({}).?actor.orValue({}).?kind.orValue('source unrecorded') }}: ${{ inputs.review_reply.?submission.orValue({}).?response.orValue({}).?feedback.orValue('') }}
     Owner reply: ${{ inputs.finding.?consultation.orValue({}).?summary.orValue('') }}
     Agreement thread: ${{ inputs.finding.?consultation.orValue({}).?thread.orValue('') }}
+    Owner withdrawal: ${{ json_stringify(inputs.finding.?consultation.orValue({}).?child.orValue({}).?withdrawal.orValue(null)) }}
     Owner job: ${{ inputs.finding.?consultation.orValue({}).?child.orValue({}).?job_id.orValue('') }}
     Use job inspection for the referenced original results when needed.
     {{ inputs.guidance }}
@@ -212,5 +232,7 @@ outputs:
     Return stuck only when you cannot resolve the problem. An invalid report can be
     corrected without repeating its already recorded child submissions.
 
+    A withdrawn child returns its source and unfinished work. Close that assignment in the parent’s account,
+    preserve any verification gap and continue the remaining assignments.
     A successful child job may only have collected evidence. Read its actual findings
     before deciding what was accomplished and what still needs work.

@@ -176,6 +176,10 @@ state:
         max_iterations: ${{ inputs.max_iterations }}
         agent_settings: ${{ jq({'model':inputs.model,'reasoning_effort':inputs.reasoning_effort},'with_entries(select(.value != ""))') }}
       transitions:
+      - to: complete
+        when: outputs.result.status == 'withdrawn'
+        payload:
+          result: ${{ outputs }}
       - to: backstop
         when: outputs.result.status == 'stuck'
         payload:
@@ -227,6 +231,10 @@ state:
         max_iterations: ${{ inputs.max_iterations }}
         agent_settings: ${{ jq({'model':inputs.model,'reasoning_effort':inputs.reasoning_effort},'with_entries(select(.value != ""))') }}
       transitions:
+      - to: complete
+        when: outputs.result.status == 'withdrawn'
+        payload:
+          result: ${{ outputs }}
       - to: backstop
         when: outputs.result.status == 'stuck'
         payload:
@@ -276,6 +284,10 @@ state:
         max_iterations: ${{ inputs.max_iterations }}
         agent_settings: ${{ jq({'model':inputs.model,'reasoning_effort':inputs.reasoning_effort},'with_entries(select(.value != ""))') }}
       transitions:
+      - to: complete
+        when: outputs.result.status == 'withdrawn'
+        payload:
+          result: ${{ outputs }}
       - to: backstop
         when: outputs.result.status == 'stuck'
         payload:
@@ -334,6 +346,10 @@ state:
         max_iterations: ${{ inputs.max_iterations }}
         agent_settings: ${{ jq({'model':inputs.model,'reasoning_effort':inputs.reasoning_effort},'with_entries(select(.value != ""))') }}
       transitions:
+      - to: complete
+        when: outputs.result.status == 'withdrawn'
+        payload:
+          result: ${{ outputs }}
       - to: complete
         when: outputs.result.status == 'accepted' && !outputs.candidate.changed
         payload:
@@ -446,6 +462,10 @@ state:
           sessions: ${{ outputs.sessions }}
           documents: ${{ outputs.documents }}
           finding: ${{ outputs.finding }}
+      - to: check_delivery
+        when: outputs.result.status == 'accepted' && nonempty(outputs.?accepted.orValue({}).?result.orValue({}).?post_merge_check.orValue(''))
+        payload:
+          sessions: ${{ outputs.sessions }}
       - to: complete
         when: outputs.result.status == 'accepted'
         payload:
@@ -458,6 +478,30 @@ state:
           problem: ${{ outputs.result }}
           documents: ${{ outputs.documents }}
           feedback: ${{ outputs.prior_finding }}
+    check_delivery:
+      include: ./recipes/adaptive3/check-delivery.yaml
+      inputs:
+        check: ${{ states.integration.outputs.accepted.result.post_merge_check }}
+        landed: ${{ states.integration.outputs.work.publication }}
+        publish: ${{ states.integration.outputs.work.publish }}
+        documents: ${{ transition.payload.?documents.orValue(states.integration.outputs.documents) }}
+        sessions: ${{ transition.payload.sessions }}
+        correction: ${{ transition.payload.?correction.orValue('') }}
+        agent_settings: ${{ jq({'model':inputs.model,'reasoning_effort':inputs.reasoning_effort},'with_entries(select(.value != ""))') }}
+      transitions:
+      - to: complete
+        when: outputs.result.status == 'passed'
+        payload:
+          result: >-
+            ${{ jq([states.integration.outputs,outputs.result,outputs.documents],
+              '.[1] as $proof | .[2] as $files | .[0] | .work.consumer_check = $proof | .work.summary += "\n\n" + $proof.summary | .documents += $files') }}
+      - to: backstop
+        when: 'true'
+        payload:
+          sessions: ${{ outputs.sessions }}
+          stage: integration
+          problem: ${{ jq([outputs.result,{'loop':'consumer_check'}],'add') }}
+          documents: ${{ jq([states.integration.outputs.documents,outputs.documents],'add') }}
     backstop:
       inputs:
         sessions: ${{ transition.payload.?sessions.orValue({}) }}
@@ -531,6 +575,10 @@ state:
         stage: ${{ inputs.stage }}
         feedback: ${{ inputs.feedback }}
       transitions:
+      - to: complete
+        when: outputs.result.status == 'withdrawn'
+        payload:
+          result: ${{ {'result':outputs.result,'work':{'summary':outputs.result.summary},'documents':outputs.documents} }}
       - to: configure
         when: '!state_exists(''configure'') && outputs.result.stage != ''configure'''
         payload:
@@ -570,6 +618,12 @@ state:
           sessions: ${{ outputs.sessions }}
           documents: ${{ outputs.documents }}
           finding: ${{ outputs.handoff }}
+      - to: check_delivery
+        when: outputs.result.stage == 'integration' && outputs.problem.?loop.orValue('') == 'consumer_check'
+        payload:
+          documents: ${{ outputs.documents }}
+          sessions: ${{ outputs.sessions }}
+          correction: ${{ outputs.result.?instruction.orValue({}).?text.orValue(outputs.result.summary) }}
       - to: integration
         when: outputs.result.stage == 'integration'
         payload:
@@ -653,7 +707,10 @@ state:
           documents: ${{ states.chase.outputs.documents }}
 
 outputs:
-  summary: ${{ states.complete.outputs.result.work.summary }}
+  withdrawal: >-
+    ${{ states.complete.outputs.result.result.?status.orValue('') == 'withdrawn' ? states.complete.outputs.result.result : null }}
+  summary: >-
+    ${{ states.complete.outputs.result.result.?status.orValue('') == 'withdrawn' ? states.complete.outputs.result.result.summary : states.complete.outputs.result.work.summary }}
   work_kind: ${{ states.complete.outputs.result.work.?work_kind.orValue(state_output('outcome','work',{}).?work_kind.orValue(state_output('implementation','work',{}).?work_kind.orValue(state_output('preparation','work',{}).?work_kind.orValue(state_output('direction','work',{}).?work_kind.orValue('oversight')))))
     }}
   artifact_refs: >-
@@ -664,6 +721,7 @@ outputs:
     ? [states.outcome.outputs.result] : []) }}'
   merge: ${{ states.complete.outputs.result.work.?publication.orValue({}) }}
   publication: ${{ states.complete.outputs.result.work.?publish.orValue({}) }}
+  consumer_check: ${{ states.complete.outputs.result.work.?consumer_check.orValue(null) }}
   queue_publication: ${{ states.complete.outputs.result.work.?queue_publication.orValue({}) }}
 vars:
   approve_plan: |

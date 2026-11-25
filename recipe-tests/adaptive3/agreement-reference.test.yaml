@@ -130,3 +130,59 @@ cases:
   assertions:
   - type: cel_true
     expr: outputs.started==1 && outputs.agreements.size()==0 && outputs.result.summary=="The existing list has no timestamp." && !calls.exists(c,c.op=="recipes.run")
+- id: receiver-repairs-leave-room-for-a-counteroffer
+  type: integration_case
+  runtime: *cells
+  inputs: {cell: storage, request: We need the timestamp., mode: negotiate}
+  mocks:
+    ops:
+    - *asked
+    - &changes
+      match: *agent
+      behavior: {mode: return, outputs: {status: completed, output_schema_valid: true, response: {status: changes, summary: Specify the retention unit.}}}
+    - *asked
+    - *changes
+    - *asked
+    - *changes
+    - *asked
+    - *passed
+    - *reply
+    - match: *agent
+      behavior: {mode: return, outputs: {status: completed, output_schema_valid: true, response: {status: ready, summary: We can retain ten years., assignment: Keep ten years., title: Retain timestamps, document_details: []}}}
+    - *passed
+    - match: *agent
+      behavior: {mode: return, outputs: {status: completed, output_schema_valid: true, response: {status: agree, summary: That works.}}}
+    - *command
+  assertions:
+  - {type: cel_true, expr: "outputs.started==1 && outputs.agreement.assignment=='Keep ten years.' && !calls.exists(c,c.op=='recipes.run')"}
+- id: delivery-carries-the-selected-coordinator-receipt
+  type: integration_case
+  runtime: *cells
+  inputs:
+    <<: *delivery
+    shared_review: {job: parent, receipt: {submission_id: decision-17, actor: {kind: human}}, response: {feedback: Retire Intel Mac support.}}
+  mocks:
+    ops:
+    - match: {op: recipes.run}
+      behavior: {mode: return, outputs: {job_ids: [child]}}
+    - match: {op: recipe.await_result_soft}
+      behavior: {mode: return, outputs: {job_id: child, status: completed, outputs: {}, artifacts: {}}}
+    - match: {op: command_execution}
+      repeat: true
+      behavior: {mode: return, outputs: {stdout: ''}}
+  assertions:
+  - type: cel_true
+    expr: >-
+      calls.exists(c,c.op=='recipes.run' && c.inputs.recipes[0].inputs.prompt.startsWith('Include the preceding update.')
+      && c.inputs.recipes[0].inputs.prompt.contains('Retire Intel Mac support.') && c.inputs.recipes[0].inputs.prompt.contains('decision-17'))
+- id: repeated-owner-repairs-cannot-loop-or-create-an-agreement
+  type: integration_case
+  runtime: *cells
+  inputs: {cell: storage, request: Add retention., mode: negotiate}
+  mocks:
+    ops: [*asked, *changes, *asked, *changes, *asked, *changes, *asked, *changes, *command]
+  assertions:
+  - type: cel_true
+    expr: >-
+      outputs.result.status=='stuck' && outputs.agreement.assignment=='' &&
+      calls.filter(c,c.cell=='storage' && c.op=='extension_execution' && has(c.inputs.inputs.prompt)).size()==8 && !calls.exists(c,c.op=='recipes.run')

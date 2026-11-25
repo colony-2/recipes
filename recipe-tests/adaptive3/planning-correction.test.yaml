@@ -1,0 +1,61 @@
+recipe: lifecycle.yaml
+cases:
+- id: existing-wrapper-evidence-can-resolve-a-finding-without-an-edit
+  type: integration_case
+  runtime:
+    cells:
+      root:
+        file_sources:
+          recipes/review-v2/op.yaml: ../../recipes/review-v2/op.yaml
+          recipes/review-v2.py: ../../recipes/review-v2.py
+    responses:
+    - node_path: lifecycle-test/lifecycle/adaptive3-lifecycle/cycle/cycle/adaptive3-cycle/review/review/adaptive3-review/discuss/discuss/adaptive3-discussion/ask/ask
+      response: {direction: accept, feedback: '', attachments: [], settings: {}}
+  inputs: {purpose: preparation, request: Verify the browser wrapper.}
+  mocks:
+    ops:
+    - match: &agent {selector: 'nix:github:colony-2/c2ops/published#codex'}
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response: &plan
+            status: ready
+            title: Browser plan
+            summary: Review the browser plan.
+            primary: review/one-pager.md
+            document_details:
+            - {document_id: review/one-pager.md, title: Browser plan, role: primary, order: 0, description: Review the plan.}
+            - {document_id: review/design.md, title: Design, role: supporting, order: 0, description: Inspect the design.}
+            - {document_id: review/acceptance.md, title: Tests, role: supporting, order: 1, description: Inspect the four commands.}
+        effects: {objects: {session: {type: c2ops.codex.session/v1, metadata: {label: Planning}}}}
+        artifacts:
+          review/one-pager.md: "# 1P: Browser plan\n[Design](design.md) and [Tests](acceptance.md)"
+          review/design.md: Exercise the browser integration.
+          review/acceptance.md: "wrap browser one\nwrap browser two\nwrap browser three\nwrap browser four"
+    - match: *agent
+      behavior: {mode: return, outputs: {status: completed, output_schema_valid: true, response: {status: changes, summary: Four commands lack the wrapper.}}}
+    - match: *agent
+      behavior:
+        mode: return
+        outputs:
+          status: completed
+          output_schema_valid: true
+          response: {<<: *plan, summary: 'Tests lines 1–4 already use wrap. Approve the browser plan?'}
+    - match: *agent
+      behavior: {mode: return, outputs: {status: completed, output_schema_valid: true, response: {status: passed, summary: Checked the cited lines and withdrew the finding.}}}
+    - match: {op: command_execution}
+      repeat: true
+      behavior: {mode: passthrough}
+    - match: {selector: ./recipes/review-v2}
+      repeat: true
+      behavior: {mode: passthrough}
+  assertions:
+  - type: cel_true
+    expr: >-
+      outputs.result.status=='accepted' && size(reviews)==1 &&
+      calls.exists(c,c.node_path.contains('/execute/') && has(c.inputs.inputs.prompt) && c.inputs.inputs.prompt.contains('Four commands lack the wrapper.')
+      && !c.inputs.inputs.prompt.contains('## Compat/Upgrade') && c.inputs.inputs.prompt.contains('first presentation')) &&
+      calls.exists(c,c.node_path.contains('/assess/') && has(c.inputs.inputs.prompt) && c.inputs.inputs.prompt.contains('Tests lines 1–4 already use wrap.')) &&
+      reviews[0].form.request.documents['review/acceptance.md'].stored.key==outputs.documents['review/acceptance.md'].stored.key

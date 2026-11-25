@@ -116,3 +116,63 @@ cases:
       root/outcome: [*finished]
   assertions:
   - {type: cel_true, expr: "include_calls.map(c,c.node_path)==['root/configure/[1]','root/direction','root/preparation','root/implementation','root/outcome'] && include_calls[3].inputs.sessions.plan.receipt.request_id=='migration'"}
+- id: failed-consumer-check-retries-after-the-same-landed-result
+  type: integration_case
+  runtime: {}
+  inputs: {prompt: Add the marker and check it in a fresh consumer.}
+  mocks:
+    ops: [*origin]
+    includes:
+      root/configure/[1]: *config
+      root/direction: *direction
+      root/implementation: [*implemented]
+      root/outcome:
+      - mode: return
+        outputs: {result: {status: accepted, post_merge_check: Read the marker.}, documents: {}, work: {}, candidate: {changed: true}, sessions: {}, patch: null, finding: {}}
+      root/integration:
+      - mode: return
+        outputs:
+          result: {status: accepted}
+          accepted: {result: {status: accepted, post_merge_check: Read the marker.}}
+          work: {summary: Merged., publication: {merged_hash: landed}, publish: {status: skipped}}
+          merge_state: {publication: {merged_hash: landed}}
+          documents: {}
+          sessions: {}
+      root/check_delivery:
+      - {mode: return, outputs: {result: {status: stuck, summary: The consumer mirror timed out.}, documents: {}, sessions: {}}}
+      - {mode: return, outputs: {result: {status: passed, summary: The new consumer read the landed marker.}, documents: {}, sessions: {}}}
+      root/backstop/[1]:
+      - {mode: return, outputs: {result: {status: resume, stage: integration, summary: Retry against the available mirror.}, review_reply: {}, session: {}, documents: {}, retry: {}}}
+  assertions:
+  - type: cel_true
+    expr: >-
+      include_calls.filter(c,c.node_path=='root/integration').size()==1 && include_calls.filter(c,c.node_path=='root/check_delivery').size()==2 &&
+      outputs.consumer_check.status=='passed' && outputs.merge.merged_hash=='landed' && size(reviews)==0
+- id: a-confirmed-withdrawal-reaches-the-parent-without-merge
+  type: integration_case
+  runtime: {}
+  inputs: {prompt: Add the native verify hook.}
+  mocks:
+    ops: [*origin]
+    includes:
+      root/configure/[1]: *config
+      root/direction:
+      - mode: return
+        outputs:
+          result: {status: stuck, summary: The child review was cancelled., withdrawal_sources: [{job_id: question, message: The cell is retired.}]}
+          documents: {}
+          prior_finding: {}
+          sessions: {}
+      root/backstop/[1]:
+      - mode: return
+        outputs:
+          result: {status: withdrawn, stage: null, summary: The requester withdrew the hook assignment., source: {job_id: question, message: The cell is retired.}}
+          review_reply: {}
+          session: {}
+          retry: {}
+          documents: {}
+  assertions:
+  - type: cel_true
+    expr: >-
+      outputs.withdrawal.source.job_id=='question' && outputs.summary.contains('withdrew') && outputs.merge=={} &&
+      include_calls.map(c,c.node_path)==['root/configure/[1]','root/direction','root/backstop/[1]'] && size(reviews)==0

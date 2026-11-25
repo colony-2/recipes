@@ -88,10 +88,12 @@ state:
       inputs:
         prompt: |-
           {{ states.setup.outputs.text.task }}
+          ${{ size(inputs.problem.?withdrawal_sources.orValue([]))>0 ? 'Check the actual review receipt or cancellation reason. If the person explicitly withdrew this whole assignment, return withdrawn and its source_index. A bare cancellation or withdrawal of one sibling leaves other work open. Recorded sources: ' + json_stringify(inputs.problem.withdrawal_sources) : '' }}
           ${{ states.turn.outputs.allow_resume ? '' : 'Previous attempts did not resolve this. Diagnose what went wrong. If a different local repair is available, return it to the author. Ask the human only for a choice they need to make.' }}
-        schema: ${{ jq([states.setup.outputs.schema,states.setup.outputs.destinations,states.turn.outputs.human.?response.orValue({}).?settings.orValue({}).?return_to.orValue('auto')],
-          '.[1] as $allowed | .[2] as $choice | .[0] | .properties.stage.enum = ((if $choice == "auto" then $allowed
-          else [$choice] end) + [null])') }}
+        schema: ${{ jq([states.setup.outputs.schema,states.setup.outputs.destinations,states.turn.outputs.human.?response.orValue({}).?settings.orValue({}).?return_to.orValue('auto'),inputs.problem.?withdrawal_sources.orValue([])],
+          '.[3] as $sources | .[1] as $allowed | .[2] as $choice | .[0] | .properties.stage.enum = ((if $choice == "auto" then $allowed
+          else [$choice] end) + [null]) | if ($sources|length)>0 then .properties.status.enum += ["withdrawn"] |
+          .properties.source_index = {type:["integer","null"],minimum:0,maximum:(($sources|length)-1)} | .required += ["source_index"] else . end') }}
         documents: ${{ jq([inputs.documents,inputs.problem.?errors.orValue({}),states.turn.outputs.feedback.?documents.orValue({})],
           'add') }}
         read_only: true
@@ -115,6 +117,7 @@ state:
             session: ${{ states.turn.outputs.session }}
     assess:
       inputs:
+        stage: ${{ inputs.stage }}
         proposal: ${{ transition.payload.proposal }}
         destinations: ${{ states.setup.outputs.destinations }}
         human: ${{ states.turn.outputs.human }}
@@ -123,6 +126,7 @@ state:
       - id: action
         include: ./backstop-action.yaml
         inputs:
+          stage: ${{ inputs.stage }}
           response: ${{ inputs.proposal.response }}
           destinations: ${{ inputs.destinations }}
           human: ${{ inputs.human }}
@@ -134,8 +138,16 @@ state:
       transitions:
       - to: done
         when: >-
+          outputs.response.status == 'withdrawn' && outputs.response.?source_index.orValue(-1)>=0
+          && outputs.response.source_index < size(inputs.problem.?withdrawal_sources.orValue([]))
+        payload:
+          result: ${{ {'status':'withdrawn','stage':null,'summary':outputs.response.summary,'source':inputs.problem.withdrawal_sources[outputs.response.source_index]} }}
+          session: ${{ outputs.session }}
+      - to: done
+        when: >-
           outputs.eligible && outputs.response.status == 'resume' && (states.turn.outputs.allow_resume
-          || (states.turn.outputs.retry.automatic_used == 2 && outputs.response.stage == inputs.stage && inputs.stage in ['direction','preparation','implementation','outcome']
+          || (states.turn.outputs.retry.automatic_used == 2 && outputs.response.?instruction.orValue(null) != null && !outputs.response.instruction.scope_change
+              && outputs.response.stage == inputs.stage && inputs.stage in ['direction','preparation','implementation','outcome']
               && inputs.problem.?loop.orValue('') != 'merge' && (outputs.response.?additional_attempts.orValue(null) == null || outputs.response.additional_attempts == 1))
           || (size(states.turn.outputs.human)>0 && outputs.response.?instruction.orValue(null) != null))
         payload:

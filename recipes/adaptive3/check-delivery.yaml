@@ -1,0 +1,62 @@
+id: adaptive3-check-delivery
+inputs:
+  check: ${{ inputs.check }}
+  landed: ${{ inputs.landed }}
+  publish: ${{ inputs.publish }}
+  documents: ${{ inputs.documents }}
+  sessions: ${{ inputs.sessions }}
+  correction: ${{ inputs.correction }}
+  agent_settings: ${{ inputs.agent_settings }}
+state:
+  initial: check
+  states:
+    check:
+      include: ./agent.yaml
+      inputs:
+        prompt: |-
+          Run the requested consumer check against the landed artifact in a fresh consumer workspace.
+          Check: {{ inputs.check }}
+          Merge receipt: ${{ json_stringify(inputs.landed) }}
+          Publish result: ${{ json_stringify(inputs.publish) }}
+          {{ inputs.correction }}
+          ${{ state_exists('children') ? 'Inspect the recorded child results: ' + json_stringify(states.children.outputs.results) : '' }}
+          Report the command or child run, the version actually consumed and the observed result.
+          Use passed only with that evidence. For a blocker give the attempted check and what failed.
+          Keep useful evidence under consumer/. Merge and configured publication have finished.
+        read_only: true
+        documents: ${{ jq([inputs.documents,state_output('children','documents',{})],'add') }}
+        session: ${{ state_output('check','session',inputs.sessions.?implementation.orValue({})) }}
+        agent_settings: ${{ inputs.agent_settings }}
+        schema:
+          type: object
+          additionalProperties: false
+          properties:
+            status: {type: string, enum: [passed, stuck]}
+            summary: {type: string, minLength: 1}
+          required: [status, summary]
+      transitions:
+      - to: children
+        when: size(outputs.jobs)>0 && !state_exists('children')
+      - to: done
+        when: 'true'
+    children:
+      include: ./children.yaml
+      inputs:
+        jobs: ${{ states.check.outputs.jobs }}
+      transitions:
+      - to: check
+        when: 'true'
+    done:
+      sequence: []
+outputs:
+  result: >-
+    ${{ size(states.check.outputs.jobs)>0 ? {'status':'stuck','summary':'The follow-up started another consumer run. Inspect its result.', 'jobs':states.check.outputs.jobs} : states.check.outputs.response }}
+  documents: ${{ jq(states.check.outputs.artifacts,'with_entries(select(.key|startswith("consumer/")))') }}
+  sessions: ${{ jq([inputs.sessions,{'implementation':states.check.outputs.session}],'add') }}
+catch:
+- when: failure.kind != 'cancellation'
+  continue:
+    outputs:
+      result: ${{ {'status':'stuck','summary':failure.message} }}
+      documents: {}
+      sessions: ${{ inputs.sessions }}

@@ -47,11 +47,12 @@ Dependency direction differs from workflow parent/child relationships. If your c
 needs an upstream change, keep your local work, request the owner's delivery and wait
 for that job to succeed. For a Git dependency, success is sufficient. Update any
 pin as needed and test your consumer normally.
-If the change you requested is complete but you have a non-Git dependency (such as
-a Nix package, c2j library deployment or server update) and do not observe the
-updated state, use the ask recipe to ask a human to inform you when deployment
-is complete. State the version, environment, missing update and dependent check.
-If you already observe the required updated state, continue your check.
+When the request depends on a published artifact, run the dependent check against
+the expected version. If it is unavailable, inspect the publish result and ask the
+owning cell about the observed failure. A coordinator can arrange a separate owner
+change when the publishing mechanism needs repair. Use the ask recipe when the
+remaining step needs a person's decision or access grant. Name the attempted check,
+its result and the specific help needed.
 Git-only dependencies need no extra human question. Optional deployment must not
 delay source acceptance. Source success alone does not establish a worker upgrade.
 
@@ -69,8 +70,8 @@ After resumption, inspect c2j job result JOB --json and read the exact request a
 native response, files and receipt. A short child summary (limited to 2,000
 characters) or successful question status means only that someone replied.
 If the final result is absent, use exact task/field reads as described below.
-Resume the dependent check only after explicit confirmation applicable to the
-requested version and environment. An unavailable or ambiguous answer leaves the
+Verify the requested version in the actual consumer. When a person needs to grant access,
+check their reply before using it. An unavailable or ambiguous answer leaves the
 dependency unresolved; preserve it and explain what remains. An upload alone is
 not confirmation. Ask about completed work. Diagnose failed/cancelled attempts,
 respect newer human direction and preserve successful upstream source results.
@@ -89,6 +90,18 @@ contract without new producer code; then reader availability is the prerequisite
 and the producer can keep preparation local and continue afterward. If useful code
 is already saved, preserve it and reconsider the order; creating a child does not
 clear or refresh your candidate.
+
+## Share a scope decision
+
+If one answer applies to several owner jobs, cite the person's words, source job and
+review receipt in each affected handoff. On a consultation or delivery, `share_review`
+includes the current reply. For direct child submissions include the source in the
+assignment. Running jobs can inspect their parent and related jobs before asking
+the same question. Explain a local contract that conflicts with the shared decision.
+
+A person can withdraw an assignment in a child review. Check which work their words
+actually withdraw. Report it to the coordinator with its source and any checks left
+undone. Continue unrelated sibling work.
 
 ## Inspect a job
 

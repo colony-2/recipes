@@ -29,6 +29,11 @@ state:
     record:
       inputs:
         native: ${{ states.ask.outputs }}
+        presented: >-
+          ${{ states.ask.outputs.?receipt.orValue({}).?actor.orValue({}).?kind.orValue('') == 'human'
+            ? {'question':state_output('next_message','question',states.snapshot.outputs.form.request.question),
+               'reply':states.ask.outputs.response,'receipt':states.ask.outputs.receipt,'documents':inputs.request.documents}
+            : state_output('record','presented',inputs.previous.?presented.orValue(null)) }}
         documents: ${{ state_output('record','documents',jq([inputs.documents,inputs.previous.?feedback_files.orValue({})],'add')) }}
       sequence:
       - id: review_notes
@@ -36,6 +41,9 @@ state:
         inputs:
           reply: ${{ json_parse(json_stringify(inputs.native)) }}
       outputs:
+        presented: >-
+          ${{ inputs.native.?receipt.orValue({}).?actor.orValue({}).?kind.orValue('') == 'human'
+            ? jq([inputs.presented,{'notes':sequence.review_notes.outputs.reply.documents}],'add') : inputs.presented }}
         native: ${{ inputs.native }}
         review_reply: ${{ sequence.review_notes.outputs.reply }}
         documents: ${{ jq([inputs.documents,sequence.review_notes.outputs.reply.documents],'add') }}
@@ -109,6 +117,7 @@ outputs:
   thread:
     review_id: ${{ states.snapshot.outputs.form.request.review_id }}
     revision: ${{ states.snapshot.outputs.form.request.revision }}
+    presented: ${{ states.record.outputs.presented }}
     documents: ${{ inputs.request.documents }}
     document_metadata: ${{ inputs.request.?document_metadata.orValue({}) }}
     feedback_files: ${{ jq(states.record.outputs.documents,'with_entries(select(.key|startswith("feedback/")))') }}
