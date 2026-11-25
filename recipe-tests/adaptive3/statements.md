@@ -227,6 +227,7 @@ All filenames below are relative to `recipe-tests/adaptive3/`.
 | A plan revised after another decision keeps its thread. The intervening decision and the final outcome have independent review IDs. | `adaptive3.yaml`, `recipe-tests/adaptive3/backstop-scope-flow.test.yaml` | Critical | Integration, c2j |
 | After answering a question Backstop reassesses its blocker, takes an authorized action, or presents the remaining question. | `recipes/adaptive3/discussion.yaml`, `recipes/adaptive3/backstop.yaml` | Critical | Integration, c2j |
 | Equivalent evidence can cover a suggested check. A broken promise or missing expressly required check returns to its author. | `validation-feedback.test.yaml`, `build.test.yaml` | Critical | Integration, c2j |
+| Planning reviewers trace approval to the person and defer suggested checks unless evidence could change the plan or the check is explicitly due. | `validation-feedback.test.yaml`, `validation.test.yaml` | High | Integration, c2j with scripted reviewers |
 | A verified report correction reaches Outcome with the earlier approval. A code defect returns to Implementation. | `pilot-routing.test.yaml` | Critical | Integration, c2j |
 | A fresh author and each repair receive the current finding and the reviewer’s recorded words and uploads. A newer reply replaces them. | `lifecycle.test.yaml`, `review-reply.test.yaml`, `pilot-routing.test.yaml` | High | Integration, c2j |
 | A second unchanged named failure uses the delegate. A newly passing check renews repair. | `repair-progress.test.yaml` | High | Unit, c2j |

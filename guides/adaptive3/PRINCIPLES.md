@@ -22,6 +22,7 @@ A session carries an agent’s working context. Pilot two author sessions. One h
 - Ask the person to approve the behavior and name any exact method they must decide on. Examples, suggested tests and design choices stay flexible unless explicitly adopted or required by a cell contract.
 - The author can change the design or proof method while preserving the promised behavior. Repetition in plans, tests and reviews adds no commitment.
 - A blocking finding names an agreed behavior at risk, an applicable contract or an observed defect. Withdraw it when its premise falls away.
+- Ask for proof during planning when the result could change the decision or the check is explicitly due then. Otherwise verify it during implementation.
 - When the person corrects an assumption, update the handoff. Retire checks and waits that depended on it. Keep the history of each attempt and any commitments that still apply.
 
 **Example.** “Let a new job wait for an existing job.” Design suggests reserving a new goal. If an existing dependency makes the job wait, the implementer can show the wait directly. The reviewer can accept that check. Check the dependency contract for separate questions such as what happens if the prerequisite fails.
