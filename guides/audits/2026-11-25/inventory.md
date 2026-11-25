@@ -45,6 +45,19 @@ D means Direction, P Preparation, I Implementation, O Outcome, M Integration and
 | 11-25 17:27 | [3MbmW2Bxc](https://jobs.colony2.com/c2/jobs/3MbmW2BxcHJdtm2umSa6N0NlWzM) cortex | expanded message bug | — | f4948656 | D1 → B → D1 → I4 → P1 | 1 | human review |
 | 11-25 17:54 | [UiOXfJCyb](https://jobs.colony2.com/c2/jobs/UiOXfJCyb3nLw5G7TmWyq0Z7jOs) cortex | Remove remaining Cortex goal wiring and require independent restart intent | [3MaNDEVLu](https://jobs.colony2.com/c2/jobs/3MaNDEVLudVOluo964MsstJ1UcK) | f4948656 | D4 → P2 | 1 | human review |
 
+## Which earlier review could the person have seen?
+
+I checked the question and primary document on the earliest human-facing form in each of the 31 builds that presented one. Four contained the literal phrase “since the last review” or “since the previous review.” This narrow count omits ambiguous wording such as “revised plan.” The records establish what each job presented. They do not record whether the person opened a document.
+
+| First form in the job (UTC, Nov 25) | What happened before it | What the human received |
+|---|---|---|
+| 05:42 · [Cortex project switcher](https://jobs.colony2.com/c2/jobs/3MaLY2L6g3nUBQneygaCbyE2GKa) | The planning author narrowed the plan after internal review. The reviewer passed the revision. | The first 1P opened with “What changed since the last review.” At 06:05 there *was* a human baseline. The person had said the JobDB catalog was already live, and the next plan explained how that changed the proposed default. |
+| 06:25 · [Base verification](https://jobs.colony2.com/c2/jobs/3MaP2ev4IDOJrfQSCJl8iEMWYu3) | On the short path, the implementation reviewer found that diagnostic output could corrupt the hook verdict. The implementer fixed it and the reviewer passed it. | The first merge question introduced the fix with “Since the previous review.” The person’s first reply asked whether verification actually built a Docker image. |
+| 06:34 · [JobDB platform verification](https://jobs.colony2.com/c2/jobs/3MaP2ed5BEnYN9cy6OZRVzsRuuE) | The author and reviewer settled how to report a platform job that failed before uploading results. | The first 1P opened with “What changed since the last review” and described the switch to reading GitHub’s job result. |
+| 06:40 · [Infra candidate verification](https://jobs.colony2.com/c2/jobs/3MaP2eb7O7VVwK0McOyRKHzHwB6) | Infra and c2ops negotiated package publication. The reviewer then asked the author to clarify the links. | The first 1P introduced the agreement with “Since the last review.” The accompanying question asked whether the labeled links were sufficient. |
+
+The same confusion appeared even with a genuine earlier human approval. In the JobDB lease-timestamp job, the person approved the plan at 00:01. The author then implemented the field, repaired two tests and passed verification. The internal reviewer requested a report edit. At 03:14 the first outcome told the person that only the report had changed since their last review. That description fits the last exchange between the agents. The person had last been shown the design and tests for the proposed feature. [JobDB lease timestamps](https://jobs.colony2.com/c2/jobs/3MZhCiRqRik9j9YjNpJNalziOSe)
+
 ## Open human decisions
 
 These 15 reviews were still open on live builds. Two other unanswered forms belonged to cancelled builds. The notes describe what the person actually sees and where action belongs.
