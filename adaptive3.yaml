@@ -34,7 +34,8 @@ input_schema:
     type: string
     default_value: ''
 inputs:
-  title: ${{ inputs.title }}
+  request: >-
+    ${{ nonempty(inputs.title) ? '# ' + inputs.title + '\n\n' + inputs.prompt : inputs.prompt }}
   prompt: ${{ inputs.prompt }}
   target_directory: ${{ inputs.target_directory }}
   documents: ${{ jq([context.artifacts,inputs.documents], 'add') }}
@@ -165,9 +166,7 @@ state:
         sessions: ${{ jq(transition.payload.?sessions.orValue({}),'del(.plan,.short_path)') }}
         basis: ${{ transition.payload.finding.?amendment.orValue({}).?human.orValue({}).?receipt.orValue({}) }}
         purpose: direction
-        request: |-
-          {{ inputs.title }}
-          {{ inputs.prompt }}
+        request: ${{ inputs.request }}
         target_directory: ${{ inputs.target_directory }}
         documents: ${{ transition.payload.?documents.orValue(inputs.documents) }}
         review_reply: ${{ transition.payload.?sessions.orValue({}).?review_reply.orValue({}) }}
@@ -217,9 +216,7 @@ state:
         sessions: ${{ jq(transition.payload.?sessions.orValue({}),'del(.plan,.short_path)') }}
         basis: ${{ {'decision':state_output('direction','result',{}).?receipt.orValue(state_output('direction','sessions',{}).?planning.orValue(null))} }}
         purpose: preparation
-        request: |-
-          {{ inputs.title }}
-          {{ inputs.prompt }}
+        request: ${{ inputs.request }}
         target_directory: ${{ inputs.target_directory }}
         documents: ${{ transition.payload.?documents.orValue(state_output('direction','documents',inputs.documents))
           }}
@@ -268,9 +265,7 @@ state:
         merge_queue: ${{ inputs.merge_queue }}
         verification: >-
           ${{ state_output('implementation','basis',{}) == {'decision':state_output('preparation','result',{}).?receipt.orValue(state_output('direction','result',{}).?receipt.orValue(state_output('direction','sessions',{}).?planning.orValue(null)))} ? state_output('implementation','verification',{}) : {} }}
-        request: |-
-          {{ inputs.title }}
-          {{ inputs.prompt }}
+        request: ${{ inputs.request }}
         target_directory: ${{ inputs.target_directory }}
         documents: ${{ transition.payload.?documents.orValue(state_output('preparation','documents',state_output('direction','documents',inputs.documents)))
           }}
@@ -328,9 +323,7 @@ state:
         sessions: ${{ transition.payload.?sessions.orValue({}) }}
         basis: ${{ {'basis':state_output('implementation','basis',{}),'candidate':state_output('implementation','candidate',{}),'verification':state_output('implementation','verification',{})} }}
         purpose: outcome
-        request: |-
-          {{ inputs.title }}
-          {{ inputs.prompt }}
+        request: ${{ inputs.request }}
         target_directory: ${{ inputs.target_directory }}
         documents: ${{ transition.payload.?documents.orValue(state_output('implementation','documents',inputs.documents))
           }}
@@ -405,9 +398,7 @@ state:
         queue_history: >-
           ${{ jq(state_output('integration','result',{}),
             '{initial_submitted_at, rejected_changeid, errors, status, receiver, branch, changeid} | with_entries(select(.value != null))') }}
-        request: |-
-          {{ inputs.title }}
-          {{ inputs.prompt }}
+        request: ${{ inputs.request }}
         target_directory: ${{ inputs.target_directory }}
         documents: ${{ transition.payload.?documents.orValue(state_output('outcome','documents',inputs.documents))
           }}
@@ -475,7 +466,7 @@ state:
         documents: >-
           ${{ jq([state_output('configure','documents',inputs.documents),transition.payload.documents,transition.payload.?sessions.orValue({}).?agreements.orValue([])],
             '(.[0] | with_entries(select(.key|startswith("review/negotiations/")))) + .[1] + ([.[2][].documents] | add // {})') }}
-        request: ${{ inputs.prompt }}
+        request: ${{ inputs.request }}
         feedback: ${{ transition.payload.?feedback.orValue(state_output('backstop','result',{})) }}
         agent_settings: ${{ jq({'model':inputs.model,'reasoning_effort':inputs.reasoning_effort},'with_entries(select(.value != ""))') }}
         prior_job: >-
@@ -627,9 +618,7 @@ state:
     recheck_merge:
       include: ./recipes/adaptive3/recheck-merge.yaml
       inputs:
-        request: |-
-          {{ inputs.title }}
-          {{ inputs.prompt }}
+        request: ${{ inputs.request }}
         target_directory: ${{ inputs.target_directory }}
         settings: ${{ states.configure.outputs.settings }}
         documents: ${{ states.chase.outputs.documents }}
