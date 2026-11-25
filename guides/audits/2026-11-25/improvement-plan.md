@@ -2,6 +2,8 @@
 
 **Keep the small set of roles. Fix what happens before a job asks the human for help.** Fifteen of 36 builds reached exceptional Backstop, against a goal of one or two per hundred. Eleven of 86 review messages asked for an owner, contact or confirmation from an operator. The changes below belong to Recipes unless another owner is named. [Job inventory](inventory.md)
 
+The six audit improvements and the four refinements below are implemented on local `main` in `e5c7617`. The two follow-ups at the end are open. The effect on real jobs is still to be measured. [Implementation](implementation.md) · [Test results](test-results.md)
+
 ## First, fix the routes that send work back to the human
 
 1. **Let the delegate carry out an agreed local repair.** Either author can escalate. When the scope is settled and a bounded retry remains, let the delegate return the repair instructions to that author using the existing decision. Replay macVZ’s model-capacity failure. One retry should resume the author. A change to the promised outcome still needs a decision. [macVZ](https://jobs.colony2.com/c2/jobs/3MaP2kRI3WNr7CDRbWhR3EXS65U)
@@ -61,3 +63,9 @@ This comparison covers the November 24 repeat-review plan and the November 23 pi
 The Cortex parent asked for a tested patch it could combine with a sibling’s work. The child saved the patch and evidence in task 47. The focused browser test passed twice. A separate check also failed on unchanged main. The parent owned combined verification and merge. The child’s last message said the person had nothing to do, yet its only button was **Revise**. [Child job](https://jobs.colony2.com/c2/jobs/3McL7OKBZqemgtqqAoNVkBu4agp) · [Parent assignment](https://jobs.colony2.com/c2/jobs/UiOXfJCyb3nLw5G7TmWyq0Z7jOs)
 
 Let the parent request a tested patch as the deliverable. The child reviewer checks that the patch applies to the named base and that the requested focused evidence is present. On success, return the patch, base, candidate, checks and remaining failures in the terminal child result. The parent’s normal wait should then resume with everything it needs to integrate and verify. A missing patch or failed required check goes back to the child for repair. Cover all three cases when implementing this follow-up.
+
+## Follow-up — put questions beside the passage they concern
+
+Ask the review client to write questions inline in the 1P, Design, Tests or other review documents using CriticMarkup. For example, `Existing jobs keep their settings. {>>Does this include jobs already waiting for review?<<}` A person can type a plain comment and let the client supply the markup. Preserve who asked each question, including questions written by an agent.
+
+Use the existing annotated-document attachment in the same review thread. The author answers a clarification against the passage as written. If the requester asks for a change, the author revises the document and says what changed. A general question can still go in the review message, and comments stay optional on approval. Test a question in the 1P and a requested edit in Tests in the same reply. The author should answer the first and revise only the passage identified by the second. [Review contract](../../REVIEW_V2.md#following-a-review-across-revisions)
