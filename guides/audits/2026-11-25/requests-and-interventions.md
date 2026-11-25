@@ -1,5 +1,7 @@
 # What people asked for, and why they got asked for an operator
 
+The [consolidated improvement plan](improvement-plan.md) includes the changes proposed here and in the review audit.
+
 **32 of 36 Adaptive3 jobs asked for a change. Eleven of 86 review messages asked someone to identify an owner, connect the job to an operator, or confirm access or readiness on an operator’s behalf.** Seven jobs generated those eleven messages. Four children of Root’s verify-hook audit generated eight of them. The clearest failure was asking a person to establish in advance what the job’s own verify run could establish. A later request for help from the very same job was warranted by an actual failed run. [Review-by-review evidence](inventory.md#requests-for-an-owner-or-operator)
 
 ## What the jobs were for

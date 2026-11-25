@@ -1,5 +1,7 @@
 # Where Adaptive3 still needs the human
 
+The [consolidated improvement plan](improvement-plan.md) collects the proposed changes from this audit and its follow-up.
+
 **15 of 36 builds entered exceptional Backstop (42%). The goal is at most 2%.** Thirteen builds presented at least one Backstop question. The same pattern appears on the latest recipe revision, where 13 of 31 builds reached Backstop. The November 23 audit found 36 of 90 (40%). These cohorts differ in workload and completion, so the percentages establish the size of the gap rather than a trend. [Design goals](../../adaptive3/PRINCIPLES.md#iteration-and-recovery) · [November 23 audit](../2026-11-23/audit.md) · [Job inventory](inventory.md)
 
 At the cutoff, eight builds had succeeded, two were cancelled, 15 were waiting for a human, ten were waiting for child jobs and one was active. Across the 36 builds there were 86 review messages and 69 human replies. Twenty builds presented more than one message. Of the 30 messages following an earlier one in the same review thread, 14 carried exactly the same attachments. **All 14 followed a written reply.** Sometimes that was precisely what the human wanted. In the Pulse Docker job, the person asked whether verification actually used Docker. The agent cited the real daemon and six passing Linux suites, kept the same packet, received approval and merged. [Pulse Docker review](https://jobs.colony2.com/c2/jobs/3MaPwz3Elhwj2eKo4UnOvotOfeg)
