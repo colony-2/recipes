@@ -45,6 +45,24 @@ D means Direction, P Preparation, I Implementation, O Outcome, M Integration and
 | 11-25 17:27 | [3MbmW2Bxc](https://jobs.colony2.com/c2/jobs/3MbmW2BxcHJdtm2umSa6N0NlWzM) cortex | expanded message bug | — | f4948656 | D1 → B → D1 → I4 → P1 | 1 | human review |
 | 11-25 17:54 | [UiOXfJCyb](https://jobs.colony2.com/c2/jobs/UiOXfJCyb3nLw5G7TmWyq0Z7jOs) cortex | Remove remaining Cortex goal wiring and require independent restart intent | [3MaNDEVLu](https://jobs.colony2.com/c2/jobs/3MaNDEVLudVOluo964MsstJ1UcK) | f4948656 | D4 → P2 | 1 | human review |
 
+## Requests for an owner or operator
+
+These are all the build messages that explicitly asked a person to identify an owner, connect the job to an operator, or confirm the operator’s route or readiness. Numbers refer to the order of human-facing messages within that job. A mention of an owner, a hypothetical future contact or a request to choose platform scope by itself does not qualify. All eleven ran on recipe `f4948656`. Seven occurred in Backstop and four in Preparation.
+
+| Job | Message(s) | What the person was asked to supply |
+|---|---|---|
+| [pgjobdb lease timestamps](https://jobs.colony2.com/c2/jobs/3Ma82aw2kRdhI9UvgfMU7AbWS8Z) | 5 | A maintainer to accept and publish an upstream race fix after a negotiation ended without a delivery agreement |
+| [Cortex project switcher](https://jobs.colony2.com/c2/jobs/3MaLY2L6g3nUBQneygaCbyE2GKa) | 3 | The Lab inventory entry or contacts for Cortex and its JobDB host |
+| [Root goal retirement](https://jobs.colony2.com/c2/jobs/3MaNDEVLudVOluo964MsstJ1UcK) | 1 | Runtime operator confirmation of the model route after repeated capacity errors |
+| [act verification](https://jobs.colony2.com/c2/jobs/3MaP2idjFZQDjwPpgmu1X6NRzIj) | 1, 2 | An isolated hosted target and its owner, then a GitHub organization owner for the proposed private verifier. The plan approval did not grant repository credentials. The history does not establish that every suitable design needed a new repository. |
+| [c2j verification](https://jobs.colony2.com/c2/jobs/3MaP2gTny122DL2EiQOER4KjSvT) | 1, 3, 6 | An Intel Mac runner or operator after a probe with no command result, a provisioning contact before candidate verification, then a Pulse runner diagnosis after the Apple Silicon child returned no test result |
+| [Cortex verification](https://jobs.colony2.com/c2/jobs/3MaP2ipKxKyq1tLaSaXbVyiudCz) | 3 | Confirmations or contacts across tenant provisioning, deployed JobDB and Cortex, GitHub and Pulse before a native candidate ran |
+| [macVZ verification](https://jobs.colony2.com/c2/jobs/3MaP2kRI3WNr7CDRbWhR3EXS65U) | 1, 2 | A Mac pool operator or confirmation of the unpublished-candidate route and toolchain. The second request followed the person explaining same-job base selection. |
+
+Two additional jobs used the standalone ask recipe. Both were cancelled. One asked who operated the live Cortex submission path and which backend and identity it used. The other offered local-only vz-macos work, a hold or an approved runner handoff. They are outside the 86 build messages. [Cortex submission question](https://jobs.colony2.com/c2/jobs/3Ma2eAW3TnMxZFl1GEJh4ODPRGw) · [vz-macos question](https://jobs.colony2.com/c2/jobs/3MaU4BEdsY8nxym5pmXmGqHh5tO)
+
+The five original assignments asking for a published revision or a check against it were the [JobDB](https://jobs.colony2.com/c2/jobs/3MZhCiRqRik9j9YjNpJNalziOSe) and [pgjobdb](https://jobs.colony2.com/c2/jobs/3Ma82aw2kRdhI9UvgfMU7AbWS8Z) lease timestamps, [JobDB metadata recovery](https://jobs.colony2.com/c2/jobs/8lej3piGBxpPnfYBGrNE2CTz68L), [Cortex browser-gate repair](https://jobs.colony2.com/c2/jobs/3Mbh2RCm7sNR3kGMzhTuaClekmX) and [Cortex goal retirement](https://jobs.colony2.com/c2/jobs/UiOXfJCyb3nLw5G7TmWyq0Z7jOs). Historical references to published platforms were common in other assignments. Those asked for tests on those platforms.
+
 ## Which earlier review could the person have seen?
 
 I checked the question and primary document on the earliest human-facing form in each of the 31 builds that presented one. Four contained the literal phrase “since the last review” or “since the previous review.” This narrow count omits ambiguous wording such as “revised plan.” The records establish what each job presented. They do not record whether the person opened a document.
