@@ -4,6 +4,8 @@
 
 The six audit improvements and the four refinements below are implemented on local `main` in `e5c7617`. The follow-ups at the end are open. The effect on real jobs is still to be measured. [Implementation](implementation.md) · [Test results](test-results.md)
 
+The November 26 review audit and subsequent design discussions continue here. The latest proposal uses Refine interviews for planning decisions. [Review audit](../2026-11-26/audit.md) · [Planning interviews with Refine](#planning-interviews-with-refine)
+
 ## First, fix the routes that send work back to the human
 
 1. **Let the delegate carry out an agreed local repair.** Either author can escalate. When the scope is settled and a bounded retry remains, let the delegate return the repair instructions to that author using the existing decision. Replay macVZ’s model-capacity failure. One retry should resume the author. A change to the promised outcome still needs a decision. [macVZ](https://jobs.colony2.com/c2/jobs/3MaP2kRI3WNr7CDRbWhR3EXS65U)
@@ -88,7 +90,7 @@ Replay three boundaries. A correction followed by the requested edit should adva
 
 **Recipes.** Let an agent answer a comment in the thread. Keep the original plan and any pending approval accessible there. A clarification can end with the answer. When the person gives direction, record what it settles and continue. If the remaining work belongs to an owner, send it there. Open a decision for the requester when their answer would change what happens or when a promised approval is due. [November 26 audit](../2026-11-26/audit.md)
 
-**Documents.** Put the 1P first for the first plan approval, with Design and Tests attached. When asking someone to review a document edit, open that document and say what changed since they saw it. For a question or answer, put enough context in the message to read it on its own. Quote a passage if the wording matters. Send that turn through `review/v2` with `documents: {}` and omit `overview_document_id`. The earlier documents and their approval stay available in the same thread. [Review contract](../../../recipes/review-v2.py#L182)
+**Documents in the existing review flow.** Put the 1P first for the first plan approval, with Design and Tests attached. When asking someone to review a document edit, open that document and say what changed since they saw it. For a question or answer, put enough context in the message to read it on its own. Quote a passage if the wording matters. Send that turn through `review/v2` with `documents: {}` and omit `overview_document_id`. The earlier documents and their approval stay available in the same thread. [Review contract](../../../recipes/review-v2.py#L182)
 
 **Cortex.** In the thread, show the message and its reply control first. For a document review, open the selected primary. For a message with optional evidence, show named links and let the reader open them. Honor that choice on the current turn as well as in history. Omitting the overview alone still opens the first attachment in the current reader. Recipes and Cortex should agree how a message distinguishes optional attachments from a primary to read. [Current reader](https://github.com/colony-2/cortex/blob/0c4aebcfb7d1b48363581c710a1b2b9777b1de86/web/app/src/components/ReviewV2.tsx#L61)
 
@@ -108,3 +110,16 @@ For a repeat approval, say what the person last agreed to, what has changed for 
 Replay the labels clarification, the timed-retry explanation and the DAG instruction to combine fixes. Pair a compatible database upgrade with a case where an upgrade would drop support for existing data. The first should advance under the existing direction. The second should explain whose data is affected and ask what to do. Preserve first plan approvals and requested final reviews in both cases.
 
 Read each rendered message with the attachments closed. Can someone tell what changed for them and, if a reply is needed, what it will decide? Check the action the job actually takes. In the next audit count questions that require opening a file to understand, unchanged files reopened after a clarification, and requests to approve work the person already authorized.
+
+## Planning interviews with Refine
+
+The planner writes the 1P, Design and Tests for agents. These documents stay private during elicitation. The requester sees plain-language questions about what the change should do. When the recipe needs approval to implement or merge, ask for it explicitly in terms of the outcome.
+
+1. **The planner supplies choices worth exploring.** Describe the goal, what is already settled, the feasible options and their consequences. Sketch where different answers could lead. Identify assumptions the planner still needs to check.
+2. **Refine prepares a batch before the person arrives.** Generate questions and likely follow-ups together. Choose from the prepared branches as the person answers so they can cover several choices in one sitting without waiting for generation. End when the person stops or the remaining questions have little value.
+3. **Every interview returns to the planner as actual Q&A.** Most responses are multiple choice. Always offer **Other** with room to type. For each question shown, return its exact wording, every choice in display order, the selection, and any typed words verbatim. Preserve skips and corrections. Speculative branches stay in the generation material.
+4. **The planner interprets the answers.** They can investigate, revise, hand work to implementation, or send new material to Refine for another round. The implementation handoff says what to deliver, which constraints were agreed, and what the implementer can decide. Link the relevant plan and original responses.
+
+Keep a transcript of rounds. Each planner turn points to its source documents and says what is new. The interview record itself is Refine’s entire reply. A fresh planner can change the focus and still use that history. When preparing another batch, carry earlier answers forward. Reopen a settled choice only when something changes its consequences or reveals a conflict. Tell the person why it matters now.
+
+**Replay a missing choice.** Refine asks “When should we notify you about a job that keeps retrying?” and offers “Immediately,” “After ten minutes” and “Other.” The person picks ten minutes. Seeing the menu lets the planner notice a missing option, “Only when I need to act.” Include it in the next batch if it would change the work and earlier guidance leaves the choice open. Also replay a typed **Other** answer and an early stop. Check that the planner receives the exact text and can distinguish skipped questions from unshown ones. In the next audit, count return visits for questions we could have anticipated in the first sitting.
