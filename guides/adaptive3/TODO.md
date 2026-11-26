@@ -1,5 +1,9 @@
 # Adaptive3 follow-ups
 
+## Delegate orchestration
+
+- [ ] Replace cross-stage routing with a durable delegate dispatch loop. Put the delegate before every requester-facing send. Target roughly half as many outer transitions and measure what actually disappears. [Design and primitive catalog](DELEGATE_ORCHESTRATION.md) · [Running improvement plan](../audits/2026-11-25/improvement-plan.md#delegate-orchestration)
+
 ## Backstop and retry counters — 2026-11-23
 
 - [x] **Reset phase counters on reentry.** Count retries within one visit. When work returns to a phase it previously left, give that phase its full allowance and retain its prior work.

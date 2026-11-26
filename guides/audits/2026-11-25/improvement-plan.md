@@ -4,7 +4,11 @@
 
 The six audit improvements and the four refinements below are implemented on local `main` in `e5c7617`. The follow-ups at the end are open. The effect on real jobs is still to be measured. [Implementation](implementation.md) · [Test results](test-results.md)
 
-The November 26 review audit and subsequent design discussions continue here. The latest proposal uses direct questions for specific decisions and Refine interviews to discover how well a proposal fits the requester’s expectations. [Review audit](../2026-11-26/audit.md) · [Planning interviews with Refine](#planning-interviews-with-refine)
+The November 26 review audit and subsequent design discussions continue here. The open proposals cover planning interviews and how the delegate chooses work and represents the requester. [Review audit](../2026-11-26/audit.md) · [Planning interviews with Refine](#planning-interviews-with-refine) · [Delegate orchestration](#delegate-orchestration)
+
+## Delegate orchestration
+
+Give the delegate ownership of the next action and the handoff between primitives. Replace the earlier proposal to screen pending human questions with a single outward path. The delegate sees every proposed message, document or interview package before it reaches the requester. The top-level recipe records one dispatch, runs the primitive and returns its result to the delegate. Keep the concrete checks and waits inside the operations that own them. [Design, primitive catalog and reduction target](../../adaptive3/DELEGATE_ORCHESTRATION.md) · [Implementation TODO](../../adaptive3/TODO.md#delegate-orchestration)
 
 ## First, fix the routes that send work back to the human
 
