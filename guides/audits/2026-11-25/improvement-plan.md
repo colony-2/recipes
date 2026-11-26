@@ -2,7 +2,7 @@
 
 **Keep the small set of roles. Fix what happens before a job asks the human for help.** Fifteen of 36 builds reached exceptional Backstop, against a goal of one or two per hundred. Eleven of 86 review messages asked for an owner, contact or confirmation from an operator. The changes below belong to Recipes unless another owner is named. [Job inventory](inventory.md)
 
-The six audit improvements and the four refinements below are implemented on local `main` in `e5c7617`. The two follow-ups at the end are open. The effect on real jobs is still to be measured. [Implementation](implementation.md) · [Test results](test-results.md)
+The six audit improvements and the four refinements below are implemented on local `main` in `e5c7617`. The follow-ups at the end are open. The effect on real jobs is still to be measured. [Implementation](implementation.md) · [Test results](test-results.md)
 
 ## First, fix the routes that send work back to the human
 
@@ -71,3 +71,15 @@ Test the same change under two assignments. “Give me the result so I can integ
 Ask the review client to write questions inline in the 1P, Design, Tests or other review documents using CriticMarkup. For example, `Existing jobs keep their settings. {>>Does this include jobs already waiting for review?<<}` A person can type a plain comment and let the client supply the markup. Preserve who asked each question, including questions written by an agent.
 
 Use the existing annotated-document attachment in the same review thread. The author answers a clarification against the passage as written. If the requester asks for a change, the author revises the document and says what changed. A general question can still go in the review message, and comments stay optional on approval. Test a question in the 1P and a requested edit in Tests in the same reply. The author should answer the first and revise only the passage identified by the second. [Review contract](../../REVIEW_V2.md#following-a-review-across-revisions)
+
+## Follow-up — let the delegate resolve a question before it reaches the requester
+
+Of 14 open forms at 00:08 UTC on November 26, seven came through ordinary review, six through Backstop and one was a direct question for an operator. All ran earlier recipe revisions. The Cortex DAG job illustrates the gap. The delegate screened an earlier plan, the person answered its question about upload limits, and the next plan went straight back to the person. In act, the delegate actually returned `resume`. It described the person's existing local-runner instruction as a scope change, and the recipe opened a form. In c2ops, the delegate itself asked for permission to consult c2j. [Cortex DAG](https://jobs.colony2.com/c2/jobs/3Mbh2RCm7sNR3kGMzhTuaClekmX) · [act](https://jobs.colony2.com/c2/jobs/3MaP2idjFZQDjwPpgmu1X6NRzIj) · [c2ops](https://jobs.colony2.com/c2/jobs/3McLeFBVnmC8GJQNkRJi3LeFho9)
+
+Before opening a human form, ask **what decision is still the requester's to make?** Use the existing delegate for judgment on a pending question, including the first question on a thread. The first standard plan still goes to the requester for approval. Preserve requested final reviews and existing verification and merge requirements. When a mandatory approval is due, remove settled side questions and say plainly what approval would allow. [Review routing](../../../recipes/adaptive3/review.yaml#L57)
+
+Give the delegate the proposed question, the assignment, applicable decisions in the requester's words and references to the work. When the answer may already exist, look up the relevant parent, owner or related job. Retain the last approval and later guidance with their sources across a **Revise** reply. Judge what each covers. A parent's assignment can settle who integrates a change. It does not by itself approve a merge.
+
+If an existing decision covers the next action, cite it and route the work to the author. The author can consult an owner, try an available runner or reuse an existing repair. Keep retry limits. If a tool failure prevents the delegate from starting, route the diagnostic to the tool owner through the recovery path. If a person really must decide, give the choice and its consequence in two sentences. Record what the delegate did and why in the job thread.
+
+Replay three boundaries. A correction followed by the requested edit should advance under the applicable decision. Two Cortex jobs seeing the same nine failed tree tests should find the existing repair. A choice about shipping a database fix before crash recovery must still reach the requester. Track avoidable forms alongside missed mandatory reviews and duplicate repair jobs. [Shared tree failure](https://jobs.colony2.com/c2/jobs/3McO3PDMSul8iEKaPoEg3vla7vH) · [Release-order choice](https://jobs.colony2.com/c2/jobs/3McQ7WcVJvZjuoZTgTf3o2nCT0o)
