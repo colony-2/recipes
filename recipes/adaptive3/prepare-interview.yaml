@@ -1,0 +1,39 @@
+id: prepare-interview
+inputs:
+  request: ${{ inputs.request }}
+  instruction: ${{ inputs.instruction }}
+  documents: ${{ inputs.documents }}
+  rounds: ${{ inputs.rounds }}
+  settings: ${{ inputs.settings }}
+sequence:
+- id: prepare
+  include: ./agent.yaml
+  inputs:
+    read_only: true
+    documents: ${{ inputs.documents }}
+    agent_settings: ${{ inputs.settings }}
+    prompt: |-
+      Prepare one sitting about the proposal in the supplied files. What would people experience? Which assumptions could make this the wrong solution? Consider the whole proposal, including points its author treats as settled. Read previous answers before asking again.
+      Ask only questions whose answers could change the work. In this form all questions are shown together. Choose independent questions. Save a follow-up that depends on an answer for the planner. Give two or three concrete alternatives in display order. The form adds Other, a place to type and a skip choice. An empty list means there is nothing worth asking.
+      Assignment: {{ inputs.request }}
+      Delegate: {{ inputs.instruction }}
+      Previous interviews: ${{ json_stringify(inputs.rounds) }}
+    schema:
+      type: object
+      additionalProperties: false
+      required: [questions]
+      properties:
+        questions:
+          type: array
+          maxItems: 8
+          items:
+            type: object
+            additionalProperties: false
+            required: [question, choices]
+            properties:
+              question: {type: string, minLength: 1}
+              choices: {type: array, minItems: 2, maxItems: 3, uniqueItems: true, items: {type: string, minLength: 1}}
+outputs:
+  valid: ${{ sequence.prepare.outputs.valid_response && has(sequence.prepare.outputs.response.questions) }}
+  package: >-
+    ${{ sequence.prepare.outputs.valid_response ? sequence.prepare.outputs.response.?questions.orValue([]) : [] }}

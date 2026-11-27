@@ -1,178 +1,69 @@
 recipe: ../../adaptive3.yaml
 cases:
-- id: outcome-defect-returns-to-implementation-and-back
+- id: dispatch-returns-original-result-to-next-delegate-turn
   type: integration_case
   runtime: {}
-  inputs: {prompt: Keep the drawer open outside Review.}
+  inputs:
+    prompt: Add the native verify hook.
   mocks:
     ops:
-    - &origin
-      match: {op: command_execution}
-      behavior: {mode: return, outputs: {stdout: ''}}
-    includes:
-      root/configure/[1]: &config
-      - mode: return
-        outputs: {result: {status: passed}, settings: {}}
-      root/direction: &direction
-      - mode: return
-        outputs: {result: {status: accepted}, work: {work_kind: feature, delivery_route: short}, basis: {}, documents: {}, sessions: {}}
-      root/implementation:
-      - &implemented
+    - match:
+        op: command_execution
+      behavior:
         mode: return
-        outputs: {finding: {status: accepted}, result: {status: accepted}, work: {summary: Saved the drawer change.}, basis: {}, documents: {}, sessions: {}, verification: {}, candidate: {}, prior_finding: {}}
-      - *implemented
-      root/outcome:
-      - mode: return
         outputs:
-          finding: {summary: Navigation outside Review closes the drawer.}
-          result: {status: changes, stage: implementation, summary: Navigation outside Review closes the drawer.}
-          documents: {}
-          work: {}
-          sessions:
-            review_reply:
-              submission: {receipt: {actor: {kind: automation}}, response: {feedback: Keep the drawer open.}}
-      - &finished
-        mode: return
-        outputs: {result: {status: accepted}, work: {summary: Drawer verified.}, documents: {}, candidate: {changed: false}, sessions: {}}
-  assertions:
-  - type: cel_true
-    expr: >-
-      include_calls.map(c,c.node_path)==['root/configure/[1]','root/direction','root/implementation','root/outcome','root/implementation','root/outcome']
-      && include_calls[4].inputs.finding.summary.contains('outside Review') && include_calls[4].inputs.review_reply.submission.receipt.actor.kind=='automation' && outputs.summary=='Drawer verified.'
-- id: wording-correction-stays-with-outcome
-  type: integration_case
-  runtime: {}
-  inputs: {prompt: Keep the drawer open outside Review.}
-  mocks:
-    ops: [*origin]
+          stdout: ''
     includes:
-      root/configure/[1]: *config
-      root/direction: *direction
-      root/implementation:
+      root/configure/[1]:
       - mode: return
         outputs:
-          result: {status: accepted}
-          finding: {summary: Name the drawer in the report title.}
-          work: {summary: Saved the drawer change.}
-          documents: {}
-          sessions: {}
-          prior_finding: {approval: {result: {status: accepted}}}
-          basis: {}
-          verification: {result: {status: passed}}
-          candidate: {}
-      root/outcome: [*finished]
-  assertions:
-  - type: cel_true
-    expr: >-
-      include_calls.map(c,c.node_path)==['root/configure/[1]','root/direction','root/implementation','root/outcome']
-      && include_calls[3].inputs.finding.summary.contains('report title') && include_calls[3].inputs.finding.approval.result.status=='accepted' && size(reviews)==0
-- id: delegate-receives-the-stalled-check-and-returns-one-correction
-  type: integration_case
-  runtime: {}
-  inputs: {prompt: Restore drafts after reopening the notebook.}
-  mocks:
-    ops: [*origin]
-    includes:
-      root/configure/[1]: *config
-      root/direction: *direction
-      root/implementation:
+          result:
+            status: passed
+          settings: {}
+      root/delegate:
       - mode: return
         outputs:
-          result: {status: stuck, loop: work, summary: Restore still fails after a local repair., failed_checks: [restore]}
-          documents: {}
-          sessions: {short_path: true}
-          prior_finding: {}
-      - *implemented
-      root/backstop/[1]:
-      - mode: return
-        outputs:
-          review_reply: {}
-          result: {status: resume, stage: implementation, summary: Use the recovered fixture to repair restore.}
+          action:
+            primitive: present
+            instruction: Add the native verify hook.
+            documents: []
+            presentation: question
+          allowed: true
+          issue: ''
           session: {}
-          documents: {}
-          retry: {}
-      root/outcome: [*finished]
-  assertions:
-  - type: cel_true
-    expr: >-
-      include_calls.map(c,c.node_path)==['root/configure/[1]','root/direction','root/implementation','root/backstop/[1]','root/implementation','root/outcome']
-      && include_calls[3].inputs.problem.failed_checks==['restore']
-      && include_calls[4].inputs.finding.summary.contains('recovered fixture') && size(reviews)==0
-- id: dependency-migration-goes-to-planning-before-implementation
-  type: integration_case
-  runtime: {}
-  inputs: {prompt: Upgrade the dependency whose new API needs a migration.}
-  mocks:
-    ops: [*origin]
-    includes:
-      root/configure/[1]: *config
-      root/direction:
-      - mode: return
-        outputs: {result: {status: accepted}, finding: {}, prior_finding: {}, work: {work_kind: feature, delivery_route: standard}, basis: {}, documents: {}, sessions: {}}
-      root/preparation:
-      - mode: return
-        outputs: {result: {status: accepted, human: {response: {direction: accept}}, receipt: {request_id: migration}, reviewed_documents: {}, review_id: migration, revision: 1}, finding: {}, documents: {}, sessions: {}}
-      root/implementation: [*implemented]
-      root/outcome: [*finished]
-  assertions:
-  - {type: cel_true, expr: "include_calls.map(c,c.node_path)==['root/configure/[1]','root/direction','root/preparation','root/implementation','root/outcome'] && include_calls[3].inputs.sessions.plan.receipt.request_id=='migration'"}
-- id: failed-consumer-check-retries-after-the-same-landed-result
-  type: integration_case
-  runtime: {}
-  inputs: {prompt: Add the marker and check it in a fresh consumer.}
-  mocks:
-    ops: [*origin]
-    includes:
-      root/configure/[1]: *config
-      root/direction: *direction
-      root/implementation: [*implemented]
-      root/outcome:
-      - mode: return
-        outputs: {result: {status: accepted, post_merge_check: Read the marker.}, documents: {}, work: {}, candidate: {changed: true}, sessions: {}, patch: null, finding: {}}
-      root/integration:
       - mode: return
         outputs:
-          result: {status: accepted}
-          accepted: {result: {status: accepted, post_merge_check: Read the marker.}}
-          work: {summary: Merged., publication: {merged_hash: landed}, publish: {status: skipped}}
-          merge_state: {publication: {merged_hash: landed}}
-          documents: {}
-          sessions: {}
-      root/check_delivery:
-      - {mode: return, outputs: {result: {status: stuck, summary: The consumer mirror timed out.}, documents: {}, sessions: {}}}
-      - {mode: return, outputs: {result: {status: passed, summary: The new consumer read the landed marker.}, documents: {}, sessions: {}}}
-      root/backstop/[1]:
-      - {mode: return, outputs: {result: {status: resume, stage: integration, summary: Retry against the available mirror.}, review_reply: {}, session: {}, documents: {}, retry: {}}}
-  assertions:
-  - type: cel_true
-    expr: >-
-      include_calls.filter(c,c.node_path=='root/integration').size()==1 && include_calls.filter(c,c.node_path=='root/check_delivery').size()==2 &&
-      outputs.consumer_check.status=='passed' && outputs.merge.merged_hash=='landed' && size(reviews)==0
-- id: a-confirmed-withdrawal-reaches-the-parent-without-merge
-  type: integration_case
-  runtime: {}
-  inputs: {prompt: Add the native verify hook.}
-  mocks:
-    ops: [*origin]
-    includes:
-      root/configure/[1]: *config
-      root/direction:
-      - mode: return
-        outputs:
-          result: {status: stuck, summary: The child review was cancelled., withdrawal_sources: [{job_id: question, message: The cell is retired.}]}
-          documents: {}
-          prior_finding: {}
-          sessions: {}
-      root/backstop/[1]:
-      - mode: return
-        outputs:
-          result: {status: withdrawn, stage: null, summary: The requester withdrew the hook assignment., source: {job_id: question, message: The cell is retired.}}
-          review_reply: {}
+          action:
+            primitive: withdraw
+            instruction: The requester withdrew the assignment.
+            documents: []
+            presentation: question
+          allowed: true
+          issue: ''
           session: {}
-          retry: {}
-          documents: {}
+      root/dispatch:
+      - mode: return
+        outputs:
+          visits: 1
+          record:
+            documents: {}
+            kind: feature
+            step: 1
+            human_instruction: {job_id: parent, message: Stop the work., receipt: {actor: {kind: human}}}
+            reply:
+              submission:
+                response:
+                  feedback: Stop the work.
+                receipt:
+                  actor:
+                    kind: human
+          result:
+            summary: The requester withdrew the assignment.
+            step: 1
   assertions:
   - type: cel_true
-    expr: >-
-      outputs.withdrawal.source.job_id=='question' && outputs.summary.contains('withdrew') && outputs.merge=={} &&
-      include_calls.map(c,c.node_path)==['root/configure/[1]','root/direction','root/backstop/[1]'] && size(reviews)==0
+    expr: include_calls.filter(c,c.node_path=='root/dispatch').map(c,c.inputs.action.primitive)==['present']
+  - type: cel_true
+    expr: include_calls.filter(c,c.node_path=='root/delegate')[1].inputs.last.summary==outputs.summary && include_calls.filter(c,c.node_path=='root/delegate')[1].inputs.record.step==1
+  - type: cel_true
+    expr: outputs.withdrawal.source.receipt.actor.kind=='human' && outputs.merge=={}

@@ -1,5 +1,15 @@
 # Adaptive3 changes from the November 25 audit
 
+## November 27 delegate implementation
+
+The public build now gives one continuing delegate the next decision after every operation. It selects the operation, writes the assignment and chooses what evidence to pass along. The top-level recipe went from 58 transitions to four. Verification, negotiation and integration still enforce their own contracts. The planner and implementer each retain their session. [Dispatch loop and primitive catalog](../../adaptive3/DELEGATE_ORCHESTRATION.md)
+
+The delegate sees every build presentation. A direct question carries enough context to answer with the files closed. An interview can probe the whole private proposal in one sitting. Each round returns the source documents, wording, offered choices, skips, typed answers and receipt to the planner. The planner decides whether the proposal needs revision. This implementation uses the native review form for independent questions. Conditional branches and inline editing in the client remain integration work. [Presentation](../../../recipes/adaptive3/delegate-present.yaml) · [Interview preparation](../../../recipes/adaptive3/prepare-interview.yaml)
+
+The runtime records who said what, which candidate passed verification and what the person authorized. The delegate can send ordinary repairs back to the author, finish an explanation directly, return a tested patch to its caller or integrate the change. A requested final decision still goes to the person. Direct native questions wait for a reply. The public completion summary can answer the requester and close the job. A mid-job thread message that lets work continue immediately would need a send operation. Behavioral impact on real requests remains to be measured. [Regression results](test-results.md) · [Field measurements](improvement-plan.md#check-the-effect)
+
+## Earlier implementation
+
 The first plan describes the proposal. A revised review compares against the last packet presented for that decision with a human reply. The author gets the packet, the question, the reply and its source. Outcome uses the measured candidate to identify the pending decision. The 1P, Design and Tests keep their existing order. [Review cycle](../../../recipes/adaptive3/cycle.yaml) · [Discussion](../../../recipes/adaptive3/discussion.yaml)
 
 | Finding | What changed |

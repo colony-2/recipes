@@ -5,7 +5,11 @@ Agent decisions are scripted unless a case is explicitly marked live.
 
 | ID | Expectation | Priority | Level / dependencies | Files |
 | --- | --- | --- | --- | --- |
-| A3-01 | Each accepted delivery stage advances directly after Execute, complete validation and Review. | Critical | Integration / c2j, Nix | adaptive3.yaml, lifecycle.yaml, cycle.yaml |
+| Delegate handoff | A verified change can return to its integrating caller. The same change assigned for landing needs a merge receipt. | Critical | Integration / c2j, Git | build.test.yaml, completion-check.yaml |
+| Planning interview | The planner receives exact options, skips and typed answers in one batch. The interview gives no permission to integrate. | Critical | Integration / c2j | delegate-build.test.yaml, dispatch-check.test.yaml |
+| Delegate retry limit | Three malformed delegate replies stop the job and record the reason without opening a human review. | High | Integration / c2j | delegate-build.test.yaml, dispatch.yaml |
+| Package approval | The delegate presents the checked proposal. The probe receives the exact configuration the requester accepted. | Critical | Integration / c2j | delegate-build.test.yaml, packages.yaml |
+| A3-01 | Every completed operation returns to the delegate for its next assignment. | Critical | Integration / c2j, Nix | adaptive3.yaml, delegate.yaml, dispatch.yaml |
 | A3-02 | A correction rechecks affected work and reuses passing verification only when its inputs remain current. | Critical | Integration / c2j, Nix | lifecycle.yaml, validate.yaml |
 | A3-03 | Human questions retain the pending item without executing work or consuming automatic attempts. | Critical | Integration / c2j, Nix | review.yaml |
 | A3-04 | Human changes reach Execute with original wording and supersede conflicting generated plans. | Critical | Integration / c2j, Nix | review.yaml, prompts/execute.yaml |
@@ -35,7 +39,7 @@ Agent decisions are scripted unless a case is explicitly marked live.
 | A3-27 | Job inspection follows pagination and retrieves exact output beyond previews. | inspection.test.yaml | high | integration, c2j |
 
 | A3-28 | Explicit model settings override worker defaults independently; absent settings stay omitted. | models.test.yaml | high | integration, c2j |
-| A3-29 | Unavailable models reopen native human input; corrected settings persist into subsequent work and validation. | models.test.yaml | critical | integration, c2j |
+| A3-29 | Three consecutive invalid delegate responses stop the job and retain the diagnostic. | models.test.yaml | critical | integration, c2j |
 
 | A3-30 | Successful and failed child outcomes reach their requester before resolution, including after invalid reports. | child-recovery.test.yaml | critical | integration, c2j |
 | A3-31 | Wrapped failures retain same-named logs with distinct producer paths and exact bytes. | diagnostics.test.yaml | critical | integration, c2j |

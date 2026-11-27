@@ -28,9 +28,9 @@ sources together before using those remote selectors.
 ## Coverage of the switch
 
 The new [`default-build.test.yaml`](../../recipe-tests/adaptive3/default-build.test.yaml)
-calls root `build.yaml` directly. All three cases passed:
+calls root `build.yaml` directly. It exercises these paths:
 
-- An explanation enters adaptive3 and completes after human acceptance.
+- An explanation can finish with an independently checked answer.
 - Feature work completes both human reviews and a native merge through adaptive3.
 - Repository-improvement inputs and backgrounders reach the normal build; the
   local verification hook executes before completion.

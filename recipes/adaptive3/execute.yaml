@@ -1,5 +1,7 @@
 id: adaptive3-execute
 inputs:
+  delegated: ${{ inputs.?delegated.orValue(false) }}
+  continuing: ${{ inputs.?continuing.orValue(false) }}
   merge_state: ${{ inputs.?merge_state.orValue({}) }}
   accepted: ${{ inputs.?accepted.orValue({}) }}
   recovery: ${{ inputs.?recovery.orValue(false) }}
@@ -30,6 +32,8 @@ state:
   states:
     context:
       inputs:
+        delegated: ${{ inputs.delegated }}
+        continuing: ${{ inputs.continuing }}
         withdrawal_sources: ${{ inputs.withdrawal_sources }}
         resumed_repair: ${{ inputs.purpose in ['implementation','direction','preparation'] && size(inputs.session)>0 && inputs.local_repair }}
         purpose: ${{ inputs.purpose }}
@@ -48,6 +52,7 @@ state:
       - id: prompts
         include: ./prompts/execute.yaml
         inputs:
+          continuing: ${{ inputs.continuing }}
           purpose: ${{ inputs.purpose }}
           request: ${{ inputs.request }}
           target_directory: ${{ inputs.target_directory }}
@@ -65,7 +70,7 @@ state:
             '.commit as $commit | .execute | .properties.status.enum += ["repair"] | .properties.commit = $commit | .required += ["commit"]') : jq(sequence.schemas.outputs.execute, '.properties.status.enum -= ["revise_plan"]'),
             size(inputs.withdrawal_sources)>0 ? '.properties.status.enum += ["withdrawn"]' : '.') }}
         task: >-
-          ${{ (inputs.resumed_repair ? (inputs.purpose == 'implementation' ? sequence.prompts.outputs.repair : sequence.prompts.outputs.planning_repair) : sequence.prompts.outputs.task)
+          ${{ inputs.delegated ? sequence.prompts.outputs.handoff : (inputs.resumed_repair ? (inputs.purpose == 'implementation' ? sequence.prompts.outputs.repair : sequence.prompts.outputs.planning_repair) : sequence.prompts.outputs.task)
             + (inputs.purpose in ['direction','preparation','outcome'] ? '\n\n' + sequence.prompts.outputs.reader : '')
             + (size(inputs.withdrawal_sources)>0 ? '\nIf the person explicitly withdrew this entire assignment, return withdrawn and cite their words. A cancelled child alone leaves the assignment open. Cite the review or child result in this turn.' : '') }}
       transitions:

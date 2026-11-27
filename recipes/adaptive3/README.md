@@ -1,22 +1,6 @@
 # Adaptive3
 
-Adaptive3 uses two author sessions and one independent assessor for the standard
-build. Direction and Preparation share a planning author. Implementation and
-Outcome share a core implementer. Standard deliveries pause at Preparation with the one-pager, detailed design and
-promised behaviors and suggested checks. “Review before Complete” requests a final review.
-“Take to Completion” permits completion or merge once independent assessment confirms the
-verified candidate meets the promise and any explicitly required checks. An equivalent
-check can replace an author’s example. A short local assignment goes
-directly from Direction to Implementation and requires human Outcome acceptance.
-Review questions resume the author in a read-only turn. Autonomous acceptance
-uses the independent assessment result.
-
-Check outputs before verification or assessment. Rebase and prepare the
-candidate before managed verification. Send failed checks to the implementer
-with original diagnostics. A merge retry after upstream advancement can reuse
-human approval when the prepared change matches the approved patch and fresh
-verification passes. Successful integration completes from merge and any
-configured publication work.
+The delegate chooses one operation at a time and receives its result. One author plans, another implements, and an independent reviewer checks the work. The delegate can answer an explanation, send a repair to its author, gather preferences or take verified work through integration. [Operations and handoffs](../../guides/adaptive3/DELEGATE_ORCHESTRATION.md)
 
 Implementation writes the Git title and body from the finished change. The recipe
 adds the originating job URL as the final `Job` trailer. Queued candidates also
@@ -40,40 +24,17 @@ require_verification: true
 ```
 
 Optional inputs are `documents` (selected artifact references), `resume_from`
-(a previous job to inspect), and `max_iterations` (automatic passes before
-Backstop; zero uses the finite default of four). Human discussion does not consume
-these passes. A new job starts fresh agent sessions and uses inspection to
-recover useful previous work.
+(a previous job to inspect) and `max_iterations` (the exchange limit and basis for the job dispatch budget). A new job starts fresh sessions.
 
 ## Reading a job
 
-Start with the current stage's primary review document. Direction provides a
-one-pager: problem, non-goals, approach, compatibility, and important questions
-and answers. Outcome explains the change, other owners' work, tests, omissions,
-public API changes and differences from the approved direction.
+Start with the delegate’s last message and the receipt for any decision it references. The job story records what it chose, the assignment it sent and what came back. The planning 1P, Design and Tests are available as source material. A review of a specific document includes the selected text. An ordinary question is self-contained. [Job inspection](../../guides/JOB_INSPECTION_PLAYBOOK.md)
 
-The producing agent owns its current review documents. The recipe also attaches the original negotiation reports and transcripts. Validation checks
-those files; human input receives the same references. No recipe step builds a
-second review packet or overlays older files. Documents worth retaining belong
-in the agent's current work; other material remains accessible through native
-job inspection. Diagnostics stay in files, with concise findings in responses.
-
-For more detail, use the [job inspection playbook](../../guides/JOB_INSPECTION_PLAYBOOK.md).
-Each cross-cell negotiation has a report with the parent objective, original request,
-decision and linked transcript. A child receives the report with the agreed
-assignment. Its Preparation review includes it immediately after the three planning
-documents. Outcome and Backstop retain the same context. A direct assignment
-identifies its parent and the initiating task. Owners can ask for evidence or
-suggest an existing capability or a smaller enhancement. The requester confirms
-changed terms before delivery. The receiver writes any delivery assignment. Consultation advice is
-inline between different cells. Delivery uses a child adaptive3 job and a native
-wait. A request addressed to the current cell returns to the existing worker.
+A job requested through negotiation receives the reason, the parent request and the exchange. The requester can consult, open negotiation for a needed change and ask the receiving cell to deliver the agreed work. [Consultation and cell responsibilities](../../guides/adaptive3/PRINCIPLES.md#consultation-negotiation-and-delivery)
 
 ## Dependency publication
 
-For required manual publication, deployment or worker upgrades, use the standalone
-[question recipe](../../guides/ASK_RECIPE.md). Submit it once, let Adaptive wait for
-the child and inspect its complete reply before continuing the dependent check.
+When a change depends on another cell, the delegate can arrange the handoff. It asks the requester only about a decision or access grant the team needs from them.
 
 Consumer-initiated work: B is updating its feature and discovers it needs an API
 change in A. B can keep its work, ask A to implement and publish that change, wait,
@@ -188,62 +149,9 @@ describe the existing acceptance checks; [exact-commit reuse expectations](../..
 
 ## Recovery and local hooks
 
-An ordinary caught failure reports `stuck` and enters Backstop in the same
-job. Backstop first diagnoses the intended outcome, completed effects, remaining
-work and failing boundaries, using retained results and earlier attempts. It
-explains realistic options, owners, uncertainty and prerequisites. Authorized
-read-only investigation needs no extra approval.
+A failure returns to the delegate with its diagnostic. It can repair, retry a specific operation, investigate a different approach or ask the requester. A cancelled job stops. A previously landed change carries its native receipt through publication recovery.
 
-Backstop can return to Configure, Direction, Preparation, Implementation, Outcome or
-Integration when the destination has its native entry prerequisites. An earlier
-failure does not restrict the destination vocabulary. The accepted Preparation packet, or the current Direction on the short path,
-establishes the basis for Implementation. A changed plan or candidate makes historical verification and acceptance ineligible.
-Configure retains the intended destination. Prior-job restoration retains its
-existing inspected approval/publication recovery contract.
-
-Both recovery responses require nullable `action`, `stage`, `instruction`,
-`destination` and `report` fields. A concrete available action and an eligible
-stage gate automatic resume and Apply. A destination alone supplies no missing
-plan, route, credentials or publication authority. Automatic correction defaults
-to one extra pass; explicit integer allowances remain 1–20. Every phase visit starts with fresh counters. An explicit allowance can grant
-a larger visit for the paused loop. Backstop spends one of two returns on dispatch.
-Newly accepted phases and newly passing verification checks replenish those two
-returns once per requirement per instruction. The progress step records the
-evidence and resulting count. A fresh human instruction at any review resets
-phase and merge retries and restores both returns before the next decision.
-
-When help is needed, the primary report explains requester/rationale, completed
-work and effects, the blocker and failed approaches, options with prerequisites,
-a recommendation and useful research. Unknowns are explicit. A native report
-remains readable after diagnosis or supporting-file validation failure; invalid
-supporting files still disable Apply. `review/backstop-report.md` is reserved for
-this report. Selected agent files remain supporting evidence.
-
-**Revise** sends your words and attachments to the delegate. The delegate answers
-questions, asks about unclear intent and acts on a clear instruction within its
-stated scope. A question leaves the retry allowance in place. The original words,
-notes and receipt travel with a requested change. Requirement changes return to
-Direction and update the affected plan.
-After validation confirms exactly that amendment, reuse its native receipt
-and present the revised design and acceptance criteria at Preparation. Outcome and merge reviews
-remain separate. Ambiguity, conflicting destinations or additional consequential
-choices need clarification. Forward the original human receipt when a review hands an instruction to Backstop.
-After answering a question, reassess the blocker under the existing authority.
-
-Cancellation stays manual under the latest human scope. Prefer a return within
-this job; an
-exceptional explicit separate-job request can be routed to execution using the
-existing create-job operation. Creating a job does not cancel this source.
-
-Each human review is one message with a primary document and relevant attachments. The job thread records the agent’s prompt and the person’s submission. **Revise** keeps the decision open. The author answers a question on the same document revision or presents the edits and explains what changed. Annotated documents can carry the whole reply.
-
-**Review before Complete** approves work and requests a final review. **Take to Completion** approves completion after independent verification. Either choice can include guidance for the author and reviewer. The receipt identifies the version the person saw. Before asking again about an approved plan, the delegate compares it with the current proposal and can continue, request a local repair or ask about a material change.
-
-**Return to** can suggest where to make an edit. The selection applies once.
-Package-review destinations pass through the containing lifecycle.
-
-Backstop no longer offers model/reasoning edits or settings reconsideration.
-Existing launch inputs and worker defaults retain their current behavior.
+The delegate presents questions and decisions through the native review form. **Revise** carries a question, guidance, an annotated document or a requested change. **Review before Complete** requests a final decision. **Take to Completion** permits a covered result to land after verification. A planning interview sends actual choices back to the planner. [Decision and interview handoffs](../../guides/adaptive3/DELEGATE_ORCHESTRATION.md#when-a-person-is-needed)
 
 Configure, before-design, prepare, verify and publish retain the existing
 [build hook API](../../guides/BUILD_HOOKS_USER_GUIDE.md). Hook settings artifacts
@@ -253,7 +161,7 @@ and publication. Integration keeps `merge_state` independently of agent feedback
 A completed native merge or the queue caller's confirmed landing establishes it
 before the publication include runs. The receipt supplied to the hook is also the
 final merge output. Returned hook failures and thrown resolution/collection errors
-retain that record through Cycle, Lifecycle, Backstop and human discussion.
+retain that record for the delegate and subsequent retries.
 Retries reuse it while the target and accepted Outcome/patch remain unchanged.
 New accepted work uses normal Integration; older evidence stays at its producer.
 
@@ -300,13 +208,10 @@ This guarantee covers service-managed staging/adoption; out-of-service edits rem
 
 ## Source map
 
-- `lifecycle.yaml` handles corrections, consultations and package interruptions.
-- `cycle.yaml` defines a single Execute/Validate/Review pass, shared with consultation.
-- `execute.yaml`, `validate.yaml`, `review.yaml` define those activities once.
-- `discussion.yaml` presents one message per request and records the reply, receipt and uploaded notes.
-- `review-policy.yaml` declares correction destinations; [the shared builder](../review-v2.yaml)
-  validates declarations and generates closed native schemas through its local source operation.
-- `backstop.yaml`, `consultation.yaml`, `packages.yaml` provide their services.
+- [Delegate](delegate.yaml) chooses the next action. [Dispatch](dispatch.yaml) runs it and stores its result.
+- [Presentation](delegate-present.yaml) sends the selected message and records the submission. [Interview preparation](prepare-interview.yaml) supplies batch questions.
+- [Validation](validate.yaml), [execution](execute.yaml), [consultation](consultation.yaml) and [package requests](packages.yaml) own their work.
+- Direct callers of the reusable cycle and lifecycle recipes can use their own review and recovery flows.
 - `agent.yaml` owns session start/resume and native Codex calls.
 - `hooks.yaml`, `integration.yaml`, `specialists.yaml` call existing extension points.
 - `prompts/` and `schemas.yaml` are empty includes; they create no worker tasks.

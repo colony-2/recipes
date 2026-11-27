@@ -4,7 +4,7 @@
 
 The six audit improvements and the four refinements below are implemented on local `main` in `e5c7617`. The follow-ups at the end are open. The effect on real jobs is still to be measured. [Implementation](implementation.md) · [Test results](test-results.md)
 
-The November 26 review audit and subsequent design discussions continue here. The open proposals cover planning interviews and how the delegate chooses work and represents the requester. [Review audit](../2026-11-26/audit.md) · [Planning interviews with Refine](#planning-interviews-with-refine) · [Delegate orchestration](#delegate-orchestration)
+The November 26 review audit and subsequent design discussions continue here. The public recipe now uses the delegate loop and native batched planning interviews. Conditional Refine interviews and live cohort evaluation remain open. [Review audit](../2026-11-26/audit.md) · [Planning interviews with Refine](#planning-interviews-with-refine) · [Delegate orchestration](#delegate-orchestration)
 
 ## Delegate orchestration
 

@@ -1,5 +1,6 @@
 id: adaptive3-execute-prompts
 inputs:
+  continuing: ${{ inputs.?continuing.orValue(false) }}
   history: ${{ inputs.?history.orValue({}) }}
   changed: ${{ inputs.?changed.orValue(false) }}
   choice: ${{ inputs.?choice.orValue('') }}
@@ -16,7 +17,7 @@ vars:
     Use the same title for the heading and the attachment. Replace the prompts below with the proposal.
 
     # 1P: <what is proposed>
-    On revision, open with what changed since the last version the human saw and why it matters.
+    On revision, say which parts of the proposal changed and why. Refer to a prior human review only when its receipt shows what the person saw.
     ## Problem Description
     Who has the problem, what happens today and what do you recommend?
     For a job started through consultation or negotiation, add “Why this job exists” after the opening.
@@ -25,7 +26,7 @@ vars:
     ## Non Goals
     What falls outside this proposal?
     ## What we are planning to do
-    Describe the change to approve. Give expected scope by Cell | Core code | Tests | Docs, using
+    Describe the experience the change would give the requester. Give expected scope by Cell | Core code | Tests | Docs, using
     none/small/medium/large. Tests include frameworks, harnesses and fixtures.
     ## Compat/Upgrade
     What must existing users or callers do? One line is enough if no action is needed.
@@ -54,7 +55,7 @@ vars:
       Baseline source and standing cell policy are distinct from personal job approval.
       Explain why each proposed change helps. Put detailed mechanics in supporting material.
     preparation: |-
-      Update the Direction 1P and present it first. Link [Design](design.md) and [Tests](acceptance.md)
+      Update the Direction 1P as the primary planning document. Link [Design](design.md) and [Tests](acceptance.md)
       near the top. Name any exact check the requester or cell requires and give its source.
       Use these Markdown outlines for the next two attachments.
 
@@ -101,12 +102,11 @@ vars:
       commit.body as prose explaining what changed and why. The recipe adds the job link
       and Git trailers. Leave commit null when there is no change ready to land.
     outcome: |-
-      Compare the candidate to the exact approved plan in approved/ when supplied.
+      Compare the candidate to the assignment and applicable human decisions. The plan in approved/ supplies context when present. Identify the source of any constraint.
       Use this Markdown outline for the primary document.
 
-      # <Result the person can now review>
-      Say what they can accept or still need to decide. On a repeat review, say what changed
-      since the version they last saw and why their answer matters.
+      # <Result delivered>
+      Say what the work accomplished and any decision still needed. When referring to an earlier human decision, use the actual review and reply.
       ## What changed
       Describe the observable result, relevant owner work, interface changes and differences from the plan.
       ## How we checked it
@@ -143,6 +143,20 @@ vars:
       A delivery assignment without a descriptive title is incomplete. Correct it before submission.
 sequence: []
 outputs:
+  handoff: |-
+    ${{ inputs.continuing ? '' : 'Original assignment (the sender may be another agent)\n' + inputs.request + '\nTarget directory: ' + inputs.target_directory }}
+    From the delegate: ${{ inputs.finding.?summary.orValue('') }}
+    ${{ inputs.continuing ? '' : vars.assignments[inputs.purpose] }}
+    ${{ !inputs.continuing && inputs.purpose in ['direction','preparation'] ? vars.one_pager : '' }}
+    ${{ !inputs.continuing && inputs.purpose in ['direction','preparation'] ? 'Write for the next agent. Explain the problem, the experience someone would have, the alternatives and what you assumed. Include feasible paths the interviewer can explore. The delegate selects what the requester sees.' : '' }}
+    ${{ size(inputs.review_reply)>0 ? 'Recorded reply with source: ' + json_stringify(inputs.review_reply.?submission.orValue({})) : '' }}
+    ${{ nonempty(inputs.approval_guidance) ? 'Guidance accompanying permission: ' + inputs.approval_guidance : '' }}
+    ${{ size(inputs.finding.?interviews.orValue([]))>0 ? 'Actual planning interviews (options, submissions and sources): ' + json_stringify(inputs.finding.interviews) : '' }}
+    Return your work and recommendation to the delegate. Read supplied document comments.
+    Check accessible code for factual questions. Consult another cell for a need it owns.
+    Give each new review file a document_details entry with its path, title, description, role and order.
+    When a package is needed, return a package request. Use the configured worktree and outbox.
+    {{ inputs.guidance }}
   reader: |-
     ${{ size(inputs.history)>0 ? 'The last packet shown for this decision is in presented/. Its message and reply: ' + json_stringify(inputs.history) : 'This is the first presentation for this decision. Describe the proposal or delivered result directly.' }}
     Open the message and primary document with the decision and what matters. Compare revisions only with the packet the reader saw. Answer their question directly.

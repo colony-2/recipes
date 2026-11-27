@@ -1,5 +1,7 @@
 id: adaptive3-packages
 inputs:
+  deferred: ${{ inputs.?deferred.orValue(false) }}
+  approved_proposal: ${{ inputs.?approved_proposal.orValue({}) }}
   review_reply: ${{ inputs.?review_reply.orValue({}) }}
   retry: ${{ inputs.?retry.orValue({}) }}
   requests: ${{ inputs.requests }}
@@ -8,7 +10,11 @@ inputs:
   agent_settings: ${{ inputs.?agent_settings.orValue({}) }}
   purpose: ${{ inputs.?purpose.orValue('implementation') }}
 state:
-  initial: prepare
+  initial:
+  - to: launch
+    when: inputs.deferred && inputs.approved_proposal.?requests.orValue([])==inputs.requests && size(inputs.approved_proposal)>0
+  - to: prepare
+    when: 'true'
   states:
     prepare:
       sequence:
@@ -53,7 +59,15 @@ state:
           title: ${{ sequence.proposal.outputs.response.?title.orValue('') }}
           primary: ${{ sequence.proposal.outputs.response.?primary.orValue('') }}
           document_details: ${{ sequence.proposal.outputs.response.?document_details.orValue([]) }}
+      - id: terms
+        when: inputs.requests.exists(r,r.reference.startsWith('pnpm:'))
+        include: ./prompts/review.yaml
+        inputs:
+          purpose: implementation
+          decision: packages
+          request: ${{ inputs.reason }}
       outputs:
+        terms: ${{ sequence.?terms.orValue({}).?outputs.orValue({}).?decision.orValue('') }}
         session: ${{ sequence.proposal.outputs.session }}
         documents: ${{ sequence.selected.outputs.documents }}
         question: ${{ sequence.proposal.outputs.response.summary }}
@@ -71,14 +85,19 @@ state:
           result: ${{ outputs.findings }}
       - to: launch
         when: inputs.requests.all(r, !r.reference.startsWith('pnpm:') && r.reference in outputs.policy && outputs.policy[r.reference] == r.check)
+      - to: done
+        when: inputs.deferred
+        payload:
+          result: ${{ {'status':'needs_permission','summary':outputs.question,'terms_shown_with_your_message':outputs.terms} }}
       - to: approval
         when: 'true'
       inputs:
         requests: ${{ inputs.requests }}
         reason: ${{ inputs.reason }}
+        deferred: ${{ inputs.deferred }}
         presentation: ${{ state_output('approval','threads',{}).?packages.orValue({}) }}
         agent_settings: ${{ inputs.agent_settings }}
-        feedback: ${{ transition.payload.?feedback.orValue({}) }}
+        feedback: ${{ transition.payload.?feedback.orValue(inputs.review_reply) }}
         session: ${{ state_output('approval','session',state_output('prepare','session',inputs.session)) }}
     approval:
       include: ./review.yaml
@@ -91,7 +110,8 @@ state:
         documents: ${{ states.prepare.outputs.documents }}
         document_metadata: ${{ states.prepare.outputs.document_metadata }}
         agent_settings: ${{ inputs.agent_settings }}
-        question: ${{ states.prepare.outputs.question }}
+        question: >-
+          ${{ states.prepare.outputs.question + (nonempty(states.prepare.outputs.terms) ? '\n\n' + states.prepare.outputs.terms : '') }}
         decision: packages
         session: ${{ states.prepare.outputs.session }}
         assessor: ${{ states.prepare.outputs.session }}
@@ -134,9 +154,9 @@ state:
           title: '${{ ''Test requested tools: '' + jq(inputs.requests.map(r,r.reference),''join(", ") | .[:98]'')
             }}'
           inputs:
-            config: ${{ states.prepare.outputs.documents['review/config.yaml'] }}
+            config: ${{ state_output('prepare','documents',inputs.approved_proposal.?documents.orValue({}))['review/config.yaml'] }}
             requests: ${{ inputs.requests }}
-            approved: ${{ states.prepare.outputs.approved }}
+            approved: ${{ state_output('prepare','approved',inputs.approved_proposal.?approved.orValue({})) }}
       transitions:
       - to: wait
         when: 'true'
@@ -162,10 +182,10 @@ state:
             child: ${{ outputs }}
     adopt:
       inputs:
-        documents: ${{ states.prepare.outputs.documents }}
-        approved: ${{ states.prepare.outputs.approved }}
+        documents: ${{ state_output('prepare','documents',inputs.approved_proposal.?documents.orValue({})) }}
+        approved: ${{ state_output('prepare','approved',inputs.approved_proposal.?approved.orValue({})) }}
         requests: ${{ inputs.requests }}
-        session: ${{ state_output('approval','session',states.prepare.outputs.session) }}
+        session: ${{ state_output('approval','session',state_output('prepare','session',inputs.session)) }}
       sequence:
       - id: check
         include: ./tools.yaml
@@ -189,6 +209,8 @@ state:
         result: ${{ transition.payload.result }}
         finding: ${{ transition.payload.?finding.orValue(transition.payload.result) }}
 outputs:
+  proposal: >-
+    ${{ states.done.outputs.result.status=='needs_permission' ? {'requests':inputs.requests,'terms':states.prepare.outputs.terms,'documents':state_output('prepare','documents',inputs.approved_proposal.?documents.orValue({})),'approved':state_output('prepare','approved',inputs.approved_proposal.?approved.orValue({}))} : {} }}
   review_reply: ${{ state_output('approval','review_reply',inputs.review_reply) }}
   finding: ${{ states.done.outputs.finding }}
   retry: ${{ state_output('record_decision','retry',inputs.retry) }}

@@ -1,0 +1,50 @@
+id: recover-publication
+inputs:
+  job: ${{ inputs.job }}
+  refs: ${{ inputs.refs }}
+  patch: ${{ inputs.patch }}
+  request: ${{ inputs.request }}
+  documents: ${{ inputs.documents }}
+  target_directory: ${{ inputs.target_directory }}
+  settings: ${{ inputs.settings }}
+sequence:
+- id: approval
+  op: command_execution
+  const: true
+  execution_needs:
+    packages: [nix:github:NixOS/nixpkgs/e7439b6b14ad3cc35d05608ebca9bce01a25f5f8#python3]
+  inputs:
+    env:
+      JOB: ${{ inputs.job }}
+      TASK: ${{ inputs.refs.approval_task }}
+    run: |
+      python3 - <<'PYTHON'
+      import json, os, subprocess, tempfile
+      from pathlib import Path
+
+      job, task = os.environ['JOB'], os.environ['TASK']
+      if not job or not task:
+          raise ValueError('Select the original job and its approval task.')
+      with tempfile.TemporaryDirectory() as scratch:
+          path = Path(scratch, 'approval.json')
+          subprocess.run(['c2j', 'job', 'log', job, '--task', task, '--field', '', '--output', str(path)], check=True)
+          result = json.loads(path.read_text())
+      receipt = result.get('receipt') or json.loads(result['stdout'])['receipt']
+      if not receipt.get('submission_id'):
+          raise ValueError('The selected task has no approval receipt.')
+      print(json.dumps(receipt))
+      PYTHON
+- id: publish
+  include: ./execute.yaml
+  inputs:
+    purpose: integration
+    recovery: true
+    request: ${{ inputs.request }}
+    documents: ${{ inputs.documents }}
+    settings: ${{ inputs.settings }}
+    target_directory: ${{ inputs.target_directory }}
+    prior_publication: ${{ {'source_job':inputs.refs.merge_job,'source_task':inputs.refs.merge_task,'merged_hash':inputs.refs.landed_hash} }}
+    accepted: ${{ {'result':{'status':'accepted','receipt':json_parse(sequence.approval.outputs.stdout),'source_job':inputs.job,'source_task':inputs.refs.approval_task},'patch':inputs.patch} }}
+outputs:
+  result: ${{ sequence.publish.outputs.response }}
+  merge_state: ${{ sequence.publish.outputs.merge_state }}

@@ -1,0 +1,439 @@
+id: adaptive3-dispatch
+inputs:
+  action: ${{ inputs.action }}
+  issue: ${{ inputs.issue }}
+  resume_from: ${{ inputs.resume_from }}
+  recovery_patch: ${{ inputs.recovery_patch }}
+  request: ${{ inputs.request }}
+  record: ${{ inputs.record }}
+  visits: ${{ inputs.visits }}
+  budget: ${{ inputs.budget }}
+  settings: ${{ inputs.settings }}
+  target_directory: ${{ inputs.target_directory }}
+  require_verification: ${{ inputs.require_verification }}
+  merge_queue: ${{ inputs.merge_queue }}
+  max_iterations: ${{ inputs.max_iterations }}
+  agent_settings: ${{ inputs.agent_settings }}
+vars:
+  record_exchange: |-
+    . as [$r,$exchange] | $exchange.result.child.withdrawal.source as $withdrawal |
+    {agreements:$exchange.agreements,consulted:(($r.consulted // 0) + $exchange.started),
+     documents:($r.documents + $exchange.documents + ([$exchange.agreements[].documents] | add // {}))}
+    + (if $withdrawal.receipt.actor.kind=="human" and $withdrawal.job_id and $withdrawal.message
+       then {human_instruction:$withdrawal} else {} end)
+  record_children: |-
+    .[1] as $wait | {jobs:[],children:$wait.results,documents:(.[0]+$wait.documents)} +
+    ([$wait.results[] | select(.withdrawal.status=="withdrawn") | .withdrawal.source | select(.receipt.actor.kind=="human" and .job_id and .message)] | if length==1 then {human_instruction:.[0]} else {} end)
+  record_packages: |-
+    .[0] as $r | .[1] as $p |
+    {package_proposal:($p.proposal // {}),approved_package:{},documents:($r.documents + ($p.proposal.documents // {})),
+    sessions:(($r.sessions // {}) + {packages:$p.session}),verified:false,accepted:{}}
+  record_reply: |-
+    . as [$r,$kind,$key,$shown] | $shown.reply.submission as $s | $shown.request as $form |
+    {result:{status:"accepted",receipt:$s.receipt,human:$s,review_id:$form.review_id,revision:$form.revision,
+      reviewed_documents:$form.documents},patch:$r.outcome_patch,
+      contribution:($r.verification.contribution // {})} as $approval |
+    {thread:$key,threads:(($r.threads // {}) + {($key):$form}),reply:$shown.reply,
+     reviews:(($r.reviews // []) + [{question:$form.question,receipt:$s.receipt,human:$s,review_id:$form.review_id,
+       revision:$form.revision,reviewed_documents:$form.documents,status:(if ($s.response.direction=="accept" or $s.response.direction=="accept_fully") then "accepted" else "reply" end)}]),
+     documents:($r.documents + $shown.reply.documents)}
+    + (if $s.receipt.actor.kind=="human" and ($s.response.feedback // "")!="" then
+       {human_instruction:{job_id:$shown.job_id,receipt:$s.receipt,message:$s.response.feedback}} else {} end)
+    + (if $kind=="interview" then {planner_reply_due:true,interview:[],rounds:(($r.rounds // []) + [{
+       sources:$r.interview_sources,questions:$r.interview,shown:$form.settings,submission:$s}])} else {} end)
+    + (if $kind=="plan" and ($s.response.direction=="accept" or $s.response.direction=="accept_fully")
+       then {plan:($approval.result + {documents:$r.packet}),accepted:{}}
+       elif $kind=="plan" then {plan:{},accepted:{}}
+       elif $kind=="result" and $s.response.direction=="accept" then {accepted:$approval}
+       elif $kind=="packages" and $s.response.direction=="accept" then {approved_package:$r.package_proposal}
+       elif $kind=="packages" then {approved_package:{}}
+       elif $kind=="result" then {accepted:{}} else {} end)
+  record_validation: |-
+    . as [$stage,$old,$v,$proof] | {assessment:$v.result,assessed_stage:(if $v.result.status=="approved_rebase" then $old.assessed_stage else $stage end),documents:($old.documents + $v.artifacts),
+    sessions:(($old.sessions // {}) + {assessor:$v.session,specialists:$v.specialists})}
+    + (if $stage=="implementation" then {verified:($v.result.status=="passed" or $v.result.status=="approved_rebase"),verification:$v.verification,
+         accepted:(if $v.result.status=="approved_rebase" then ($old.accepted // {}) else {} end)}
+         + (if $v.result.status=="approved_rebase" then {} else {measured:{},candidate:{},outcome_patch:null,handoff:false} end)
+       elif $stage=="outcome" then {candidate:$v.candidate,outcome_patch:$v.patch,
+         handoff:($v.result.integration_owner=="caller" and ($v.result.status=="passed" or $v.result.status=="covered")),post_merge_check:($v.result.post_merge_check // ""),
+         accepted:(if $v.result.status=="covered" and $old.verified and $old.plan.human.response.direction=="accept_fully"
+          then {result:($old.plan + ($proof|fromjson|{source_job,source_task}) + {status:"accepted",authorization:"preparation"}),patch:$v.patch,contribution:$old.verification.contribution} else {} end)}
+       else {} end)
+  record_work: |-
+    . as [$old,$stage,$role,$sessions,$turn,$candidate] |
+    {source:$stage,work:$turn.response,packet:$turn.documents,kind:($turn.response.work_kind // $old.kind // "oversight"),
+     sessions:($sessions + {($role):$turn.session}),roles:(($old.roles // {}) + {($role):$stage}), jobs:(($old.jobs // []) + $turn.jobs | unique),
+     documents:($old.documents + $turn.documents + ($turn.artifacts | with_entries(select(.key|startswith("error/"))))),
+     assessment:{},consulted:(if $stage==$old.source then ($old.consulted // 0) else 0 end)}
+    + (if ($stage=="preparation" or $stage=="direction") then {planner_reply_due:false,interview:[],accepted:{}} else {} end)
+    + (if $stage=="implementation" then {implementation:$turn.response,implementation_documents:$turn.documents,verified:false,accepted:{},candidate:{},measured:{},handoff:false}
+       elif $stage=="outcome" then {measured:$candidate,candidate:$candidate.result,accepted:{}}
+       else {} end)
+  op: ${{ inputs.action.primitive }}
+  source: ${{ inputs.record.?source.orValue('') }}
+  route: >-
+    ${{ inputs.visits>inputs.budget || (inputs.action.primitive=='invalid' && inputs.record.?delegate_failures.orValue(0)>=2) ? 'exhausted' : inputs.issue!='' ? 'rejected' :
+    inputs.action.primitive in ['direction','preparation','implement','outcome'] ? 'author' :
+    inputs.action.primitive in ['assess','verify'] ? 'validation' :
+    inputs.action.primitive in ['consult','negotiate','deliver'] ? 'coordination' : inputs.action.primitive }}
+  stage: >-
+    ${{ inputs.action.primitive=='implement' || inputs.action.primitive=='verify' ? 'implementation' : inputs.action.primitive=='assess' ? inputs.record.?source.orValue('') : inputs.action.primitive }}
+  author: >-
+    ${{ inputs.action.primitive in ['direction','preparation'] ? 'planning' : 'implementation' }}
+  selected: ${{ jq([inputs.record.documents,inputs.action.documents], '.[1] as $keys | .[0] | with_entries(select(.key as $k | $keys | index($k)))') }}
+  sessions: ${{ inputs.record.?sessions.orValue({}) }}
+  work: ${{ inputs.record.?work.orValue({}) }}
+  reply: ${{ inputs.record.?reply.orValue({}) }}
+  plan: ${{ inputs.record.?plan.orValue({}) }}
+  presentation: ${{ inputs.action.presentation }}
+  thread: >-
+    ${{ inputs.action.presentation=='question' || inputs.action.presentation=='document' ? inputs.record.?thread.orValue('question') : inputs.action.presentation }}
+  consult: >-
+    ${{ has(inputs.action.coordination) ? jq([inputs.action.coordination,inputs.action.primitive], '.[0] + {mode:({consult:"advice",negotiate:"negotiate",deliver:"delivery"}[.[1]])}') : inputs.record.?work.orValue({}).?consultation.orValue({}) }}
+state:
+  initial:
+  - {to: exhausted, when: "vars.route=='exhausted'"}
+  - {to: rejected, when: "vars.route=='rejected'"}
+  - {to: configure, when: "vars.route=='configure'"}
+  - {to: author, when: "vars.route=='author'"}
+  - {to: validation, when: "vars.route=='validation'"}
+  - {to: coordination, when: "vars.route=='coordination'"}
+  - {to: children, when: "vars.route=='children'"}
+  - {to: packages, when: "vars.route=='packages'"}
+  - {to: prepare_interview, when: "vars.route=='prepare_interview'"}
+  - {to: present, when: "vars.route=='present'"}
+  - {to: recover_publication, when: "vars.route=='recover_publication'"}
+  - {to: integrate, when: "vars.route=='integrate'"}
+  - {to: check_delivery, when: "vars.route=='check_delivery'"}
+  states:
+    exhausted:
+      op: command_execution
+      const: true
+      inputs:
+        env:
+          DETAIL: ${{ inputs.issue }}
+        run: |
+          echo "Delegate dispatch stopped at its attempt limit. ${DETAIL}" >&2
+          exit 1
+    rejected:
+      inputs:
+        issue: ${{ inputs.issue }}
+      sequence: []
+      outputs:
+        result: ${{ {'status':'needs_correction','summary':inputs.issue} }}
+    configure:
+      inputs:
+        request: ${{ inputs.request }}
+        target_directory: ${{ inputs.target_directory }}
+        documents: ${{ vars.selected }}
+        archive: ${{ inputs.record.documents }}
+      sequence:
+      - id: hook
+        include: ./hooks.yaml
+        inputs:
+          hook: configure
+          request: ${{ inputs.request }}
+          target_directory: ${{ inputs.target_directory }}
+          documents: ${{ inputs.documents }}
+      outputs:
+        result: ${{ sequence.hook.outputs.result }}
+        patch: ${{ {'settings':sequence.hook.outputs.settings,'configuration':sequence.hook.outputs.result.status,'documents':jq([inputs.archive,sequence.hook.outputs.artifacts],'add'),'verified':false,'accepted':{}} }}
+    author:
+      inputs:
+        stage: ${{ vars.stage }}
+        role: ${{ vars.author }}
+        sessions: ${{ vars.sessions }}
+        session: ${{ vars.sessions[?vars.author].orValue({}) }}
+        request: ${{ inputs.request }}
+        instruction: ${{ inputs.action.instruction }}
+        documents: ${{ vars.selected }}
+        previous: ${{ inputs.record }}
+        plan: ${{ vars.plan }}
+        reply: ${{ vars.reply }}
+        settings: ${{ inputs.settings }}
+        target_directory: ${{ inputs.target_directory }}
+        agent_settings: ${{ inputs.agent_settings }}
+      sequence:
+      - id: candidate
+        when: inputs.stage=='outcome'
+        include: ./tools.yaml
+        inputs: {check: approved_change}
+      - id: work
+        include: ./execute.yaml
+        inputs:
+          delegated: true
+          continuing: ${{ size(inputs.session)>0 && inputs.previous.?roles.orValue({})[?inputs.role].orValue('')==inputs.stage }}
+          purpose: ${{ inputs.stage }}
+          session: ${{ inputs.session }}
+          request: ${{ inputs.request }}
+          target_directory: ${{ inputs.target_directory }}
+          documents: ${{ inputs.documents }}
+          plan: ${{ inputs.plan }}
+          review_reply: ${{ inputs.reply }}
+          settings: ${{ inputs.settings }}
+          agent_settings: ${{ inputs.agent_settings }}
+          finding: ${{ {'summary':inputs.instruction,'source':'delegate','interviews':inputs.previous.?rounds.orValue([])} }}
+          changed: ${{ sequence.?candidate.orValue({}).?outputs.orValue({}).?result.orValue({}).?changed.orValue(false) }}
+      outputs:
+        result: ${{ sequence.work.outputs.response }}
+        patch: >-
+          ${{ jq([inputs.previous,inputs.stage,inputs.role,inputs.sessions,sequence.work.outputs,
+            sequence.?candidate.orValue({}).?outputs.orValue({})], vars.record_work) }}
+    validation:
+      inputs:
+        stage: ${{ vars.stage }}
+        previous: ${{ inputs.record }}
+        sessions: ${{ vars.sessions }}
+        work: >-
+          ${{ vars.op=='verify' ? inputs.record.implementation : vars.work }}
+        request: ${{ inputs.request }}
+        target_directory: ${{ inputs.target_directory }}
+        documents: >-
+          ${{ vars.op=='verify' ? inputs.record.implementation_documents : inputs.record.?packet.orValue({}) }}
+        plan: ${{ vars.plan }}
+        findings: ${{ {'summary':inputs.action.instruction,'documents':vars.selected} }}
+        reply: ${{ vars.reply }}
+        settings: ${{ inputs.settings }}
+        merge_queue: ${{ inputs.merge_queue }}
+        require_verification: ${{ inputs.require_verification }}
+        agent_settings: ${{ inputs.agent_settings }}
+      sequence:
+      - id: validate
+        include: ./validate.yaml
+        inputs:
+          delegated: true
+          purpose: ${{ inputs.stage }}
+          request: ${{ inputs.request }}
+          target_directory: ${{ inputs.target_directory }}
+          work: ${{ inputs.work }}
+          documents: ${{ inputs.documents }}
+          measured: ${{ inputs.previous.?measured.orValue({}) }}
+          verification: ${{ inputs.previous.?verification.orValue({}) }}
+          approval: >-
+            ${{ inputs.stage=='implementation' ? inputs.previous.?accepted.orValue({}) : {} }}
+          session: ${{ inputs.sessions.?assessor.orValue({}) }}
+          specialists: ${{ inputs.sessions.?specialists.orValue({}) }}
+          finding: ${{ inputs.findings }}
+          plan: ${{ inputs.plan }}
+          review_reply: ${{ inputs.reply }}
+          settings: ${{ inputs.settings }}
+          agent_settings: ${{ inputs.agent_settings }}
+          require_verification: ${{ inputs.require_verification }}
+          merge_queue: ${{ inputs.merge_queue }}
+      - id: confirm_coverage
+        when: inputs.stage=='outcome' && sequence.validate.outputs.result.status=='covered' && inputs.previous.?verified.orValue(false) && inputs.plan.?human.orValue({}).?response.orValue({}).?direction.orValue('')=='accept_fully'
+        op: command_execution
+        const: true
+        inputs:
+          env:
+            AUTHORIZATION: ${{ json_stringify({'receipt':inputs.plan.receipt,'review_id':inputs.plan.review_id,'revision':inputs.plan.revision,'documents':inputs.plan.documents,'patch':sequence.validate.outputs.patch}) }}
+          run: |
+            python3 - <<'PY'
+            import json, os, subprocess
+            proof = json.loads(os.environ['AUTHORIZATION'])
+            execution = json.loads(subprocess.check_output(['c2j', 'self', '--json']))['execution']
+            print(json.dumps({**proof, 'source_job': execution['job_id'], 'source_task': execution['task_id']}))
+            PY
+      outputs:
+        result: ${{ sequence.validate.outputs.result }}
+        patch: >-
+          ${{ jq([inputs.stage,inputs.previous,sequence.validate.outputs,sequence.?confirm_coverage.orValue({}).?outputs.orValue({}).?stdout.orValue('{}')], vars.record_validation) }}
+    coordination:
+      inputs:
+        call: ${{ vars.consult }}
+        record: ${{ inputs.record }}
+        selected: ${{ vars.selected }}
+        request: ${{ inputs.request }}
+        agent_settings: ${{ inputs.agent_settings }}
+        limit: ${{ inputs.max_iterations }}
+      sequence:
+      - id: exchange
+        include: ./consultation.yaml
+        inputs:
+          objective: ${{ inputs.request }}
+          cell: ${{ inputs.call.cell }}
+          request: ${{ inputs.call.request }}
+          mode: ${{ inputs.call.mode }}
+          thread: ${{ inputs.call.?thread.orValue('') }}
+          job: ${{ inputs.call.?job.orValue('') }}
+          shared_review: >-
+            ${{ inputs.call.?share_review.orValue(false) ? jq([context.workflow.job_id,inputs.record.?reply.orValue({}).?submission.orValue({})], '.[0] as $job | .[1] | if .receipt.submission_id then {job:$job,receipt,response:(.response | {direction,feedback})} else {} end') : {} }}
+          requester: >-
+            ${{ inputs.record.?sessions.orValue({})[?inputs.record.?source.orValue('') in ['direction','preparation'] ? 'planning' : 'implementation'].orValue({}) }}
+          remaining: ${{ 10-inputs.record.?consulted.orValue(0) }}
+          agreements: ${{ inputs.record.?agreements.orValue([]) }}
+          documents: ${{ inputs.selected }}
+          max_iterations: ${{ inputs.limit }}
+          agent_settings: ${{ inputs.agent_settings }}
+      outputs:
+        result: ${{ sequence.exchange.outputs.result }}
+        patch: ${{ jq([inputs.record,sequence.exchange.outputs],vars.record_exchange) }}
+    children:
+      inputs: {record: "${{ inputs.record }}"}
+      sequence:
+      - id: wait
+        include: ./children.yaml
+        inputs:
+          jobs: ${{ inputs.record.jobs }}
+      outputs:
+        result: ${{ {'children':sequence.wait.outputs.results} }}
+        patch: >-
+          ${{ jq([inputs.record.documents,sequence.wait.outputs], vars.record_children) }}
+    packages:
+      inputs:
+        record: ${{ inputs.record }}
+        requests: ${{ vars.work.packages }}
+        reason: ${{ vars.work.summary }}
+        stage: ${{ vars.source }}
+        agent_settings: ${{ inputs.agent_settings }}
+      sequence:
+      - id: tools
+        include: ./packages.yaml
+        inputs:
+          deferred: true
+          review_reply: ${{ inputs.record.?reply.orValue({}) }}
+          approved_proposal: ${{ inputs.record.?approved_package.orValue({}) }}
+          requests: ${{ inputs.requests }}
+          reason: ${{ inputs.reason }}
+          purpose: ${{ inputs.stage }}
+          session: ${{ inputs.record.?sessions.orValue({}).?packages.orValue({}) }}
+          agent_settings: ${{ inputs.agent_settings }}
+      outputs:
+        result: ${{ sequence.tools.outputs.result }}
+        patch: >-
+          ${{ jq([inputs.record,sequence.tools.outputs], vars.record_packages) }}
+    prepare_interview:
+      inputs:
+        documents: ${{ vars.selected }}
+        request: ${{ inputs.request }}
+        instruction: ${{ inputs.action.instruction }}
+        rounds: ${{ inputs.record.?rounds.orValue([]) }}
+        settings: ${{ inputs.agent_settings }}
+      sequence:
+      - id: prepare
+        include: ./prepare-interview.yaml
+        inputs:
+          request: ${{ inputs.request }}
+          instruction: ${{ inputs.instruction }}
+          documents: ${{ inputs.documents }}
+          rounds: ${{ inputs.rounds }}
+          settings: ${{ inputs.settings }}
+      outputs:
+        result: >-
+          ${{ sequence.prepare.outputs.valid ? {'status':'ready','questions':sequence.prepare.outputs.package,'other':'Each question also offers Skip and Other with a text field.'} :
+            {'status':'needs_correction','summary':'Interview preparation returned an invalid question list.'} }}
+        patch: ${{ {'interview':sequence.prepare.outputs.package,'interview_sources':inputs.documents} }}
+    present:
+      inputs:
+        kind: ${{ vars.presentation }}
+        key: ${{ vars.thread }}
+        record: ${{ inputs.record }}
+        message: >-
+          ${{ inputs.action.instruction + (vars.presentation=='packages' && nonempty(inputs.record.package_proposal.?terms.orValue('')) ? '\n\n' + inputs.record.package_proposal.terms : '') }}
+        documents: >-
+          ${{ vars.presentation=='packages' ? inputs.record.package_proposal.documents : vars.selected }}
+        primary: >-
+          ${{ vars.presentation=='packages' ? 'review/README.md' : size(inputs.action.documents)>0 ? inputs.action.documents[0] : '' }}
+      sequence:
+      - id: show
+        include: ./delegate-present.yaml
+        inputs:
+          kind: ${{ inputs.kind }}
+          message: ${{ inputs.message }}
+          documents: ${{ inputs.documents }}
+          primary: ${{ inputs.primary }}
+          interview: ${{ inputs.record.?interview.orValue([]) }}
+          previous: ${{ inputs.record.?threads.orValue({})[?inputs.key].orValue({}) }}
+      outputs:
+        result: ${{ {'question':sequence.show.outputs.request.question,'submission':sequence.show.outputs.reply.submission} }}
+        patch: >-
+          ${{ jq([inputs.record,inputs.kind,inputs.key,sequence.show.outputs], vars.record_reply) }}
+    recover_publication:
+      inputs:
+        job: ${{ inputs.resume_from }}
+        refs: ${{ inputs.action.?recovery.orValue({}) }}
+        patch: ${{ inputs.recovery_patch }}
+        request: ${{ inputs.request }}
+        documents: ${{ vars.selected }}
+        target_directory: ${{ inputs.target_directory }}
+        settings: ${{ inputs.settings }}
+      sequence:
+      - id: recover
+        include: ./recover-publication.yaml
+        inputs:
+          job: ${{ inputs.job }}
+          refs: ${{ inputs.refs }}
+          patch: ${{ inputs.patch }}
+          request: ${{ inputs.request }}
+          documents: ${{ inputs.documents }}
+          target_directory: ${{ inputs.target_directory }}
+          settings: ${{ inputs.settings }}
+      outputs:
+        result: ${{ sequence.recover.outputs.result }}
+        patch: ${{ {'integration':sequence.recover.outputs.result,'merge_state':sequence.recover.outputs.merge_state,'recovered':sequence.recover.outputs.result.status=='ready'} }}
+    integrate:
+      inputs:
+        recovery: ${{ inputs.action.?recovery.orValue({}) }}
+        documents: ${{ jq([inputs.record.?packet.orValue({}),vars.selected],'add') }}
+        record: ${{ inputs.record }}
+        request: ${{ inputs.request }}
+        target_directory: ${{ inputs.target_directory }}
+        settings: ${{ inputs.settings }}
+        merge_queue: ${{ inputs.merge_queue }}
+        require_verification: ${{ inputs.require_verification }}
+      sequence:
+      - id: publication_documents
+        include: ./stored-documents.yaml
+        inputs: {documents: "${{ inputs.documents }}"}
+      - id: land
+        include: ./execute.yaml
+        inputs:
+          purpose: integration
+          finding: >-
+            ${{ has(inputs.recovery.repair_job) && inputs.record.?integration.orValue({}).?receiver.orValue(null)!=null ? {'queue_recovery':{'repair_job':inputs.recovery.repair_job} } : {} }}
+          request: ${{ inputs.request }}
+          target_directory: ${{ inputs.target_directory }}
+          settings: ${{ inputs.settings }}
+          merge_queue: ${{ inputs.merge_queue }}
+          require_verification: ${{ inputs.require_verification }}
+          documents: ${{ sequence.publication_documents.outputs.documents }}
+          accepted: ${{ inputs.record.accepted }}
+          verification: ${{ inputs.record.verification }}
+          contribution: ${{ inputs.record.verification.?contribution.orValue({}) }}
+          merge_state: ${{ inputs.record.?merge_state.orValue({}) }}
+          queue_history: ${{ inputs.record.?integration.orValue({}) }}
+      outputs:
+        result: ${{ sequence.land.outputs.response }}
+        patch: ${{ {'integration':sequence.land.outputs.response,'merge_state':sequence.land.outputs.merge_state,'documents':jq([inputs.record.documents,sequence.land.outputs.artifacts],'add')} }}
+    check_delivery:
+      inputs:
+        record: ${{ inputs.record }}
+        instruction: ${{ inputs.action.instruction }}
+        agent_settings: ${{ inputs.agent_settings }}
+      sequence:
+      - id: check
+        include: ./check-delivery.yaml
+        inputs:
+          check: ${{ inputs.record.post_merge_check }}
+          landed: ${{ inputs.record.integration.publication }}
+          publish: ${{ inputs.record.integration.publish }}
+          documents: ${{ inputs.record.documents }}
+          sessions: ${{ inputs.record.sessions }}
+          correction: ${{ inputs.instruction }}
+          agent_settings: ${{ inputs.agent_settings }}
+      outputs:
+        result: ${{ sequence.check.outputs.result }}
+        patch: ${{ {'consumer':sequence.check.outputs.result,'sessions':sequence.check.outputs.sessions,'documents':jq([inputs.record.documents,sequence.check.outputs.documents],'add')} }}
+outputs:
+  record: >-
+    ${{ jq([inputs.record,states[vars.route].outputs.?patch.orValue({}),
+      {'delegate_failures':vars.op=='invalid' ? inputs.record.?delegate_failures.orValue(0)+1 : 0}],'add') }}
+  visits: ${{ inputs.visits }}
+  result: ${{ states[vars.route].outputs.result }}
+catch:
+- when: failure.kind != 'cancellation' && vars.route!='exhausted'
+  continue:
+    outputs:
+      record: ${{ jq([inputs.record,inputs.action.primitive], '.[0] + (if (.[1]=="implement" or .[1]=="verify" or .[1]=="packages") then {verified:false,accepted:{},assessment:{}} else {} end)') }}
+      visits: ${{ inputs.visits }}
+      result: ${{ {'status':'stuck','summary':failure.message,'failure':json_parse(json_stringify(failure))} }}

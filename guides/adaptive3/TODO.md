@@ -2,7 +2,9 @@
 
 ## Delegate orchestration
 
-- [ ] Replace cross-stage routing with a durable delegate dispatch loop. Put the delegate before every requester-facing send. Target roughly half as many outer transitions and measure what actually disappears. [Design and primitive catalog](DELEGATE_ORCHESTRATION.md) · [Running improvement plan](../audits/2026-11-25/improvement-plan.md#delegate-orchestration)
+- [x] Give the delegate the handoff between primitives and every outgoing build presentation. The public recipe has four outer transitions. [Design and primitive catalog](DELEGATE_ORCHESTRATION.md)
+- [ ] Connect the Refine client for conditional interviews in one sitting. The native batch form handles independent choices today.
+- [ ] Compare the first live cohort with the review audit. Count repeated human decisions, missed decisions, delegate turns, model cost and elapsed time. [Improvement plan](../audits/2026-11-25/improvement-plan.md#check-the-effect)
 
 ## Backstop and retry counters — 2026-11-23
 

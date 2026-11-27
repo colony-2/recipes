@@ -1,0 +1,26 @@
+id: delegate-completion-check
+inputs:
+  record: ${{ inputs.record }}
+sequence: []
+vars:
+  stage: ${{ inputs.record.?source.orValue('') }}
+  kind: ${{ inputs.record.?kind.orValue('') }}
+  assessed: ${{ inputs.record.?assessed_stage.orValue('')==inputs.record.?source.orValue('') && inputs.record.?assessment.orValue({}).?status.orValue('') in ['passed','covered','approved_rebase'] }}
+  landed: ${{ inputs.record.?integration.orValue({}).?status.orValue('')=='ready' }}
+  changed: ${{ inputs.record.?candidate.orValue({}).?changed.orValue(false) }}
+  accepted: ${{ inputs.record.?accepted.orValue({}).?result.orValue({}).?status.orValue('')=='accepted' }}
+  caller: ${{ inputs.record.?handoff.orValue(false) }}
+  final_review: ${{ inputs.record.?plan.orValue({}).?human.orValue({}).?response.orValue({}).?direction.orValue('')=='accept' }}
+outputs:
+  issue: >-
+    ${{ size(inputs.record.?jobs.orValue([]))>0 ? 'Collect the outstanding child results.'
+    : nonempty(inputs.record.?post_merge_check.orValue('')) && inputs.record.?consumer.orValue({}).?status.orValue('')!='passed' ? 'Complete the requested consumer check.'
+    : vars.landed && inputs.record.?recovered.orValue(false) ? ''
+    : vars.stage=='direction' && vars.kind=='explanation' && inputs.record.work.status=='ready' && !vars.changed && !has(inputs.record.implementation) && size(inputs.record.?assessment.orValue({}))==0 ? ''
+    : !vars.assessed ? 'Finish needs independently assessed work.'
+    : vars.stage=='direction' && vars.kind in ['explanation','oversight'] && inputs.record.work.status=='ready' && (!vars.changed || size(inputs.record.?reply.orValue({}))>0) ? ''
+    : vars.stage!='outcome' ? 'The plan is preparation for delivery. Complete the assignment.'
+    : !inputs.record.?verified.orValue(false) ? 'Verify the current candidate.'
+    : !vars.accepted && (!vars.caller || vars.final_review) ? 'The result still needs its requested decision.'
+    : vars.changed && !vars.landed && !vars.caller ? 'The promised change still needs integration.'
+    : '' }}

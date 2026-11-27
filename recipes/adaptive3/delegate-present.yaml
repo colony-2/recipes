@@ -1,0 +1,49 @@
+id: delegate-present
+inputs:
+  kind: ${{ inputs.kind }}
+  message: ${{ inputs.message }}
+  documents: ${{ inputs.documents }}
+  primary: ${{ inputs.primary }}
+  previous: ${{ inputs.previous }}
+  interview: ${{ inputs.?interview.orValue([]) }}
+vars:
+  interview: {id: send, label: Send my answers, feedback_mode: optional, allow_attachments: false, continues_review: false}
+  fields: |-
+    to_entries | map(
+      (.key | tostring) as $id | .value as $q |
+      [{id:("q"+$id),label:$q.question,control:"choice",effect:"Preference for the planner",applies_to:["send"],
+        schema:{type:"string"},value:"skip",choices:([{label:"Skip",value:"skip"}] +
+        ($q.choices | to_entries | map({label:.value,value:(.key|tostring)})) + [{label:"Other",value:"other"}])},
+       {id:("other"+$id),label:("Other — "+$q.question),control:"text",effect:"Your words for the planner",applies_to:["send"],schema:{type:"string"},value:""}]) | add // []
+  reply: {id: reply, label: Reply, feedback_mode: required, allow_attachments: true, continues_review: true}
+  revise: {id: reply, label: Revise, feedback_mode: required, allow_attachments: true, continues_review: true}
+  accept: {id: accept, label: Accept result, feedback_mode: optional, allow_attachments: true, continues_review: false}
+  plan: {id: accept, label: Review before Complete, feedback_mode: optional, allow_attachments: true, continues_review: false}
+  fully: {id: accept_fully, label: Take to Completion, feedback_mode: optional, allow_attachments: true, continues_review: false}
+  package: {id: accept, label: Use these tools, feedback_mode: optional, allow_attachments: false, continues_review: false}
+sequence:
+- id: attachments
+  include: ./stored-documents.yaml
+  inputs: {documents: "${{ inputs.documents }}"}
+- id: form
+  include: ../review-v2.yaml
+  inputs:
+    request: >-
+      ${{ jq([{'title':{'question':'Question','plan':'Proposed work','result':'Result','document':'Document review','packages':'Requested tools','interview':'Planning questions'}[inputs.kind],
+      'question':inputs.message,'documents':sequence.attachments.outputs.documents,'feedback':{'label':inputs.kind=='document' ? 'Comment or attach an annotated copy' : 'Comment'},'conversation':[],
+      'settings':inputs.kind=='interview' ? jq(inputs.interview,vars.fields) : [],
+      'directions':inputs.kind=='interview' ? [vars.interview] : inputs.kind=='plan' ? [vars.revise,vars.plan,vars.fully] : inputs.kind=='result' ? [vars.revise,vars.accept] :
+        inputs.kind=='packages' ? [vars.revise,vars.package] : [vars.reply]},inputs.previous,inputs.primary],
+      '. as [$form,$prior,$primary] | $form + (if $primary!="" then {overview_document_id:$primary} else {} end) + (if $prior.review_id then {review_id:$prior.review_id,revision:($prior.revision + (if $prior.documents == $form.documents then 0 else 1 end))} else {revision:1} end)') }}
+- id: ask
+  op: input
+  inputs:
+    form: ${{ sequence.form.outputs.form }}
+- id: feedback
+  include: ./review-reply.yaml
+  inputs:
+    reply: ${{ json_parse(json_stringify(sequence.ask.outputs)) }}
+outputs:
+  job_id: ${{ context.workflow.job_id }}
+  reply: ${{ sequence.feedback.outputs.reply }}
+  request: ${{ sequence.form.outputs.form.request }}

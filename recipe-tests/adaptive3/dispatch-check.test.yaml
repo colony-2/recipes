@@ -1,0 +1,112 @@
+recipe: dispatch-check.yaml
+cases:
+- &case
+  id: accepted-result-can-land
+  type: integration_case
+  runtime: {}
+  inputs:
+    action: &integrate {primitive: integrate, documents: []}
+    record: &verified
+      documents: {}
+      source: outcome
+      assessed_stage: outcome
+      assessment: {status: passed}
+      candidate: {changed: true}
+      verified: true
+      kind: feature
+      implementation: {status: ready}
+      accepted: {result: {status: accepted}}
+  assertions: &allowed [{type: output_equals, path: issue, value: ''}]
+
+- <<: *case
+  id: candidate-needs-a-receipt
+  inputs: {action: *integrate, record: {<<: *verified, accepted: {}}}
+  assertions: &cannot_land
+  - {type: output_equals, path: issue, value: Integration needs the accepted outcome and the matching verified change.}
+
+- <<: *case
+  id: implementation-check-cannot-stand-in-for-outcome
+  inputs:
+    action: {primitive: present, presentation: result, documents: []}
+    record: {<<: *verified, assessed_stage: implementation}
+  assertions:
+  - {type: output_equals, path: issue, value: Assess the outcome and verify its changed candidate before asking for a final decision.}
+
+- <<: *case
+  id: failed-verification-blocks-landing
+  inputs: {action: *integrate, record: {<<: *verified, verified: false}}
+  assertions: *cannot_land
+
+- <<: *case
+  id: requested-final-review-applies-to-a-handoff
+  inputs:
+    action: &finish {primitive: finish, documents: []}
+    record:
+      <<: *verified
+      accepted: {}
+      handoff: true
+      plan: {human: {response: {direction: accept}}}
+  assertions:
+  - {type: output_equals, path: issue, value: The result still needs its requested decision.}
+
+- <<: *case
+  id: verified-child-can-return-its-assigned-deliverable
+  inputs: {action: *finish, record: {<<: *verified, accepted: {}, handoff: true}}
+  assertions: *allowed
+
+- <<: *case
+  id: waiting-children-keep-job-open
+  inputs: {action: *finish, record: {<<: *verified, jobs: [child]}}
+  assertions:
+  - {type: output_equals, path: issue, value: Collect the outstanding child results.}
+
+- <<: *case
+  id: unseen-interview-must-reach-planner
+  inputs:
+    action: &implement {primitive: implement, documents: []}
+    record: {documents: {}, planner_reply_due: true}
+  assertions:
+  - {type: output_equals, path: issue, value: Give the recorded interview to the planning author.}
+
+- <<: *case
+  id: a-cancelled-child-is-insufficient-for-withdrawal
+  inputs: {action: &withdraw {primitive: withdraw, documents: []}, record: {documents: {}, children: [{status: cancelled}]}}
+  assertions:
+  - {type: output_equals, path: issue, value: Withdrawal needs the actual human instruction.}
+
+- <<: *case
+  id: sourced-human-withdrawal-can-return-to-parent
+  inputs:
+    action: *withdraw
+    record: {documents: {}, human_instruction: {receipt: {actor: {kind: human}}, message: I withdraw this job.}}
+
+- <<: *case
+  id: routine-change-can-start-locally
+  inputs: {action: *implement, record: {documents: {}}}
+
+- <<: *case
+  id: configured-design-review-remains-required
+  inputs: {action: *implement, record: {documents: {}}, settings: {require_design: true}}
+  assertions:
+  - {type: output_equals, path: issue, value: The prepared plan still needs a decision to start work.}
+
+- <<: *case
+  id: delegate-can-open-an-owner-consultation
+  inputs:
+    action:
+      primitive: consult
+      coordination: {cell: storage, request: 'Can an existing client read this format?', share_review: false}
+      documents: []
+    record: {documents: {}}
+
+- <<: *case
+  id: a-straightforward-answer-can-finish
+  inputs:
+    action: *finish
+    record: &answer {documents: {}, source: direction, kind: explanation, work: {status: ready}}
+
+- <<: *case
+  id: an-open-finding-still-needs-an-answer
+  inputs: {action: *finish, record: {<<: *answer, assessment: {status: changes}}}
+  assertions:
+  - {type: output_equals, path: issue, value: Finish needs independently assessed work.}

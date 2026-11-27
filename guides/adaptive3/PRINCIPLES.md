@@ -10,7 +10,7 @@ Author, reviewer and delegate are roles a human or an agent can fill. A human ca
 |---|---|
 | **Author** | Understand the need, choose the approach, do the work and repair defects. |
 | **Reviewer** | Check the result against the need. Explain what fails, for whom, and why it matters. Mark optional improvements as suggestions. |
-| **Delegate** | Represent the human’s intent. Explain the result, help resolve an impasse, or bring the human a concrete choice. |
+| **Delegate** | Represent the requester. Choose the next operation and its handoff. Read each result and decide whether the person needs to hear from the job. |
 
 A session carries an agent’s working context. Pilot two author sessions. One handles Direction and Preparation with read-only access. The other edits the candidate and stays through repairs and Outcome. Use an independent reviewer where a consequential defect could escape the checks. On small jobs, compare one author session with two. Keep review and stage permissions alike. Measure missed defects, human corrections and time spent. [Sessions](../ops/OP_CODEX_EXEC.md)
 
@@ -29,7 +29,7 @@ A session carries an agent’s working context. Pilot two author sessions. One h
 
 ## What the delegate does for the human
 
-Before asking the human to approve the same decision again, the recipe calls the delegate. The delegate compares the proposed revision with the last version the person saw and reads their approval and latest reply. It can continue under that approval, return a specific repair to the author, or ask about a new tradeoff. Honor a request to see the final result.
+Every result and proposed message goes to the delegate first. The delegate compares the proposed revision with the last version the person saw and reads their approval and latest reply. It can continue under that approval, return a specific repair to the author, or ask about a new tradeoff. Honor a request to see the final result.
 
 Keep one review thread (`review_id`) per decision. Read the message and attached comments. Answer questions at the same revision. Send edits to the author in the human’s words. Revised documents stay in the thread. Each approval stays with its version. Either approval can carry optional guidance. Pass the person’s words to the author and reviewer. [Reviews across revisions](../REVIEW_V2.md#following-a-review-across-revisions)
 
@@ -61,7 +61,8 @@ If a check exposes a real regression, repair it. If a proposed change would weak
 
 Validate each promise when the inputs it depends on are ready. Run cheap scope checks after preparation can change the candidate and before expensive verification. Keep Outcome reporting in Outcome. A wording fix needs a document check. Reuse verification when the candidate, base and check inputs match. Return the original diagnostic to the owner who can act. [Verification hooks](../BUILD_HOOKS_USER_GUIDE.md#start-with-verification)
 
-For standard delivery, present one plan at Preparation. Open with `1P: <what is proposed>`, then Design and Tests. Put relevant negotiation summaries, transcripts and other evidence after those three. Use the same document shapes across revisions so the person knows where to look. They can request final review or approve completion after independent verification against the plan. A bounded local change can skip the 1P and design, go straight to Implementation and get human approval at Outcome. Compare a revision with the last packet that person saw. Keep the original decision, attachments and receipt.
+For standard delivery, write a conceptual 1P, Design and Tests. Explain the proposed experience, assumptions, tradeoffs and evidence. Include relevant negotiation history. Use a prepared interview to explore whether the proposal solves the right problem. Give the planner the exact choices, replies and receipts. Ask separately when permission to act is due. A bounded change with a known check can go straight to implementation and final review. [Delegate and primitive reference](DELEGATE_ORCHESTRATION.md)
+
 Take to Completion covers merge once the candidate passes its required checks. Run any explicitly requested fresh-consumer check against the landed artifact and record the result. [Review contract](../REVIEW_V2.md)
 
 ## Consultation, negotiation and delivery

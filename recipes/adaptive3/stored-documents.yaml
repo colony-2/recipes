@@ -1,0 +1,18 @@
+id: stored-documents
+inputs:
+  documents: ${{ inputs.documents }}
+sequence:
+- id: store
+  when: inputs.documents.exists(k,inputs.documents[k].kind=='value')
+  op: command_execution
+  const: true
+  artifacts:
+    ./: ${{ jq(inputs.documents,'with_entries(select(.value.kind=="value"))') }}
+  inputs:
+    env:
+      INBOX: ${{ context.environment.op.inbox }}
+      OUTBOX: ${{ context.environment.op.outbox }}
+    run: cp -R "$INBOX/." "$OUTBOX/"
+outputs:
+  documents: >-
+    ${{ jq([inputs.documents,sequence.?store.orValue({}).?artifacts.orValue({})], '.[1] as $stored | .[0] | with_entries(if .value.kind=="value" then .value=$stored[.key] else . end)') }}

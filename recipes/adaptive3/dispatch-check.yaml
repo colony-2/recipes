@@ -1,0 +1,49 @@
+id: delegate-dispatch-check
+inputs:
+  action: ${{ inputs.action }}
+  valid: ${{ inputs.valid }}
+  record: ${{ inputs.record }}
+  settings: ${{ inputs.settings }}
+sequence:
+- id: completion
+  when: inputs.action.?primitive.orValue('')=='finish'
+  include: ./completion-check.yaml
+  inputs: {record: "${{ inputs.record }}"}
+vars:
+  name: ${{ inputs.action.?primitive.orValue('invalid') }}
+  record: ${{ inputs.record }}
+  source: ${{ inputs.record.?source.orValue('') }}
+  present: ${{ inputs.action.?presentation.orValue('question') }}
+  assessed: ${{ inputs.record.?assessed_stage.orValue('')==inputs.record.?source.orValue('') && inputs.record.?assessment.orValue({}).?status.orValue('') in ['passed','covered','approved_rebase'] }}
+  verified: ${{ inputs.record.?verified.orValue(false) }}
+  changed: ${{ inputs.record.?candidate.orValue({}).?changed.orValue(false) }}
+  accepted: ${{ size(inputs.record.?accepted.orValue({}))>0 }}
+  landed: ${{ inputs.record.?integration.orValue({}).?status.orValue('')=='ready' }}
+  package: ${{ inputs.record.?package_proposal.orValue({}) }}
+outputs:
+  issue: >-
+    ${{ !inputs.valid ? 'The delegate returned an invalid action. Try again.'
+    : has(inputs.record.configuration) && !(inputs.record.configuration in ['passed','skipped']) && !(vars.name in ['configure','present']) ? 'The configuration hook failed. Inspect its diagnostic and retry Configure.'
+    : !inputs.action.documents.all(k,k in vars.record.documents) ? 'Select existing document names.'
+    : vars.name=='present' && vars.present in ['question','plan'] && size(inputs.action.documents)>0 ? 'Put the necessary context in the message. Planning material stays with the agents.'
+    : vars.record.?planner_reply_due.orValue(false) && !(vars.name in ['direction','preparation']) ? 'Give the recorded interview to the planning author.'
+    : vars.name=='prepare_interview' && size(inputs.action.documents)==0 ? 'Select the proposal and supporting material to explore.'
+    : vars.name=='present' && vars.present=='interview' && (size(vars.record.?interview.orValue([]))==0 || size(inputs.action.documents)>0) ? 'Prepare the interview first. Its source files stay with the planner.'
+    : vars.name=='present' && vars.present=='document' && size(inputs.action.documents)==0 ? 'Select the document the person is being asked to review.'
+    : vars.name=='withdraw' && (vars.record.?human_instruction.orValue({}).?receipt.orValue({}).?actor.orValue({}).?kind.orValue('')!='human' || !nonempty(vars.record.human_instruction.message)) ? 'Withdrawal needs the actual human instruction.'
+    : vars.name in ['implement','integrate','recover_publication'] && vars.landed ? 'This candidate has already landed. Inspect its receipt.'
+    : vars.name=='recover_publication' && has(inputs.record.implementation) ? 'Use the current job’s candidate and receipt for integration.'
+    : vars.name=='implement' && (inputs.settings.?require_design.orValue(false) || vars.source=='preparation') && size(vars.record.?plan.orValue({}))==0 ? 'The prepared plan still needs a decision to start work.'
+    : vars.name=='verify' && size(vars.record.?implementation.orValue({}))==0 ? 'Obtain an implementation candidate to verify.'
+    : vars.name=='assess' && !(vars.source in ['direction','preparation','outcome']) ? 'Assess needs an authored proposal or outcome. Use Verify for an implementation.'
+    : vars.name in ['consult','negotiate','deliver'] && !has(inputs.action.coordination) && vars.record.?work.orValue({}).?consultation.orValue({}).?mode.orValue('') != {'consult':'advice','negotiate':'negotiate','deliver':'delivery'}[vars.name] ? 'Supply the cell and request or reuse a matching request from the author.'
+    : vars.name in ['consult','negotiate'] && vars.record.?consulted.orValue(0)>=10 ? 'The consultation allowance for this phase has been used.'
+    : vars.name=='children' && size(vars.record.?jobs.orValue([]))==0 ? 'There are no outstanding authored child jobs.'
+    : vars.name=='packages' && size(vars.record.?work.orValue({}).?packages.orValue([]))==0 ? 'The author has not requested packages.'
+    : vars.name=='present' && vars.present=='plan' && (vars.source!='preparation' || !vars.assessed) ? 'A plan decision needs an assessed proposal.'
+    : vars.name=='present' && vars.present=='result' && (vars.source!='outcome' || !vars.assessed || (vars.changed && !vars.verified)) ? 'Assess the outcome and verify its changed candidate before asking for a final decision.'
+    : vars.name=='present' && vars.present=='packages' && size(vars.package)==0 ? 'Prepare the exact package proposal first.'
+    : vars.name=='integrate' && (!vars.accepted || !vars.verified || !vars.changed || !vars.assessed || vars.source!='outcome') ? 'Integration needs the accepted outcome and the matching verified change.'
+    : vars.name=='check_delivery' && (!vars.landed || !nonempty(vars.record.?post_merge_check.orValue(''))) ? 'A consumer check needs a landed candidate and its requested check.'
+    : vars.name=='finish' ? sequence.completion.outputs.issue
+    : '' }}

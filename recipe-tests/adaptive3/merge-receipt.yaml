@@ -112,7 +112,19 @@ sequence:
   op: command_execution
   inputs:
     run: printf 'target accepted\n' > marker.txt
+- id: delegate_recovery
+  when: inputs.scenario=='delegate'
+  include: ../../recipes/adaptive3/recover-publication.yaml
+  inputs:
+    job: ${{ sequence.producer.outputs.job_ids[0] }}
+    refs: ${{ jq(json_parse(sequence.discover.outputs.stdout), '{merge_job:.reference.source_job,merge_task:.reference.source_task,approval_task:.accepted.result.source_task,landed_hash:.reference.merged_hash}') }}
+    patch: ${{ json_parse(sequence.discover.outputs.stdout).accepted.patch }}
+    request: Publish the previously accepted marker.
+    documents: {}
+    target_directory: .
+    settings: {}
 - id: import
+  when: inputs.scenario!='delegate'
   include: ../../recipes/adaptive3/execute.yaml
   inputs:
     purpose: integration
@@ -126,6 +138,8 @@ sequence:
       ${{ inputs.scenario == 'dependency' ? {} : json_parse(sequence.discover.outputs.stdout).accepted }}
     prior_publication: ${{ json_parse(sequence.discover.outputs.stdout).reference }}
 outputs:
-  result: ${{ sequence.import.outputs.response }}
-  merge_state: ${{ sequence.import.outputs.merge_state }}
+  result: >-
+    ${{ inputs.scenario=='delegate' ? sequence.delegate_recovery.outputs.result : sequence.import.outputs.response }}
+  merge_state: >-
+    ${{ inputs.scenario=='delegate' ? sequence.delegate_recovery.outputs.merge_state : sequence.import.outputs.merge_state }}
   original: ${{ json_parse(sequence.discover.outputs.stdout).reference }}
