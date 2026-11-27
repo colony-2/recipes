@@ -12,7 +12,7 @@ c2j version
 `.c2j-version` accepts an npm release or `source:<full Git commit ID>`.
 The current pin includes native child bindings, terminal ordering, response
 gates, grouped submission, and SQLite scenario controls used by the merge queue
-integration tests. It also supports optional extension inputs and per-site include mocks.
+integration tests. It also supports optional extension inputs, per-site include mocks and recipe-authored status in job history.
 The installer fetches that exact commit, checks its identity and builds with readonly
 module resolution. It labels the CLI as a source build; it does not manufacture
 a release number or require deployment. CI uses the same installer and records

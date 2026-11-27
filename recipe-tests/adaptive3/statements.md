@@ -8,6 +8,7 @@ Agent decisions are scripted unless a case is explicitly marked live.
 | Delegate handoff | A verified change can return to its integrating caller. The same change assigned for landing needs a merge receipt. | Critical | Integration / c2j, Git | build.test.yaml, completion-check.yaml |
 | Planning interview | The planner receives exact options, skips and typed answers in one batch. The interview gives no permission to integrate. | Critical | Integration / c2j | delegate-build.test.yaml, dispatch-check.test.yaml |
 | Delegate retry limit | Three malformed delegate replies stop the job and record the reason without opening a human review. | High | Integration / c2j | delegate-build.test.yaml, dispatch.yaml |
+| Public activity | Each accepted delegate choice labels the upcoming work. A queued change shows “awaiting merge” while waiting. A finished job clears the label. | High | Integration / c2j, JobDB | delegate.yaml, merge-queue-submit.yaml, adaptive3.yaml |
 | Package approval | The delegate presents the checked proposal. The probe receives the exact configuration the requester accepted. | Critical | Integration / c2j | delegate-build.test.yaml, packages.yaml |
 | A3-01 | Every completed operation returns to the delegate for its next assignment. | Critical | Integration / c2j, Nix | adaptive3.yaml, delegate.yaml, dispatch.yaml |
 | A3-02 | A correction rechecks affected work and reuses passing verification only when its inputs remain current. | Critical | Integration / c2j, Nix | lifecycle.yaml, validate.yaml |

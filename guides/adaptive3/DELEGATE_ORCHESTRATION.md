@@ -14,6 +14,8 @@ The public build has four outer transitions. The previous recipe had 58. Dispatc
 
 ## Sessions and handoffs
 
+Each delegate decision carries a short public activity tag, such as `initial planning`, `revising the plan` or `fixing bugs`. The tag appears in c2j job history as soon as the decision completes and stays visible during the work. A queued submission shows `awaiting merge` once the queue has received it. Finish and Withdraw clear the tag. A UI can display the job’s terminal state on failure or cancellation.
+
 One read-only delegate stays with the job. Direction and Preparation share a planning author. Implementation and Outcome share an implementation author. An independent assessor checks their work. Configured specialists can supply further evidence. A new session gets its assignment and the C2 guide. A continuing author gets the next task, the applicable feedback and selected files.
 
 The delegate returns the operation name, a plain-language instruction, selected document names and a presentation type when needed. The job holds the candidate, actual human submissions, session references, verification evidence and receipts. A model cannot grant itself a merge by describing one. [Delegate prompt and action](../../recipes/adaptive3/delegate.yaml) · [Working in C2](../WORKING_IN_C2.md)

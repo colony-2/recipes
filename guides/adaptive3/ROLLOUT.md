@@ -5,6 +5,8 @@ Root [`build.yaml`](../../build.yaml), version 4.0.0, now forwards to
 available. This changes future submissions using the published recipe revision;
 already submitted jobs retain their captured recipe.
 
+Activity tags appear on new jobs submitted to a status-capable c2j runtime. The recipes test pin is `e44f201`. Follow c2j’s worker and submission-schema rollout when enabling this in a worker pool. [c2j status contract](https://github.com/colony-2/c2j/blob/e44f201bae4dfedf5f5f615a949204a72edc0574/README.md#upgrading-workers-for-recipe-status)
+
 ## Public contract
 
 Required input: `prompt`.
